@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
 import { logout } from "./auth.js";
+import { loadMasterData } from "./masterdata-admin.js";
 
 // ===== SHARED STATE =====
 export let currentUser = null;
@@ -10,6 +11,8 @@ export let allEmployees = [];
 // ===== UTILS =====
 export const esc = s => (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const fmtDate = d => d ? String(d).substring(0,10) : "-";
+// เดือนของ movement: ใช้วันที่มีผล (date) ก่อน ถ้าไม่มีใช้วันที่บันทึก
+export const movYM = m => (m.date || m.created_at || "").substring(0,7);
 export const initials = n => { const p=(n||"").trim().split(/\s+/); return ((p[0]||"")[0]||"").toUpperCase()+((p[1]||"")[0]||"").toUpperCase()||"?"; };
 export const avatarColor = n => { const pal=["#2B5AC7","#0D7C4B","#6D28D9","#C0392B","#D97706","#1A3E9A"]; let h=0; for(const c of (n||"")) h=(h*31+c.charCodeAt(0))>>>0; return pal[h%pal.length]; };
 export const timeAgo = ts => { const s=Math.floor((Date.now()-new Date(ts).getTime())/1000); if(s<60) return "เมื่อสักครู่"; if(s<3600) return Math.floor(s/60)+" นาทีที่แล้ว"; if(s<86400) return Math.floor(s/3600)+" ชม.ที่แล้ว"; return Math.floor(s/86400)+" วันที่แล้ว"; };
@@ -31,7 +34,7 @@ export const MOV_COLORS = {
 export const movBadge = type => { const [c,bg]=MOV_COLORS[type]||["#64748B","#f1f5f9"]; return `<span class="badge" style="color:${c};background:${bg};">${esc(type)}</span>`; };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","analytics","payroll","users"];
+const pages = ["dashboard","employees","movements","analytics","payroll","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -50,6 +53,7 @@ async function renderPage(page) {
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
   else if(page==="users") (await import("./users.js")).renderUsers();
+  else if(page==="settings") (await import("./masterdata-admin.js")).renderSettings();
 }
 
 document.querySelectorAll(".nav-item[data-page]").forEach(el =>
@@ -121,9 +125,10 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
   if (userRole === "admin") {
     document.getElementById("adminNavSection").style.display = "block";
     document.getElementById("usersNavItem").style.display = "flex";
+    document.getElementById("settingsNavItem").style.display = "flex";
   }
 
-  await Promise.all([loadMovements(), loadEmployees()]);
+  await Promise.all([loadMovements(), loadEmployees(), loadMasterData()]);
   startRealtime();
   navigate("dashboard");
 });
@@ -135,7 +140,7 @@ function renderDashboard() {
   const pg = document.getElementById("pageDashboard");
   const active = allEmployees.filter(e=>e.status==="Active"||!e.status);
   const now = new Date(); const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  const movMonth = allMovements.filter(m => m.created_at?.substring(0,7) === ym);
+  const movMonth = allMovements.filter(m => movYM(m) === ym);
   const joined = movMonth.filter(m=>m.type==="New Hire").length;
   const resigned = movMonth.filter(m=>["Resignation","Termination"].includes(m.type)).length;
   const total = active.length;
@@ -150,8 +155,8 @@ function renderDashboard() {
     const d=new Date(); d.setMonth(d.getMonth()-i);
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
     const lbl=d.toLocaleDateString("th-TH",{month:"short"});
-    const j=allMovements.filter(m=>m.created_at?.substring(0,7)===key&&m.type==="New Hire").length;
-    const r=allMovements.filter(m=>m.created_at?.substring(0,7)===key&&["Resignation","Termination"].includes(m.type)).length;
+    const j=allMovements.filter(m=>movYM(m)===key&&m.type==="New Hire").length;
+    const r=allMovements.filter(m=>movYM(m)===key&&["Resignation","Termination"].includes(m.type)).length;
     months.push({lbl,j,r});
   }
   const maxB = Math.max(...months.flatMap(m=>[m.j,m.r]),1);
@@ -212,11 +217,11 @@ export function renderMovements() {
   const pg = document.getElementById("pageMovements");
   const filtered = allMovements.filter(m => {
     if(movFilterType && m.type!==movFilterType) return false;
-    if(movFilterMonth && m.created_at?.substring(0,7)!==movFilterMonth) return false;
+    if(movFilterMonth && movYM(m)!==movFilterMonth) return false;
     if(movFilter){ const h=[m.emp_code,m.name,m.from_dept,m.to_dept,m.reason,m.recorded_by].join(" ").toLowerCase(); if(!h.includes(movFilter.toLowerCase())) return false; }
     return true;
   });
-  const months=[...new Set(allMovements.map(m=>m.created_at?.substring(0,7)||""))].filter(Boolean).sort().reverse();
+  const months=[...new Set(allMovements.map(m=>movYM(m)))].filter(Boolean).sort().reverse();
 
   pg.innerHTML=`
   <div class="page-header">
@@ -336,7 +341,7 @@ function openMovModal(entry=null) {
 function exportMovCSV() {
   const filtered = allMovements.filter(m => {
     if(movFilterType && m.type!==movFilterType) return false;
-    if(movFilterMonth && m.created_at?.substring(0,7)!==movFilterMonth) return false;
+    if(movFilterMonth && movYM(m)!==movFilterMonth) return false;
     if(movFilter){ const h=[m.emp_code,m.name,m.from_dept,m.to_dept,m.reason].join(" ").toLowerCase(); if(!h.includes(movFilter.toLowerCase())) return false; }
     return true;
   });
@@ -374,10 +379,10 @@ function renderPayroll() {
     document.getElementById("pagePayroll").innerHTML=`<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ HR และ Admin</div></div>`;
     return;
   }
-  const months=[...new Set(allMovements.map(m=>m.created_at?.substring(0,7)||""))].filter(Boolean).sort().reverse();
+  const months=[...new Set(allMovements.map(m=>movYM(m)))].filter(Boolean).sort().reverse();
   let selMonth=months[0]||"";
 
-  const getRows = m => allMovements.filter(mv => !m||(mv.created_at?.substring(0,7)===m));
+  const getRows = m => allMovements.filter(mv => !m||(movYM(mv)===m));
 
   const pg = document.getElementById("pagePayroll");
   pg.innerHTML=`
