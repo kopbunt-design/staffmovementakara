@@ -258,8 +258,38 @@ async function handleImport(e) {
         remark:String(row["Remark"]||"").trim(), updated_at:new Date().toISOString(),
       })).filter(r=>r.emp_code);
       const {error}=await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
-      if(error) toast("Import ไม่สำเร็จ: "+error.message,"error");
-      else toast(`Import เสร็จสิ้น: ${batch.length} รายการ`,"success");
+      if(error){ toast("Import ไม่สำเร็จ: "+error.message,"error"); return; }
+
+      // สร้าง Movement อัตโนมัติสำหรับคนที่ลาออก/สิ้นสุดสัญญา (ข้อมูลย้อนหลัง)
+      const resignedRows = batch.filter(r=>["Resigned","Terminated","Retired"].includes(r.status));
+      let movCreated = 0;
+      if(resignedRows.length > 0){
+        const codes = resignedRows.map(r=>r.emp_code);
+        const { data: existing } = await supabase.from("movements")
+          .select("emp_code,type").in("emp_code", codes);
+        const typeMap = { Resigned:"Resignation", Terminated:"Termination", Retired:"Retirement" };
+        const { data: session } = await supabase.auth.getUser();
+        const newMovs = resignedRows.filter(r=>{
+          const t = typeMap[r.status];
+          return !(existing||[]).some(m=>m.emp_code===r.emp_code && m.type===t);
+        }).map(r=>({
+          emp_code: r.emp_code,
+          name: (r.firstname_th+" "+r.lastname_th).trim(),
+          type: typeMap[r.status],
+          date: r.end_date || null,
+          from_dept: r.department || "",
+          to_dept: "",
+          reason: "บันทึกย้อนหลังจากการ Import",
+          recorded_by: session?.user?.user_metadata?.full_name || session?.user?.email?.split("@")[0] || "Import",
+          created_by: session?.user?.id,
+        }));
+        if(newMovs.length > 0){
+          const { error: movErr } = await supabase.from("movements").insert(newMovs);
+          if(!movErr) movCreated = newMovs.length;
+        }
+      }
+
+      toast(`Import เสร็จสิ้น: ${batch.length} รายการ${movCreated?` · สร้าง Movement ย้อนหลัง ${movCreated} รายการ`:""}`,"success");
     }catch(err){ toast("อ่านไฟล์ไม่ได้: "+err.message,"error"); }
   };
   reader.readAsBinaryString(file);
