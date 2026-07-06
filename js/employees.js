@@ -1,15 +1,18 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, currentUser, userRole, esc, fmtDate, avatarColor, initials, toast } from "./app.js";
-import { DIVISIONS, DEPARTMENTS, SECTIONS, TEAMS, POSITIONS, JOB_LEVELS, SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES } from "./masterdata.js";
+import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast } from "./app.js";
+import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
+import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES } from "./masterdata.js";
 
 let empSearch="", empDept="", empStatus="Active";
 
-const sel = (opts, val="", ph="-- เลือก --") =>
+const selOpts = (opts, val="", ph="-- เลือก --", useId=false) =>
   `<option value="">${ph}</option>` + opts.map(o => {
-    const v = typeof o==="string"?o:o.code;
-    const l = typeof o==="string"?o:(o.name+(o.nameTH?` (${o.nameTH})`:""));
-    return `<option value="${v}" ${v===val?"selected":""}>${l}</option>`;
+    const v = useId ? o.id : (typeof o==="string"?o:o.name);
+    const l = typeof o==="string"?o:(o.name+(o.name_th?` (${o.name_th})`:""));
+    return `<option value="${v}" ${String(v)===String(val)?"selected":""}>${l}</option>`;
   }).join("");
+const selStr = (arr, val="", ph="-- เลือก --") =>
+  `<option value="">${ph}</option>` + arr.map(s=>`<option value="${s}" ${s===val?"selected":""}>${s}</option>`).join("");
 
 export function renderEmployees() {
   const pg = document.getElementById("pageEmployees");
@@ -41,7 +44,7 @@ export function renderEmployees() {
     </div>
     <select class="filter-select" onchange="window._empDept(this.value)">
       <option value="">ทุก Department</option>
-      ${DEPARTMENTS.map(d=>`<option value="${d.name}" ${d.name===empDept?"selected":""}>${d.name}</option>`).join("")}
+      ${masterDepartments.map(d=>`<option value="${d.name}" ${d.name===empDept?"selected":""}>${d.name}</option>`).join("")}
     </select>
     <select class="filter-select" onchange="window._empStatus(this.value)">
       <option value="">ทุกสถานะ</option>
@@ -50,12 +53,13 @@ export function renderEmployees() {
   </div>
   <div class="section mt-4 pb-4"><div class="card"><div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>Department</th><th>Position</th><th>Job Level</th><th>ประเภทสัญญา</th><th>Site</th><th>วันเริ่มงาน</th><th>สถานะ</th>${canWrite?"<th></th>":""}</tr></thead>
+      <thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>Division</th><th>Department</th><th>Position</th><th>Job Level</th><th>ประเภทสัญญา</th><th>วันเริ่มงาน</th><th>สถานะ</th>${canWrite?"<th></th>":""}</tr></thead>
       <tbody>${filtered.length===0?`<tr><td colspan="${canWrite?10:9}" class="text-center text-muted" style="padding:48px;">ไม่พบพนักงาน${empSearch||empDept||empStatus?" ที่ตรงกับเงื่อนไข":""}</td></tr>`:
       filtered.map(e=>{
         const sc={Active:"var(--green)",Resigned:"var(--red)",Terminated:"var(--red)",Retired:"var(--muted)",Transferred:"var(--blue)"}[e.status||"Active"]||"var(--green)";
         const sbg={Active:"var(--green-light)",Resigned:"var(--red-light)",Terminated:"var(--red-light)",Retired:"#f1f5f9",Transferred:"var(--blue-light)"}[e.status||"Active"]||"var(--green-light)";
         const av=avatarColor(e.firstname_th||e.emp_code||"");
+        const divName = masterDivisions.find(d=>d.name===e.division)?.name || e.division || "-";
         return `<tr>
           <td><b style="color:var(--blue);font-size:12px;">${esc(e.emp_code||"-")}</b></td>
           <td><div style="display:flex;align-items:center;gap:8px;">
@@ -63,11 +67,11 @@ export function renderEmployees() {
             <div><div style="font-weight:600;">${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</div>
             <div class="text-sm text-muted">${esc((e.firstname_en||"")+" "+(e.lastname_en||""))}</div></div>
           </div></td>
+          <td class="text-muted">${esc(divName)}</td>
           <td class="text-muted">${esc(e.department||"-")}</td>
           <td class="text-muted">${esc(e.position||"-")}</td>
           <td><span class="badge badge-gray">${esc(e.job_level||"-")}</span></td>
           <td class="text-muted">${esc(e.contract_type||"-")}</td>
-          <td class="text-muted">${esc(e.site||"-")}</td>
           <td class="text-muted">${fmtDate(e.join_date)}</td>
           <td><span class="badge" style="color:${sc};background:${sbg};">${esc(e.status||"Active")}</span></td>
           ${canWrite?`<td><button class="btn btn-secondary btn-sm" onclick="window._openEmp('${e.emp_code}')">แก้ไข</button></td>`:""}
@@ -88,6 +92,12 @@ export function renderEmployees() {
 function openEmpModal(emp=null) {
   const isEdit = !!emp;
   const v = f => esc(emp?.[f]||"");
+  const curDiv = masterDivisions.find(d=>d.name===emp?.division);
+  const curDept = masterDepartments.find(d=>d.name===emp?.department);
+  const curSect = masterSections.find(s=>s.name===emp?.section);
+  const depts = curDiv ? getDeptsByDiv(curDiv.id) : masterDepartments;
+  const sects = curDept ? getSectsByDept(curDept.id) : masterSections;
+  const teams = curSect ? getTeamsBySect(curSect.id) : masterTeams;
 
   document.getElementById("modalPortal").innerHTML = `<div class="modal-overlay" id="empModal">
     <div class="modal modal-lg">
@@ -98,23 +108,49 @@ function openEmpModal(emp=null) {
       <div class="modal-body">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">รหัสพนักงาน *</label><input id="ef_code" class="form-control" value="${v("emp_code")}" ${isEdit?"readonly":""}></div>
-          <div class="form-group"><label class="form-label">สถานะ</label><select id="ef_status" class="form-control">${sel(EMP_STATUSES,emp?.status||"Active")}</select></div>
+          <div class="form-group"><label class="form-label">สถานะ</label><select id="ef_status" class="form-control">${selStr(EMP_STATUSES,emp?.status||"Active")}</select></div>
           <div class="form-group"><label class="form-label">ชื่อ (ภาษาไทย) *</label><input id="ef_fnTH" class="form-control" value="${v("firstname_th")}"></div>
           <div class="form-group"><label class="form-label">นามสกุล (ภาษาไทย) *</label><input id="ef_lnTH" class="form-control" value="${v("lastname_th")}"></div>
           <div class="form-group"><label class="form-label">First Name</label><input id="ef_fnEN" class="form-control" value="${v("firstname_en")}"></div>
           <div class="form-group"><label class="form-label">Last Name</label><input id="ef_lnEN" class="form-control" value="${v("lastname_en")}"></div>
-          <div class="form-group"><label class="form-label">เพศ</label><select id="ef_gender" class="form-control">${sel(GENDERS,emp?.gender||"")}</select></div>
-          <div class="form-group"><label class="form-label">สัญชาติ</label><select id="ef_nat" class="form-control">${sel(NATIONALITIES,emp?.nationality||"")}</select></div>
+          <div class="form-group"><label class="form-label">เพศ</label><select id="ef_gender" class="form-control">${selStr(GENDERS,emp?.gender||"")}</select></div>
+          <div class="form-group"><label class="form-label">สัญชาติ</label><select id="ef_nat" class="form-control">${selStr(NATIONALITIES,emp?.nationality||"")}</select></div>
           <div class="form-group"><label class="form-label">วันเกิด</label><input id="ef_dob" type="date" class="form-control" value="${v("dob")}"></div>
           <div class="form-group"><label class="form-label">เบอร์โทรศัพท์</label><input id="ef_phone" class="form-control" value="${v("phone")}"></div>
-          <div class="form-group"><label class="form-label">Division</label><select id="ef_div" class="form-control">${sel(DIVISIONS,emp?.division||"")}</select></div>
-          <div class="form-group"><label class="form-label">Department</label><select id="ef_dept" class="form-control">${sel(DEPARTMENTS,emp?.department||"")}</select></div>
-          <div class="form-group"><label class="form-label">Section</label><select id="ef_sect" class="form-control">${sel(SECTIONS,emp?.section||"")}</select></div>
-          <div class="form-group"><label class="form-label">Team</label><select id="ef_team" class="form-control">${sel(TEAMS,emp?.team||"")}</select></div>
-          <div class="form-group col-span-2"><label class="form-label">Position</label><select id="ef_pos" class="form-control">${sel(POSITIONS,emp?.position||"")}</select></div>
-          <div class="form-group"><label class="form-label">Job Level</label><select id="ef_jl" class="form-control">${sel(JOB_LEVELS,emp?.job_level||"")}</select></div>
-          <div class="form-group"><label class="form-label">Site</label><select id="ef_site" class="form-control">${sel(SITES,emp?.site||"")}</select></div>
-          <div class="form-group"><label class="form-label">ประเภทสัญญา</label><select id="ef_ct" class="form-control">${sel(CONTRACT_TYPES,emp?.contract_type||"")}</select></div>
+
+          <div class="form-group"><label class="form-label">Division</label>
+            <select id="ef_div" class="form-control" onchange="window._onDivChange(this)">
+              ${selOpts(masterDivisions, emp?.division||"")}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Department</label>
+            <select id="ef_dept" class="form-control" onchange="window._onDeptChange(this)">
+              ${selOpts(depts, emp?.department||"")}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Section</label>
+            <select id="ef_sect" class="form-control" onchange="window._onSectChange(this)">
+              ${selOpts(sects, emp?.section||"")}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Team</label>
+            <select id="ef_team" class="form-control">
+              ${selOpts(teams, emp?.team||"")}
+            </select>
+          </div>
+
+          <div class="form-group col-span-2"><label class="form-label">Position</label>
+            <select id="ef_pos" class="form-control">${selOpts(masterPositions, emp?.position||"")}</select>
+          </div>
+          <div class="form-group"><label class="form-label">Job Level</label>
+            <select id="ef_jl" class="form-control">${selOpts(masterJobLevels, emp?.job_level||"")}</select>
+          </div>
+          <div class="form-group"><label class="form-label">Site</label>
+            <select id="ef_site" class="form-control">${selStr(SITES,emp?.site||"")}</select>
+          </div>
+          <div class="form-group"><label class="form-label">ประเภทสัญญา</label>
+            <select id="ef_ct" class="form-control">${selStr(CONTRACT_TYPES,emp?.contract_type||"")}</select>
+          </div>
           <div class="form-group"><label class="form-label">วันเริ่มงาน *</label><input id="ef_join" type="date" class="form-control" value="${v("join_date")}"></div>
           <div class="form-group"><label class="form-label">Effective Date</label><input id="ef_eff" type="date" class="form-control" value="${v("effective_date")}"></div>
           <div class="form-group"><label class="form-label">วันสิ้นสุดสัญญา</label><input id="ef_end" type="date" class="form-control" value="${v("end_date")}"></div>
@@ -129,6 +165,29 @@ function openEmpModal(emp=null) {
       </div>
     </div>
   </div>`;
+
+  // Cascade handlers
+  window._onDivChange = sel => {
+    const divName = sel.value;
+    const div = masterDivisions.find(d=>d.name===divName);
+    const depts = div ? getDeptsByDiv(div.id) : masterDepartments;
+    document.getElementById("ef_dept").innerHTML = selOpts(depts,"","-- เลือก Department --");
+    document.getElementById("ef_sect").innerHTML = `<option value="">-- เลือก Department ก่อน --</option>`;
+    document.getElementById("ef_team").innerHTML = `<option value="">-- เลือก Section ก่อน --</option>`;
+  };
+  window._onDeptChange = sel => {
+    const deptName = sel.value;
+    const dept = masterDepartments.find(d=>d.name===deptName);
+    const sects = dept ? getSectsByDept(dept.id) : masterSections;
+    document.getElementById("ef_sect").innerHTML = selOpts(sects,"","-- เลือก Section --");
+    document.getElementById("ef_team").innerHTML = `<option value="">-- เลือก Section ก่อน --</option>`;
+  };
+  window._onSectChange = sel => {
+    const sectName = sel.value;
+    const sect = masterSections.find(s=>s.name===sectName);
+    const teams = sect ? getTeamsBySect(sect.id) : masterTeams;
+    document.getElementById("ef_team").innerHTML = selOpts(teams,"","-- เลือก Team --");
+  };
 
   window._saveEmp = async (existCode) => {
     const g = id => document.getElementById(id)?.value?.trim()||"";
@@ -147,10 +206,9 @@ function openEmpModal(emp=null) {
       site:g("ef_site"), contract_type:g("ef_ct"),
       join_date:g("ef_join")||null, effective_date:g("ef_eff")||null, end_date:g("ef_end")||null,
       salary:Number(document.getElementById("ef_sal")?.value)||null,
-      remark:g("ef_remark"),
-      updated_at: new Date().toISOString(),
+      remark:g("ef_remark"), updated_at:new Date().toISOString(),
     };
-    const { error } = await supabase.from("employees").upsert(data, {onConflict:"emp_code"});
+    const { error } = await supabase.from("employees").upsert(data,{onConflict:"emp_code"});
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     document.getElementById("empModal").remove();
     toast("บันทึกสำเร็จ","success");
@@ -165,12 +223,15 @@ function openEmpModal(emp=null) {
 
 function downloadTemplate() {
   if(!window.XLSX){ toast("กรุณารอโหลด library","error"); return; }
-  const h=["Employee Code*","First Name TH*","Last Name TH*","First Name EN","Last Name EN","Gender","Nationality","DOB (YYYY-MM-DD)","Phone","Division Code","Department Name","Section Name","Team Name","Position Name","Job Level","Site","Contract Type","Join Date*","Effective Date","End Date","Salary","Status","Remark"];
-  const ex=["AKR001","สมชาย","ใจดี","Somchai","Jaidee","Male","Thai","1990-01-15","0812345678","L1-003","Mining","Mining Operation","Mining Operation","Mining Engineer","O2","Chatree","Permanent","2020-03-01","2020-03-01","","45000","Active",""];
+  const h=["Employee Code*","First Name TH*","Last Name TH*","First Name EN","Last Name EN","Gender","Nationality","DOB (YYYY-MM-DD)","Phone","Division","Department","Section","Team","Position","Job Level","Site","Contract Type","Join Date*","Effective Date","End Date","Salary","Status","Remark"];
+  const ex=["AKR001","สมชาย","ใจดี","Somchai","Jaidee","Male","Thai","1990-01-15","0812345678","Operations","Mining","Geology","Geology","Mining Engineer","O2","Chatree","Permanent","2020-03-01","2020-03-01","","45000","Active",""];
   const ws=window.XLSX.utils.aoa_to_sheet([h,ex]); ws["!cols"]=h.map(()=>({wch:18}));
+  const divSheet=window.XLSX.utils.aoa_to_sheet([["Division","Departments"],
+    ...masterDivisions.map(d=>[d.name, getDeptsByDiv(d.id).map(x=>x.name).join(", ")])
+  ]);
   const wb=window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb,ws,"Employees");
-  window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.aoa_to_sheet([["Code","Division"],...DIVISIONS.map(d=>[d.code,d.name])]),"Division Ref");
+  window.XLSX.utils.book_append_sheet(wb,divSheet,"Structure");
   window.XLSX.writeFile(wb,"employee_template.xlsx");
   toast("ดาวน์โหลด Template เสร็จสิ้น","success");
 }
@@ -182,22 +243,21 @@ async function handleImport(e) {
     try{
       const rows=window.XLSX.utils.sheet_to_json(window.XLSX.read(ev.target.result,{type:"binary",cellDates:true}).Sheets[window.XLSX.read(ev.target.result,{type:"binary"}).SheetNames[0]],{defval:""});
       const fd=v=>{ if(!v) return null; if(v instanceof Date) return v.toISOString().substring(0,10); const s=String(v).trim(); return s||null; };
-      const batch = rows.map(row=>({
+      const batch=rows.map(row=>({
         emp_code:String(row["Employee Code*"]||row["Employee Code"]||"").trim(),
         firstname_th:String(row["First Name TH*"]||"").trim(), lastname_th:String(row["Last Name TH*"]||"").trim(),
         firstname_en:String(row["First Name EN"]||"").trim(), lastname_en:String(row["Last Name EN"]||"").trim(),
         gender:String(row["Gender"]||"").trim(), nationality:String(row["Nationality"]||"").trim(),
         dob:fd(row["DOB (YYYY-MM-DD)"]), phone:String(row["Phone"]||"").trim(),
-        division:String(row["Division Code"]||"").trim(), department:String(row["Department Name"]||"").trim(),
-        section:String(row["Section Name"]||"").trim(), team:String(row["Team Name"]||"").trim(),
-        position:String(row["Position Name"]||"").trim(), job_level:String(row["Job Level"]||"").trim(),
+        division:String(row["Division"]||"").trim(), department:String(row["Department"]||"").trim(),
+        section:String(row["Section"]||"").trim(), team:String(row["Team"]||"").trim(),
+        position:String(row["Position"]||"").trim(), job_level:String(row["Job Level"]||"").trim(),
         site:String(row["Site"]||"").trim(), contract_type:String(row["Contract Type"]||"").trim(),
         join_date:fd(row["Join Date*"]||row["Join Date"]), effective_date:fd(row["Effective Date"]), end_date:fd(row["End Date"]),
         salary:Number(row["Salary"])||null, status:String(row["Status"]||"Active").trim(),
         remark:String(row["Remark"]||"").trim(), updated_at:new Date().toISOString(),
       })).filter(r=>r.emp_code);
-
-      const {error} = await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
+      const {error}=await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
       if(error) toast("Import ไม่สำเร็จ: "+error.message,"error");
       else toast(`Import เสร็จสิ้น: ${batch.length} รายการ`,"success");
     }catch(err){ toast("อ่านไฟล์ไม่ได้: "+err.message,"error"); }
