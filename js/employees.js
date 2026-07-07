@@ -241,8 +241,9 @@ async function handleImport(inputEl) {
   const reader=new FileReader();
   reader.onload=async ev=>{
     try{
-      const rows=window.XLSX.utils.sheet_to_json(window.XLSX.read(ev.target.result,{type:"binary",cellDates:true}).Sheets[window.XLSX.read(ev.target.result,{type:"binary"}).SheetNames[0]],{defval:""});
-      const fd=v=>{ if(!v) return null; if(v instanceof Date) return v.toISOString().substring(0,10); const s=String(v).trim(); return s||null; };
+      const wb=window.XLSX.read(ev.target.result,{type:"binary",cellDates:true});
+      const rows=window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      const fd=v=>{ if(!v) return null; if(v instanceof Date){ const y=v.getFullYear(),m=String(v.getMonth()+1).padStart(2,"0"),d=String(v.getDate()).padStart(2,"0"); return `${y}-${m}-${d}`; } const s=String(v).trim(); return s||null; };
       const batch=rows.map(row=>({
         emp_code:String(row["Employee Code*"]||row["Employee Code"]||"").trim(),
         firstname_th:String(row["First Name TH*"]||"").trim(), lastname_th:String(row["Last Name TH*"]||"").trim(),
