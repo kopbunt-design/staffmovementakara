@@ -8,7 +8,7 @@ export async function renderUsers() {
   pg.innerHTML = `
   <div class="page-header">
     <div><div class="page-heading">จัดการผู้ใช้ระบบ</div><div class="page-sub" id="usersCount">กำลังโหลด...</div></div>
-    <button class="btn btn-primary" onclick="window._openAddUser()">+ เพิ่มผู้ใช้ล่วงหน้า</button>
+    <button class="btn btn-primary" onclick="window._openAddUser()">+ สร้างผู้ใช้ใหม่</button>
   </div>
   <div class="section mt-4 pb-4"><div class="card"><div class="table-wrap">
     <table class="data-table">
@@ -61,29 +61,77 @@ export async function renderUsers() {
   window._openAddUser = ()=>{
     document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="addUserModal">
       <div class="modal" style="max-width:420px;">
-        <div class="modal-header"><div class="modal-title">เพิ่มผู้ใช้ล่วงหน้า</div><button class="modal-close" onclick="document.getElementById('addUserModal').remove()">✕</button></div>
+        <div class="modal-header"><div class="modal-title">สร้างผู้ใช้ใหม่</div><button class="modal-close" onclick="document.getElementById('addUserModal').remove()">✕</button></div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
           <div class="form-group"><label class="form-label">ชื่อ-นามสกุล</label><input id="nu_name" class="form-control" placeholder="สมชาย ใจดี"></div>
-          <div class="form-group"><label class="form-label">อีเมล</label><input id="nu_email" class="form-control" type="email" placeholder="email@akararesources.com"></div>
+          <div class="form-group"><label class="form-label">อีเมล *</label><input id="nu_email" class="form-control" type="email" placeholder="email@akararesources.com"></div>
+          <div class="form-group"><label class="form-label">รหัสผ่าน * (อย่างน้อย 6 ตัว)</label>
+            <div style="display:flex;gap:8px;">
+              <input id="nu_password" class="form-control" type="text" placeholder="ตั้งเองหรือกดสุ่ม" style="flex:1;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="window._genPassword()" style="white-space:nowrap;">🎲 สุ่มรหัส</button>
+            </div>
+          </div>
           <div class="form-group"><label class="form-label">Role</label><select id="nu_role" class="form-control"><option value="user">User</option><option value="hr">HR</option><option value="admin">Admin</option></select></div>
-          <div style="padding:12px;background:var(--blue-light);border-radius:8px;font-size:12px;color:var(--blue-dark);line-height:1.6;">หลังเพิ่มแล้ว ส่งลิงก์ระบบให้ผู้ใช้สมัครหรือล็อกอิน ระบบจะกำหนด role ให้อัตโนมัติ</div>
+          <div style="padding:12px;background:var(--blue-light);border-radius:8px;font-size:12px;color:var(--blue-dark);line-height:1.6;">ระบบจะสร้างบัญชีให้ทันที กรุณาส่งอีเมลและรหัสผ่านนี้ให้ผู้ใช้เพื่อเข้าสู่ระบบ</div>
+          <div id="nu_err" style="color:var(--red);font-size:12px;"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="document.getElementById('addUserModal').remove()">ยกเลิก</button>
-          <button class="btn btn-primary" onclick="window._saveNewUser()">เพิ่มผู้ใช้</button>
+          <button class="btn btn-primary" id="nu_submit" onclick="window._saveNewUser()">สร้างผู้ใช้</button>
         </div>
       </div>
     </div>`;
+    window._genPassword=()=>{
+      // สุ่ม 10 ตัว ตัดอักขระที่อ่านสับสน (0/O, 1/l/I) ออก
+      const chars="abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+      let pw=""; const buf=new Uint32Array(10); crypto.getRandomValues(buf);
+      for(const n of buf) pw+=chars[n%chars.length];
+      document.getElementById("nu_password").value=pw;
+    };
     window._saveNewUser=async()=>{
       const name=document.getElementById("nu_name").value.trim();
       const email=document.getElementById("nu_email").value.trim();
+      const password=document.getElementById("nu_password").value;
       const role=document.getElementById("nu_role").value;
-      if(!email){ toast("กรุณากรอกอีเมล","error"); return; }
-      const key=email.toLowerCase().replace(/[.@]/g,"_");
-      const {error}=await supabase.from("pending_roles").upsert({email_key:key,name,email,role});
-      if(error){ toast("ไม่สำเร็จ: "+error.message,"error"); return; }
-      document.getElementById("addUserModal").remove();
-      toast(`เพิ่ม ${name||email} เรียบร้อย`,"success");
+      const errEl=document.getElementById("nu_err");
+      errEl.textContent="";
+      if(!email){ errEl.textContent="กรุณากรอกอีเมล"; return; }
+      if(!password||password.length<6){ errEl.textContent="รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"; return; }
+      const btn=document.getElementById("nu_submit");
+      btn.disabled=true; btn.textContent="กำลังสร้าง...";
+      const {data,error}=await supabase.functions.invoke("admin-create-user",{body:{email,password,name,role}});
+      btn.disabled=false; btn.textContent="สร้างผู้ใช้";
+      if(error||data?.error){ errEl.textContent="ไม่สำเร็จ: "+(data?.error||error.message); return; }
+      showCredentials(name,email,password);
+    };
+  };
+
+  // แสดงข้อมูลเข้าสู่ระบบหลังสร้างสำเร็จ ให้ admin คัดลอกไปแจ้งผู้ใช้
+  const showCredentials=(name,email,password)=>{
+    const credText=`ระบบ Akara HR System\n${name?`ชื่อ: ${name}\n`:""}อีเมล: ${email}\nรหัสผ่าน: ${password}\nเข้าใช้งานที่: ${window.location.origin}`;
+    document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="credModal">
+      <div class="modal" style="max-width:420px;">
+        <div class="modal-header"><div class="modal-title">✅ สร้างผู้ใช้สำเร็จ</div><button class="modal-close" onclick="document.getElementById('credModal').remove()">✕</button></div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+          <div style="padding:12px;background:var(--green-light);border-radius:8px;font-size:12px;color:var(--green);line-height:1.6;">คัดลอกข้อมูลด้านล่างส่งให้ผู้ใช้ — รหัสผ่านจะแสดงครั้งเดียวเท่านั้น ปิดหน้าต่างนี้แล้วจะดูอีกไม่ได้</div>
+          <pre id="credText" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-all;margin:0;">${esc(credText)}</pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="document.getElementById('credModal').remove()">ปิด</button>
+          <button class="btn btn-primary" id="credCopyBtn" onclick="window._copyCred()">📋 คัดลอก</button>
+        </div>
+      </div>
+    </div>`;
+    window._copyCred=async()=>{
+      try{
+        await navigator.clipboard.writeText(credText);
+        document.getElementById("credCopyBtn").textContent="✅ คัดลอกแล้ว";
+      }catch{
+        // เบราว์เซอร์เก่า/ไม่อนุญาต clipboard — ให้เลือกข้อความแทน
+        const r=document.createRange(); r.selectNodeContents(document.getElementById("credText"));
+        const s=getSelection(); s.removeAllRanges(); s.addRange(r);
+        toast("กด Ctrl+C เพื่อคัดลอก","info");
+      }
     };
   };
 }
