@@ -101,19 +101,20 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 
   const name = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "";
 
-  // upsert user_roles
-  const { data: roleData } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id).single();
-  if (!roleData) {
-    // check pending role
+  // ดึง role — ถ้า query ล้มเหลวจะไม่ทับ role เดิม
+  const { data: roleData, error: roleError } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id).single();
+  if (roleData) {
+    userRole = roleData.role || "user";
+    await supabase.from("user_roles").update({ name, email: session.user.email }).eq("user_id", session.user.id);
+  } else if (!roleError || roleError.code === "PGRST116") {
+    // PGRST116 = ไม่พบแถว = user ใหม่จริง ๆ (ไม่ใช่ error อื่น)
     const emailKey = (session.user.email||"").toLowerCase().replace(/[.#$[\]]/g,"_");
     const { data: pending } = await supabase.from("pending_roles").select("role").eq("email_key", emailKey).single();
     const assignedRole = pending?.role || "user";
-    await supabase.from("user_roles").upsert({ user_id: session.user.id, name, email: session.user.email, role: assignedRole });
+    // ใช้ insert ไม่ใช่ upsert เพื่อป้องกันทับ role เดิมถ้าแถวมีอยู่แล้ว
+    await supabase.from("user_roles").insert({ user_id: session.user.id, name, email: session.user.email, role: assignedRole }).single();
     if (pending) await supabase.from("pending_roles").delete().eq("email_key", emailKey);
     userRole = assignedRole;
-  } else {
-    userRole = roleData.role || "user";
-    await supabase.from("user_roles").update({ name, email: session.user.email }).eq("user_id", session.user.id);
   }
 
   // update sidebar
