@@ -135,13 +135,16 @@ export function renderSettings() {
         <div class="card-title" style="margin:0;">Position (${masterPositions.length})</div>
         <button class="btn btn-primary btn-sm" onclick="window._openMasterModal('positions')">+ เพิ่ม</button>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${masterPositions.map(p=>`
-        <div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;">
-          <span style="font-size:10px;font-weight:700;color:var(--muted);">${esc(p.code)}</span>
-          <span style="font-size:12px;">${esc(p.name)}</span>
-          <button onclick="window._editMaster('positions',${p.id})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:11px;">✏️</button>
-        </div>`).join("")||`<div class="text-muted text-sm">ยังไม่มีข้อมูล</div>`}
+      <div class="table-wrap">
+        <table class="data-table" style="font-size:12px;">
+          <thead><tr><th>Code</th><th>ชื่อ</th><th>ชื่อไทย</th><th></th></tr></thead>
+          <tbody>${masterPositions.map(p=>`<tr>
+            <td><b style="color:var(--blue)">${esc(p.code)}</b></td>
+            <td>${esc(p.name)}</td>
+            <td class="text-muted">${esc(p.name_th||"-")}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="window._editMaster('positions',${p.id})">แก้ไข</button></td>
+          </tr>`).join("")||`<tr><td colspan="4" class="text-center text-muted" style="padding:24px;">ยังไม่มีข้อมูล</td></tr>`}</tbody>
+        </table>
       </div>
     </div>
 
