@@ -236,8 +236,8 @@ function downloadTemplate() {
   toast("ดาวน์โหลด Template เสร็จสิ้น","success");
 }
 
-async function handleImport(e) {
-  const file=e.target.files[0]; if(!file||!window.XLSX) return; e.target.value="";
+async function handleImport(inputEl) {
+  const file=inputEl.files?.[0]; if(!file||!window.XLSX) return; inputEl.value="";
   const reader=new FileReader();
   reader.onload=async ev=>{
     try{
