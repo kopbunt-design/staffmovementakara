@@ -244,10 +244,10 @@ async function handleImport(inputEl) {
       const wb=window.XLSX.read(ev.target.result,{type:"binary"});
       const rows=window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       const fd=v=>{
-        if(!v&&v!==0) return null;
-        if(typeof v==="number"&&v>10000){ const d=new Date(Math.round((v-25569)*86400000)); return d.toISOString().substring(0,10); }
+        if(!v) return null;
+        if(typeof v==="number"){ if(v>10000){ const d=new Date(Math.round((v-25569)*86400000)); return d.toISOString().substring(0,10); } return null; }
         if(v instanceof Date){ const d=new Date(Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())); return d.toISOString().substring(0,10); }
-        const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(0,10):(s||null);
+        const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(0,10):null;
       };
       const batch=rows.map(row=>({
         emp_code:String(row["Employee Code*"]||row["Employee Code"]||"").trim(),
