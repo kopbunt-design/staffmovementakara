@@ -142,8 +142,12 @@ function renderDashboard() {
   const active = allEmployees.filter(e=>e.status==="Active"||!e.status);
   const now = new Date(); const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const movMonth = allMovements.filter(m => movYM(m) === ym);
-  const joined = movMonth.filter(m=>m.type==="New Hire").length;
-  const resigned = movMonth.filter(m=>["Resignation","Termination"].includes(m.type)).length;
+  const movJoinCodes = new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
+  const movResignCodes = new Set(movMonth.filter(m=>["Resignation","Termination"].includes(m.type)).map(m=>m.emp_code));
+  const empJoined = allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym && !movJoinCodes.has(e.emp_code));
+  const empResigned = allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym && ["Resigned","Terminated"].includes(e.status) && !movResignCodes.has(e.emp_code));
+  const joined = movJoinCodes.size + empJoined.length;
+  const resigned = movResignCodes.size + empResigned.length;
   const total = active.length;
   const turnover = total ? ((resigned/total)*100).toFixed(1) : "0.0";
 
@@ -156,9 +160,11 @@ function renderDashboard() {
     const d=new Date(); d.setMonth(d.getMonth()-i);
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
     const lbl=d.toLocaleDateString("th-TH",{month:"short"});
-    const j=allMovements.filter(m=>movYM(m)===key&&m.type==="New Hire").length;
-    const r=allMovements.filter(m=>movYM(m)===key&&["Resignation","Termination"].includes(m.type)).length;
-    months.push({lbl,j,r});
+    const mjCodes=new Set(allMovements.filter(m=>movYM(m)===key&&m.type==="New Hire").map(m=>m.emp_code));
+    const mrCodes=new Set(allMovements.filter(m=>movYM(m)===key&&["Resignation","Termination"].includes(m.type)).map(m=>m.emp_code));
+    const ej=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===key&&!mjCodes.has(e.emp_code)).length;
+    const er=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===key&&["Resigned","Terminated"].includes(e.status)&&!mrCodes.has(e.emp_code)).length;
+    months.push({lbl,j:mjCodes.size+ej,r:mrCodes.size+er});
   }
   const maxB = Math.max(...months.flatMap(m=>[m.j,m.r]),1);
   const recent = allMovements.slice(0,5);
@@ -275,7 +281,7 @@ export function renderMovements() {
 
 function openMovModal(entry=null) {
   const isEdit = !!entry?.id;
-  const empOpts = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>`<option value="${esc(e.emp_code)}" data-name="${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}" data-dept="${esc(e.department||"")}">${esc(e.emp_code)} - ${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</option>`).join("");
+  const empOpts = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>`<option value="${esc(e.emp_code)}" data-name="${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}" data-dept="${esc(e.department||"")}" data-pos="${esc(e.position||"")}" data-sec="${esc(e.section||"")}">${esc(e.emp_code)} - ${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</option>`).join("");
 
   document.getElementById("modalPortal").innerHTML = `<div class="modal-overlay" id="movModal">
     <div class="modal">
@@ -287,7 +293,7 @@ function openMovModal(entry=null) {
         <div class="form-grid">
           <div class="form-group col-span-2">
             <label class="form-label">เลือกพนักงาน</label>
-            <select class="form-control" onchange="if(this.value){document.getElementById('mv_code').value=this.value;const o=this.options[this.selectedIndex];document.getElementById('mv_name').value=o.dataset.name||'';document.getElementById('mv_from').value=o.dataset.dept||'';}">
+            <select class="form-control" onchange="if(this.value){document.getElementById('mv_code').value=this.value;const o=this.options[this.selectedIndex];document.getElementById('mv_name').value=o.dataset.name||'';const from=[o.dataset.dept,o.dataset.pos].filter(Boolean).join(' / ');document.getElementById('mv_from').value=from;}">
               <option value="">-- เลือกจากรายชื่อพนักงาน --</option>${empOpts}
             </select>
           </div>
@@ -328,6 +334,28 @@ function openMovModal(entry=null) {
       ? await supabase.from("movements").update({...data, updated_at: new Date().toISOString()}).eq("id", existId)
       : await supabase.from("movements").insert(data);
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
+    // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
+    if(data.emp_code){
+      const empUpdate = { updated_at: new Date().toISOString() };
+      const t = data.type;
+      if(["Resignation","Termination","Retirement"].includes(t)){
+        const statusMap = {Resignation:"Resigned",Termination:"Terminated",Retirement:"Retired"};
+        empUpdate.status = statusMap[t];
+        if(data.date) empUpdate.end_date = data.date;
+      } else if(t==="Transfer"){
+        if(data.to_dept) empUpdate.department = data.to_dept;
+        if(data.date) empUpdate.effective_date = data.date;
+      } else if(t==="Promotion"||t==="Demotion"){
+        if(data.to_dept) empUpdate.position = data.to_dept;
+        if(data.date) empUpdate.effective_date = data.date;
+      } else if(t==="New Hire"){
+        empUpdate.status = "Active";
+        if(data.date) empUpdate.join_date = data.date;
+      }
+      if(Object.keys(empUpdate).length>1){
+        await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
+      }
+    }
     document.getElementById("modalPortal").innerHTML="";
     toast("บันทึกสำเร็จ","success");
   };
