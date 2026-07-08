@@ -9,19 +9,22 @@ const GRP = [
 ];
 function grp(jl){ const u=(jl||"").toUpperCase().trim(); for(const g of GRP) if(g.levels.includes(u)) return g.key; return ""; }
 
+function hcAtMonth(ym) {
+  return allEmployees.filter(e=>{
+    const jm=(e.join_date||"").substring(0,7), em=(e.end_date||"").substring(0,7);
+    if(jm && jm>ym) return false;
+    if(em && em<ym) return false;
+    return true;
+  });
+}
+
 function buildYearData(year) {
   const rows=[];
-  const prevYM=`${year-1}-12`;
-  const initAll=allEmployees.filter(e=>{
-    const jm=(e.join_date||"").substring(0,7),em=(e.end_date||"").substring(0,7);
-    if(jm&&jm>prevYM) return false; if(em&&em<=prevYM) return false; return true;
-  });
-  const running={}; GRP.forEach(g=>{running[g.key]=initAll.filter(e=>grp(e.job_level)===g.key).length;});
-  running._oth=initAll.filter(e=>!grp(e.job_level)).length;
 
   for(let m=0;m<12;m++){
     const ym=`${year}-${String(m+1).padStart(2,"0")}`;
     const cnt=(list,gk)=>list.filter(e=>grp(e.job_level)===gk).length;
+
     const movNewC=new Set(allMovements.filter(v=>movYM(v)===ym&&v.type==="New Hire").map(v=>v.emp_code));
     const empNew=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym&&!movNewC.has(e.emp_code));
     const allNew=[...allEmployees.filter(e=>movNewC.has(e.emp_code)),...empNew];
@@ -39,10 +42,12 @@ function buildYearData(year) {
 
     const rT=vT+iT;
     const bG={}; GRP.forEach(g=>{bG[g.key]=nG[g.key]-vG[g.key]-iG[g.key];});
-    GRP.forEach(g=>{running[g.key]+=bG[g.key];});
-    running._oth+=(nT-rT)-GRP.reduce((s,g)=>s+bG[g.key],0);
-    const hT=Object.values(running).reduce((s,v)=>s+v,0);
-    rows.push({month:MONTHS[m],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG:{...running}});
+
+    const active=hcAtMonth(ym);
+    const hT=active.length;
+    const hG={}; GRP.forEach(g=>{hG[g.key]=cnt(active,g.key);});
+
+    rows.push({month:MONTHS[m],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG});
   }
   const hcVals=rows.map(r=>r.hT);
   const avg=hcVals.length?Math.round(hcVals.reduce((s,v)=>s+v,0)/hcVals.length):0;
