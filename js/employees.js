@@ -284,12 +284,13 @@ async function handleImport(inputEl) {
         for(const r of resignedRows){
           const t = typeMap[r.status];
           const ex = (existing||[]).find(m=>m.emp_code===r.emp_code && m.type===t);
+          const movDate = r.effective_date || r.end_date || null;
           if(ex){
-            if(r.end_date && ex.date !== r.end_date) updateMovs.push({id:ex.id, date:r.end_date});
+            if(movDate && ex.date !== movDate) updateMovs.push({id:ex.id, date:movDate});
           } else {
             newMovs.push({
               emp_code:r.emp_code, name:(r.firstname_th+" "+r.lastname_th).trim(), type:t,
-              date:r.end_date||null, from_dept:r.department||"", to_dept:"",
+              date:movDate, from_dept:r.department||"", to_dept:"",
               reason:"บันทึกย้อนหลังจากการ Import",
               recorded_by:session?.user?.user_metadata?.full_name||session?.user?.email?.split("@")[0]||"Import",
               created_by:session?.user?.id,
