@@ -260,9 +260,14 @@ async function handleImport(inputEl) {
         position:String(row["Position"]||"").trim(), job_level:String(row["Job Level"]||"").trim(),
         site:String(row["Site"]||"").trim(), contract_type:String(row["Contract Type"]||"").trim(),
         join_date:fd(row["Join Date*"]||row["Join Date"]), effective_date:fd(row["Effective Date"]), end_date:fd(row["End Date"]),
-        salary:Number(row["Salary"])||null, status:String(row["Status"]||"Active").trim(),
+        salary:Number(row["Salary"])||null, _rawStatus:String(row["Status"]||"").trim(),
         remark:String(row["Remark"]||"").trim(), updated_at:new Date().toISOString(),
       })).filter(r=>r.emp_code);
+      // ดึง status เดิมจาก DB เพื่อไม่ให้ upsert ทับคนที่ Resigned/Terminated กลับเป็น Active
+      const codes=batch.map(r=>r.emp_code);
+      const {data:existingEmps}=await supabase.from("employees").select("emp_code,status").in("emp_code",codes);
+      const statusMap=Object.fromEntries((existingEmps||[]).map(e=>[e.emp_code,e.status]));
+      batch.forEach(r=>{ r.status=r._rawStatus||statusMap[r.emp_code]||"Active"; delete r._rawStatus; });
       const {error}=await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
       if(error){ toast("Import ไม่สำเร็จ: "+error.message,"error"); return; }
 
