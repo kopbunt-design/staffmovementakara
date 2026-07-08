@@ -137,19 +137,35 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 document.getElementById("logoutBtn")?.addEventListener("click", logout);
 
 // ===== DASHBOARD =====
-function renderDashboard() {
-  const pg = document.getElementById("pageDashboard");
-  const active = allEmployees.filter(e=>e.status==="Active"||!e.status);
-  const now = new Date(); const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+let dashMonth = ""; // "" = เดือนปัจจุบัน
+function getMonthStats(ym) {
   const movMonth = allMovements.filter(m => movYM(m) === ym);
   const movJoinCodes = new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
   const movResignCodes = new Set(movMonth.filter(m=>["Resignation","Termination"].includes(m.type)).map(m=>m.emp_code));
   const empJoined = allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym && !movJoinCodes.has(e.emp_code));
   const empResigned = allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym && ["Resigned","Terminated"].includes(e.status) && !movResignCodes.has(e.emp_code));
-  const joined = movJoinCodes.size + empJoined.length;
-  const resigned = movResignCodes.size + empResigned.length;
+  return { joined: movJoinCodes.size + empJoined.length, resigned: movResignCodes.size + empResigned.length };
+}
+function renderDashboard() {
+  const pg = document.getElementById("pageDashboard");
+  const active = allEmployees.filter(e=>e.status==="Active"||!e.status);
+  const now = new Date();
+  const currentYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const ym = dashMonth || currentYM;
+
+  // สร้าง list เดือนย้อนหลัง 12 เดือน
+  const monthOpts = [];
+  for(let i=0;i<12;i++){
+    const d=new Date(); d.setMonth(d.getMonth()-i);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    const lbl=d.toLocaleDateString("th-TH",{month:"long",year:"numeric"});
+    monthOpts.push({key,lbl});
+  }
+
+  const {joined,resigned} = getMonthStats(ym);
   const total = active.length;
   const turnover = total ? ((resigned/total)*100).toFixed(1) : "0.0";
+  const selectedLabel = monthOpts.find(m=>m.key===ym)?.lbl || ym;
 
   const byDept = {}; active.forEach(e=>{ if(e.department) byDept[e.department]=(byDept[e.department]||0)+1; });
   const topDepts = Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,6);
@@ -157,28 +173,28 @@ function renderDashboard() {
 
   const months = [];
   for(let i=5;i>=0;i--){
-    const d=new Date(); d.setMonth(d.getMonth()-i);
+    const d=new Date(ym+"-15"); d.setMonth(d.getMonth()-i);
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
     const lbl=d.toLocaleDateString("th-TH",{month:"short"});
-    const mjCodes=new Set(allMovements.filter(m=>movYM(m)===key&&m.type==="New Hire").map(m=>m.emp_code));
-    const mrCodes=new Set(allMovements.filter(m=>movYM(m)===key&&["Resignation","Termination"].includes(m.type)).map(m=>m.emp_code));
-    const ej=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===key&&!mjCodes.has(e.emp_code)).length;
-    const er=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===key&&["Resigned","Terminated"].includes(e.status)&&!mrCodes.has(e.emp_code)).length;
-    months.push({lbl,j:mjCodes.size+ej,r:mrCodes.size+er});
+    const st=getMonthStats(key);
+    months.push({lbl,j:st.joined,r:st.resigned});
   }
   const maxB = Math.max(...months.flatMap(m=>[m.j,m.r]),1);
-  const recent = allMovements.slice(0,5);
+  const recent = allMovements.filter(m=>movYM(m)===ym).slice(0,5);
   const byContract={}; active.forEach(e=>{ const c=e.contract_type||"Permanent"; byContract[c]=(byContract[c]||0)+1; });
 
   pg.innerHTML = `
   <div class="page-header">
-    <div><div class="page-heading">Dashboard</div><div class="page-sub">Akara Resources · ${now.toLocaleDateString("th-TH",{month:"long",year:"numeric"})}</div></div>
+    <div><div class="page-heading">Dashboard</div><div class="page-sub">Akara Resources · ${selectedLabel}</div></div>
+    <select class="filter-select" onchange="window._dashMonth(this.value)" style="min-width:180px;">
+      ${monthOpts.map(m=>`<option value="${m.key}" ${m.key===ym?"selected":""}>${m.lbl}</option>`).join("")}
+    </select>
   </div>
   <div class="kpi-grid">
     <div class="kpi-card blue"><div class="kpi-label">Headcount รวม</div><div class="kpi-value" style="color:var(--blue);">${total}</div><div class="kpi-delta delta-neutral">พนักงาน Active</div></div>
-    <div class="kpi-card green"><div class="kpi-label">เข้าใหม่เดือนนี้</div><div class="kpi-value" style="color:var(--green);">${joined}</div><div class="kpi-delta delta-up">New Hire</div></div>
-    <div class="kpi-card red"><div class="kpi-label">ลาออก/สิ้นสุด</div><div class="kpi-value" style="color:var(--red);">${resigned}</div><div class="kpi-delta delta-neutral">เดือนนี้</div></div>
-    <div class="kpi-card gold"><div class="kpi-label">Turnover Rate</div><div class="kpi-value" style="color:var(--gold-dark);">${turnover}%</div><div class="kpi-delta delta-neutral">เดือนนี้</div></div>
+    <div class="kpi-card green"><div class="kpi-label">เข้าใหม่</div><div class="kpi-value" style="color:var(--green);">${joined}</div><div class="kpi-delta delta-up">New Hire</div></div>
+    <div class="kpi-card red"><div class="kpi-label">ลาออก/สิ้นสุด</div><div class="kpi-value" style="color:var(--red);">${resigned}</div><div class="kpi-delta delta-neutral">${selectedLabel}</div></div>
+    <div class="kpi-card gold"><div class="kpi-label">Turnover Rate</div><div class="kpi-value" style="color:var(--gold-dark);">${turnover}%</div><div class="kpi-delta delta-neutral">${selectedLabel}</div></div>
   </div>
   <div class="section grid-2-1 mt-4">
     <div class="card card-body">
@@ -215,6 +231,7 @@ function renderDashboard() {
       }).join("")}
     </div>
   </div>`;
+  window._dashMonth = v => { dashMonth = v; renderDashboard(); };
 }
 
 // ===== MOVEMENTS =====
