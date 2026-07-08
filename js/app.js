@@ -163,11 +163,18 @@ function renderDashboard() {
   }
 
   const {joined,resigned} = getMonthStats(ym);
-  const total = active.length;
+  const activeAtMonth = allEmployees.filter(e=>{
+    const jm=(e.join_date||"").substring(0,7);
+    const em=(e.end_date||"").substring(0,7);
+    if(jm && jm>ym) return false;
+    if(em && em<ym) return false;
+    return true;
+  });
+  const total = activeAtMonth.length;
   const turnover = total ? ((resigned/total)*100).toFixed(1) : "0.0";
   const selectedLabel = monthOpts.find(m=>m.key===ym)?.lbl || ym;
 
-  const byDept = {}; active.forEach(e=>{ if(e.department) byDept[e.department]=(byDept[e.department]||0)+1; });
+  const byDept = {}; activeAtMonth.forEach(e=>{ if(e.department) byDept[e.department]=(byDept[e.department]||0)+1; });
   const topDepts = Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxD = topDepts[0]?.[1]||1;
 
@@ -181,7 +188,7 @@ function renderDashboard() {
   }
   const maxB = Math.max(...months.flatMap(m=>[m.j,m.r]),1);
   const recent = allMovements.filter(m=>movYM(m)===ym).slice(0,5);
-  const byContract={}; active.forEach(e=>{ const c=e.contract_type||"Permanent"; byContract[c]=(byContract[c]||0)+1; });
+  const byContract={}; activeAtMonth.forEach(e=>{ const c=e.contract_type||"Permanent"; byContract[c]=(byContract[c]||0)+1; });
 
   pg.innerHTML = `
   <div class="page-header">
