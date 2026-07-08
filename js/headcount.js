@@ -9,11 +9,16 @@ const GRP = [
 ];
 function grp(jl){ const u=(jl||"").toUpperCase().trim(); for(const g of GRP) if(g.levels.includes(u)) return g.key; return ""; }
 
+function nextYM(ym){
+  const [y,m]=ym.split("-").map(Number);
+  return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;
+}
+
 function hcAtMonth(ym) {
   return allEmployees.filter(e=>{
     const jm=(e.join_date||"").substring(0,7), em=(e.end_date||"").substring(0,7);
     if(jm && jm>ym) return false;
-    if(em && em<ym) return false;
+    if(em && em<=ym) return false;
     return true;
   });
 }
@@ -30,13 +35,15 @@ function buildYearData(year) {
     const allNew=[...allEmployees.filter(e=>movNewC.has(e.emp_code)),...empNew];
     const nG={}; GRP.forEach(g=>{nG[g.key]=cnt(allNew,g.key);}); const nT=allNew.length;
 
-    const movVolC=new Set(allMovements.filter(v=>movYM(v)===ym&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
-    const empVol=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
+    // Resigned/Retired/Terminated: นับเดือนก่อนหน้า effective date
+    const nxYM=nextYM(ym);
+    const movVolC=new Set(allMovements.filter(v=>movYM(v)===nxYM&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
+    const empVol=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===nxYM&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
     const allVol=[...allEmployees.filter(e=>movVolC.has(e.emp_code)),...empVol];
     const vG={}; GRP.forEach(g=>{vG[g.key]=cnt(allVol,g.key);}); const vT=allVol.length;
 
-    const movInvC=new Set(allMovements.filter(v=>movYM(v)===ym&&v.type==="Termination").map(v=>v.emp_code));
-    const empInv=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
+    const movInvC=new Set(allMovements.filter(v=>movYM(v)===nxYM&&v.type==="Termination").map(v=>v.emp_code));
+    const empInv=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===nxYM&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
     const allInv=[...allEmployees.filter(e=>movInvC.has(e.emp_code)),...empInv];
     const iG={}; GRP.forEach(g=>{iG[g.key]=cnt(allInv,g.key);}); const iT=allInv.length;
 
