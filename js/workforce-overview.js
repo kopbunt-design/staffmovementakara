@@ -39,15 +39,17 @@ function getFirstYearCount(ym){
   return n;
 }
 function getProv(e){return e.province&&e.province!=="-"?e.province:"Other";}
+function getFY(ym){const[y,m]=ym.split("-").map(Number);return m>=7?y+1:y;}
 
 let posQuota=[];
 async function loadPosQuota(){
   try{const{data,error}=await supabase.from("position_quota").select("*").order("division").order("department").order("position");if(!error)posQuota=data||[];}
   catch(e){posQuota=[];}
 }
-function calcVacancy(activeEmps){
+function calcVacancy(activeEmps,fy){
+  const filtered=fy?posQuota.filter(q=>q.fiscal_year===fy):posQuota;
   let totalQuota=0,totalFilled=0;
-  const details=posQuota.map(q=>{
+  const details=filtered.map(q=>{
     const filled=activeEmps.filter(e=>(e.division||"")===q.division&&(e.department||"")===q.department&&(e.position||"")===q.position).length;
     const vac=Math.max(0,q.quota-filled);
     totalQuota+=q.quota;totalFilled+=Math.min(filled,q.quota);
@@ -138,8 +140,10 @@ export async function renderWorkforceOverview(){
     const newH=getNewHires(selYM), resig=getResignations(selYM);
     const pBegHC=hcAtMonth(ppYM).length, pNewH=getNewHires(pYM), pResig=getResignations(pYM), pHCE=begHC.length;
 
-    const vc=calcVacancy(endHC), vac=vc.totalVacancy, approved=vc.totalQuota;
-    const pvc=calcVacancy(begHC), pVac=pvc.totalVacancy, pApproved=pvc.totalQuota;
+    const curFY=getFY(selYM);
+    const vc=calcVacancy(endHC,curFY), vac=vc.totalVacancy, approved=vc.totalQuota;
+    const pFY=getFY(pYM);
+    const pvc=calcVacancy(begHC,pFY), pVac=pvc.totalVacancy, pApproved=pvc.totalQuota;
 
     const netMoM=hcE-hcB;
     const yoyYM=`${sy-1}-${String(sm).padStart(2,"0")}`;
@@ -205,7 +209,7 @@ export async function renderWorkforceOverview(){
         </button>
         ${canEdit?`<button class="btn btn-secondary" onclick="window._wfVacancy()" style="gap:6px;display:flex;align-items:center;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
-          Vacancy
+          Vacancy (FY${curFY})
         </button>`:""}
         <button class="btn btn-primary" onclick="window._wfExport()" style="gap:6px;display:flex;align-items:center;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -422,11 +426,11 @@ export async function renderWorkforceOverview(){
   window._wfPrev=()=>{selYM=prevYM(selYM);render();};
   window._wfNext=()=>{selYM=nextYM(selYM);render();};
   window._wfExport=()=>exportOverview(selYM).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
-  window._wfVacancy=()=>openVacancyModal(async()=>{await loadPosQuota();render();});
+  window._wfVacancy=()=>openVacancyModal(getFY(selYM),async()=>{await loadPosQuota();render();});
 }
 
-// === POSITION QUOTA MODAL ===
-function openVacancyModal(onSave){
+// === POSITION QUOTA MODAL (by Fiscal Year) ===
+function openVacancyModal(initFY, onSave){
   const active=allEmployees.filter(e=>e.status==="Active"||!e.status);
   const divs=[...new Set(allEmployees.map(e=>e.division).filter(Boolean).filter(d=>d!=="-"))].sort();
   const deptsByDiv={};
@@ -439,16 +443,19 @@ function openVacancyModal(onSave){
     posByDept[k].add(e.position);
   });
 
-  const vc=calcVacancy(active);
+  let selFY=initFY;
   let filterDiv="";
+  const now=new Date();
+  const fyOpts=[];for(let i=-1;i<=2;i++)fyOpts.push(getFY(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`)+i);
 
   function renderModal(){
+    const vc=calcVacancy(active,selFY);
     const rows=vc.details.filter(d=>!filterDiv||d.division===filterDiv).sort((a,b)=>b.vacancy-a.vacancy||(a.division+a.department+a.position).localeCompare(b.division+b.department+b.position));
 
     document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="vacModal">
-      <div class="modal" style="max-width:820px;">
+      <div class="modal" style="max-width:860px;">
         <div class="modal-header">
-          <div class="modal-title">Position Quota — อัตรากำลัง</div>
+          <div class="modal-title">Position Quota — อัตรากำลัง FY${selFY}</div>
           <button class="modal-close" onclick="document.getElementById('vacModal').remove()">&#10005;</button>
         </div>
         <div class="modal-body" style="max-height:65vh;overflow-y:auto;padding:0;">
@@ -459,20 +466,26 @@ function openVacancyModal(onSave){
             <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Vacancy</div><div class="wf-vac-summary-val" style="color:#dc2626;">${vc.totalVacancy}</div></div>
             <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Vacancy Rate</div><div class="wf-vac-summary-val" style="color:#d97706;">${vc.totalQuota>0?((vc.totalVacancy/vc.totalQuota)*100).toFixed(1):"0"}%</div></div>
           </div>
-          <!-- Filter -->
-          <div style="padding:10px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;">
-            <select class="filter-select" style="min-width:160px;" onchange="window._vacFilterDiv(this.value)">
+          <!-- Toolbar -->
+          <div style="padding:10px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <select class="filter-select" style="min-width:120px;" onchange="window._vacFY(Number(this.value))">
+              ${fyOpts.map(f=>`<option value="${f}" ${f===selFY?"selected":""}>FY${f} (Jul ${f-1} - Jun ${f})</option>`).join("")}
+            </select>
+            <select class="filter-select" style="min-width:140px;" onchange="window._vacFilterDiv(this.value)">
               <option value="">ทุก Division</option>
               ${divs.map(d=>`<option value="${d}" ${d===filterDiv?"selected":""}>${d}</option>`).join("")}
             </select>
             <div style="flex:1;"></div>
+            <button class="btn btn-secondary" style="font-size:10px;padding:5px 10px;" onclick="window._vacTemplate()">Template</button>
+            <button class="btn btn-secondary" style="font-size:10px;padding:5px 10px;" onclick="document.getElementById('vacFile').click()">Import Excel</button>
+            <input type="file" id="vacFile" accept=".xlsx,.xls" style="display:none;" onchange="window._vacImport(this)">
             <span style="font-size:11px;color:#94a3b8;">${rows.length} positions</span>
           </div>
           <!-- Table -->
           <table class="wf-vac-tbl">
             <thead><tr><th>Division</th><th>Department</th><th>Position</th><th style="text-align:center;">Quota</th><th style="text-align:center;">Filled</th><th style="text-align:center;">Vacancy</th><th style="width:60px;"></th></tr></thead>
             <tbody>
-              ${rows.length===0?`<tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8;">ยังไม่มี Position Quota — กด + เพิ่ม ด้านล่าง</td></tr>`:
+              ${rows.length===0?`<tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8;">ยังไม่มี Position Quota สำหรับ FY${selFY}<br>กด Import Excel หรือ + เพิ่ม ด้านล่าง</td></tr>`:
               rows.map(r=>`<tr class="${r.vacancy>0?'wf-vac-row-vacant':''}">
                 <td style="font-weight:500;font-size:11px;">${esc(r.division)}</td>
                 <td style="font-size:11px;">${esc(r.department)}</td>
@@ -488,7 +501,7 @@ function openVacancyModal(onSave){
             </tbody>
           </table>
           <!-- Add Form -->
-          <div class="wf-vac-form" id="vacAddForm">
+          <div class="wf-vac-form">
             <select id="vac_div" class="filter-select" onchange="window._vacDivChange(this.value)">
               <option value="">Division</option>
               ${divs.map(d=>`<option value="${d}">${d}</option>`).join("")}
@@ -507,6 +520,7 @@ function openVacancyModal(onSave){
       </div>
     </div>`;
 
+    window._vacFY=v=>{selFY=v;renderModal();};
     window._vacFilterDiv=v=>{filterDiv=v;renderModal();};
     window._vacDivChange=v=>{
       const deptSel=document.getElementById("vac_dept");
@@ -526,13 +540,11 @@ function openVacancyModal(onSave){
       const pos=document.getElementById("vac_pos").value;
       const qty=parseInt(document.getElementById("vac_qty").value)||1;
       if(!div||!dept||!pos){toast("กรุณาเลือก Division, Department, Position","error");return;}
-      const exists=posQuota.find(q=>q.division===div&&q.department===dept&&q.position===pos);
-      if(exists){toast("ตำแหน่งนี้มีอยู่แล้ว กดแก้ไขแทน","error");return;}
-      const{error}=await supabase.from("position_quota").insert({division:div,department:dept,position:pos,quota:qty});
+      const exists=posQuota.find(q=>q.fiscal_year===selFY&&q.division===div&&q.department===dept&&q.position===pos);
+      if(exists){toast("ตำแหน่งนี้มีอยู่แล้วใน FY"+selFY+" กดแก้ไขแทน","error");return;}
+      const{error}=await supabase.from("position_quota").insert({fiscal_year:selFY,division:div,department:dept,position:pos,quota:qty});
       if(error){toast("เพิ่มไม่สำเร็จ: "+error.message,"error");return;}
-      await loadPosQuota();
-      const newVc=calcVacancy(active);Object.assign(vc,newVc);
-      toast("เพิ่มสำเร็จ","success");renderModal();
+      await loadPosQuota();toast("เพิ่มสำเร็จ","success");renderModal();
     };
     window._vacEdit=async(id)=>{
       const q=posQuota.find(x=>x.id===id);if(!q)return;
@@ -541,17 +553,58 @@ function openVacancyModal(onSave){
       const val=parseInt(newQty);if(isNaN(val)||val<0){toast("กรุณาใส่ตัวเลข","error");return;}
       const{error}=await supabase.from("position_quota").update({quota:val,updated_at:new Date().toISOString()}).eq("id",id);
       if(error){toast("แก้ไม่สำเร็จ: "+error.message,"error");return;}
-      await loadPosQuota();
-      const newVc=calcVacancy(active);Object.assign(vc,newVc);
-      toast("แก้ไขสำเร็จ","success");renderModal();
+      await loadPosQuota();toast("แก้ไขสำเร็จ","success");renderModal();
     };
     window._vacDel=async(id)=>{
       if(!confirm("ลบ Position Quota นี้?"))return;
       const{error}=await supabase.from("position_quota").delete().eq("id",id);
       if(error){toast("ลบไม่สำเร็จ: "+error.message,"error");return;}
-      await loadPosQuota();
-      const newVc=calcVacancy(active);Object.assign(vc,newVc);
-      toast("ลบสำเร็จ","info");renderModal();
+      await loadPosQuota();toast("ลบสำเร็จ","info");renderModal();
+    };
+    window._vacTemplate=()=>{
+      if(!window.XLSX){toast("กรุณารอโหลด library","error");return;}
+      const h=["Division","Department","Position","Quota"];
+      const ex=["Operations","Mining","Mining Engineer","5"];
+      const ws=window.XLSX.utils.aoa_to_sheet([h,ex]);ws["!cols"]=h.map(()=>({wch:24}));
+      const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,`FY${selFY}`);
+      window.XLSX.writeFile(wb,`position_quota_template_FY${selFY}.xlsx`);
+      toast("ดาวน์โหลด Template เสร็จสิ้น","success");
+    };
+    window._vacImport=async(inputEl)=>{
+      const file=inputEl.files?.[0];if(!file||!window.XLSX)return;inputEl.value="";
+      const reader=new FileReader();
+      reader.onload=async ev=>{
+        try{
+          const wb=window.XLSX.read(ev.target.result,{type:"binary"});
+          const rows=window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+          if(!rows.length){toast("ไฟล์ว่าง","error");return;}
+          const batch=rows.map(r=>{
+            const div=String(r.Division||"").trim();
+            const dept=String(r.Department||"").trim();
+            const pos=String(r.Position||"").trim();
+            const qty=parseInt(r.Quota)||0;
+            if(!div||!dept||!pos||qty<=0)return null;
+            return{fiscal_year:selFY,division:div,department:dept,position:pos,quota:qty,updated_at:new Date().toISOString()};
+          }).filter(Boolean);
+          if(!batch.length){toast("ไม่พบข้อมูลที่ถูกต้อง","error");return;}
+          let created=0,updated=0;
+          for(const b of batch){
+            const existing=posQuota.find(q=>q.fiscal_year===selFY&&q.division===b.division&&q.department===b.department&&q.position===b.position);
+            if(existing){
+              await supabase.from("position_quota").update({quota:b.quota,updated_at:b.updated_at}).eq("id",existing.id);
+              updated++;
+            }else{
+              await supabase.from("position_quota").insert(b);
+              created++;
+            }
+          }
+          await loadPosQuota();
+          toast(`Import FY${selFY}: เพิ่ม ${created}, อัปเดต ${updated} ตำแหน่ง`,"success");
+          renderModal();
+          if(onSave)await onSave();
+        }catch(err){toast("อ่านไฟล์ไม่ได้: "+err.message,"error");}
+      };
+      reader.readAsBinaryString(file);
     };
   }
   renderModal();
@@ -571,8 +624,10 @@ async function exportOverview(ym){
   const hcE=endHC.length,hcB=begHC.length;
   const newH=getNewHires(ym),resig=getResignations(ym);
   const pBegHC=hcAtMonth(ppYM).length,pNewH=getNewHires(pYM),pResig=getResignations(pYM),pHCE=begHC.length;
-  const vc=calcVacancy(endHC),vac=vc.totalVacancy,approved=vc.totalQuota;
-  const pvc=calcVacancy(begHC),pVac=pvc.totalVacancy,pApproved=pvc.totalQuota;
+  const curFY=getFY(ym);
+  const vc=calcVacancy(endHC,curFY),vac=vc.totalVacancy,approved=vc.totalQuota;
+  const pFY=getFY(pYM);
+  const pvc=calcVacancy(begHC,pFY),pVac=pvc.totalVacancy,pApproved=pvc.totalQuota;
   const netMoM=hcE-hcB;
   const yoyYM=`${sy-1}-${String(sm).padStart(2,"0")}`;
   const yoyHC=hcAtMonth(yoyYM).length,netYoY=hcE-yoyHC;
