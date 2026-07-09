@@ -298,41 +298,258 @@ export function renderHeadcount() {
   window._exportHC=()=>exportExcel(mode,selNum);
 }
 
-function exportExcel(mode,num){
-  if(!window.XLSX){toast("กรุณารอโหลด library","error");return;}
+async function exportExcel(mode,num){
+  if(!window.ExcelJS){toast("กรุณารอโหลด library","error");return;}
   const periodYMs=buildPeriodMonths(mode,num);
-  const d=buildData(periodYMs); const{rows,avg,trTotal,trVol,trInvol}=d; const g=GRP;
+  const d=buildData(periodYMs);
+  const{rows,avg,mCount,sN,sR,sV,sI,netBal,avgTR,trTotal,trVol,trInvol}=d;
+  const g=GRP;
   const label=mode==="fy"?`FY${num}`:`${num}`;
+  const periodStr=mode==="fy"?`FY${num} (Jul ${num-1} - Jun ${num})`:`Year ${num} (Jan - Dec)`;
+  const now=new Date();
+  const dateStr=`${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
 
-  const h1=[label,"New Employee",...g.slice(1).map(()=>""),"",
-    "Voluntary Resigned",...g.slice(1).map(()=>""),"",
-    "Involuntary Resigned",...g.slice(1).map(()=>""),"",
-    "Total Resigned",
-    "Balance",...g.slice(1).map(()=>""),
-    "Head Count",...g.slice(1).map(()=>""),"","Turnover Rate"];
-  const h2=["","Total",...g.map(x=>x.label),
-    "Total",...g.map(x=>x.label),
-    "Total",...g.map(x=>x.label),
-    "",
-    ...g.map(x=>x.label),
-    "Total",...g.map(x=>x.label),""];
-  const data=rows.map(r=>{const tr=r.hT?((r.rT/r.hT)*100).toFixed(2)+"%":"0.00%";
-    return[r.month,r.nT,...g.map(x=>r.nG[x.key]),
-      r.vT,...g.map(x=>r.vG[x.key]),r.iT,...g.map(x=>r.iG[x.key]),r.rT,
-      ...g.map(x=>r.bG[x.key]),r.hT,...g.map(x=>r.hG[x.key]),tr];});
-  const totR=["Total",rows.reduce((s,r)=>s+r.nT,0),...g.map(x=>rows.reduce((s,r)=>s+r.nG[x.key],0)),
-    rows.reduce((s,r)=>s+r.vT,0),...g.map(x=>rows.reduce((s,r)=>s+r.vG[x.key],0)),
-    rows.reduce((s,r)=>s+r.iT,0),...g.map(x=>rows.reduce((s,r)=>s+r.iG[x.key],0)),
-    rows.reduce((s,r)=>s+r.rT,0),
-    ...g.map(x=>rows.reduce((s,r)=>s+r.bG[x.key],0)),"",...g.map(()=>""),""];
-  const avgR=["Average of Head Count",...Array(h2.length-3).fill(""),avg,...g.map(()=>""),""];
-  const trR=["Turnover Rate",...Array(g.length).fill(""),"",
-    trVol,...g.map(()=>""),trInvol,...g.map(()=>""),trTotal,
-    ...g.map(()=>""),"",...g.map(()=>""),""];
-  const ws=window.XLSX.utils.aoa_to_sheet([h1,h2,...data,totR,avgR,trR]);
-  ws["!cols"]=h1.map((_,i)=>({wch:i===0?14:10}));
-  const wb=window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb,ws,`Headcount ${label}`);
-  window.XLSX.writeFile(wb,`Headcount_Report_${label}.xlsx`);
+  const wb=new ExcelJS.Workbook();
+  wb.creator="Akara HR System";
+  const ws=wb.addWorksheet(`Headcount ${label}`,{views:[{showGridLines:false}]});
+
+  const navy={argb:"FF1A365D"},dNavy={argb:"FF0F2440"},white={argb:"FFFFFFFF"},
+    ltGray={argb:"FFF8FAFC"},green={argb:"FF0D7C4B"},red={argb:"FFC0392B"},
+    ltGreen={argb:"FFF0FDF4"},dGreen={argb:"FF16A34A"},gold={argb:"FFD97706"},
+    border={style:"thin",color:{argb:"FFD1D5DB"}};
+  const borders={top:border,left:border,bottom:border,right:border};
+  const thickL={top:border,left:{style:"medium",color:{argb:"FF94A3B8"}},bottom:border,right:border};
+
+  const totalCols=1+4+4+4+1+3+4+1; // 22 cols (A-V)
+
+  // --- Title rows ---
+  ws.mergeCells(1,1,1,totalCols);
+  const titleCell=ws.getCell(1,1);
+  titleCell.value="AKARA RESOURCES";
+  titleCell.font={name:"Calibri",size:18,bold:true,color:navy};
+  titleCell.alignment={horizontal:"center",vertical:"middle"};
+  ws.getRow(1).height=32;
+
+  ws.mergeCells(2,1,2,totalCols);
+  const subCell=ws.getCell(2,1);
+  subCell.value=`HEADCOUNT REPORT — ${periodStr}`;
+  subCell.font={name:"Calibri",size:12,bold:true,color:{argb:"FF64748B"}};
+  subCell.alignment={horizontal:"center",vertical:"middle"};
+  ws.getRow(2).height=22;
+
+  ws.mergeCells(3,1,3,totalCols);
+  const dateCell=ws.getCell(3,1);
+  dateCell.value=`Data as of ${dateStr} · Average based on ${mCount} month${mCount>1?"s":""}`;
+  dateCell.font={name:"Calibri",size:9,italic:true,color:{argb:"FF94A3B8"}};
+  dateCell.alignment={horizontal:"center"};
+  ws.getRow(3).height=18;
+
+  // --- Header row 1 (group headers) row 5 ---
+  const HR1=5,HR2=6,DSTART=7;
+  ws.getRow(HR1).height=28;
+  ws.getRow(HR2).height=22;
+
+  const hdrFont={name:"Calibri",size:9,bold:true,color:white};
+  const hdrFill=(c)=>({type:"pattern",pattern:"solid",fgColor:c});
+  const hdrAlign={horizontal:"center",vertical:"middle",wrapText:true};
+
+  const groups=[
+    {label:"MONTH",start:1,end:1,rowspan:true},
+    {label:"New Employee",start:2,end:5,color:navy},
+    {label:"Voluntary Resigned",start:6,end:9,color:navy},
+    {label:"Involuntary Resigned",start:10,end:13,color:navy},
+    {label:"Total\nResigned",start:14,end:14,rowspan:true,color:{argb:"FF7F1D1D"}},
+    {label:"Balance (In - Out)",start:15,end:17,color:navy},
+    {label:"Headcount (End of Month)",start:18,end:21,color:{argb:"FF14532D"}},
+    {label:"Turnover\nRate",start:22,end:22,rowspan:true,color:navy},
+  ];
+
+  groups.forEach(gx=>{
+    const c=gx.color||navy;
+    if(gx.rowspan){
+      ws.mergeCells(HR1,gx.start,HR2,gx.end);
+      const cell=ws.getCell(HR1,gx.start);
+      cell.value=gx.label;cell.font=hdrFont;cell.fill=hdrFill(c);cell.alignment=hdrAlign;cell.border=borders;
+    } else {
+      ws.mergeCells(HR1,gx.start,HR1,gx.end);
+      const cell=ws.getCell(HR1,gx.start);
+      cell.value=gx.label;cell.font=hdrFont;cell.fill=hdrFill(c);cell.alignment=hdrAlign;cell.border=borders;
+      const subs=gx.start===15?g.map(x=>x.label):["Total",...g.map(x=>x.label)];
+      subs.forEach((s,i)=>{
+        const sc=ws.getCell(HR2,gx.start+i);
+        sc.value=s;sc.font={name:"Calibri",size:8.5,bold:true,color:{argb:"FFCBD5E1"}};
+        sc.fill=hdrFill({argb:"FF234170"});sc.alignment=hdrAlign;sc.border=borders;
+      });
+    }
+  });
+
+  // --- Data rows ---
+  const activeRows=rows.filter(r=>!r.future);
+  rows.forEach((r,ri)=>{
+    const row=ws.getRow(DSTART+ri);
+    row.height=22;
+    const isEven=ri%2===1;
+    const bgFill=isEven?hdrFill(ltGray):hdrFill(white);
+    const hcFill=hdrFill(ltGreen);
+
+    const vals=[r.month,
+      r.nT,...g.map(x=>r.nG[x.key]),
+      r.vT,...g.map(x=>r.vG[x.key]),
+      r.iT,...g.map(x=>r.iG[x.key]),
+      r.rT,
+      ...g.map(x=>r.bG[x.key]),
+      r.hT,...g.map(x=>r.hG[x.key]),
+      r.hT?(r.rT/r.hT*100):0
+    ];
+
+    vals.forEach((val,ci)=>{
+      const cell=ws.getCell(DSTART+ri,ci+1);
+      if(r.future){
+        cell.value="—";
+        cell.font={name:"Calibri",size:10,color:{argb:"FFCBD5E1"}};
+        cell.fill=bgFill;cell.alignment={horizontal:"center",vertical:"middle"};cell.border=borders;
+        if(ci===0){cell.alignment={horizontal:"left",vertical:"middle"};cell.font={name:"Calibri",size:10,color:{argb:"FF94A3B8"}};}
+        return;
+      }
+      cell.border=borders;
+      cell.alignment={horizontal:ci===0?"left":"center",vertical:"middle"};
+      const isHC=ci>=17&&ci<=20;
+      cell.fill=isHC?hcFill:bgFill;
+
+      if(ci===0){
+        cell.value=val;cell.font={name:"Calibri",size:10,bold:true,color:{argb:"FF1E293B"}};
+      } else if(ci===vals.length-1){
+        cell.value=val/100;cell.numFmt="0.00%";cell.font={name:"Calibri",size:10};
+      } else if(ci===13){
+        cell.value=val;cell.font={name:"Calibri",size:10,bold:true,color:red};
+      } else if(ci===1){
+        cell.value=val;cell.font={name:"Calibri",size:10,bold:true,color:dGreen};
+      } else if(ci>=14&&ci<=16){
+        cell.value=val;
+        cell.font={name:"Calibri",size:10,bold:true,color:val>0?dGreen:val<0?red:{argb:"FF1E293B"}};
+      } else if(ci===17){
+        cell.value=val;cell.font={name:"Calibri",size:10,bold:true,color:{argb:"FF14532D"}};
+      } else {
+        cell.value=val;cell.font={name:"Calibri",size:10};
+      }
+    });
+  });
+
+  // --- TOTAL row ---
+  const totRow=DSTART+12;
+  const totR=ws.getRow(totRow);
+  totR.height=26;
+  const sum=fn=>rows.filter(r=>!r.future).reduce((s,r)=>s+fn(r),0);
+  const totVals=["TOTAL (YTD)",
+    sum(r=>r.nT),...g.map(x=>sum(r=>r.nG[x.key])),
+    sum(r=>r.vT),...g.map(x=>sum(r=>r.vG[x.key])),
+    sum(r=>r.iT),...g.map(x=>sum(r=>r.iG[x.key])),
+    sum(r=>r.rT),
+    ...g.map(x=>sum(r=>r.bG[x.key])),
+    "","","","",""
+  ];
+  totVals.forEach((val,ci)=>{
+    const cell=ws.getCell(totRow,ci+1);
+    cell.fill=hdrFill(navy);cell.border=borders;
+    cell.alignment={horizontal:ci===0?"left":"center",vertical:"middle"};
+    if(ci===0){cell.font={name:"Calibri",size:10,bold:true,color:white};cell.value=val;return;}
+    if(val===""){cell.value="";cell.font={name:"Calibri",size:10,color:white};return;}
+    cell.value=val;
+    if(ci===13) cell.font={name:"Calibri",size:10,bold:true,color:{argb:"FFFCA5A5"}};
+    else if(ci>=14&&ci<=16) cell.font={name:"Calibri",size:10,bold:true,color:val>0?{argb:"FF6EE7B7"}:val<0?{argb:"FFFCA5A5"}:white};
+    else cell.font={name:"Calibri",size:10,bold:true,color:white};
+  });
+
+  // --- Summary section ---
+  const SR=totRow+2;
+
+  // Avg Headcount box
+  ws.mergeCells(SR,1,SR+2,5);
+  const avgCell=ws.getCell(SR,1);
+  avgCell.value=`AVG. HEADCOUNT (${mCount} เดือน):  ${avg} คน`;
+  avgCell.font={name:"Calibri",size:14,bold:true,color:navy};
+  avgCell.alignment={horizontal:"center",vertical:"middle"};
+  avgCell.fill=hdrFill({argb:"FFDBEAFE"});
+  avgCell.border=borders;
+  for(let r=SR;r<=SR+2;r++) for(let c=1;c<=5;c++){const cl=ws.getCell(r,c);cl.fill=hdrFill({argb:"FFDBEAFE"});cl.border=borders;}
+
+  // Net Balance box
+  ws.mergeCells(SR,6,SR+2,9);
+  const balCell=ws.getCell(SR,6);
+  balCell.value=`NET BALANCE:  ${netBal>=0?"+":""}${netBal} คน  (New ${sN} - Resigned ${sR})`;
+  balCell.font={name:"Calibri",size:11,bold:true,color:netBal>=0?dGreen:red};
+  balCell.alignment={horizontal:"center",vertical:"middle",wrapText:true};
+  balCell.fill=hdrFill(netBal>=0?{argb:"FFDCFCE7"}:{argb:"FFFEE2E2"});
+  for(let r=SR;r<=SR+2;r++) for(let c=6;c<=9;c++){const cl=ws.getCell(r,c);cl.fill=balCell.fill;cl.border=borders;}
+
+  // Turnover Rate section
+  ws.mergeCells(SR,10,SR,17);
+  const trTitle=ws.getCell(SR,10);
+  trTitle.value="TURNOVER RATE (YTD)";
+  trTitle.font={name:"Calibri",size:10,bold:true,color:navy};
+  trTitle.alignment={horizontal:"center",vertical:"middle"};
+  trTitle.border=borders;
+  for(let c=10;c<=17;c++) ws.getCell(SR,c).border=borders;
+
+  const trLabels=["Total Resigned","Voluntary","Involuntary","Avg. Monthly"];
+  const trVals=[trTotal,trVol,trInvol,avgTR];
+  const trColors=[red,gold,{argb:"FF7C3AED"},navy];
+  trLabels.forEach((lbl,i)=>{
+    const col=10+i*2;
+    ws.mergeCells(SR+1,col,SR+1,col+1);
+    const lc=ws.getCell(SR+1,col);
+    lc.value=lbl;lc.font={name:"Calibri",size:8.5,bold:true,color:{argb:"FF64748B"}};
+    lc.alignment={horizontal:"center",vertical:"middle"};lc.border=borders;
+    ws.getCell(SR+1,col+1).border=borders;
+
+    ws.mergeCells(SR+2,col,SR+2,col+1);
+    const vc=ws.getCell(SR+2,col);
+    vc.value=trVals[i];vc.font={name:"Calibri",size:14,bold:true,color:trColors[i]};
+    vc.alignment={horizontal:"center",vertical:"middle"};vc.border=borders;
+    ws.getCell(SR+2,col+1).border=borders;
+  });
+
+  // Notes
+  ws.mergeCells(SR,18,SR,totalCols);
+  const notesTitle=ws.getCell(SR,18);
+  notesTitle.value="NOTES";notesTitle.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};
+  notesTitle.alignment={horizontal:"left",vertical:"middle"};notesTitle.border=borders;
+
+  const noteLines=["M = M1, M2, M3, M4","S = S1, S2, S3","O = O1, O2, O3","","Voluntary = Resignation + Retirement","Involuntary = Termination"];
+  noteLines.forEach((n,i)=>{
+    const nr=SR+1+Math.floor(i/3);
+    const nc=18+(i%3>0?2:0)+(i%3>1?2:0);
+    if(i<3){
+      ws.mergeCells(SR+1,18,SR+1,totalCols);
+      const c=ws.getCell(SR+1,18);
+      c.value="M = M1-M4  |  S = S1-S3  |  O = O1-O3";
+      c.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
+      c.alignment={horizontal:"left",vertical:"middle"};c.border=borders;
+    }
+  });
+  ws.mergeCells(SR+2,18,SR+2,totalCols);
+  const noteBot=ws.getCell(SR+2,18);
+  noteBot.value="Voluntary = Resignation + Retirement  |  Involuntary = Termination  |  Turnover = Resigned ÷ Avg HC × 100";
+  noteBot.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
+  noteBot.alignment={horizontal:"left",vertical:"middle",wrapText:true};noteBot.border=borders;
+
+  // --- Column widths ---
+  ws.getColumn(1).width=14;
+  for(let c=2;c<=totalCols;c++) ws.getColumn(c).width=9;
+  ws.getColumn(14).width=10;
+  ws.getColumn(17).width=10;
+  ws.getColumn(22).width=11;
+
+  // --- Print setup ---
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,
+    paperSize:9,margins:{left:.4,right:.4,top:.5,bottom:.5,header:.3,footer:.3}};
+
+  // --- Generate & download ---
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=`Headcount_Report_${label}.xlsx`;a.click();
+  URL.revokeObjectURL(url);
   toast("Export เสร็จสิ้น","success");
 }
