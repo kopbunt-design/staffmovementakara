@@ -42,17 +42,17 @@ function buildReport(ym){
     return{emp_code:m.emp_code,name:empName(e)||m.name||"",type:m.type,from:m.from_dept||"",to:m.to_dept||"",date:m.date,remark:m.reason||""};
   });
 
-  const validDept=e=>{const d=e.department||"";return(d&&d!=="-")?d:e.section||e.division||"Other";};
-  const deptMap={};
-  openingHC.forEach(e=>{const d=validDept(e);deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].open++;});
-  newJoiners.forEach(j=>{const d=j.department||"Other";deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].join++;});
-  separations.forEach(s=>{const d=s.department||"Other";deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].sep++;});
-  const depts=Object.entries(deptMap).map(([name,v])=>({name,open:v.open,join:v.join,sep:v.sep,net:v.join-v.sep,end:v.open+v.join-v.sep})).sort((a,b)=>b.open-a.open);
+  const getDiv=e=>{const d=e.division||"";return(d&&d!=="-")?d:"Other";};
+  const divMap={};
+  openingHC.forEach(e=>{const d=getDiv(e);divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].open++;});
+  newJoiners.forEach(j=>{const e=allEmployees.find(x=>x.emp_code===j.emp_code);const d=e?getDiv(e):"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].join++;});
+  separations.forEach(s=>{const e=allEmployees.find(x=>x.emp_code===s.emp_code);const d=e?getDiv(e):"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].sep++;});
+  const divs=Object.entries(divMap).filter(([n])=>n!=="Other"||divMap[n].open>0).map(([name,v])=>({name,open:v.open,join:v.join,sep:v.sep,net:v.join-v.sep,end:v.open+v.join-v.sep})).sort((a,b)=>b.open-a.open);
 
   return{openingHC:openingHC.length,endingHC:endingHC.length,newJoiners,separations,internals,
     retirements:separations.filter(s=>s.reason==="Retirement"),
     promotions:internals.filter(i=>i.type==="Promotion"),
-    transfers:internals.filter(i=>["Transfer","Secondment","Demotion"].includes(i.type)),depts};
+    transfers:internals.filter(i=>["Transfer","Secondment","Demotion"].includes(i.type)),divs};
 }
 
 const reasonColor={Resignation:["#C0392B","#FDECEA"],Retirement:["#D97706","#FEF3C7"],Termination:["#7C3AED","#EDE9FE"]};
@@ -155,6 +155,10 @@ export function renderMovementReport(){
         <button class="btn" onclick="window._mrNext()" style="padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a365d" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+        <button class="btn btn-primary" onclick="window._mrExport()" style="gap:6px;display:flex;align-items:center;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export Excel
+        </button>
       </div>
     </div>
 
@@ -234,11 +238,11 @@ export function renderMovementReport(){
       <div class="mr-section">
         <div class="mr-sec-hdr">
           <div class="mr-sec-num" style="background:#1a365d;">4</div>
-          <div class="mr-sec-label" style="color:#1a365d;">Headcount by Department</div>
-          <div class="mr-sec-cnt" style="color:#1a365d;">${r.depts.length} <span style="font-size:11px;font-weight:400;color:#94a3b8;">depts</span></div>
+          <div class="mr-sec-label" style="color:#1a365d;">Headcount by Division</div>
+          <div class="mr-sec-cnt" style="color:#1a365d;">${r.divs.length} <span style="font-size:11px;font-weight:400;color:#94a3b8;">divisions</span></div>
         </div>
-        <table class="mr-dept-tbl"><thead><tr><th style="text-align:left;">Department</th><th>Opening</th><th>Joiners</th><th>Sep.</th><th>Net</th><th>Ending</th></tr></thead><tbody>
-          ${r.depts.map(d=>`<tr><td>${esc(d.name)}</td><td>${d.open}</td><td style="color:#16a34a;font-weight:600;">${d.join||"—"}</td><td style="color:#dc2626;font-weight:600;">${d.sep||"—"}</td><td style="font-weight:700;color:${d.net>0?'#16a34a':d.net<0?'#dc2626':'#94a3b8'}">${d.net>0?"+":""}${d.net}</td><td style="font-weight:700;">${d.end}</td></tr>`).join("")}
+        <table class="mr-dept-tbl"><thead><tr><th style="text-align:left;">Division</th><th>Opening</th><th>Joiners</th><th>Sep.</th><th>Net</th><th>Ending</th></tr></thead><tbody>
+          ${r.divs.map(d=>`<tr><td>${esc(d.name)}</td><td>${d.open}</td><td style="color:#16a34a;font-weight:600;">${d.join||"—"}</td><td style="color:#dc2626;font-weight:600;">${d.sep||"—"}</td><td style="font-weight:700;color:${d.net>0?'#16a34a':d.net<0?'#dc2626':'#94a3b8'}">${d.net>0?"+":""}${d.net}</td><td style="font-weight:700;">${d.end}</td></tr>`).join("")}
           <tr class="mr-dept-total"><td>TOTAL</td><td>${r.openingHC}</td><td style="color:#6ee7b7;">${r.newJoiners.length}</td><td style="color:#fca5a5;">${r.separations.length}</td><td style="color:${net>=0?'#6ee7b7':'#fca5a5'};">${net>=0?"+":""}${net}</td><td>${r.endingHC}</td></tr>
         </tbody></table>
       </div>
@@ -250,4 +254,122 @@ export function renderMovementReport(){
   window._mrMonth=v=>{ selYM=v; render(); };
   window._mrPrev=()=>{ selYM=prevYM(selYM); render(); };
   window._mrNext=()=>{ selYM=nextYM(selYM); render(); };
+  window._mrExport=()=>exportReport(selYM).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
+}
+
+async function exportReport(ym){
+  if(!window.ExcelJS){toast("กรุณารอโหลด library","error");return;}
+  const [sy,sm]=ym.split("-").map(Number);
+  const r=buildReport(ym);
+  const net=r.endingHC-r.openingHC;
+  const monthLabel=`${MONTHS_EN[sm-1]} ${sy}`;
+
+  const wb=new ExcelJS.Workbook();
+  wb.creator="Akara HR System";
+  const ws=wb.addWorksheet(`Movement ${MONTHS_EN[sm-1].substring(0,3)} ${sy}`,{views:[{showGridLines:false}]});
+
+  const navy={argb:"FF1A365D"},white={argb:"FFFFFFFF"},green={argb:"FF16A34A"},red={argb:"FFDC2626"},
+    ltGray={argb:"FFF8FAFC"},border={style:"thin",color:{argb:"FFD1D5DB"}};
+  const borders={top:border,left:border,bottom:border,right:border};
+  const hFill=c=>({type:"pattern",pattern:"solid",fgColor:c});
+
+  // Title
+  ws.mergeCells(1,1,1,8);
+  const t1=ws.getCell(1,1);t1.value="AKARA RESOURCES";t1.font={name:"Calibri",size:18,bold:true,color:navy};t1.alignment={horizontal:"center",vertical:"middle"};
+  ws.getRow(1).height=30;
+
+  ws.mergeCells(2,1,2,8);
+  const t2=ws.getCell(2,1);t2.value=`STAFF MOVEMENT REPORT — ${monthLabel.toUpperCase()}`;t2.font={name:"Calibri",size:12,bold:true,color:{argb:"FF64748B"}};t2.alignment={horizontal:"center"};
+
+  // Summary
+  const sr=4;
+  ws.mergeCells(sr,1,sr,8);
+  const sumTitle=ws.getCell(sr,1);sumTitle.value="SUMMARY";sumTitle.font={name:"Calibri",size:10,bold:true,color:navy};sumTitle.border=borders;sumTitle.fill=hFill({argb:"FFF1F5F9"});
+
+  const sumLabels=["Opening HC","New Joiners","Separations","Retirement","Transfers","Promotions","Internal Total","Ending HC"];
+  const sumVals=[r.openingHC,r.newJoiners.length,r.separations.length,r.retirements.length,r.transfers.length,r.promotions.length,r.internals.length,r.endingHC];
+  const sumColors=[navy,green,red,{argb:"FFD97706"},{argb:"FF2B5AC7"},{argb:"FF6D28D9"},navy,{argb:"FF0D7C4B"}];
+  sumLabels.forEach((l,i)=>{const c=ws.getCell(sr+1,i+1);c.value=l;c.font={name:"Calibri",size:8,bold:true,color:{argb:"FF64748B"}};c.alignment={horizontal:"center"};c.border=borders;});
+  sumVals.forEach((v,i)=>{const c=ws.getCell(sr+2,i+1);c.value=v;c.font={name:"Calibri",size:16,bold:true,color:sumColors[i]};c.alignment={horizontal:"center"};c.border=borders;});
+
+  let row=sr+4;
+
+  // Helper: write section table
+  function writeSection(title,headers,data,titleColor){
+    ws.mergeCells(row,1,row,headers.length);
+    const tc=ws.getCell(row,1);tc.value=title;tc.font={name:"Calibri",size:11,bold:true,color:white};
+    tc.fill=hFill(titleColor);tc.alignment={vertical:"middle"};tc.border=borders;
+    for(let c=1;c<=headers.length;c++) ws.getCell(row,c).border=borders;
+    ws.getRow(row).height=24;row++;
+
+    headers.forEach((h,i)=>{const c=ws.getCell(row,i+1);c.value=h;c.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};c.fill=hFill(ltGray);c.border=borders;c.alignment={horizontal:i===0?"center":"left",vertical:"middle"};});
+    row++;
+
+    if(data.length===0){
+      ws.mergeCells(row,1,row,headers.length);
+      ws.getCell(row,1).value="— ไม่มีข้อมูล —";ws.getCell(row,1).font={name:"Calibri",size:10,italic:true,color:{argb:"FF94A3B8"}};ws.getCell(row,1).alignment={horizontal:"center"};ws.getCell(row,1).border=borders;
+      row++;
+    } else {
+      data.forEach((dr,ri)=>{
+        const isEven=ri%2===1;
+        dr.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10};c.border=borders;if(isEven)c.fill=hFill(ltGray);if(ci===0)c.alignment={horizontal:"center"};});
+        row++;
+      });
+    }
+    row++;
+  }
+
+  // 1. New Joiners
+  writeSection(`1. NEW JOINERS (${r.newJoiners.length})`,
+    ["No.","Employee ID","Name","Position","Department","Start Date"],
+    r.newJoiners.map((j,i)=>[i+1,j.emp_code,j.name,j.position,j.department,fd2(j.date)]),
+    green);
+
+  // 2. Separations
+  writeSection(`2. SEPARATIONS (${r.separations.length})`,
+    ["No.","Employee ID","Name","Position","Department","Last Day","Reason"],
+    r.separations.map((s,i)=>[i+1,s.emp_code,s.name,s.position,s.department,fd2(s.date),s.reason]),
+    red);
+
+  // 3. Internal Movement
+  writeSection(`3. INTERNAL MOVEMENT (${r.internals.length})`,
+    ["No.","Employee ID","Name","Type","From","To","Date","Remark"],
+    r.internals.map((m,i)=>[i+1,m.emp_code,m.name,m.type,m.from,m.to,fd2(m.date),m.remark]),
+    {argb:"FF2B5AC7"});
+
+  // 4. Headcount by Division
+  ws.mergeCells(row,1,row,6);
+  const divTitle=ws.getCell(row,1);divTitle.value="4. HEADCOUNT BY DIVISION";divTitle.font={name:"Calibri",size:11,bold:true,color:white};
+  divTitle.fill=hFill(navy);divTitle.border=borders;ws.getRow(row).height=24;
+  for(let c=1;c<=6;c++) ws.getCell(row,c).border=borders;row++;
+
+  ["Division","Opening","Joiners","Separations","Net","Ending"].forEach((h,i)=>{
+    const c=ws.getCell(row,i+1);c.value=h;c.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};
+    c.fill=hFill(ltGray);c.border=borders;c.alignment={horizontal:i===0?"left":"center"};
+  });row++;
+
+  r.divs.forEach((d,ri)=>{
+    const vals=[d.name,d.open,d.join,d.sep,(d.net>0?"+":"")+d.net,d.end];
+    vals.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10,bold:ci>=4};c.border=borders;
+    c.alignment={horizontal:ci===0?"left":"center"};if(ri%2===1)c.fill=hFill(ltGray);
+    if(ci===2)c.font={name:"Calibri",size:10,bold:true,color:green};
+    if(ci===3)c.font={name:"Calibri",size:10,bold:true,color:red};
+    });row++;
+  });
+  // Total row
+  [["TOTAL",r.openingHC,r.newJoiners.length,r.separations.length,(net>=0?"+":"")+net,r.endingHC]].forEach(vals=>{
+    vals.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10,bold:true,color:white};c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:ci===0?"left":"center"};});
+  });
+
+  // Column widths
+  [8,16,28,24,24,16,14,20].forEach((w,i)=>{ws.getColumn(i+1).width=w;});
+
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=`Staff_Movement_${MONTHS_EN[sm-1]}_${sy}.xlsx`;a.click();
+  URL.revokeObjectURL(url);
+  toast("Export เสร็จสิ้น","success");
 }
