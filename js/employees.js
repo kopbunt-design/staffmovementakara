@@ -1,7 +1,7 @@
 import { supabase } from "./supabase-config.js";
 import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast } from "./app.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
-import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES } from "./masterdata.js";
+import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES, PROVINCES } from "./masterdata.js";
 
 let empSearch="", empDept="", empStatus="Active";
 
@@ -148,6 +148,9 @@ function openEmpModal(emp=null) {
           <div class="form-group"><label class="form-label">Site</label>
             <select id="ef_site" class="form-control">${selStr(SITES,emp?.site||"")}</select>
           </div>
+          <div class="form-group"><label class="form-label">Province</label>
+            <select id="ef_prov" class="form-control">${selStr(PROVINCES,emp?.province||"")}</select>
+          </div>
           <div class="form-group"><label class="form-label">ประเภทสัญญา</label>
             <select id="ef_ct" class="form-control">${selStr(CONTRACT_TYPES,emp?.contract_type||"")}</select>
           </div>
@@ -203,7 +206,7 @@ function openEmpModal(emp=null) {
       division:g("ef_div"), department:g("ef_dept"),
       section:g("ef_sect"), team:g("ef_team"),
       position:g("ef_pos"), job_level:g("ef_jl"),
-      site:g("ef_site"), contract_type:g("ef_ct"),
+      site:g("ef_site"), province:g("ef_prov"), contract_type:g("ef_ct"),
       join_date:g("ef_join")||null, effective_date:g("ef_eff")||null, end_date:g("ef_end")||null,
       salary:Number(document.getElementById("ef_sal")?.value)||null,
       remark:g("ef_remark"), updated_at:new Date().toISOString(),
@@ -223,8 +226,8 @@ function openEmpModal(emp=null) {
 
 function downloadTemplate() {
   if(!window.XLSX){ toast("กรุณารอโหลด library","error"); return; }
-  const h=["Employee Code*","First Name TH*","Last Name TH*","First Name EN","Last Name EN","Gender","Nationality","DOB (YYYY-MM-DD)","Phone","Division","Department","Section","Team","Position","Job Level","Site","Contract Type","Join Date*","Effective Date","End Date","Salary","Status","Remark"];
-  const ex=["AKR001","สมชาย","ใจดี","Somchai","Jaidee","Male","Thai","1990-01-15","0812345678","Operations","Mining","Geology","Geology","Mining Engineer","O2","Chatree","Permanent","2020-03-01","2020-03-01","","45000","Active",""];
+  const h=["Employee Code*","First Name TH*","Last Name TH*","First Name EN","Last Name EN","Gender","Nationality","DOB (YYYY-MM-DD)","Phone","Division","Department","Section","Team","Position","Job Level","Site","Province","Contract Type","Join Date*","Effective Date","End Date","Salary","Status","Remark"];
+  const ex=["AKR001","สมชาย","ใจดี","Somchai","Jaidee","Male","Thai","1990-01-15","0812345678","Operations","Mining","Geology","Geology","Mining Engineer","O2","Chatree","Phichit","Permanent","2020-03-01","2020-03-01","","45000","Active",""];
   const ws=window.XLSX.utils.aoa_to_sheet([h,ex]); ws["!cols"]=h.map(()=>({wch:18}));
   const divSheet=window.XLSX.utils.aoa_to_sheet([["Division","Departments"],
     ...masterDivisions.map(d=>[d.name, getDeptsByDiv(d.id).map(x=>x.name).join(", ")])
@@ -265,6 +268,7 @@ async function handleImport(inputEl) {
         {col:["Position"],key:"position",type:"s"},
         {col:["Job Level"],key:"job_level",type:"s"},
         {col:["Site"],key:"site",type:"s"},
+        {col:["Province"],key:"province",type:"s"},
         {col:["Contract Type"],key:"contract_type",type:"s"},
         {col:["Join Date*","Join Date"],key:"join_date",type:"d"},
         {col:["Effective Date"],key:"effective_date",type:"d"},

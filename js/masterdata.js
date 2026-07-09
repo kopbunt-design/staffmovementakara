@@ -301,6 +301,7 @@ export const JOB_LEVELS = [
   { code: "S3", name: "S3" },
 ];
 
+export const PROVINCES = ["Phichit", "Phetchabun", "Phitsanulok", "Other"];
 export const SITES = ["Chatree", "Chatree North", "Vientiane Office", "Bangkok Office", "Other"];
 export const CONTRACT_TYPES = ["Permanent", "Contract", "Probation", "Outsource"];
 export const NATIONALITIES = ["Thai", "Lao", "Australian", "Other"];
