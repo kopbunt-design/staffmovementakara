@@ -263,56 +263,93 @@ async function exportReport(ym){
   const r=buildReport(ym);
   const net=r.endingHC-r.openingHC;
   const monthLabel=`${MONTHS_EN[sm-1]} ${sy}`;
+  const NC=8; // ใช้ 8 column ตลอด
 
   const wb=new ExcelJS.Workbook();
   wb.creator="Akara HR System";
   const ws=wb.addWorksheet(`Movement ${MONTHS_EN[sm-1].substring(0,3)} ${sy}`,{views:[{showGridLines:false}]});
 
   const navy={argb:"FF1A365D"},white={argb:"FFFFFFFF"},green={argb:"FF16A34A"},red={argb:"FFDC2626"},
-    ltGray={argb:"FFF8FAFC"},border={style:"thin",color:{argb:"FFD1D5DB"}};
+    ltBlue={argb:"FFDBEAFE"},ltGreen={argb:"FFDCFCE7"},ltRed={argb:"FFFEE2E2"},
+    ltGray={argb:"FFF8FAFC"},grayTxt={argb:"FF64748B"},
+    border={style:"thin",color:{argb:"FFD1D5DB"}},thickB={style:"medium",color:{argb:"FF94A3B8"}};
   const borders={top:border,left:border,bottom:border,right:border};
   const hFill=c=>({type:"pattern",pattern:"solid",fgColor:c});
+  const font=(sz,bold,color)=>({name:"Calibri",size:sz,bold,color:color||{argb:"FF1E293B"}});
 
-  // Title
-  ws.mergeCells(1,1,1,8);
-  const t1=ws.getCell(1,1);t1.value="AKARA RESOURCES";t1.font={name:"Calibri",size:18,bold:true,color:navy};t1.alignment={horizontal:"center",vertical:"middle"};
-  ws.getRow(1).height=30;
+  // Column widths (8 cols)
+  [6,16,26,26,26,16,16,20].forEach((w,i)=>{ws.getColumn(i+1).width=w;});
 
-  ws.mergeCells(2,1,2,8);
-  const t2=ws.getCell(2,1);t2.value=`STAFF MOVEMENT REPORT — ${monthLabel.toUpperCase()}`;t2.font={name:"Calibri",size:12,bold:true,color:{argb:"FF64748B"}};t2.alignment={horizontal:"center"};
+  // === TITLE ===
+  ws.mergeCells(1,1,1,NC);
+  const t1=ws.getCell(1,1);t1.value="AKARA RESOURCES";t1.font=font(20,true,navy);t1.alignment={horizontal:"center",vertical:"middle"};
+  ws.getRow(1).height=34;
 
-  // Summary
-  const sr=4;
-  ws.mergeCells(sr,1,sr,8);
-  const sumTitle=ws.getCell(sr,1);sumTitle.value="SUMMARY";sumTitle.font={name:"Calibri",size:10,bold:true,color:navy};sumTitle.border=borders;sumTitle.fill=hFill({argb:"FFF1F5F9"});
+  ws.mergeCells(2,1,2,NC);
+  const t2=ws.getCell(2,1);t2.value=`HR MONTHLY STAFF MOVEMENT REPORT`;t2.font=font(13,true,grayTxt);t2.alignment={horizontal:"center"};
 
-  const sumLabels=["Opening HC","New Joiners","Separations","Retirement","Transfers","Promotions","Internal Total","Ending HC"];
-  const sumVals=[r.openingHC,r.newJoiners.length,r.separations.length,r.retirements.length,r.transfers.length,r.promotions.length,r.internals.length,r.endingHC];
-  const sumColors=[navy,green,red,{argb:"FFD97706"},{argb:"FF2B5AC7"},{argb:"FF6D28D9"},navy,{argb:"FF0D7C4B"}];
-  sumLabels.forEach((l,i)=>{const c=ws.getCell(sr+1,i+1);c.value=l;c.font={name:"Calibri",size:8,bold:true,color:{argb:"FF64748B"}};c.alignment={horizontal:"center"};c.border=borders;});
-  sumVals.forEach((v,i)=>{const c=ws.getCell(sr+2,i+1);c.value=v;c.font={name:"Calibri",size:16,bold:true,color:sumColors[i]};c.alignment={horizontal:"center"};c.border=borders;});
+  ws.mergeCells(3,1,3,NC);
+  const t3=ws.getCell(3,1);t3.value=monthLabel.toUpperCase();t3.font=font(14,true,navy);t3.alignment={horizontal:"center"};
+  ws.getRow(3).height=24;
 
-  let row=sr+4;
+  // === SUMMARY (flow style) ===
+  let row=5;
+  ws.mergeCells(row,1,row,NC);
+  ws.getCell(row,1).value="SUMMARY";ws.getCell(row,1).font=font(10,true,navy);
+  ws.getCell(row,1).fill=hFill({argb:"FFF1F5F9"});ws.getCell(row,1).border=borders;
+  row++;
 
-  // Helper: write section table
-  function writeSection(title,headers,data,titleColor){
-    ws.mergeCells(row,1,row,headers.length);
-    const tc=ws.getCell(row,1);tc.value=title;tc.font={name:"Calibri",size:11,bold:true,color:white};
-    tc.fill=hFill(titleColor);tc.alignment={vertical:"middle"};tc.border=borders;
-    for(let c=1;c<=headers.length;c++) ws.getCell(row,c).border=borders;
-    ws.getRow(row).height=24;row++;
+  const flowData=[
+    {label:"Opening\nHeadcount",val:r.openingHC,bg:ltBlue,fg:navy},
+    {label:"New\nJoiners",val:r.newJoiners.length,bg:ltGreen,fg:green},
+    {label:"Separations\n(รวม)",val:r.separations.length,bg:ltRed,fg:red},
+    {label:"Retirement",val:r.retirements.length,bg:{argb:"FFFEF3C7"},fg:{argb:"FFD97706"}},
+    {label:"Internal\nTransfers",val:r.transfers.length,bg:{argb:"FFEEF3FB"},fg:{argb:"FF2B5AC7"}},
+    {label:"Promotions",val:r.promotions.length,bg:{argb:"FFEDE9FE"},fg:{argb:"FF6D28D9"}},
+    {label:"Net\nChange",val:`${net>=0?"+":""}${net}`,bg:net>=0?ltGreen:ltRed,fg:net>=0?green:red},
+    {label:"Ending\nHeadcount",val:r.endingHC,bg:navy,fg:white},
+  ];
+  flowData.forEach((f,i)=>{
+    const c1=ws.getCell(row,i+1);c1.value=f.label;c1.font=font(8,true,grayTxt);
+    c1.alignment={horizontal:"center",vertical:"middle",wrapText:true};c1.border=borders;c1.fill=hFill(f.bg);
+  });
+  ws.getRow(row).height=28;row++;
+  flowData.forEach((f,i)=>{
+    const c1=ws.getCell(row,i+1);c1.value=f.val;c1.font=font(18,true,f.fg);
+    c1.alignment={horizontal:"center",vertical:"middle"};c1.border=borders;c1.fill=hFill(f.bg);
+  });
+  ws.getRow(row).height=30;row+=2;
 
-    headers.forEach((h,i)=>{const c=ws.getCell(row,i+1);c.value=h;c.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};c.fill=hFill(ltGray);c.border=borders;c.alignment={horizontal:i===0?"center":"left",vertical:"middle"};});
+  // === HELPER: write section (always 8 cols) ===
+  function writeSection(num,title,headers,colWidths,data,titleColor){
+    // Title bar
+    ws.mergeCells(row,1,row,NC);
+    const tc=ws.getCell(row,1);tc.value=`${num}. ${title} (${data.length})`;
+    tc.font=font(11,true,white);tc.fill=hFill(titleColor);tc.alignment={horizontal:"left",vertical:"middle"};tc.border=borders;
+    ws.getRow(row).height=26;row++;
+
+    // Headers
+    headers.forEach((h,i)=>{
+      const c=ws.getCell(row,i+1);c.value=h;c.font=font(9,true,grayTxt);
+      c.fill=hFill({argb:"FFEDF2F7"});c.border=borders;
+      c.alignment={horizontal:i===0?"center":"left",vertical:"middle"};
+    });
+    if(headers.length<NC) for(let c=headers.length+1;c<=NC;c++){ws.getCell(row,c).border=borders;ws.getCell(row,c).fill=hFill({argb:"FFEDF2F7"});}
     row++;
 
     if(data.length===0){
-      ws.mergeCells(row,1,row,headers.length);
-      ws.getCell(row,1).value="— ไม่มีข้อมูล —";ws.getCell(row,1).font={name:"Calibri",size:10,italic:true,color:{argb:"FF94A3B8"}};ws.getCell(row,1).alignment={horizontal:"center"};ws.getCell(row,1).border=borders;
-      row++;
+      ws.mergeCells(row,1,row,NC);
+      const ec=ws.getCell(row,1);ec.value="— No data —";ec.font=font(10,false,{argb:"FF94A3B8"});
+      ec.alignment={horizontal:"center"};ec.border=borders;row++;
     } else {
       data.forEach((dr,ri)=>{
         const isEven=ri%2===1;
-        dr.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10};c.border=borders;if(isEven)c.fill=hFill(ltGray);if(ci===0)c.alignment={horizontal:"center"};});
+        dr.forEach((v,ci)=>{
+          const c=ws.getCell(row,ci+1);c.value=v;c.font=font(10,false);c.border=borders;
+          if(isEven) c.fill=hFill(ltGray);
+          if(ci===0) c.alignment={horizontal:"center"};
+        });
+        if(dr.length<NC) for(let c=dr.length+1;c<=NC;c++){const cl=ws.getCell(row,c);cl.border=borders;if(isEven)cl.fill=hFill(ltGray);}
         row++;
       });
     }
@@ -320,51 +357,63 @@ async function exportReport(ym){
   }
 
   // 1. New Joiners
-  writeSection(`1. NEW JOINERS (${r.newJoiners.length})`,
-    ["No.","Employee ID","Name","Position","Department","Start Date"],
+  writeSection(1,"NEW JOINERS",
+    ["No.","Employee ID","Name","Position","Department","Start Date"],null,
     r.newJoiners.map((j,i)=>[i+1,j.emp_code,j.name,j.position,j.department,fd2(j.date)]),
     green);
 
   // 2. Separations
-  writeSection(`2. SEPARATIONS (${r.separations.length})`,
-    ["No.","Employee ID","Name","Position","Department","Last Day","Reason"],
+  writeSection(2,"SEPARATIONS",
+    ["No.","Employee ID","Name","Position","Department","Last Day","Reason"],null,
     r.separations.map((s,i)=>[i+1,s.emp_code,s.name,s.position,s.department,fd2(s.date),s.reason]),
     red);
 
   // 3. Internal Movement
-  writeSection(`3. INTERNAL MOVEMENT (${r.internals.length})`,
-    ["No.","Employee ID","Name","Type","From","To","Date","Remark"],
+  writeSection(3,"INTERNAL MOVEMENT",
+    ["No.","Employee ID","Name","Type","From","To","Date","Remark"],null,
     r.internals.map((m,i)=>[i+1,m.emp_code,m.name,m.type,m.from,m.to,fd2(m.date),m.remark]),
     {argb:"FF2B5AC7"});
 
   // 4. Headcount by Division
-  ws.mergeCells(row,1,row,6);
-  const divTitle=ws.getCell(row,1);divTitle.value="4. HEADCOUNT BY DIVISION";divTitle.font={name:"Calibri",size:11,bold:true,color:white};
-  divTitle.fill=hFill(navy);divTitle.border=borders;ws.getRow(row).height=24;
-  for(let c=1;c<=6;c++) ws.getCell(row,c).border=borders;row++;
+  ws.mergeCells(row,1,row,NC);
+  const dt=ws.getCell(row,1);dt.value=`4. HEADCOUNT BY DIVISION`;dt.font=font(11,true,white);
+  dt.fill=hFill(navy);dt.alignment={horizontal:"left",vertical:"middle"};dt.border=borders;
+  ws.getRow(row).height=26;row++;
 
-  ["Division","Opening","Joiners","Separations","Net","Ending"].forEach((h,i)=>{
-    const c=ws.getCell(row,i+1);c.value=h;c.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};
-    c.fill=hFill(ltGray);c.border=borders;c.alignment={horizontal:i===0?"left":"center"};
-  });row++;
+  const divHeaders=["Division","Opening Headcount","Joiners","Separations","Net Movement","Ending Headcount"];
+  divHeaders.forEach((h,i)=>{
+    const c=ws.getCell(row,i+1);c.value=h;c.font=font(9,true,grayTxt);
+    c.fill=hFill({argb:"FFEDF2F7"});c.border=borders;c.alignment={horizontal:i===0?"left":"center"};
+  });
+  for(let c=divHeaders.length+1;c<=NC;c++){ws.getCell(row,c).border=borders;ws.getCell(row,c).fill=hFill({argb:"FFEDF2F7"});}
+  row++;
 
   r.divs.forEach((d,ri)=>{
-    const vals=[d.name,d.open,d.join,d.sep,(d.net>0?"+":"")+d.net,d.end];
-    vals.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10,bold:ci>=4};c.border=borders;
-    c.alignment={horizontal:ci===0?"left":"center"};if(ri%2===1)c.fill=hFill(ltGray);
-    if(ci===2)c.font={name:"Calibri",size:10,bold:true,color:green};
-    if(ci===3)c.font={name:"Calibri",size:10,bold:true,color:red};
-    });row++;
+    const isEven=ri%2===1;
+    const vals=[d.name,d.open,d.join,d.sep,d.net,d.end];
+    vals.forEach((v,ci)=>{
+      const c=ws.getCell(row,ci+1);
+      if(ci===4) c.value=`${v>0?"+":""}${v}`; else c.value=v;
+      c.border=borders;c.alignment={horizontal:ci===0?"left":"center"};
+      if(isEven) c.fill=hFill(ltGray);
+      if(ci===0) c.font=font(10,true);
+      else if(ci===2) c.font=font(10,true,green);
+      else if(ci===3) c.font=font(10,true,red);
+      else if(ci===4) c.font=font(10,true,v>0?green:v<0?red:grayTxt);
+      else if(ci===5) c.font=font(10,true,navy);
+      else c.font=font(10,false);
+    });
+    for(let c=vals.length+1;c<=NC;c++){const cl=ws.getCell(row,c);cl.border=borders;if(isEven)cl.fill=hFill(ltGray);}
+    row++;
   });
-  // Total row
-  [["TOTAL",r.openingHC,r.newJoiners.length,r.separations.length,(net>=0?"+":"")+net,r.endingHC]].forEach(vals=>{
-    vals.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font={name:"Calibri",size:10,bold:true,color:white};c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:ci===0?"left":"center"};});
-  });
+  // Total
+  const totVals=["TOTAL",r.openingHC,r.newJoiners.length,r.separations.length,`${net>=0?"+":""}${net}`,r.endingHC];
+  totVals.forEach((v,ci)=>{const c=ws.getCell(row,ci+1);c.value=v;c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:ci===0?"left":"center"};});
+  for(let c=totVals.length+1;c<=NC;c++){ws.getCell(row,c).fill=hFill(navy);ws.getCell(row,c).border=borders;}
 
-  // Column widths
-  [8,16,28,24,24,16,14,20].forEach((w,i)=>{ws.getColumn(i+1).width=w;});
-
-  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+  // Print setup
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9,
+    margins:{left:.5,right:.5,top:.5,bottom:.5,header:.3,footer:.3}};
 
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
