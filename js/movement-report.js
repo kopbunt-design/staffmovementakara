@@ -13,7 +13,7 @@ function hcAtMonth(ym){
 }
 function fd2(d){if(!d)return"—";const s=String(d).substring(0,10);const[y,m,dd]=s.split("-");return`${dd} ${MONTHS_EN[Number(m)-1]?.substring(0,3)} ${y}`;}
 
-function empName(e){ return e?`${e.firstname_th||""} ${e.lastname_th||""}`.trim()||`${e.firstname_en||""} ${e.lastname_en||""}`.trim():""; }
+function empName(e){ return e?`${e.firstname_en||""} ${e.lastname_en||""}`.trim()||`${e.firstname_th||""} ${e.lastname_th||""}`.trim():""; }
 function empDept(e){ if(!e) return ""; const d=e.department||""; if(d&&d!=="-") return d; return e.section||e.division||""; }
 
 function buildReport(ym){
