@@ -13,6 +13,9 @@ function hcAtMonth(ym){
 }
 function fd2(d){if(!d)return"—";const s=String(d).substring(0,10);const[y,m,dd]=s.split("-");return`${dd} ${MONTHS_EN[Number(m)-1]?.substring(0,3)} ${y}`;}
 
+function empName(e){ return e?`${e.firstname_th||""} ${e.lastname_th||""}`.trim()||`${e.firstname_en||""} ${e.lastname_en||""}`.trim():""; }
+function empDept(e){ if(!e) return ""; const d=e.department||""; if(d&&d!=="-") return d; return e.section||e.division||""; }
+
 function buildReport(ym){
   const nxYM=nextYM(ym), pYM=prevYM(ym);
   const openingHC=hcAtMonth(pYM), endingHC=hcAtMonth(ym);
@@ -21,26 +24,27 @@ function buildReport(ym){
   const movNewCodes=new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
   const empNewOnly=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym&&!movNewCodes.has(e.emp_code));
   const newJoiners=[
-    ...movMonth.filter(m=>m.type==="New Hire").map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:m.name||(e?`${e.firstname_th} ${e.lastname_th}`.trim():""),position:e?.position||"",department:e?.department||"",date:m.date};}),
-    ...empNewOnly.map(e=>({emp_code:e.emp_code,name:`${e.firstname_th||""} ${e.lastname_th||""}`.trim(),position:e.position||"",department:e.department||"",date:e.join_date}))
+    ...movMonth.filter(m=>m.type==="New Hire").map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date};}),
+    ...empNewOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.join_date}))
   ];
 
   const movSepCodes=new Set(allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
   const empSepOnly=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===nxYM&&["Resigned","Retired","Terminated"].includes(e.status)&&!movSepCodes.has(e.emp_code));
   const typeMap={Resigned:"Resignation",Retired:"Retirement",Terminated:"Termination"};
   const separations=[
-    ...allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:m.name||(e?`${e.firstname_th} ${e.lastname_th}`.trim():""),position:e?.position||"",department:e?.department||"",date:m.date,reason:m.type};}),
-    ...empSepOnly.map(e=>({emp_code:e.emp_code,name:`${e.firstname_th||""} ${e.lastname_th||""}`.trim(),position:e.position||"",department:e.department||"",date:e.end_date,reason:typeMap[e.status]||e.status}))
+    ...allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date,reason:m.type};}),
+    ...empSepOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.end_date,reason:typeMap[e.status]||e.status}))
   ];
 
   const internalTypes=["Transfer","Promotion","Demotion","Secondment"];
   const internals=movMonth.filter(m=>internalTypes.includes(m.type)).map(m=>{
     const e=allEmployees.find(x=>x.emp_code===m.emp_code);
-    return{emp_code:m.emp_code,name:m.name||(e?`${e.firstname_th} ${e.lastname_th}`.trim():""),type:m.type,from:m.from_dept||"",to:m.to_dept||"",date:m.date,remark:m.reason||""};
+    return{emp_code:m.emp_code,name:empName(e)||m.name||"",type:m.type,from:m.from_dept||"",to:m.to_dept||"",date:m.date,remark:m.reason||""};
   });
 
+  const validDept=e=>{const d=e.department||"";return(d&&d!=="-")?d:e.section||e.division||"Other";};
   const deptMap={};
-  openingHC.forEach(e=>{const d=e.department||"Other";deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].open++;});
+  openingHC.forEach(e=>{const d=validDept(e);deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].open++;});
   newJoiners.forEach(j=>{const d=j.department||"Other";deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].join++;});
   separations.forEach(s=>{const d=s.department||"Other";deptMap[d]=deptMap[d]||{open:0,join:0,sep:0};deptMap[d].sep++;});
   const depts=Object.entries(deptMap).map(([name,v])=>({name,open:v.open,join:v.join,sep:v.sep,net:v.join-v.sep,end:v.open+v.join-v.sep})).sort((a,b)=>b.open-a.open);
