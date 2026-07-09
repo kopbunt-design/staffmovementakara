@@ -34,7 +34,7 @@ export const MOV_COLORS = {
 export const movBadge = type => { const [c,bg]=MOV_COLORS[type]||["#64748B","#f1f5f9"]; return `<span class="badge" style="color:${c};background:${bg};">${esc(type)}</span>`; };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","headcount","analytics","payroll","users","settings"];
+const pages = ["dashboard","employees","movements","headcount","movreport","analytics","payroll","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -51,6 +51,7 @@ async function renderPage(page) {
   else if(page==="employees") (await import("./employees.js")).renderEmployees();
   else if(page==="movements") renderMovements();
   else if(page==="headcount") (await import("./headcount.js")).renderHeadcount();
+  else if(page==="movreport") (await import("./movement-report.js")).renderMovementReport();
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
   else if(page==="users") (await import("./users.js")).renderUsers();
