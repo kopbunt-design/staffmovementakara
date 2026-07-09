@@ -20,7 +20,7 @@ function buildPeriodMonths(mode, num) {
   const yms = [];
   if(mode==="fy"){
     for(let i=0;i<12;i++){
-      const mi=(6+i)%12; const yi=i<6?num:num+1;
+      const mi=(6+i)%12; const yi=i<6?num-1:num;
       yms.push(`${yi}-${String(mi+1).padStart(2,"0")}`);
     }
   } else {
@@ -148,14 +148,14 @@ export function renderHeadcount() {
       const opts=[]; for(let y=curY;y>=curY-5;y--) opts.push({val:y,label:`${y}`}); return opts;
     } else {
       const opts=[];
-      for(let y=curY+1;y>=curY-4;y--) opts.push({val:y,label:`FY${y} (Jul ${y} - Jun ${y+1})`});
+      for(let y=curY+1;y>=curY-4;y--) opts.push({val:y,label:`FY${y} (Jul ${y-1} - Jun ${y})`});
       return opts;
     }
   }
 
   function getPeriodLabel(){
     if(mode==="calendar") return `ปี ${selNum} (Jan - Dec)`;
-    return `FY${selNum} (Jul ${selNum} - Jun ${selNum+1})`;
+    return `FY${selNum} (Jul ${selNum-1} - Jun ${selNum})`;
   }
 
   function render(){
@@ -204,7 +204,7 @@ export function renderHeadcount() {
             <th colspan="${g.length+1}" class="sep">New Employee</th>
             <th colspan="${g.length+1}" class="sep">Voluntary Resigned</th>
             <th colspan="${g.length+1}" class="sep">Involuntary Resigned</th>
-            <th rowspan="2" class="sep" style="background:#3b1a1a;">Total<br>Resigned</th>
+            <th rowspan="2" class="sep">Total<br>Resigned</th>
             <th colspan="${g.length}" class="sep">Balance (In - Out)</th>
             <th colspan="${g.length+1}" class="sep">Headcount (End of Month)</th>
             <th rowspan="2" class="sep">Turnover<br>Rate<br><span style="font-weight:400;font-size:9px;">(Monthly)</span></th>
