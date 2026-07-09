@@ -50,7 +50,7 @@ function calcVacancy(activeEmps,fy){
   const filtered=fy?posQuota.filter(q=>q.fiscal_year===fy):posQuota;
   let totalQuota=0,totalFilled=0;
   const details=filtered.map(q=>{
-    const filled=activeEmps.filter(e=>(e.division||"")===q.division&&(e.department||"")===q.department&&(e.position||"")===q.position).length;
+    const filled=activeEmps.filter(e=>(e.division||"")===q.division&&(e.department||"")===q.department&&(e.position||"")===q.position&&(e.job_level||"")===q.job_level).length;
     const vac=Math.max(0,q.quota-filled);
     totalQuota+=q.quota;totalFilled+=Math.min(filled,q.quota);
     return{...q,filled,vacancy:vac};
@@ -483,13 +483,14 @@ function openVacancyModal(initFY, onSave){
           </div>
           <!-- Table -->
           <table class="wf-vac-tbl">
-            <thead><tr><th>Division</th><th>Department</th><th>Position</th><th style="text-align:center;">Quota</th><th style="text-align:center;">Filled</th><th style="text-align:center;">Vacancy</th><th style="width:60px;"></th></tr></thead>
+            <thead><tr><th>Division</th><th>Department</th><th>Position</th><th>Job Level</th><th style="text-align:center;">Quota</th><th style="text-align:center;">Filled</th><th style="text-align:center;">Vacancy</th><th style="width:60px;"></th></tr></thead>
             <tbody>
-              ${rows.length===0?`<tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8;">ยังไม่มี Position Quota สำหรับ FY${selFY}<br>กด Import Excel หรือ + เพิ่ม ด้านล่าง</td></tr>`:
+              ${rows.length===0?`<tr><td colspan="8" style="text-align:center;padding:24px;color:#94a3b8;">ยังไม่มี Position Quota สำหรับ FY${selFY}<br>กด Import Excel หรือ + เพิ่ม ด้านล่าง</td></tr>`:
               rows.map(r=>`<tr class="${r.vacancy>0?'wf-vac-row-vacant':''}">
                 <td style="font-weight:500;font-size:11px;">${esc(r.division)}</td>
                 <td style="font-size:11px;">${esc(r.department)}</td>
                 <td style="font-weight:600;">${esc(r.position)}</td>
+                <td style="text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:#f1f5f9;color:#475569;">${esc(r.job_level||"-")}</span></td>
                 <td style="text-align:center;font-weight:700;">${r.quota}</td>
                 <td style="text-align:center;color:#16a34a;font-weight:600;">${r.filled}</td>
                 <td style="text-align:center;"><span class="wf-vac-badge" style="color:${r.vacancy>0?'#dc2626':'#16a34a'};background:${r.vacancy>0?'#fee2e2':'#dcfce7'};">${r.vacancy>0?r.vacancy:"Full"}</span></td>
@@ -501,13 +502,17 @@ function openVacancyModal(initFY, onSave){
             </tbody>
           </table>
           <!-- Add Form -->
-          <div class="wf-vac-form">
+          <div class="wf-vac-form" style="grid-template-columns:1fr 1fr 1fr auto auto;">
             <select id="vac_div" class="filter-select" onchange="window._vacDivChange(this.value)">
               <option value="">Division</option>
               ${divs.map(d=>`<option value="${d}">${d}</option>`).join("")}
             </select>
             <select id="vac_dept"><option value="">Department</option></select>
             <select id="vac_pos"><option value="">Position</option></select>
+            <select id="vac_jl" style="width:70px;">
+              <option value="">Level</option>
+              ${["M1","M2","M3","M4","S1","S2","S3","O1","O2","O3"].map(l=>`<option value="${l}">${l}</option>`).join("")}
+            </select>
             <div style="display:flex;gap:6px;align-items:center;">
               <input id="vac_qty" type="number" min="1" value="1" style="width:60px;">
               <button class="btn btn-primary" style="padding:6px 14px;font-size:11px;" onclick="window._vacAdd()">+ เพิ่ม</button>
@@ -538,11 +543,12 @@ function openVacancyModal(initFY, onSave){
       const div=document.getElementById("vac_div").value;
       const dept=document.getElementById("vac_dept").value;
       const pos=document.getElementById("vac_pos").value;
+      const jl=document.getElementById("vac_jl").value;
       const qty=parseInt(document.getElementById("vac_qty").value)||1;
-      if(!div||!dept||!pos){toast("กรุณาเลือก Division, Department, Position","error");return;}
-      const exists=posQuota.find(q=>q.fiscal_year===selFY&&q.division===div&&q.department===dept&&q.position===pos);
+      if(!div||!dept||!pos||!jl){toast("กรุณาเลือก Division, Department, Position, Job Level","error");return;}
+      const exists=posQuota.find(q=>q.fiscal_year===selFY&&q.division===div&&q.department===dept&&q.position===pos&&q.job_level===jl);
       if(exists){toast("ตำแหน่งนี้มีอยู่แล้วใน FY"+selFY+" กดแก้ไขแทน","error");return;}
-      const{error}=await supabase.from("position_quota").insert({fiscal_year:selFY,division:div,department:dept,position:pos,quota:qty});
+      const{error}=await supabase.from("position_quota").insert({fiscal_year:selFY,division:div,department:dept,position:pos,job_level:jl,quota:qty});
       if(error){toast("เพิ่มไม่สำเร็จ: "+error.message,"error");return;}
       await loadPosQuota();toast("เพิ่มสำเร็จ","success");renderModal();
     };
@@ -563,8 +569,8 @@ function openVacancyModal(initFY, onSave){
     };
     window._vacTemplate=()=>{
       if(!window.XLSX){toast("กรุณารอโหลด library","error");return;}
-      const h=["Division","Department","Position","Quota"];
-      const ex=["Operations","Mining","Mining Engineer","5"];
+      const h=["Division","Department","Position","Job Level","Quota"];
+      const ex=["Operations","Mining","Mining Engineer","S2","5"];
       const ws=window.XLSX.utils.aoa_to_sheet([h,ex]);ws["!cols"]=h.map(()=>({wch:24}));
       const wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,`FY${selFY}`);
       window.XLSX.writeFile(wb,`position_quota_template_FY${selFY}.xlsx`);
@@ -582,14 +588,15 @@ function openVacancyModal(initFY, onSave){
             const div=String(r.Division||"").trim();
             const dept=String(r.Department||"").trim();
             const pos=String(r.Position||"").trim();
+            const jl=String(r["Job Level"]||"").trim();
             const qty=parseInt(r.Quota)||0;
-            if(!div||!dept||!pos||qty<=0)return null;
-            return{fiscal_year:selFY,division:div,department:dept,position:pos,quota:qty,updated_at:new Date().toISOString()};
+            if(!div||!dept||!pos||!jl||qty<=0)return null;
+            return{fiscal_year:selFY,division:div,department:dept,position:pos,job_level:jl,quota:qty,updated_at:new Date().toISOString()};
           }).filter(Boolean);
           if(!batch.length){toast("ไม่พบข้อมูลที่ถูกต้อง","error");return;}
           let created=0,updated=0;
           for(const b of batch){
-            const existing=posQuota.find(q=>q.fiscal_year===selFY&&q.division===b.division&&q.department===b.department&&q.position===b.position);
+            const existing=posQuota.find(q=>q.fiscal_year===selFY&&q.division===b.division&&q.department===b.department&&q.position===b.position&&q.job_level===b.job_level);
             if(existing){
               await supabase.from("position_quota").update({quota:b.quota,updated_at:b.updated_at}).eq("id",existing.id);
               updated++;
