@@ -59,7 +59,8 @@ function buildData(periodYMs) {
     const active=hcAtMonth(ym); const hT=active.length;
     const hG={}; GRP.forEach(g=>{hG[g.key]=cnt(active,g.key);});
 
-    rows.push({ym,month:MONTHS[mi],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG});
+    const future=ym>curYM;
+    rows.push({ym,month:MONTHS[mi],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG,future});
   }
 
   // เฉลี่ยถึงเดือนปัจจุบันเท่านั้น (ไม่รวมเดือนอนาคต)
@@ -219,6 +220,19 @@ export function renderHeadcount() {
         </thead>
         <tbody>
           ${rows.map(r=>{
+            if(r.future){
+              const d="—";const cols=g.length;
+              return `<tr style="color:#cbd5e1;">
+              <td class="cm" style="color:#94a3b8;">${r.month}</td>
+              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
+              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
+              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
+              <td class="sep">${d}</td>
+              ${g.map((x,i)=>`<td${i===0?' class="sep"':''}>${d}</td>`).join("")}
+              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
+              <td class="sep">${d}</td>
+            </tr>`;
+            }
             const tr=r.hT?((r.rT/r.hT)*100).toFixed(2)+"%":"0.00%";
             return `<tr>
               <td class="cm">${r.month}</td>
