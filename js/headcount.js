@@ -295,7 +295,7 @@ export function renderHeadcount() {
   render();
   window._hcMode=m=>{ mode=m; const opts=getOptions(); selNum=opts[0].val; render(); };
   window._hcNum=n=>{ selNum=n; render(); };
-  window._exportHC=()=>exportExcel(mode,selNum);
+  window._exportHC=()=>exportExcel(mode,selNum).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
 }
 
 async function exportExcel(mode,num){
