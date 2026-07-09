@@ -40,13 +40,21 @@ function getFirstYearCount(ym){
 }
 function getProv(e){return e.province&&e.province!=="-"?e.province:"Other";}
 
-let vacCfg=[];
-async function loadVacCfg(){
-  try{const{data,error}=await supabase.from("vacancy_config").select("*");if(!error)vacCfg=data||[];}
-  catch(e){vacCfg=[];}
+let posQuota=[];
+async function loadPosQuota(){
+  try{const{data,error}=await supabase.from("position_quota").select("*").order("division").order("department").order("position");if(!error)posQuota=data||[];}
+  catch(e){posQuota=[];}
 }
-function getApproved(ym){return vacCfg.filter(v=>v.year_month===ym).reduce((s,v)=>s+(v.approved_positions||0),0);}
-function getApprovedByDiv(ym){const m={};vacCfg.filter(v=>v.year_month===ym).forEach(v=>{m[v.division]=v.approved_positions||0;});return m;}
+function calcVacancy(activeEmps){
+  let totalQuota=0,totalFilled=0;
+  const details=posQuota.map(q=>{
+    const filled=activeEmps.filter(e=>(e.division||"")===q.division&&(e.department||"")===q.department&&(e.position||"")===q.position).length;
+    const vac=Math.max(0,q.quota-filled);
+    totalQuota+=q.quota;totalFilled+=Math.min(filled,q.quota);
+    return{...q,filled,vacancy:vac};
+  });
+  return{totalQuota,totalFilled,totalVacancy:totalQuota-totalFilled,details};
+}
 
 const CSS=`<style>
 .wf-wrap{font-family:inherit;}
@@ -92,15 +100,24 @@ const CSS=`<style>
 .wf-trend-tbl tbody tr:nth-child(even){background:#fafbfd;}
 .wf-trend-total td{background:#1a365d!important;color:#fff!important;font-weight:700;border:none;}
 
-.wf-vac-tbl{width:100%;border-collapse:collapse;font-size:13px;}
-.wf-vac-tbl th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;}
-.wf-vac-tbl td{padding:8px 14px;border-bottom:1px solid #f1f5f9;}
-.wf-vac-tbl input{width:80px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;text-align:center;font-size:13px;}
+.wf-vac-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.wf-vac-tbl th{padding:8px 12px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;}
+.wf-vac-tbl td{padding:7px 12px;border-bottom:1px solid #f1f5f9;}
+.wf-vac-tbl tbody tr:nth-child(even){background:#fafbfd;}
+.wf-vac-tbl tbody tr:hover{background:#f0f5ff;}
+.wf-vac-row-vacant td{background:#fff5f5!important;}
+.wf-vac-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+.wf-vac-form{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;padding:12px;background:#f8fafc;border-top:1px solid #e2e8f0;}
+.wf-vac-form select,.wf-vac-form input{padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;}
+.wf-vac-summary{display:flex;gap:16px;padding:12px 16px;background:#f0f5ff;border-top:2px solid #2563eb;}
+.wf-vac-summary-item{text-align:center;flex:1;}
+.wf-vac-summary-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;}
+.wf-vac-summary-val{font-size:18px;font-weight:800;}
 </style>`;
 
 export async function renderWorkforceOverview(){
   const pg=document.getElementById("pageWorkforce");
-  await loadVacCfg();
+  await loadPosQuota();
   const now=new Date();
   const curY=now.getFullYear();
   let selYM=`${curY}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -121,8 +138,8 @@ export async function renderWorkforceOverview(){
     const newH=getNewHires(selYM), resig=getResignations(selYM);
     const pBegHC=hcAtMonth(ppYM).length, pNewH=getNewHires(pYM), pResig=getResignations(pYM), pHCE=begHC.length;
 
-    const approved=getApproved(selYM), vac=approved>0?approved-hcE:0;
-    const pApproved=getApproved(pYM), pVac=pApproved>0?pApproved-pHCE:0;
+    const vc=calcVacancy(endHC), vac=vc.totalVacancy, approved=vc.totalQuota;
+    const pvc=calcVacancy(begHC), pVac=pvc.totalVacancy, pApproved=pvc.totalQuota;
 
     const netMoM=hcE-hcB;
     const yoyYM=`${sy-1}-${String(sm).padStart(2,"0")}`;
@@ -405,69 +422,139 @@ export async function renderWorkforceOverview(){
   window._wfPrev=()=>{selYM=prevYM(selYM);render();};
   window._wfNext=()=>{selYM=nextYM(selYM);render();};
   window._wfExport=()=>exportOverview(selYM).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
-  window._wfVacancy=()=>openVacancyModal(selYM,async()=>{await loadVacCfg();render();});
+  window._wfVacancy=()=>openVacancyModal(async()=>{await loadPosQuota();render();});
 }
 
-// === VACANCY CONFIG MODAL ===
-async function openVacancyModal(ym, onSave){
-  const[sy,sm]=ym.split("-").map(Number);
-  const mLbl=`${MO[sm-1]} ${sy}`;
-  const divs=["Kingsgate","Sustainability","Operations","Exploration","Commercial"];
-  const cur=getApprovedByDiv(ym);
+// === POSITION QUOTA MODAL ===
+function openVacancyModal(onSave){
+  const active=allEmployees.filter(e=>e.status==="Active"||!e.status);
+  const divs=[...new Set(allEmployees.map(e=>e.division).filter(Boolean).filter(d=>d!=="-"))].sort();
+  const deptsByDiv={};
+  divs.forEach(d=>{deptsByDiv[d]=[...new Set(allEmployees.filter(e=>e.division===d).map(e=>e.department).filter(Boolean).filter(x=>x!=="-"))].sort();});
+  const posByDept={};
+  allEmployees.forEach(e=>{
+    if(!e.department||e.department==="-"||!e.position||e.position==="-")return;
+    const k=`${e.division}||${e.department}`;
+    if(!posByDept[k])posByDept[k]=new Set();
+    posByDept[k].add(e.position);
+  });
 
-  document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="vacModal">
-    <div class="modal" style="max-width:500px;">
-      <div class="modal-header">
-        <div class="modal-title">Vacancy Config — ${mLbl}</div>
-        <button class="modal-close" onclick="document.getElementById('vacModal').remove()">&#10005;</button>
-      </div>
-      <div class="modal-body">
-        <p style="font-size:12px;color:#64748b;margin-bottom:12px;">ตั้งค่า Approved Positions ต่อ Division ในเดือนนี้</p>
-        <table class="wf-vac-tbl">
-          <thead><tr><th>Division</th><th style="text-align:center;">Approved Positions</th><th style="text-align:center;">Current HC</th><th style="text-align:center;">Vacancy</th></tr></thead>
-          <tbody>
-            ${divs.map(d=>{
-              const hc=hcAtMonth(ym).filter(e=>(e.division||"")==d).length;
-              const ap=cur[d]||0;
-              return`<tr>
-                <td style="font-weight:600;">${d}</td>
-                <td style="text-align:center;"><input type="number" min="0" class="vac-input" data-div="${d}" value="${ap}"></td>
-                <td style="text-align:center;color:#64748b;">${hc}</td>
-                <td style="text-align:center;font-weight:700;color:${ap-hc>0?'#d97706':'#16a34a'};">${ap>0?ap-hc:"—"}</td>
-              </tr>`;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('vacModal').remove()">ยกเลิก</button>
-        <button class="btn btn-primary" onclick="window._saveVac()">บันทึก</button>
-      </div>
-    </div>
-  </div>`;
+  const vc=calcVacancy(active);
+  let filterDiv="";
 
-  window._saveVac=async()=>{
-    const inputs=document.querySelectorAll(".vac-input");
-    const batch=[];
-    inputs.forEach(inp=>{
-      const div=inp.dataset.div;
-      const val=parseInt(inp.value)||0;
-      batch.push({year_month:ym,division:div,approved_positions:val,updated_at:new Date().toISOString()});
-    });
-    try{
-      for(const b of batch){
-        const{data:existing}=await supabase.from("vacancy_config").select("id").eq("year_month",b.year_month).eq("division",b.division).maybeSingle();
-        if(existing){
-          await supabase.from("vacancy_config").update({approved_positions:b.approved_positions,updated_at:b.updated_at}).eq("id",existing.id);
-        }else{
-          await supabase.from("vacancy_config").insert(b);
-        }
-      }
-      document.getElementById("vacModal")?.remove();
-      toast("บันทึก Vacancy Config เสร็จสิ้น","success");
-      if(onSave)await onSave();
-    }catch(e){toast("บันทึกไม่สำเร็จ: "+e.message,"error");}
-  };
+  function renderModal(){
+    const rows=vc.details.filter(d=>!filterDiv||d.division===filterDiv).sort((a,b)=>b.vacancy-a.vacancy||(a.division+a.department+a.position).localeCompare(b.division+b.department+b.position));
+
+    document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="vacModal">
+      <div class="modal" style="max-width:820px;">
+        <div class="modal-header">
+          <div class="modal-title">Position Quota — อัตรากำลัง</div>
+          <button class="modal-close" onclick="document.getElementById('vacModal').remove()">&#10005;</button>
+        </div>
+        <div class="modal-body" style="max-height:65vh;overflow-y:auto;padding:0;">
+          <!-- Summary -->
+          <div class="wf-vac-summary">
+            <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Total Quota</div><div class="wf-vac-summary-val" style="color:#1a365d;">${vc.totalQuota}</div></div>
+            <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Filled</div><div class="wf-vac-summary-val" style="color:#16a34a;">${vc.totalFilled}</div></div>
+            <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Vacancy</div><div class="wf-vac-summary-val" style="color:#dc2626;">${vc.totalVacancy}</div></div>
+            <div class="wf-vac-summary-item"><div class="wf-vac-summary-label">Vacancy Rate</div><div class="wf-vac-summary-val" style="color:#d97706;">${vc.totalQuota>0?((vc.totalVacancy/vc.totalQuota)*100).toFixed(1):"0"}%</div></div>
+          </div>
+          <!-- Filter -->
+          <div style="padding:10px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;">
+            <select class="filter-select" style="min-width:160px;" onchange="window._vacFilterDiv(this.value)">
+              <option value="">ทุก Division</option>
+              ${divs.map(d=>`<option value="${d}" ${d===filterDiv?"selected":""}>${d}</option>`).join("")}
+            </select>
+            <div style="flex:1;"></div>
+            <span style="font-size:11px;color:#94a3b8;">${rows.length} positions</span>
+          </div>
+          <!-- Table -->
+          <table class="wf-vac-tbl">
+            <thead><tr><th>Division</th><th>Department</th><th>Position</th><th style="text-align:center;">Quota</th><th style="text-align:center;">Filled</th><th style="text-align:center;">Vacancy</th><th style="width:60px;"></th></tr></thead>
+            <tbody>
+              ${rows.length===0?`<tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8;">ยังไม่มี Position Quota — กด + เพิ่ม ด้านล่าง</td></tr>`:
+              rows.map(r=>`<tr class="${r.vacancy>0?'wf-vac-row-vacant':''}">
+                <td style="font-weight:500;font-size:11px;">${esc(r.division)}</td>
+                <td style="font-size:11px;">${esc(r.department)}</td>
+                <td style="font-weight:600;">${esc(r.position)}</td>
+                <td style="text-align:center;font-weight:700;">${r.quota}</td>
+                <td style="text-align:center;color:#16a34a;font-weight:600;">${r.filled}</td>
+                <td style="text-align:center;"><span class="wf-vac-badge" style="color:${r.vacancy>0?'#dc2626':'#16a34a'};background:${r.vacancy>0?'#fee2e2':'#dcfce7'};">${r.vacancy>0?r.vacancy:"Full"}</span></td>
+                <td style="text-align:center;">
+                  <button class="btn btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="window._vacEdit('${r.id}')">&#9998;</button>
+                  <button class="btn" style="padding:3px 6px;font-size:10px;color:#dc2626;background:none;border:none;cursor:pointer;" onclick="window._vacDel('${r.id}')">&#10005;</button>
+                </td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+          <!-- Add Form -->
+          <div class="wf-vac-form" id="vacAddForm">
+            <select id="vac_div" class="filter-select" onchange="window._vacDivChange(this.value)">
+              <option value="">Division</option>
+              ${divs.map(d=>`<option value="${d}">${d}</option>`).join("")}
+            </select>
+            <select id="vac_dept"><option value="">Department</option></select>
+            <select id="vac_pos"><option value="">Position</option></select>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input id="vac_qty" type="number" min="1" value="1" style="width:60px;">
+              <button class="btn btn-primary" style="padding:6px 14px;font-size:11px;" onclick="window._vacAdd()">+ เพิ่ม</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="document.getElementById('vacModal').remove()">ปิด</button>
+        </div>
+      </div>
+    </div>`;
+
+    window._vacFilterDiv=v=>{filterDiv=v;renderModal();};
+    window._vacDivChange=v=>{
+      const deptSel=document.getElementById("vac_dept");
+      const depts=deptsByDiv[v]||[];
+      deptSel.innerHTML=`<option value="">Department</option>`+depts.map(d=>`<option value="${d}">${d}</option>`).join("");
+      document.getElementById("vac_pos").innerHTML=`<option value="">Position</option>`;
+      deptSel.onchange=()=>{
+        const dept=deptSel.value;
+        const k=`${v}||${dept}`;
+        const positions=[...(posByDept[k]||[])].sort();
+        document.getElementById("vac_pos").innerHTML=`<option value="">Position</option>`+positions.map(p=>`<option value="${p}">${p}</option>`).join("");
+      };
+    };
+    window._vacAdd=async()=>{
+      const div=document.getElementById("vac_div").value;
+      const dept=document.getElementById("vac_dept").value;
+      const pos=document.getElementById("vac_pos").value;
+      const qty=parseInt(document.getElementById("vac_qty").value)||1;
+      if(!div||!dept||!pos){toast("กรุณาเลือก Division, Department, Position","error");return;}
+      const exists=posQuota.find(q=>q.division===div&&q.department===dept&&q.position===pos);
+      if(exists){toast("ตำแหน่งนี้มีอยู่แล้ว กดแก้ไขแทน","error");return;}
+      const{error}=await supabase.from("position_quota").insert({division:div,department:dept,position:pos,quota:qty});
+      if(error){toast("เพิ่มไม่สำเร็จ: "+error.message,"error");return;}
+      await loadPosQuota();
+      const newVc=calcVacancy(active);Object.assign(vc,newVc);
+      toast("เพิ่มสำเร็จ","success");renderModal();
+    };
+    window._vacEdit=async(id)=>{
+      const q=posQuota.find(x=>x.id===id);if(!q)return;
+      const newQty=prompt(`Quota สำหรับ ${q.position} (${q.department}):`,q.quota);
+      if(newQty===null)return;
+      const val=parseInt(newQty);if(isNaN(val)||val<0){toast("กรุณาใส่ตัวเลข","error");return;}
+      const{error}=await supabase.from("position_quota").update({quota:val,updated_at:new Date().toISOString()}).eq("id",id);
+      if(error){toast("แก้ไม่สำเร็จ: "+error.message,"error");return;}
+      await loadPosQuota();
+      const newVc=calcVacancy(active);Object.assign(vc,newVc);
+      toast("แก้ไขสำเร็จ","success");renderModal();
+    };
+    window._vacDel=async(id)=>{
+      if(!confirm("ลบ Position Quota นี้?"))return;
+      const{error}=await supabase.from("position_quota").delete().eq("id",id);
+      if(error){toast("ลบไม่สำเร็จ: "+error.message,"error");return;}
+      await loadPosQuota();
+      const newVc=calcVacancy(active);Object.assign(vc,newVc);
+      toast("ลบสำเร็จ","info");renderModal();
+    };
+  }
+  renderModal();
 }
 
 // === EXCEL EXPORT ===
@@ -484,8 +571,8 @@ async function exportOverview(ym){
   const hcE=endHC.length,hcB=begHC.length;
   const newH=getNewHires(ym),resig=getResignations(ym);
   const pBegHC=hcAtMonth(ppYM).length,pNewH=getNewHires(pYM),pResig=getResignations(pYM),pHCE=begHC.length;
-  const approved=getApproved(ym),vac=approved>0?approved-hcE:0;
-  const pApproved=getApproved(pYM),pVac=pApproved>0?pApproved-pHCE:0;
+  const vc=calcVacancy(endHC),vac=vc.totalVacancy,approved=vc.totalQuota;
+  const pvc=calcVacancy(begHC),pVac=pvc.totalVacancy,pApproved=pvc.totalQuota;
   const netMoM=hcE-hcB;
   const yoyYM=`${sy-1}-${String(sm).padStart(2,"0")}`;
   const yoyHC=hcAtMonth(yoyYM).length,netYoY=hcE-yoyHC;
