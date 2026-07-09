@@ -249,25 +249,60 @@ async function handleImport(inputEl) {
         if(v instanceof Date){ const d=new Date(Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())); return d.toISOString().substring(0,10); }
         const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(0,10):null;
       };
-      const batch=rows.map(row=>({
-        emp_code:String(row["Employee Code*"]||row["Employee Code"]||"").trim(),
-        firstname_th:String(row["First Name TH*"]||"").trim(), lastname_th:String(row["Last Name TH*"]||"").trim(),
-        firstname_en:String(row["First Name EN"]||"").trim(), lastname_en:String(row["Last Name EN"]||"").trim(),
-        gender:String(row["Gender"]||"").trim(), nationality:String(row["Nationality"]||"").trim(),
-        dob:fd(row["DOB (YYYY-MM-DD)"]), phone:String(row["Phone"]||"").trim(),
-        division:String(row["Division"]||"").trim(), department:String(row["Department"]||"").trim(),
-        section:String(row["Section"]||"").trim(), team:String(row["Team"]||"").trim(),
-        position:String(row["Position"]||"").trim(), job_level:String(row["Job Level"]||"").trim(),
-        site:String(row["Site"]||"").trim(), contract_type:String(row["Contract Type"]||"").trim(),
-        join_date:fd(row["Join Date*"]||row["Join Date"]), effective_date:fd(row["Effective Date"]), end_date:fd(row["End Date"]),
-        salary:Number(row["Salary"])||null, _rawStatus:String(row["Status"]||"").trim(),
-        remark:String(row["Remark"]||"").trim(), updated_at:new Date().toISOString(),
-      })).filter(r=>r.emp_code);
-      // ดึง status เดิมจาก DB เพื่อไม่ให้ upsert ทับคนที่ Resigned/Terminated กลับเป็น Active
+      const fieldMap=[
+        {col:["First Name TH*","First Name TH"],key:"firstname_th",type:"s"},
+        {col:["Last Name TH*","Last Name TH"],key:"lastname_th",type:"s"},
+        {col:["First Name EN"],key:"firstname_en",type:"s"},
+        {col:["Last Name EN"],key:"lastname_en",type:"s"},
+        {col:["Gender"],key:"gender",type:"s"},
+        {col:["Nationality"],key:"nationality",type:"s"},
+        {col:["DOB (YYYY-MM-DD)","DOB"],key:"dob",type:"d"},
+        {col:["Phone"],key:"phone",type:"s"},
+        {col:["Division"],key:"division",type:"s"},
+        {col:["Department"],key:"department",type:"s"},
+        {col:["Section"],key:"section",type:"s"},
+        {col:["Team"],key:"team",type:"s"},
+        {col:["Position"],key:"position",type:"s"},
+        {col:["Job Level"],key:"job_level",type:"s"},
+        {col:["Site"],key:"site",type:"s"},
+        {col:["Contract Type"],key:"contract_type",type:"s"},
+        {col:["Join Date*","Join Date"],key:"join_date",type:"d"},
+        {col:["Effective Date"],key:"effective_date",type:"d"},
+        {col:["End Date"],key:"end_date",type:"d"},
+        {col:["Salary"],key:"salary",type:"n"},
+        {col:["Status"],key:"_rawStatus",type:"s"},
+        {col:["Remark"],key:"remark",type:"s"},
+      ];
+      const xlsCols=Object.keys(rows[0]||{});
+      const batch=rows.map(row=>{
+        const code=String(row["Employee Code*"]||row["Employee Code"]||"").trim();
+        if(!code) return null;
+        const obj={emp_code:code,updated_at:new Date().toISOString()};
+        for(const f of fieldMap){
+          const found=f.col.find(c=>xlsCols.includes(c));
+          if(!found) continue;
+          const raw=row[found];
+          if(f.type==="d"){ const dv=fd(raw); if(dv) obj[f.key]=dv; }
+          else if(f.type==="n"){ const nv=Number(raw); if(nv) obj[f.key]=nv; }
+          else { const sv=String(raw||"").trim(); if(sv) obj[f.key]=sv; }
+        }
+        return obj;
+      }).filter(Boolean);
+      // ดึงข้อมูลเดิมจาก DB เพื่อ merge กับข้อมูลใหม่ (ไม่ทับ column ที่ไม่ได้ส่งมา)
       const codes=batch.map(r=>r.emp_code);
-      const {data:existingEmps}=await supabase.from("employees").select("emp_code,status").in("emp_code",codes);
-      const statusMap=Object.fromEntries((existingEmps||[]).map(e=>[e.emp_code,e.status]));
-      batch.forEach(r=>{ r.status=r._rawStatus||statusMap[r.emp_code]||"Active"; delete r._rawStatus; });
+      const {data:existingEmps}=await supabase.from("employees").select("*").in("emp_code",codes);
+      const existMap=Object.fromEntries((existingEmps||[]).map(e=>[e.emp_code,e]));
+      batch.forEach(r=>{
+        const ex=existMap[r.emp_code];
+        if(ex){
+          for(const[k,v] of Object.entries(ex)){
+            if(k==="created_at"||k==="updated_at") continue;
+            if(!(k in r)) r[k]=v;
+          }
+        }
+        r.status=r._rawStatus||ex?.status||"Active";
+        delete r._rawStatus;
+      });
       const {error}=await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
       if(error){ toast("Import ไม่สำเร็จ: "+error.message,"error"); return; }
 
