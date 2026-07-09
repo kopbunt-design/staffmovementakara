@@ -462,6 +462,7 @@ async function exportExcel(mode,num){
 
   // --- Summary section ---
   const SR=totRow+2;
+  const balFillColor=netBal>=0?{argb:"FFDCFCE7"}:{argb:"FFFEE2E2"};
 
   // Avg Headcount box
   ws.mergeCells(SR,1,SR+2,5);
@@ -471,7 +472,6 @@ async function exportExcel(mode,num){
   avgCell.alignment={horizontal:"center",vertical:"middle"};
   avgCell.fill=hdrFill({argb:"FFDBEAFE"});
   avgCell.border=borders;
-  for(let r=SR;r<=SR+2;r++) for(let c=1;c<=5;c++){const cl=ws.getCell(r,c);cl.fill=hdrFill({argb:"FFDBEAFE"});cl.border=borders;}
 
   // Net Balance box
   ws.mergeCells(SR,6,SR+2,9);
@@ -479,8 +479,8 @@ async function exportExcel(mode,num){
   balCell.value=`NET BALANCE:  ${netBal>=0?"+":""}${netBal} คน  (New ${sN} - Resigned ${sR})`;
   balCell.font={name:"Calibri",size:11,bold:true,color:netBal>=0?dGreen:red};
   balCell.alignment={horizontal:"center",vertical:"middle",wrapText:true};
-  balCell.fill=hdrFill(netBal>=0?{argb:"FFDCFCE7"}:{argb:"FFFEE2E2"});
-  for(let r=SR;r<=SR+2;r++) for(let c=6;c<=9;c++){const cl=ws.getCell(r,c);cl.fill=balCell.fill;cl.border=borders;}
+  balCell.fill=hdrFill(balFillColor);
+  balCell.border=borders;
 
   // Turnover Rate section
   ws.mergeCells(SR,10,SR,17);
@@ -489,10 +489,9 @@ async function exportExcel(mode,num){
   trTitle.font={name:"Calibri",size:10,bold:true,color:navy};
   trTitle.alignment={horizontal:"center",vertical:"middle"};
   trTitle.border=borders;
-  for(let c=10;c<=17;c++) ws.getCell(SR,c).border=borders;
 
   const trLabels=["Total Resigned","Voluntary","Involuntary","Avg. Monthly"];
-  const trVals=[trTotal,trVol,trInvol,avgTR];
+  const trValArr=[trTotal,trVol,trInvol,avgTR];
   const trColors=[red,gold,{argb:"FF7C3AED"},navy];
   trLabels.forEach((lbl,i)=>{
     const col=10+i*2;
@@ -500,13 +499,11 @@ async function exportExcel(mode,num){
     const lc=ws.getCell(SR+1,col);
     lc.value=lbl;lc.font={name:"Calibri",size:8.5,bold:true,color:{argb:"FF64748B"}};
     lc.alignment={horizontal:"center",vertical:"middle"};lc.border=borders;
-    ws.getCell(SR+1,col+1).border=borders;
 
     ws.mergeCells(SR+2,col,SR+2,col+1);
     const vc=ws.getCell(SR+2,col);
-    vc.value=trVals[i];vc.font={name:"Calibri",size:14,bold:true,color:trColors[i]};
+    vc.value=trValArr[i];vc.font={name:"Calibri",size:14,bold:true,color:trColors[i]};
     vc.alignment={horizontal:"center",vertical:"middle"};vc.border=borders;
-    ws.getCell(SR+2,col+1).border=borders;
   });
 
   // Notes
@@ -515,23 +512,17 @@ async function exportExcel(mode,num){
   notesTitle.value="NOTES";notesTitle.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};
   notesTitle.alignment={horizontal:"left",vertical:"middle"};notesTitle.border=borders;
 
-  const noteLines=["M = M1, M2, M3, M4","S = S1, S2, S3","O = O1, O2, O3","","Voluntary = Resignation + Retirement","Involuntary = Termination"];
-  noteLines.forEach((n,i)=>{
-    const nr=SR+1+Math.floor(i/3);
-    const nc=18+(i%3>0?2:0)+(i%3>1?2:0);
-    if(i<3){
-      ws.mergeCells(SR+1,18,SR+1,totalCols);
-      const c=ws.getCell(SR+1,18);
-      c.value="M = M1-M4  |  S = S1-S3  |  O = O1-O3";
-      c.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
-      c.alignment={horizontal:"left",vertical:"middle"};c.border=borders;
-    }
-  });
+  ws.mergeCells(SR+1,18,SR+1,totalCols);
+  const noteL1=ws.getCell(SR+1,18);
+  noteL1.value="M = M1-M4  |  S = S1-S3  |  O = O1-O3";
+  noteL1.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
+  noteL1.alignment={horizontal:"left",vertical:"middle"};noteL1.border=borders;
+
   ws.mergeCells(SR+2,18,SR+2,totalCols);
-  const noteBot=ws.getCell(SR+2,18);
-  noteBot.value="Voluntary = Resignation + Retirement  |  Involuntary = Termination  |  Turnover = Resigned ÷ Avg HC × 100";
-  noteBot.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
-  noteBot.alignment={horizontal:"left",vertical:"middle",wrapText:true};noteBot.border=borders;
+  const noteL2=ws.getCell(SR+2,18);
+  noteL2.value="Voluntary = Resignation + Retirement  |  Involuntary = Termination  |  Turnover = Resigned ÷ Avg HC × 100";
+  noteL2.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
+  noteL2.alignment={horizontal:"left",vertical:"middle",wrapText:true};noteL2.border=borders;
 
   // --- Column widths ---
   ws.getColumn(1).width=14;
