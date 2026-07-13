@@ -142,15 +142,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", logout);
 
 // ===== DASHBOARD =====
 let dashMonth = ""; // "" = เดือนปัจจุบัน
-function nextYM(ym){ const [y,m]=ym.split("-").map(Number); return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`; }
+function lastWorkYM(dateStr){
+  if(!dateStr) return "";
+  const d=new Date(dateStr);d.setUTCDate(d.getUTCDate()-1);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+}
 function getMonthStats(ym) {
   const movMonth = allMovements.filter(m => movYM(m) === ym);
   const movJoinCodes = new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
   const empJoined = allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym && !movJoinCodes.has(e.emp_code));
-  // Resigned/Terminated: นับเดือนก่อนหน้า effective date (effective อยู่เดือนถัดไป)
-  const nxYM = nextYM(ym);
-  const movResignCodes = new Set(allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Termination","Retirement"].includes(m.type)).map(m=>m.emp_code));
-  const empResigned = allEmployees.filter(e=>(e.end_date||"").substring(0,7)===nxYM && ["Resigned","Terminated","Retired"].includes(e.status) && !movResignCodes.has(e.emp_code));
+  const movResignCodes = new Set(allMovements.filter(m=>lastWorkYM(m.date)===ym&&["Resignation","Termination","Retirement"].includes(m.type)).map(m=>m.emp_code));
+  const empResigned = allEmployees.filter(e=>lastWorkYM(e.end_date)===ym && ["Resigned","Terminated","Retired"].includes(e.status) && !movResignCodes.has(e.emp_code));
   return { joined: movJoinCodes.size + empJoined.length, resigned: movResignCodes.size + empResigned.length };
 }
 function renderDashboard() {
