@@ -17,7 +17,7 @@ function hcAtMonth(ym){
   return allEmployees.filter(e=>{
     const jm=(e.join_date||"").substring(0,7);
     if(jm&&jm>ym)return false;
-    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm<ym) return false; }
+    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm<=ym) return false; }
     return true;
   });
 }
