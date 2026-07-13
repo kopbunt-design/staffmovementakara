@@ -8,16 +8,19 @@ const GRP = [
   { key:"O", label:"O", levels:["O1","O2","O3"] },
 ];
 function grp(jl){ const u=(jl||"").toUpperCase().trim(); for(const g of GRP) if(g.levels.includes(u)) return g.key; return ""; }
-function lastWorkYM(dateStr){
-  if(!dateStr) return "";
-  const d=new Date(dateStr);d.setUTCDate(d.getUTCDate()-1);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+function lastDay(ym){
+  const[y,m]=ym.split("-").map(Number);
+  const d=new Date(Date.UTC(y,m,0)).getUTCDate();
+  return `${ym}-${String(d).padStart(2,"0")}`;
 }
 function hcAtMonth(ym){
+  const ld=lastDay(ym);
   return allEmployees.filter(e=>{
     const jm=(e.join_date||"").substring(0,7);
     if(jm&&jm>ym) return false;
-    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm<=ym) return false; }
+    if(e.end_date){
+      if((e.end_date).substring(0,10)<=ld) return false;
+    }
     return true;
   });
 }
@@ -49,13 +52,13 @@ function buildData(periodYMs) {
     const allNew=[...allEmployees.filter(e=>movNewC.has(e.emp_code)),...empNew];
     const nG={}; GRP.forEach(g=>{nG[g.key]=cnt(allNew,g.key);}); const nT=allNew.length;
 
-    const movVolC=new Set(allMovements.filter(v=>lastWorkYM(v.date)===ym&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
-    const empVol=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
+    const movVolC=new Set(allMovements.filter(v=>movYM(v)===ym&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
+    const empVol=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
     const allVol=[...allEmployees.filter(e=>movVolC.has(e.emp_code)),...empVol];
     const vG={}; GRP.forEach(g=>{vG[g.key]=cnt(allVol,g.key);}); const vT=allVol.length;
 
-    const movInvC=new Set(allMovements.filter(v=>lastWorkYM(v.date)===ym&&v.type==="Termination").map(v=>v.emp_code));
-    const empInv=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
+    const movInvC=new Set(allMovements.filter(v=>movYM(v)===ym&&v.type==="Termination").map(v=>v.emp_code));
+    const empInv=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
     const allInv=[...allEmployees.filter(e=>movInvC.has(e.emp_code)),...empInv];
     const iG={}; GRP.forEach(g=>{iG[g.key]=cnt(allInv,g.key);}); const iT=allInv.length;
 
