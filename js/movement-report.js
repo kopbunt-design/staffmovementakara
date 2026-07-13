@@ -41,7 +41,7 @@ function buildReport(ym){
   const separations=[
     ...allMovements.filter(m=>lastWorkYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date,reason:m.type};}),
     ...empSepOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.end_date,reason:typeMap[e.status]||e.status}))
-  ];
+  ].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
 
   const internalTypes=["Transfer","Promotion","Demotion","Secondment"];
   const internals=movMonth.filter(m=>internalTypes.includes(m.type)).map(m=>{
@@ -224,7 +224,7 @@ export function renderMovementReport(){
           <div class="mr-sec-label" style="color:#7f1d1d;">Separations</div>
           <div class="mr-sec-cnt" style="color:#dc2626;">${r.separations.length}</div>
         </div>
-        ${r.separations.length?`<table class="mr-tbl"><thead><tr><th class="num">No.</th><th>Employee ID</th><th>Name</th><th>Position</th><th>Department</th><th>Last Day</th><th>Reason</th></tr></thead><tbody>
+        ${r.separations.length?`<table class="mr-tbl"><thead><tr><th class="num">No.</th><th>Employee ID</th><th>Name</th><th>Position</th><th>Department</th><th>Effective Date</th><th>Reason</th></tr></thead><tbody>
           ${r.separations.map((s,i)=>{const[c,bg]=reasonColor[s.reason]||["#64748b","#f1f5f9"];return`<tr><td class="num">${i+1}</td><td class="code">${esc(s.emp_code)}</td><td>${esc(s.name)}</td><td>${esc(s.position)}</td><td>${esc(s.department)}</td><td>${fd2(s.date)}</td><td><span class="mr-badge" style="color:${c};background:${bg};">${esc(s.reason)}</span></td></tr>`;}).join("")}
         </tbody></table>`:`<div class="mr-empty">ไม่มีพนักงานลาออก/สิ้นสุดสัญญาในเดือนนี้</div>`}
       </div>
@@ -371,7 +371,7 @@ async function exportReport(ym){
 
   // 2. Separations
   writeSection(2,"SEPARATIONS",
-    ["No.","Employee ID","Name","Position","Department","Last Day","Reason"],null,
+    ["No.","Employee ID","Name","Position","Department","Effective Date","Reason"],null,
     r.separations.map((s,i)=>[i+1,s.emp_code,s.name,s.position,s.department,fd2(s.date),s.reason]),
     red);
 
