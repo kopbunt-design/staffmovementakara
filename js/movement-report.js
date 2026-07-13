@@ -17,7 +17,7 @@ function empName(e){ return e?`${e.firstname_en||""} ${e.lastname_en||""}`.trim(
 function empDept(e){ if(!e) return ""; const d=e.department||""; if(d&&d!=="-") return d; return e.section||e.division||""; }
 
 function buildReport(ym){
-  const nxYM=nextYM(ym), pYM=prevYM(ym);
+  const pYM=prevYM(ym);
   const openingHC=hcAtMonth(pYM), endingHC=hcAtMonth(ym);
   const movMonth=allMovements.filter(m=>movYM(m)===ym);
 
@@ -28,11 +28,11 @@ function buildReport(ym){
     ...empNewOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.join_date}))
   ];
 
-  const movSepCodes=new Set(allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
-  const empSepOnly=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===nxYM&&["Resigned","Retired","Terminated"].includes(e.status)&&!movSepCodes.has(e.emp_code));
+  const movSepCodes=new Set(allMovements.filter(m=>movYM(m)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
+  const empSepOnly=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!movSepCodes.has(e.emp_code));
   const typeMap={Resigned:"Resignation",Retired:"Retirement",Terminated:"Termination"};
   const separations=[
-    ...allMovements.filter(m=>movYM(m)===nxYM&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date,reason:m.type};}),
+    ...allMovements.filter(m=>movYM(m)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date,reason:m.type};}),
     ...empSepOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.end_date,reason:typeMap[e.status]||e.status}))
   ];
 
