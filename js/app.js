@@ -25,6 +25,89 @@ export function toast(msg, type="info") {
   setTimeout(() => { el.style.transition="opacity 0.3s"; el.style.opacity="0"; setTimeout(()=>el.remove(),300); }, 4000);
 }
 
+// ===== NOTIFICATIONS (กระดิ่งแจ้งเตือน) =====
+const NOTIF_KEY = "hr_notifications";
+let notifItems = [];
+try { notifItems = JSON.parse(localStorage.getItem(NOTIF_KEY) || "[]"); } catch { notifItems = []; }
+let notifUnread = 0;
+
+const NOTIF_ICON = {
+  employee: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`,
+  movement: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>`,
+  quota: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>`,
+  master: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>`,
+  default: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`,
+};
+
+// บันทึกแจ้งเตือนลงกระดิ่ง + แสดง toast (ใช้เมื่อ "เพิ่ม" รายการใหม่)
+export function notify(title, detail = "", opts = {}) {
+  const { type = "success", category = "default", toastMsg } = opts;
+  toast(toastMsg || (detail ? `${title} — ${detail}` : title), type);
+  notifItems.unshift({
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+    ts: new Date().toISOString(),
+    title, detail, category,
+  });
+  if (notifItems.length > 60) notifItems.length = 60;
+  try { localStorage.setItem(NOTIF_KEY, JSON.stringify(notifItems)); } catch {}
+  notifUnread++;
+  renderNotifBell();
+  renderNotifPanel();
+}
+
+function renderNotifBell() {
+  const b = document.getElementById("notifBadge");
+  if (!b) return;
+  b.textContent = notifUnread > 9 ? "9+" : String(notifUnread);
+  b.style.display = notifUnread > 0 ? "flex" : "none";
+}
+
+function renderNotifPanel() {
+  const list = document.getElementById("notifList");
+  if (!list) return;
+  if (!notifItems.length) {
+    list.innerHTML = `<div class="notif-empty">ยังไม่มีการแจ้งเตือน</div>`;
+    return;
+  }
+  list.innerHTML = notifItems.map(n => `
+    <div class="notif-item">
+      <div class="notif-ic notif-ic-${esc(n.category)}">${NOTIF_ICON[n.category] || NOTIF_ICON.default}</div>
+      <div class="notif-body">
+        <div class="notif-title">${esc(n.title)}</div>
+        ${n.detail ? `<div class="notif-detail">${esc(n.detail)}</div>` : ""}
+        <div class="notif-time">${timeAgo(n.ts)}</div>
+      </div>
+    </div>`).join("");
+}
+
+function toggleNotifPanel(force) {
+  const panel = document.getElementById("notifPanel");
+  if (!panel) return;
+  const open = force ?? panel.style.display !== "block";
+  panel.style.display = open ? "block" : "none";
+  if (open) {
+    notifUnread = 0;
+    renderNotifBell();
+    renderNotifPanel();
+  }
+}
+
+(function initNotifBell() {
+  document.getElementById("notifBell")?.addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
+  document.getElementById("notifClear")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    notifItems = [];
+    try { localStorage.setItem(NOTIF_KEY, "[]"); } catch {}
+    renderNotifPanel();
+  });
+  document.addEventListener("click", (e) => {
+    const wrap = document.getElementById("notifWrap");
+    if (wrap && !wrap.contains(e.target)) toggleNotifPanel(false);
+  });
+  renderNotifBell();
+  renderNotifPanel();
+})();
+
 export const MOV_COLORS = {
   "Transfer":["#2B5AC7","#EEF3FB"],"Promotion":["#6D28D9","#EDE9FE"],
   "Demotion":["#C0392B","#FDECEA"],"Resignation":["#C0392B","#FDECEA"],
@@ -390,7 +473,8 @@ function openMovModal(entry=null) {
       }
     }
     document.getElementById("modalPortal").innerHTML="";
-    toast("บันทึกสำเร็จ","success");
+    if(existId) toast("บันทึกสำเร็จ","success");
+    else notify("เพิ่มรายการเคลื่อนไหว", `${name} · ${data.type||"-"}`, {category:"movement"});
   };
   window._delMov = async (id) => {
     if(!confirm("ลบรายการนี้?")) return;

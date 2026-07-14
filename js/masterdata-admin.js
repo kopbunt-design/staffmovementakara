@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { userRole, esc, toast } from "./app.js";
+import { userRole, esc, toast, notify } from "./app.js";
 
 // ===== CACHED MASTER DATA =====
 export let masterDivisions = [];
@@ -269,7 +269,12 @@ function openMasterModal(table, item=null) {
 
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     document.getElementById("masterModal").remove();
-    toast("บันทึกสำเร็จ","success");
+    if(existId){
+      toast("บันทึกสำเร็จ","success");
+    } else {
+      const tblLabel={divisions:"Division",departments:"Department",sections:"Section",teams:"Team",positions:"Position",job_levels:"Job Level"}[tbl]||tbl;
+      notify("เพิ่มข้อมูลหลัก", `${tblLabel}: ${name}`, {category:"master"});
+    }
     await loadMasterData();
     renderSettings();
   };

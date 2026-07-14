@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast } from "./app.js";
+import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast, notify } from "./app.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
 import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES, PROVINCES } from "./masterdata.js";
 
@@ -214,7 +214,8 @@ function openEmpModal(emp=null) {
     const { error } = await supabase.from("employees").upsert(data,{onConflict:"emp_code"});
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     document.getElementById("empModal").remove();
-    toast("บันทึกสำเร็จ","success");
+    if(existCode) toast("บันทึกสำเร็จ","success");
+    else notify("เพิ่มพนักงานใหม่", `${code} · ${(g("ef_fnTH")+" "+g("ef_lnTH")).trim()}`, {category:"employee"});
   };
   window._deleteEmp = async (code) => {
     if(!confirm("ลบพนักงานคนนี้ออกจากระบบ?")) return;
@@ -347,7 +348,7 @@ async function handleImport(inputEl) {
       }
 
       const extra=[]; if(movCreated) extra.push(`สร้าง Movement ${movCreated} รายการ`); if(movUpdated) extra.push(`อัปเดตวันที่ ${movUpdated} รายการ`);
-      toast(`Import เสร็จสิ้น: ${batch.length} รายการ${extra.length?` · ${extra.join(", ")}`:""}`, "success");
+      notify("นำเข้าพนักงาน", `${batch.length} รายการ${extra.length?` · ${extra.join(", ")}`:""}`, {category:"employee", toastMsg:`Import เสร็จสิ้น: ${batch.length} รายการ${extra.length?` · ${extra.join(", ")}`:""}`});
     }catch(err){ toast("อ่านไฟล์ไม่ได้: "+err.message,"error"); }
   };
   reader.readAsBinaryString(file);

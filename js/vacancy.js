@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, esc, toast, userRole } from "./app.js";
+import { allEmployees, esc, toast, userRole, notify } from "./app.js";
 
 function getFY(ym){const[y,m]=ym.split("-").map(Number);return m>=7?y+1:y;}
 
@@ -230,7 +230,7 @@ export async function renderVacancy(){
     if(exists){toast("ตำแหน่งนี้มีอยู่แล้วใน FY"+selFY+" กดแก้ไขแทน","error");return;}
     const{error}=await supabase.from("position_quota").insert({fiscal_year:selFY,division:div,department:dept,position:pos,job_level:jl,quota:qty});
     if(error){toast("เพิ่มไม่สำเร็จ: "+error.message,"error");return;}
-    await loadPosQuota();toast("เพิ่มสำเร็จ","success");render();
+    await loadPosQuota();notify("เพิ่มโควตาตำแหน่ง", `${pos} · ${dept} · FY${selFY} · ${qty} อัตรา`, {category:"quota", toastMsg:"เพิ่มสำเร็จ"});render();
   };
   window._vEdit=async(id)=>{
     const q=posQuota.find(x=>String(x.id)===String(id));if(!q)return;
@@ -287,7 +287,9 @@ export async function renderVacancy(){
           }
         }
         await loadPosQuota();
-        toast(`Import FY${selFY}: เพิ่ม ${created}, อัปเดต ${updated} ตำแหน่ง`,"success");
+        const _qmsg=`Import FY${selFY}: เพิ่ม ${created}, อัปเดต ${updated} ตำแหน่ง`;
+        if(created) notify("นำเข้าโควตาตำแหน่ง", `FY${selFY} · เพิ่ม ${created}, อัปเดต ${updated} ตำแหน่ง`, {category:"quota", toastMsg:_qmsg});
+        else toast(_qmsg,"success");
         render();
       }catch(err){toast("อ่านไฟล์ไม่ได้: "+err.message,"error");}
     };
