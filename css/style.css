@@ -65,6 +65,7 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .notif-ic-employee{color:var(--green);background:var(--green-light);}
 .notif-ic-quota{color:var(--purple);background:var(--purple-light);}
 .notif-ic-master{color:var(--gold-dark);background:var(--gold-light);}
+.notif-ic-alert{color:var(--red);background:var(--red-light);}
 .notif-body{min-width:0;flex:1;}
 .notif-title{font-size:12.5px;font-weight:600;color:var(--text);}
 .notif-detail{font-size:11.5px;color:var(--muted);margin-top:1px;word-break:break-word;}

@@ -36,6 +36,7 @@ const NOTIF_ICON = {
   movement: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>`,
   quota: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>`,
   master: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>`,
+  alert: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>`,
   default: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`,
 };
 
@@ -162,6 +163,81 @@ async function loadEmployees() {
   allEmployees = data || [];
   const active = allEmployees.filter(e=>e.status==="Active"||!e.status).length;
   document.getElementById("empNavCount").textContent = active||"";
+  checkProactiveAlerts();
+}
+
+// ===== PROACTIVE ALERTS (สัญญาใกล้หมดอายุ / พ้นทดลองงาน / ใกล้เกษียณ) =====
+// เกณฑ์วัน: อ้างอิงจากที่คุยกับผู้ใช้ (2026-07-15) — ไม่ใช่ค่ามาตรฐานสากล ปรับได้ตามนโยบายบริษัท
+const PROBATION_DAYS = 119; // มาตรฐานที่บริษัทไทยส่วนใหญ่ใช้ เพื่อให้ต่ำกว่าเกณฑ์ 120 วันตามกฎหมายแรงงาน
+const CONTRACT_ALERT_DAYS = [60, 30]; // แจ้งสองระดับ: เหลือ ≤60 วัน และ ≤30 วัน
+const RETIRE_ALERT_DAYS = 90;
+const RETIRE_AGE = 60;
+
+const ALERT_SEEN_KEY = "hr_alert_seen";
+let alertSeen = new Set();
+try { alertSeen = new Set(JSON.parse(localStorage.getItem(ALERT_SEEN_KEY) || "[]")); } catch { alertSeen = new Set(); }
+function markAlertSeen(key) {
+  alertSeen.add(key);
+  try { localStorage.setItem(ALERT_SEEN_KEY, JSON.stringify([...alertSeen])); } catch {}
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date(); today.setUTCHours(0,0,0,0);
+  const target = new Date(String(dateStr).substring(0,10) + "T00:00:00Z");
+  if (isNaN(target)) return null;
+  return Math.round((target - today) / 86400000);
+}
+
+function empDisplayName(e) {
+  return `${e.firstname_th||e.firstname_en||""} ${e.lastname_th||e.lastname_en||""}`.trim() || e.emp_code;
+}
+
+// ตรวจพนักงาน active ทุกคน หาเหตุการณ์ที่ "กำลังจะเกิด" แล้วยิงแจ้งเตือนครั้งเดียวต่อคน/ต่อเกณฑ์ (กันแจ้งซ้ำด้วย alertSeen)
+function checkProactiveAlerts() {
+  const active = allEmployees.filter(e => e.status==="Active" || !e.status);
+  for (const e of active) {
+    const name = empDisplayName(e);
+
+    // พ้นทดลองงาน: join_date + PROBATION_DAYS วัน (เฉพาะ contract_type = Probation)
+    if (e.contract_type === "Probation" && e.join_date) {
+      const end = new Date(e.join_date.substring(0,10) + "T00:00:00Z");
+      end.setUTCDate(end.getUTCDate() + PROBATION_DAYS);
+      const d = daysUntil(end.toISOString());
+      const key = `probation-${e.emp_code}`;
+      if (d !== null && d >= 0 && d <= 14 && !alertSeen.has(key)) {
+        notify(`ใกล้พ้นทดลองงาน — ${name}`, `ครบ ${PROBATION_DAYS} วัน ในอีก ${d} วัน (${end.toISOString().substring(0,10)})`, {category:"alert", toastMsg:`${name} ใกล้พ้นทดลองงานในอีก ${d} วัน`});
+        markAlertSeen(key);
+      }
+    }
+
+    // สัญญาใกล้หมดอายุ: end_date, ไม่ใช่ Permanent
+    if (e.end_date && e.contract_type !== "Permanent") {
+      const d = daysUntil(e.end_date);
+      for (const threshold of CONTRACT_ALERT_DAYS) {
+        const key = `contract${threshold}-${e.emp_code}`;
+        if (d !== null && d >= 0 && d <= threshold && !alertSeen.has(key)) {
+          notify(`สัญญาใกล้หมดอายุ — ${name}`, `หมดอายุ ${fmtDate(e.end_date)} (อีก ${d} วัน)`, {category:"alert", toastMsg:`สัญญา ${name} ใกล้หมดอายุในอีก ${d} วัน`});
+          markAlertSeen(key);
+        }
+      }
+    }
+
+    // ใกล้เกษียณ: dob + RETIRE_AGE ปี
+    if (e.dob) {
+      const dob = new Date(e.dob.substring(0,10) + "T00:00:00Z");
+      if (!isNaN(dob)) {
+        const retireDate = new Date(dob);
+        retireDate.setUTCFullYear(retireDate.getUTCFullYear() + RETIRE_AGE);
+        const d = daysUntil(retireDate.toISOString());
+        const key = `retire-${e.emp_code}`;
+        if (d !== null && d >= 0 && d <= RETIRE_ALERT_DAYS && !alertSeen.has(key)) {
+          notify(`ใกล้เกษียณอายุ — ${name}`, `ครบ ${RETIRE_AGE} ปี วันที่ ${retireDate.toISOString().substring(0,10)} (อีก ${d} วัน)`, {category:"alert", toastMsg:`${name} ใกล้เกษียณอายุในอีก ${d} วัน`});
+          markAlertSeen(key);
+        }
+      }
+    }
+  }
 }
 
 // ===== REALTIME =====
