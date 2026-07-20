@@ -42,8 +42,8 @@ const NOTIF_ICON = {
 
 // บันทึกแจ้งเตือนลงกระดิ่ง + แสดง toast (ใช้เมื่อ "เพิ่ม" รายการใหม่)
 export function notify(title, detail = "", opts = {}) {
-  const { type = "success", category = "default", toastMsg } = opts;
-  toast(toastMsg || (detail ? `${title} — ${detail}` : title), type);
+  const { type = "success", category = "default", toastMsg, silent = false } = opts;
+  if (!silent) toast(toastMsg || (detail ? `${title} — ${detail}` : title), type);
   notifItems.unshift({
     id: Date.now() + "-" + Math.random().toString(36).slice(2, 6),
     ts: new Date().toISOString(),
@@ -174,6 +174,7 @@ const RETIRE_ALERT_DAYS = 90;
 const RETIRE_AGE = 60;
 
 const ALERT_SEEN_KEY = "hr_alert_seen";
+const ALERT_SEEDED_KEY = "hr_alert_seeded"; // ธงว่าเคยรันรอบแรกแล้ว (กัน toast ท่วมจอตอนเปิดครั้งแรก/เครื่องใหม่)
 let alertSeen = new Set();
 try { alertSeen = new Set(JSON.parse(localStorage.getItem(ALERT_SEEN_KEY) || "[]")); } catch { alertSeen = new Set(); }
 function markAlertSeen(key) {
@@ -195,6 +196,8 @@ function empDisplayName(e) {
 
 // ตรวจพนักงาน active ทุกคน หาเหตุการณ์ที่ "กำลังจะเกิด" แล้วยิงแจ้งเตือนครั้งเดียวต่อคน/ต่อเกณฑ์ (กันแจ้งซ้ำด้วย alertSeen)
 function checkProactiveAlerts() {
+  // รอบแรก (หรือเครื่องใหม่ที่ยังไม่เคยรัน): เก็บ alert ที่ค้างอยู่เข้ากระดิ่งเงียบ ๆ ไม่ยิง toast ท่วมจอ
+  const firstRun = !localStorage.getItem(ALERT_SEEDED_KEY);
   const active = allEmployees.filter(e => e.status==="Active" || !e.status);
   for (const e of active) {
     const name = empDisplayName(e);
@@ -203,22 +206,27 @@ function checkProactiveAlerts() {
     if (e.contract_type === "Probation" && e.join_date) {
       const end = new Date(e.join_date.substring(0,10) + "T00:00:00Z");
       end.setUTCDate(end.getUTCDate() + PROBATION_DAYS);
-      const d = daysUntil(end.toISOString());
-      const key = `probation-${e.emp_code}`;
+      const endStr = end.toISOString().substring(0,10);
+      const d = daysUntil(endStr);
+      const key = `probation-${e.emp_code}-${endStr}`; // ใส่วันที่ใน key → เข้างานใหม่/ต่อโปร = แจ้งใหม่ได้
       if (d !== null && d >= 0 && d <= 14 && !alertSeen.has(key)) {
-        notify(`ใกล้พ้นทดลองงาน — ${name}`, `ครบ ${PROBATION_DAYS} วัน ในอีก ${d} วัน (${end.toISOString().substring(0,10)})`, {category:"alert", toastMsg:`${name} ใกล้พ้นทดลองงานในอีก ${d} วัน`});
+        notify(`ใกล้พ้นทดลองงาน — ${name}`, `ครบ ${PROBATION_DAYS} วัน ในอีก ${d} วัน (${endStr})`, {category:"alert", silent:firstRun, toastMsg:`${name} ใกล้พ้นทดลองงานในอีก ${d} วัน`});
         markAlertSeen(key);
       }
     }
 
-    // สัญญาใกล้หมดอายุ: end_date, ไม่ใช่ Permanent
+    // สัญญาใกล้หมดอายุ: end_date, ไม่ใช่ Permanent — ยิงเฉพาะ "ระดับที่ใกล้สุด" ที่เข้าเกณฑ์ (กันเด้งซ้อน 2 อัน)
     if (e.end_date && e.contract_type !== "Permanent") {
       const d = daysUntil(e.end_date);
-      for (const threshold of CONTRACT_ALERT_DAYS) {
-        const key = `contract${threshold}-${e.emp_code}`;
-        if (d !== null && d >= 0 && d <= threshold && !alertSeen.has(key)) {
-          notify(`สัญญาใกล้หมดอายุ — ${name}`, `หมดอายุ ${fmtDate(e.end_date)} (อีก ${d} วัน)`, {category:"alert", toastMsg:`สัญญา ${name} ใกล้หมดอายุในอีก ${d} วัน`});
-          markAlertSeen(key);
+      if (d !== null && d >= 0) {
+        const endStr = String(e.end_date).substring(0,10);
+        const band = [...CONTRACT_ALERT_DAYS].sort((a,b)=>a-b).find(t => d <= t); // เกณฑ์วันน้อยสุดที่ยังครอบคลุม
+        if (band != null) {
+          const key = `contract-${e.emp_code}-${endStr}-${band}`; // ผูกกับ end_date + band → ต่อสัญญาใหม่ = แจ้งใหม่, ข้ามจาก 60→30 = แจ้งอีกครั้ง
+          if (!alertSeen.has(key)) {
+            notify(`สัญญาใกล้หมดอายุ — ${name}`, `หมดอายุ ${fmtDate(e.end_date)} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, toastMsg:`สัญญา ${name} ใกล้หมดอายุในอีก ${d} วัน`});
+            markAlertSeen(key);
+          }
         }
       }
     }
@@ -229,20 +237,24 @@ function checkProactiveAlerts() {
       if (!isNaN(dob)) {
         const retireDate = new Date(dob);
         retireDate.setUTCFullYear(retireDate.getUTCFullYear() + RETIRE_AGE);
-        const d = daysUntil(retireDate.toISOString());
-        const key = `retire-${e.emp_code}`;
+        const retStr = retireDate.toISOString().substring(0,10);
+        const d = daysUntil(retStr);
+        const key = `retire-${e.emp_code}-${retStr}`;
         if (d !== null && d >= 0 && d <= RETIRE_ALERT_DAYS && !alertSeen.has(key)) {
-          notify(`ใกล้เกษียณอายุ — ${name}`, `ครบ ${RETIRE_AGE} ปี วันที่ ${retireDate.toISOString().substring(0,10)} (อีก ${d} วัน)`, {category:"alert", toastMsg:`${name} ใกล้เกษียณอายุในอีก ${d} วัน`});
+          notify(`ใกล้เกษียณอายุ — ${name}`, `ครบ ${RETIRE_AGE} ปี วันที่ ${retStr} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, toastMsg:`${name} ใกล้เกษียณอายุในอีก ${d} วัน`});
           markAlertSeen(key);
         }
       }
     }
   }
+  if (firstRun) { try { localStorage.setItem(ALERT_SEEDED_KEY, "1"); } catch {} }
 }
 
 // ===== REALTIME =====
+let realtimeChannel = null; // subscribe ครั้งเดียวต่อ session — onAuthStateChange ยิงซ้ำได้ (token refresh/สลับแท็บ) จึงต้องกัน subscribe ซ้ำ
 function startRealtime() {
-  supabase.channel("db-changes")
+  if (realtimeChannel) return;
+  realtimeChannel = supabase.channel("db-changes")
     .on("postgres_changes", {event:"*", schema:"public", table:"movements"}, async () => {
       await loadMovements();
       if(currentPage==="dashboard") renderDashboard();
