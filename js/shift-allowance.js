@@ -66,12 +66,15 @@ export function computeShiftAllowance(rows, empMap) {
     const first = g.rows[0] || {};
     const empId = String(first.Employee_ID || "").trim();
 
-    // เช็คสิทธิ์จากระดับตำแหน่ง (DB)
+    // เช็คสิทธิ์จากระดับตำแหน่ง (DB) — ระดับ O ได้อัตโนมัติ, ระดับอื่นต้อง HR ติ๊ก override รายคน
     const emp = empMap.get(empId);
     const jobLevel = emp?.job_level || "";
     const found = !!emp;
-    const eligible = found && ELIGIBLE_LEVELS.has(jobLevel);
-    const reason = !found ? "ไม่พบใน DB" : !ELIGIBLE_LEVELS.has(jobLevel) ? `ระดับ ${jobLevel || "-"}` : "";
+    const override = emp?.shift_allowance_override === true;
+    const levelOk = ELIGIBLE_LEVELS.has(jobLevel);
+    const eligible = found && (levelOk || override);
+    const granted = eligible && !levelOk; // ได้เพราะ HR ให้พิเศษ (ไม่ใช่ระดับ O)
+    const reason = !found ? "ไม่พบใน DB" : (levelOk || override) ? "" : `ระดับ ${jobLevel || "-"}`;
 
     // เตรียม status + family ของแต่ละแถว
     const days = g.rows.map(row => ({
@@ -105,7 +108,7 @@ export function computeShiftAllowance(rows, empMap) {
 
     summary.push({
       Employee_ID: empId, Employee_Name: first.Employee_Name, Department: first.Department,
-      month: g.ym, job_level: jobLevel, eligible, reason,
+      month: g.ym, job_level: jobLevel, eligible, granted, reason,
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate,
       payDays, noPayDays, checkDays,
@@ -229,7 +232,7 @@ export function renderShiftAllowance() {
     if (!lastResult || !window.XLSX) { toast("ยังไม่มีข้อมูลให้ export","error"); return; }
     const s = lastResult.summary.map(r => ({
       Employee_ID:r.Employee_ID, Employee_Name:r.Employee_Name, Department:r.Department,
-      เดือน:r.month, ระดับ:r.job_level, เข้าเกณฑ์:r.eligible?"ใช่":"ไม่", หมายเหตุ:r.reason,
+      เดือน:r.month, ระดับ:r.job_level, เข้าเกณฑ์:r.eligible?"ใช่":"ไม่", หมายเหตุ:r.granted?"HR กำหนดพิเศษ":r.reason,
       ตระกูลกะ:r.families, จำนวนตระกูล:r.familyCount, อัตราต่อเดือน:r.monthlyRate,
       วันจ่าย:r.payDays, วันไม่จ่าย:r.noPayDays, ต้องตรวจสอบ:r.checkDays, ยอดค่ากะ:r.total,
     }));
@@ -250,9 +253,11 @@ function renderResults() {
   const totalCheck = rows.reduce((s,r)=>s+r.checkDays, 0);
   const { sheetName, rowCount, notFound, ineligible } = lastMeta;
 
+  const granted = rows.filter(r=>r.granted).length;
   const warns = [];
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
   if (ineligible)  warns.push(`${ineligible} คนไม่ใช่ระดับ O → ฿0`);
+  if (granted)     warns.push(`${granted} คนระดับไม่ใช่ O แต่ได้ค่ากะ (HR กำหนดพิเศษ)`);
   if (totalCheck)  warns.push(`${totalCheck} วันสถานะไม่ชัด (CHECK_NOTE) ไม่นับเป็นวันจ่าย`);
 
   el.innerHTML = `
@@ -275,7 +280,7 @@ function renderResults() {
             <td>${esc(r.Employee_Name||"-")}</td>
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
-            <td>${r.eligible ? esc(r.job_level) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
+            <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
             <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span></td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>

@@ -19,6 +19,9 @@ create table if not exists shift_allowance (
   unique (emp_code, month)               -- อัปโหลดเดือนเดิมซ้ำ = อัปเดตทับ (ไม่เกิดแถวซ้ำ)
 );
 
+-- ธงยกเว้นรายคน: พนักงานที่ HR กำหนดให้ได้ค่ากะแม้ระดับไม่ใช่ O (เช่น ปรับ O->S แล้วยังได้ต่อ)
+alter table employees add column if not exists shift_allowance_override boolean;
+
 alter table shift_allowance enable row level security;
 
 -- อ่านได้ทุกคนที่ล็อกอิน, เขียน/แก้/ลบเฉพาะ HR + Admin (ใช้ helper get_my_role() ตัวเดิมใน schema.sql)

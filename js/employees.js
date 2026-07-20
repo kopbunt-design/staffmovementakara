@@ -159,6 +159,7 @@ function openEmpModal(emp=null) {
           <div class="form-group"><label class="form-label">วันสิ้นสุดสัญญา</label><input id="ef_end" type="date" class="form-control" value="${v("end_date")}"></div>
           ${userRole==="hr"||userRole==="admin"?`<div class="form-group"><label class="form-label">เงินเดือน (บาท)</label><input id="ef_sal" type="number" class="form-control" value="${emp?.salary||""}"></div>`:`<div></div>`}
           <div class="form-group col-span-2"><label class="form-label">Remark</label><textarea id="ef_remark" class="form-control">${v("remark")}</textarea></div>
+          ${userRole==="hr"||userRole==="admin"?`<div class="form-group col-span-2"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;"><input id="ef_shiftallow" type="checkbox" ${emp?.shift_allowance_override?"checked":""} style="width:auto;margin:0;"> ได้รับค่ากะ (กำหนดเอง)</label><div style="font-size:11px;color:var(--muted);margin-top:2px;">ติ๊กเมื่อพนักงานระดับไม่ใช่ O แต่ HR ให้ได้ค่ากะ (เช่น ปรับ O→S แล้วยังได้ต่อ) — ปกติระดับ O ได้อยู่แล้วไม่ต้องติ๊ก</div></div>`:""}
         </div>
       </div>
       <div class="modal-footer">
@@ -210,6 +211,8 @@ function openEmpModal(emp=null) {
       join_date:g("ef_join")||null, effective_date:g("ef_eff")||null, end_date:g("ef_end")||null,
       salary:Number(document.getElementById("ef_sal")?.value)||null,
       remark:g("ef_remark"), updated_at:new Date().toISOString(),
+      // ใส่เฉพาะตอนที่ checkbox แสดง (HR/Admin) — กันไม่ให้ non-HR ที่ไม่เห็นช่องนี้เขียนทับเป็น null
+      ...(document.getElementById("ef_shiftallow") ? { shift_allowance_override: document.getElementById("ef_shiftallow").checked } : {}),
     };
     const { error } = await supabase.from("employees").upsert(data,{onConflict:"emp_code"});
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
