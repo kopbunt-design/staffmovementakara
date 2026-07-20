@@ -1,37 +1,47 @@
 # TODO / สถานะงาน
 
-อัปเดตล่าสุด: 2026-07-15
+อัปเดตล่าสุด: 2026-07-20
 
-## ✅ เสร็จแล้ว — กระดิ่งแจ้งเตือน (Notification Bell)
-Push ขึ้น main แล้ว (commit `dc97ba6`), Vercel deploy อัตโนมัติ
+## ✅ เสร็จ + push ขึ้น production แล้ว
 
-- กระดิ่งอยู่มุมขวาบนของ sidebar (ข้างโลโก้) มี badge นับที่ยังไม่อ่าน + dropdown panel
-- เก็บ log ล่าสุด 60 รายการใน `localStorage` (key: `hr_notifications`)
-- **เด้งเฉพาะการ "เพิ่มใหม่"** เท่านั้น (การแก้ไขยังเป็น toast ธรรมดา)
-- จุดที่ hook ไว้: เพิ่ม Movement, เพิ่มพนักงาน, Import พนักงาน, เพิ่ม/Import Position Quota, เพิ่ม Master data
-- แกนหลัก: `notify(title, detail, opts)` ใน `js/app.js` (export ให้โมดูลอื่นเรียก)
-- ไฟล์ที่แก้: `js/app.js`, `index.html`, `css/style.css`, `js/employees.js`, `js/vacancy.js`, `js/masterdata-admin.js`
+### กระดิ่งแจ้งเตือน (Notification Bell)
+- กระดิ่งมุมขวาบน sidebar + badge นับที่ยังไม่อ่าน + dropdown panel
+- **เก็บใน Supabase (ตาราง `notifications`) + realtime — shared ทุก user** (เดิม localStorage แยกเครื่อง user อื่นไม่เห็น) commit `29187af`
+- เด้งเฉพาะ "เพิ่มใหม่": Movement, พนักงาน, Import, Position Quota, Master data
+- **Proactive alerts** — สัญญาใกล้หมด / พ้นโปร / ใกล้เกษียณ (กันแจ้งซ้ำแบบ global ด้วย `dedup_key`)
+- ปุ่ม "อ่านแล้วทั้งหมด" (สถานะอ่านเป็นราย browser, ไม่ลบ log ของคนอื่น)
 
-## ✅ เสร็จแล้ว — Alert เชิงรุก (ต่อยอดจากกระดิ่ง)
-เขียนโค้ดแล้ว **ยังไม่ได้ push** — sandbox นี้ไม่มี Node/Python ให้รันแอปทดสอบจริง ต้องเปิดแอปจริงเช็คก่อน commit
+### คำนวณค่ากะ (Shift Allowance) — หน้าใหม่ HR/Admin
+- อัปโหลด Excel (sheet Clean_Data) → คำนวณตาม `shift_allowance_calculation_spec.md` (Pass1 นับตระกูลกะ→เรต, Pass2 pro-rate รายวัน)
+- **กรองระดับ O** (O1/O2/O3) อัตโนมัติ จาก job_level ใน DB — match Employee_ID↔emp_code
+- **ยกเว้นรายคน (grandfather)** — checkbox "ได้รับค่ากะ (กำหนดเอง)" ในฟอร์มพนักงาน (คอลัมน์ `shift_allowance_override`) สำหรับ S/M ที่ HR ให้ต่อ → badge "พิเศษ" commit `511c646`
+- **เก็บประวัติรายเดือน** ตาราง `shift_allowance` (upsert emp_code+month) + แท็บดูย้อนหลัง
+- แจ้งเตือน: ไม่พบใน DB / ไม่ใช่ระดับ O / วัน CHECK_NOTE
 
-- เพิ่ม `checkProactiveAlerts()` ใน `js/app.js` เรียกท้าย `loadEmployees()` ทุกครั้งที่โหลด/รีเฟรชข้อมูลพนักงาน
-- ตรวจพนักงาน status Active ทุกคน หา 3 เหตุการณ์:
-  - **สัญญาใกล้หมดอายุ** — `end_date` + `contract_type !== "Permanent"`, แจ้ง 2 ระดับ ≤60 วัน และ ≤30 วัน (`CONTRACT_ALERT_DAYS`)
-  - **ใกล้พ้นทดลองงาน** — `contract_type === "Probation"`, วันครบ = `join_date + 119 วัน` (`PROBATION_DAYS`), แจ้งล่วงหน้า ≤14 วัน
-  - **ใกล้เกษียณ** — `dob + 60 ปี` (`RETIRE_AGE`), แจ้งล่วงหน้า ≤90 วัน (`RETIRE_ALERT_DAYS`)
-- กันแจ้งซ้ำด้วย `localStorage` key `hr_alert_seen` (เก็บ key ต่อคน/ต่อเกณฑ์ เช่น `contract30-E001`) — แจ้งครั้งเดียวตลอดไป ไม่ใช่ทุกครั้งที่เปิดแอป
-- category ใหม่ `alert` สีแดง (`--red`/`--red-light`) แยกจาก log การเพิ่มปกติ — ใช้ panel/badge เดิมของกระดิ่ง
-- ค่าคงที่ทั้งหมด (จำนวนวัน) อยู่บนสุดของบล็อกใน `js/app.js` (คอมเมนต์ `PROACTIVE ALERTS`) ปรับตามนโยบายบริษัทได้ภายหลัง — ยืนยันกับผู้ใช้แล้วเมื่อ 2026-07-15
-- **ยังไม่ทดสอบกับข้อมูลจริง** — ต้องเปิดแอป, เช็คว่าไม่มี error ใน console, ลองพนักงานตัวอย่างที่ end_date/dob/join_date อยู่ในช่วงแจ้งเตือน แล้วดูว่ากระดิ่งขึ้น badge + toast ถูกต้อง ก่อน commit/push
+### แก้บั๊ก
+- realtime subscribe ซ้ำ (`cannot add postgres_changes...`) — guard ด้วย `realtimeChannel`
+- SQL scripts idempotent (รันซ้ำไม่ error) commit `db873c4`
 
-## 💡 ไอเดียอื่นที่คุยไว้ (ทำทีหลัง)
-2. ยกเครื่องหน้า Analytics — เพิ่ม turnover rate %, headcount trend 12 เดือน, สัดส่วนเพศ/อายุงาน/ไซต์ (`js/app.js:500` renderAnalytics ปัจจุบันบางมาก)
-3. Audit log ถาวรใน DB — ตาราง `activity_log` (กระดิ่งตอนนี้เก็บแค่ localStorage หายเมื่อล้าง cache)
-4. หน้าโปรไฟล์พนักงาน + timeline ประวัติการเคลื่อนไหวรายคน
-5. Global search — ช่องค้นหาพนักงานจากทุกหน้า
+## ⚠️ ต้องทำใน Supabase (ถ้ายังไม่ได้ทำในโปรเจกต์จริง)
+รันใน SQL Editor (ทีละไฟล์, idempotent):
+1. `sql/schema_notifications.sql` — ตารางกระดิ่ง shared
+2. `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
+
+## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)
+1. **RLS + ข้อมูลเงินเดือน** — ตอนนี้ user ที่ล็อกอินอ่าน `salary` ผ่าน API ได้ แม้หน้า Payroll ซ่อนไว้ → แยกตาราง/จำกัด RLS (สำคัญสุด)
+2. **pending_roles + จำกัดการสมัคร** — กัน user ลบของคนอื่น, จำกัดโดเมนอีเมล/เชิญโดย admin
+3. **Audit log ถาวรใน DB** — ตาราง activity log (ใครแก้/เพิ่ม/ลบ + ค่าเดิม/ใหม่)
+4. **Validation + DB constraints** — ลำดับวันที่, เงินเดือนห้ามติดลบ, status/type ในลิสต์
+5. **Movement + Employee update เป็น transaction เดียว** (ย้ายไป Supabase RPC)
+6. **Automated tests ขั้นต่ำ** — business logic (headcount, effective date, alerts) + RLS
+7. **ต่อยอด** — Employee profile + timeline, Global search, Analytics (turnover rate, headcount trend)
+
+## 📝 เรื่องค้าง/ยังไม่ทดสอบเต็ม
+- คำนวณค่ากะ: ควรเทียบยอดจริงกับคอลัมน์ `Shift_Allowance` (เฉลยมือ) ในไฟล์ Test_Report ให้ครบ
+- §7.3 ลาเศษวัน = คิดเต็มวัน (ตาม pseudocode ที่ผู้ใช้เลือก 2026-07-20)
 
 ## หมายเหตุ (ต่อเครื่องอื่น)
-- ประวัติแชต Claude Code เก็บ local ที่ `~/.claude/projects/` ไม่ sync ข้ามเครื่อง — เปิดอีกเครื่องให้ `git pull` แล้วอ่านไฟล์นี้ต่อได้เลย
-- Git identity ของ repo นี้ตั้ง local เป็น Kopbun Tungkasen <kopbun@akararesources.com> แล้ว
-- ⚠️ GitHub token ที่ใช้ push รอบนี้เคยโพสต์ในแชต — ถ้ายังไม่ได้ regenerate ควรทำที่ https://github.com/settings/tokens
+- ประวัติแชต Claude Code เก็บ local ที่ `~/.claude/projects/` ไม่ sync ข้ามเครื่อง — เปิดอีกเครื่อง `git pull` แล้วอ่านไฟล์นี้ต่อได้
+- Git identity ของ repo ตั้ง local เป็น Kopbun Tungkasen <kopbun@akararesources.com>
+- Local test server: `python3 -m http.server 8000 --directory "<repo>"` แล้วเปิด http://localhost:8000 (login ต้องผ่าน http ไม่ใช่ file://)
+- ⚠️ GitHub token ที่เคย push เคยโพสต์ในแชต — ถ้ายังไม่ regenerate ควรทำที่ https://github.com/settings/tokens
