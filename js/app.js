@@ -26,10 +26,13 @@ export function toast(msg, type="info") {
 }
 
 // ===== NOTIFICATIONS (กระดิ่งแจ้งเตือน) =====
-const NOTIF_KEY = "hr_notifications";
+// เก็บใน Supabase (ตาราง notifications) + realtime — ทุก user เห็นรายการเดียวกัน
+// (เดิมเก็บใน localStorage ซึ่งแยกเครื่อง/แยกเบราว์เซอร์ user คนอื่นจึงไม่เห็นสิ่งที่คนอื่นเพิ่ม)
 let notifItems = [];
-try { notifItems = JSON.parse(localStorage.getItem(NOTIF_KEY) || "[]"); } catch { notifItems = []; }
 let notifUnread = 0;
+// "อ่านล่าสุดเมื่อไหร่" เป็นเรื่องส่วนตัวของผู้ดูแต่ละคน จึงยังเก็บต่อเบราว์เซอร์ได้ (ต่างจากตัวรายการที่ต้อง shared)
+const NOTIF_SEEN_KEY = "hr_notif_last_seen";
+let notifLastSeen = localStorage.getItem(NOTIF_SEEN_KEY) || "";
 
 const NOTIF_ICON = {
   employee: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`,
@@ -40,17 +43,32 @@ const NOTIF_ICON = {
   default: `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`,
 };
 
-// บันทึกแจ้งเตือนลงกระดิ่ง + แสดง toast (ใช้เมื่อ "เพิ่ม" รายการใหม่)
-export function notify(title, detail = "", opts = {}) {
-  const { type = "success", category = "default", toastMsg, silent = false } = opts;
+// บันทึกแจ้งเตือนลงกระดิ่ง (shared ทุกคนผ่าน Supabase) + toast ให้ตัวเองทันที (ใช้เมื่อ "เพิ่ม" รายการใหม่)
+// dedupKey: ใส่เมื่อไม่อยากให้เกิดแถวซ้ำถ้าหลายเครื่องคำนวณเจอ alert เดียวกันพร้อมกัน (unique constraint ที่ DB)
+export async function notify(title, detail = "", opts = {}) {
+  const { type = "success", category = "default", toastMsg, silent = false, dedupKey = null } = opts;
   if (!silent) toast(toastMsg || (detail ? `${title} — ${detail}` : title), type);
-  notifItems.unshift({
-    id: Date.now() + "-" + Math.random().toString(36).slice(2, 6),
-    ts: new Date().toISOString(),
-    title, detail, category,
-  });
+  const row = { title, detail, category, dedup_key: dedupKey, created_by: currentUser?.id || null };
+  const { error } = dedupKey
+    ? await supabase.from("notifications").upsert(row, { onConflict: "dedup_key" })
+    : await supabase.from("notifications").insert(row);
+  if (error) console.error("บันทึกแจ้งเตือนไม่สำเร็จ:", error.message);
+  // ไม่ต้อง push เข้า notifItems เอง — realtime (startRealtime) จะรับ event INSERT มา render ให้ทุกเครื่อง รวมเครื่องนี้ด้วย
+}
+
+async function loadNotifications() {
+  const { data } = await supabase.from("notifications").select("*").order("created_at", { ascending:false }).limit(60);
+  notifItems = data || [];
+  notifUnread = notifItems.filter(n => n.created_at > notifLastSeen).length;
+  renderNotifBell();
+  renderNotifPanel();
+}
+
+// รับแจ้งเตือนใหม่จาก realtime (ของตัวเองหรือ user อื่นก็ได้) มาต่อบนสุดของรายการ
+function pushNotification(row) {
+  if (notifItems.some(n => n.id === row.id)) return; // กันซ้ำ
+  notifItems.unshift(row);
   if (notifItems.length > 60) notifItems.length = 60;
-  try { localStorage.setItem(NOTIF_KEY, JSON.stringify(notifItems)); } catch {}
   notifUnread++;
   renderNotifBell();
   renderNotifPanel();
@@ -76,7 +94,7 @@ function renderNotifPanel() {
       <div class="notif-body">
         <div class="notif-title">${esc(n.title)}</div>
         ${n.detail ? `<div class="notif-detail">${esc(n.detail)}</div>` : ""}
-        <div class="notif-time">${timeAgo(n.ts)}</div>
+        <div class="notif-time">${timeAgo(n.created_at)}</div>
       </div>
     </div>`).join("");
 }
@@ -88,8 +106,9 @@ function toggleNotifPanel(force) {
   panel.style.display = open ? "block" : "none";
   if (open) {
     notifUnread = 0;
+    notifLastSeen = new Date().toISOString();
+    try { localStorage.setItem(NOTIF_SEEN_KEY, notifLastSeen); } catch {}
     renderNotifBell();
-    renderNotifPanel();
   }
 }
 
@@ -97,9 +116,11 @@ function toggleNotifPanel(force) {
   document.getElementById("notifBell")?.addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
   document.getElementById("notifClear")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    notifItems = [];
-    try { localStorage.setItem(NOTIF_KEY, "[]"); } catch {}
-    renderNotifPanel();
+    // "ล้าง" = ทำเครื่องหมายว่าอ่านแล้วสำหรับตัวเอง — ไม่ลบข้อมูลของทุกคน (รายการเป็น shared log)
+    notifUnread = 0;
+    notifLastSeen = new Date().toISOString();
+    try { localStorage.setItem(NOTIF_SEEN_KEY, notifLastSeen); } catch {}
+    renderNotifBell();
   });
   document.addEventListener("click", (e) => {
     const wrap = document.getElementById("notifWrap");
@@ -118,7 +139,7 @@ export const MOV_COLORS = {
 export const movBadge = type => { const [c,bg]=MOV_COLORS[type]||["#64748B","#f1f5f9"]; return `<span class="badge" style="color:${c};background:${bg};">${esc(type)}</span>`; };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","users","settings"];
+const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","shiftallow","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -140,6 +161,7 @@ async function renderPage(page) {
   else if(page==="vacancy") (await import("./vacancy.js")).renderVacancy();
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
+  else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="users") (await import("./users.js")).renderUsers();
   else if(page==="settings") (await import("./masterdata-admin.js")).renderSettings();
 }
@@ -210,7 +232,7 @@ function checkProactiveAlerts() {
       const d = daysUntil(endStr);
       const key = `probation-${e.emp_code}-${endStr}`; // ใส่วันที่ใน key → เข้างานใหม่/ต่อโปร = แจ้งใหม่ได้
       if (d !== null && d >= 0 && d <= 14 && !alertSeen.has(key)) {
-        notify(`ใกล้พ้นทดลองงาน — ${name}`, `ครบ ${PROBATION_DAYS} วัน ในอีก ${d} วัน (${endStr})`, {category:"alert", silent:firstRun, toastMsg:`${name} ใกล้พ้นทดลองงานในอีก ${d} วัน`});
+        notify(`ใกล้พ้นทดลองงาน — ${name}`, `ครบ ${PROBATION_DAYS} วัน ในอีก ${d} วัน (${endStr})`, {category:"alert", silent:firstRun, dedupKey:key, toastMsg:`${name} ใกล้พ้นทดลองงานในอีก ${d} วัน`});
         markAlertSeen(key);
       }
     }
@@ -224,7 +246,7 @@ function checkProactiveAlerts() {
         if (band != null) {
           const key = `contract-${e.emp_code}-${endStr}-${band}`; // ผูกกับ end_date + band → ต่อสัญญาใหม่ = แจ้งใหม่, ข้ามจาก 60→30 = แจ้งอีกครั้ง
           if (!alertSeen.has(key)) {
-            notify(`สัญญาใกล้หมดอายุ — ${name}`, `หมดอายุ ${fmtDate(e.end_date)} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, toastMsg:`สัญญา ${name} ใกล้หมดอายุในอีก ${d} วัน`});
+            notify(`สัญญาใกล้หมดอายุ — ${name}`, `หมดอายุ ${fmtDate(e.end_date)} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, dedupKey:key, toastMsg:`สัญญา ${name} ใกล้หมดอายุในอีก ${d} วัน`});
             markAlertSeen(key);
           }
         }
@@ -241,7 +263,7 @@ function checkProactiveAlerts() {
         const d = daysUntil(retStr);
         const key = `retire-${e.emp_code}-${retStr}`;
         if (d !== null && d >= 0 && d <= RETIRE_ALERT_DAYS && !alertSeen.has(key)) {
-          notify(`ใกล้เกษียณอายุ — ${name}`, `ครบ ${RETIRE_AGE} ปี วันที่ ${retStr} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, toastMsg:`${name} ใกล้เกษียณอายุในอีก ${d} วัน`});
+          notify(`ใกล้เกษียณอายุ — ${name}`, `ครบ ${RETIRE_AGE} ปี วันที่ ${retStr} (อีก ${d} วัน)`, {category:"alert", silent:firstRun, dedupKey:key, toastMsg:`${name} ใกล้เกษียณอายุในอีก ${d} วัน`});
           markAlertSeen(key);
         }
       }
@@ -265,6 +287,9 @@ function startRealtime() {
       await loadEmployees();
       if(currentPage==="dashboard") renderDashboard();
       if(currentPage==="employees") (await import("./employees.js")).renderEmployees();
+    })
+    .on("postgres_changes", {event:"INSERT", schema:"public", table:"notifications"}, (payload) => {
+      pushNotification(payload.new); // เฉพาะ INSERT — upsert ซ้ำ dedup_key เดิมจะเป็น UPDATE ซึ่งไม่ต้องเด้งซ้ำ
     })
     .subscribe();
 }
@@ -304,7 +329,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
     document.getElementById("settingsNavItem").style.display = "flex";
   }
 
-  await Promise.all([loadMovements(), loadEmployees(), loadMasterData()]);
+  await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications()]);
   startRealtime();
   navigate("dashboard");
 });

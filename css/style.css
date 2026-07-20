@@ -246,6 +246,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .divider{height:1px;background:var(--border);margin:16px 0;}
 .mt-4{margin-top:16px;}
 .text-center{text-align:center;}
+.text-right{text-align:right;}
 .text-muted{color:var(--muted);}
 .text-sm{font-size:12px;}
 .font-bold{font-weight:700;}
