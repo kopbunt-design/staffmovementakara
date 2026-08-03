@@ -371,11 +371,11 @@ function renderDashboard() {
   }
 
   const {joined,resigned} = getMonthStats(ym);
+  // ใช้เดือนของ "วันทำงานวันสุดท้าย" (lastWorkYM) เหมือนทุกรายงาน — effective 1 ส.ค. = ทำงานถึง 31 ก.ค. จึงตัดออกตั้งแต่ ก.ค.
   const activeAtMonth = allEmployees.filter(e=>{
     const jm=(e.join_date||"").substring(0,7);
-    const em=(e.end_date||"").substring(0,7);
     if(jm && jm>ym) return false;
-    if(em && em<=ym) return false;
+    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm && lm<=ym) return false; }
     return true;
   });
   const total = activeAtMonth.length;

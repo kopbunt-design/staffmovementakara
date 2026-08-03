@@ -8,19 +8,20 @@ const GRP = [
   { key:"O", label:"O", levels:["O1","O2","O3"] },
 ];
 function grp(jl){ const u=(jl||"").toUpperCase().trim(); for(const g of GRP) if(g.levels.includes(u)) return g.key; return ""; }
-function lastDay(ym){
-  const[y,m]=ym.split("-").map(Number);
-  const d=new Date(Date.UTC(y,m,0)).getUTCDate();
-  return `${ym}-${String(d).padStart(2,"0")}`;
+// end_date / movement date = "วันที่มีผลพ้นสภาพ" (วันแรกที่ไม่ได้ทำงานแล้ว)
+// เดือนที่นับ = เดือนของ "วันทำงานวันสุดท้าย" = ลบ 1 วันจาก effective date
+// เช่น effective 1 ส.ค. -> วันทำงานวันสุดท้าย 31 ก.ค. -> ลาออกขึ้นเดือน ก.ค. และตัดออกจาก headcount ก.ค.
+// (หลักเดียวกับ Movement Report / Workforce Overview / Dashboard)
+function lastWorkYM(dateStr){
+  if(!dateStr) return "";
+  const d=new Date(dateStr);d.setUTCDate(d.getUTCDate()-1);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
 }
 function hcAtMonth(ym){
-  const ld=lastDay(ym);
   return allEmployees.filter(e=>{
     const jm=(e.join_date||"").substring(0,7);
     if(jm&&jm>ym) return false;
-    if(e.end_date){
-      if((e.end_date).substring(0,10)<=ld) return false;
-    }
+    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm&&lm<=ym) return false; }
     return true;
   });
 }
@@ -52,13 +53,13 @@ function buildData(periodYMs) {
     const allNew=[...allEmployees.filter(e=>movNewC.has(e.emp_code)),...empNew];
     const nG={}; GRP.forEach(g=>{nG[g.key]=cnt(allNew,g.key);}); const nT=allNew.length;
 
-    const movVolC=new Set(allMovements.filter(v=>movYM(v)===ym&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
-    const empVol=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
+    const movVolC=new Set(allMovements.filter(v=>lastWorkYM(v.date)===ym&&["Resignation","Retirement"].includes(v.type)).map(v=>v.emp_code));
+    const empVol=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&["Resigned","Retired"].includes(e.status)&&!movVolC.has(e.emp_code));
     const allVol=[...allEmployees.filter(e=>movVolC.has(e.emp_code)),...empVol];
     const vG={}; GRP.forEach(g=>{vG[g.key]=cnt(allVol,g.key);}); const vT=allVol.length;
 
-    const movInvC=new Set(allMovements.filter(v=>movYM(v)===ym&&v.type==="Termination").map(v=>v.emp_code));
-    const empInv=allEmployees.filter(e=>(e.end_date||"").substring(0,7)===ym&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
+    const movInvC=new Set(allMovements.filter(v=>lastWorkYM(v.date)===ym&&v.type==="Termination").map(v=>v.emp_code));
+    const empInv=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&e.status==="Terminated"&&!movInvC.has(e.emp_code));
     const allInv=[...allEmployees.filter(e=>movInvC.has(e.emp_code)),...empInv];
     const iG={}; GRP.forEach(g=>{iG[g.key]=cnt(allInv,g.key);}); const iT=allInv.length;
 
@@ -151,6 +152,7 @@ export function renderHeadcount() {
   const curY=now.getFullYear();
   let mode="calendar"; // "calendar" or "fy"
   let selNum=curY;
+  let brkYM=null; // เดือนที่เลือกดูใน Turnover Rate Breakdown (null = เดือนล่าสุดที่มีข้อมูล)
 
   function getOptions(){
     if(mode==="calendar"){
@@ -175,6 +177,22 @@ export function renderHeadcount() {
     const sum=(fn)=>rows.reduce((s,r)=>s+fn(r),0);
     const dataDate=`Data as of ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()} · Avg. based on ${mCount} month${mCount>1?"s":""}`;
     const opts=getOptions();
+
+    // ===== Turnover Rate Breakdown (รายเดือน + สะสมตั้งแต่ต้นช่วง) =====
+    const dataRows=rows.filter(r=>!r.future);
+    if(!brkYM||!dataRows.some(r=>r.ym===brkYM)) brkYM=dataRows.length?dataRows[dataRows.length-1].ym:null;
+    const bi=dataRows.findIndex(r=>r.ym===brkYM);
+    const br=bi>=0?dataRows[bi]:null;
+    const ytdRows=bi>=0?dataRows.slice(0,bi+1):[];           // ตั้งแต่เดือนแรกของช่วงถึงเดือนที่เลือก
+    const ytdAvg=ytdRows.length?ytdRows.reduce((s,r)=>s+r.hT,0)/ytdRows.length:0; // headcount เฉลี่ยสะสม
+    const ytdV=ytdRows.reduce((s,r)=>s+r.vT,0),ytdI=ytdRows.reduce((s,r)=>s+r.iT,0),ytdR=ytdRows.reduce((s,r)=>s+r.rT,0);
+    const rate=(n,base)=>base?((n/base)*100).toFixed(2)+"%":"0.00%";
+    const brkLbl=br?`${br.month} ${br.ym.split("-")[0]}`:"—";
+    const brkRows=br?[
+      {label:"Voluntary Resignation",th:"ลาออก",n:br.vT,ytd:ytdV,color:"#d97706"},
+      {label:"Involuntary Termination",th:"ให้ออก",n:br.iT,ytd:ytdI,color:"#7c3aed"},
+      {label:"Total Leavers",th:"รวม",n:br.rT,ytd:ytdR,color:"#dc2626",bold:true},
+    ]:[];
 
     pg.innerHTML=`${CSS}<div class="hc-wrap">
     <div class="page-header" style="margin-bottom:20px;">
@@ -267,6 +285,39 @@ export function renderHeadcount() {
       </table>
     </div></div>
 
+    <!-- TURNOVER RATE BREAKDOWN -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:24px;overflow:hidden;">
+      <div style="padding:14px 18px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#1a365d;">Turnover Rate Breakdown</div>
+        <select onchange="window._hcBrk(this.value)" style="margin-left:auto;font-size:12px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;">
+          ${dataRows.map(r=>`<option value="${r.ym}" ${r.ym===brkYM?"selected":""}>${r.month} ${r.ym.split("-")[0]}</option>`).join("")}
+        </select>
+      </div>
+      ${br?`
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr>
+          <th style="padding:10px 16px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;">Metric</th>
+          <th style="padding:10px 16px;text-align:center;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;">Headcount</th>
+          <th style="padding:10px 16px;text-align:center;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;">Monthly Turnover Rate (%)</th>
+          <th style="padding:10px 16px;text-align:center;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;">YTD Turnover Rate (%)</th>
+        </tr></thead>
+        <tbody>
+          ${brkRows.map(x=>`<tr${x.bold?' style="background:#f8fafc;"':''}>
+            <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;font-weight:${x.bold?"700":"600"};color:#1e293b;">${esc(x.label)} <span style="font-weight:400;color:#64748b;">(${esc(x.th)})</span></td>
+            <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;text-align:center;font-weight:${x.bold?"700":"600"};">${x.n}</td>
+            <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;text-align:center;font-weight:${x.bold?"700":"500"};color:${x.color};">${rate(x.n,br.hT)}</td>
+            <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;text-align:center;font-weight:${x.bold?"700":"500"};color:${x.color};">${rate(x.ytd,ytdAvg)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+      </div>
+      <div style="padding:10px 18px;font-size:10.5px;color:#94a3b8;line-height:1.7;">
+        Monthly = จำนวนที่ออกในเดือนนั้น ÷ Headcount สิ้นเดือน (${br.hT} คน)<br>
+        YTD = จำนวนสะสมตั้งแต่ ${dataRows[0]?.month||"-"} ถึง ${br.month} ÷ Headcount เฉลี่ยสะสม (${ytdAvg?ytdAvg.toFixed(0):0} คน จาก ${ytdRows.length} เดือน)
+      </div>`:`<div style="padding:32px;text-align:center;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</div>`}
+    </div>
+
     <div class="hc-bottom">
       <div class="hc-bcard" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
         <div style="width:64px;height:64px;border-radius:50%;background:#dbeafe;color:#2563eb;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">${ICON_HC}</div>
@@ -302,7 +353,8 @@ export function renderHeadcount() {
 
   render();
   window._hcMode=m=>{ mode=m; const opts=getOptions(); selNum=opts[0].val; render(); };
-  window._hcNum=n=>{ selNum=n; render(); };
+  window._hcNum=n=>{ selNum=n; brkYM=null; render(); };
+  window._hcBrk=v=>{ brkYM=v; render(); };
   window._exportHC=()=>exportExcel(mode,selNum).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
 }
 
