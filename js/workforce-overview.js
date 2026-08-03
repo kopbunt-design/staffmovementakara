@@ -16,6 +16,39 @@ function domicileGroup(e){
   return SPECIFIC_PROV.includes(p)?p:"Other Domestic Provinces";
 }
 
+// ===== อายุงาน (Length of Service) / อายุตัว =====
+// คิด ณ วันสิ้นเดือนที่เลือก (as of) เป็นปีทศนิยม — หาร 365.25 ให้ตรงกับสูตรที่ใส่ในไฟล์ Excel เป๊ะ
+const SERVICE_BANDS=["< 1 year","1 – 3 years","3 – 5 years","5 – 10 years","> 10 years"];
+const SERVICE_CUTS=[1,3,5,10]; // ขอบช่วง: <1 / 1-3 / 3-5 / 5-10 / >10 (ขอบล่างรวม, ขอบบนไม่รวม)
+const asOfDate=ym=>{const[y,m]=ym.split("-").map(Number);return new Date(Date.UTC(y,m,0));}; // วันสุดท้ายของเดือน
+function yearsBetween(dateStr,asOf){
+  if(!dateStr) return null;
+  const[y,m,d]=String(dateStr).substring(0,10).split("-").map(Number);
+  if(!y||!m||!d) return null;
+  const from=new Date(Date.UTC(y,m-1,d));
+  if(isNaN(from.getTime())) return null;
+  const v=(asOf-from)/(365.25*864e5);
+  return v<0?null:v; // วันที่ยังมาไม่ถึง = ไม่นับ
+}
+function serviceBand(yrs){
+  if(yrs==null) return null;
+  for(let i=0;i<SERVICE_CUTS.length;i++) if(yrs<SERVICE_CUTS[i]) return SERVICE_BANDS[i];
+  return SERVICE_BANDS[SERVICE_BANDS.length-1];
+}
+// สรุปอายุงาน + ค่าเฉลี่ยอายุตัว/อายุงาน จากรายชื่อพนักงาน ณ เดือนที่เลือก
+function buildServiceStats(emps,ym){
+  const asOf=asOfDate(ym);
+  const rows=emps.map(e=>({e,svc:yearsBetween(e.join_date,asOf),age:yearsBetween(e.dob,asOf)}));
+  const known=rows.filter(r=>r.svc!=null);
+  const bands=SERVICE_BANDS.map(b=>({name:b,count:rows.filter(r=>serviceBand(r.svc)===b).length}));
+  const total=bands.reduce((s,b)=>s+b.count,0);
+  const avg=list=>list.length?list.reduce((s,v)=>s+v,0)/list.length:null;
+  return{asOf,rows,bands:bands.map(b=>({...b,pct:total>0?(b.count/total*100).toFixed(1):"0.0"})),total,
+    missing:rows.length-known.length,
+    avgSvc:avg(known.map(r=>r.svc)),
+    avgAge:avg(rows.filter(r=>r.age!=null).map(r=>r.age))};
+}
+
 function prevYM(ym){const[y,m]=ym.split("-").map(Number);return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`;}
 function nextYM(ym){const[y,m]=ym.split("-").map(Number);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;}
 function lastWorkYM(dateStr){
@@ -172,6 +205,10 @@ export async function renderWorkforceOverview(){
     const provData=REGIONS.map(p=>({name:p,count:endHC.filter(e=>domicileGroup(e)===p).length}))
       .map(p=>({...p,pct:hcE>0?(p.count/hcE*100).toFixed(1):"0.0"}));
     const maxProv=Math.max(...provData.map(p=>p.count),1);
+    const svc=buildServiceStats(endHC,selYM);
+    const yrs=v=>v==null?"—":v.toFixed(1);
+    // ระบุวันตัดชัดเจน = วันสุดท้ายของเดือนที่เลือก (อายุงาน/อายุตัวคิดถึงวันนี้)
+    const asOfLbl=`${svc.asOf.getUTCDate()} ${MS[svc.asOf.getUTCMonth()]} ${svc.asOf.getUTCFullYear()}`;
 
     const trendM=[];
     for(let m=1;m<=12;m++){
@@ -419,6 +456,44 @@ export async function renderWorkforceOverview(){
         </table>
       </div>
     </div>
+
+    <!-- LENGTH OF SERVICE + AVERAGES -->
+    <div class="wf-province-grid" style="margin-top:20px;">
+      <div>
+        <div class="wf-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a365d" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          LENGTH OF SERVICE <span style="font-weight:400;color:#64748b;">(as of ${asOfLbl})</span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;padding:6px 18px 0;font-size:10px;color:#94a3b8;">Unit : Persons</div>
+        <table class="wf-prov-tbl">
+          <thead><tr><th style="text-align:left;">LENGTH OF SERVICE</th><th>HEADCOUNT</th><th>PERCENTAGE (%)</th></tr></thead>
+          <tbody>
+            ${svc.bands.map(b=>`<tr>
+              <td style="font-weight:600;">${esc(b.name)}</td>
+              <td style="text-align:center;font-weight:600;">${b.count}</td>
+              <td style="text-align:center;">${b.pct}%</td>
+            </tr>`).join("")}
+            <tr class="wf-prov-total"><td>Total</td><td style="text-align:center;">${svc.total}</td><td style="text-align:center;">100.0%</td></tr>
+          </tbody>
+        </table>
+        ${svc.missing?`<div style="padding:8px 18px;font-size:10.5px;color:#d97706;">⚠️ ไม่มีวันเริ่มงาน ${svc.missing} คน — ไม่ถูกนับในตารางนี้</div>`:""}
+      </div>
+      <div style="border-left:1px solid #e2e8f0;">
+        <div class="wf-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a365d" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+          AVERAGE <span style="font-weight:400;color:#64748b;">(as of ${asOfLbl})</span>
+        </div>
+        <table class="wf-prov-tbl">
+          <thead><tr><th style="text-align:left;">METRIC</th><th>AVERAGE</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight:600;">Average Age <span style="font-weight:400;color:#64748b;">(อายุตัวเฉลี่ย)</span></td>
+              <td style="text-align:center;font-weight:700;color:#2563eb;">${yrs(svc.avgAge)} Years</td></tr>
+            <tr><td style="font-weight:600;">Average Service Length <span style="font-weight:400;color:#64748b;">(อายุงานเฉลี่ย)</span></td>
+              <td style="text-align:center;font-weight:700;color:#16a34a;">${yrs(svc.avgSvc)} Years</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
     </div>`;
   }
 
@@ -659,6 +734,68 @@ async function exportOverview(ym){
   sws.getCell(tR,2).value={formula:`SUM(B2:B${tR-1})`,result:hcE};
   sws.getCell(tR,3).value={formula:`SUM(C2:C${tR-1})`,result:1};sws.getCell(tR,3).numFmt="0.0%";
   for(let c=1;c<=3;c++){const cc=sws.getCell(tR,c);cc.font=font(10,true,white);cc.fill=hFill(navy);cc.border=borders;cc.alignment={horizontal:c===1?"left":"center"};}
+
+  // ===== Length of Service + Average — sheet แบบ "ใส่สูตร" (แก้ Join Date/DOB แล้วสรุปคำนวณใหม่เอง) =====
+  const svcX=buildServiceStats(endHC,ym);
+  const swd=wb.addWorksheet("Service Data",{views:[{showGridLines:false}]});
+  [16,28,14,14,15,13,22].forEach((w,i)=>{swd.getColumn(i+1).width=w;});
+  swd.getCell(1,1).value="As of";swd.getCell(1,1).font=font(10,true);
+  const asOfCell=swd.getCell(1,2);asOfCell.value=svcX.asOf;asOfCell.numFmt="dd-mmm-yyyy";asOfCell.font=font(10,true);
+  asOfCell.fill=hFill(ltBlue);asOfCell.border=borders;
+  swd.getCell(2,1).value="แก้ค่าในช่องนี้/คอลัมน์วันที่ แล้วชีต Service Summary จะคำนวณใหม่อัตโนมัติ";
+  swd.getCell(2,1).font={...font(9),italic:true,color:grayTxt};
+  ["Employee Code","Name","Join Date","Date of Birth","Service (Years)","Age (Years)","Length of Service"]
+    .forEach((h,i)=>{const c=swd.getCell(3,i+1);c.value=h;c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
+  // สูตรจัดช่วงอายุงาน สร้างจาก SERVICE_BANDS/SERVICE_CUTS ชุดเดียวกับบนหน้าจอ (ป้ายชื่อไม่มีทางหลุดจากกัน)
+  const bandFormula=r=>{
+    let f=`"${SERVICE_BANDS[SERVICE_BANDS.length-1]}"`;
+    for(let i=SERVICE_CUTS.length-1;i>=0;i--) f=`IF(E${r}<${SERVICE_CUTS[i]},"${SERVICE_BANDS[i]}",${f})`;
+    return `IF(E${r}="","",${f})`;
+  };
+  const toDate=s=>{if(!s)return null;const d=new Date(String(s).substring(0,10)+"T00:00:00Z");return isNaN(d.getTime())?null:d;};
+  svcX.rows.forEach((row,i)=>{
+    const r=i+4,e=row.e;
+    swd.getCell(r,1).value=e.emp_code||"";
+    swd.getCell(r,2).value=`${e.firstname_th||e.firstname_en||""} ${e.lastname_th||e.lastname_en||""}`.trim();
+    const jd=toDate(e.join_date),db=toDate(e.dob);
+    if(jd){swd.getCell(r,3).value=jd;swd.getCell(r,3).numFmt="dd-mmm-yyyy";}
+    if(db){swd.getCell(r,4).value=db;swd.getCell(r,4).numFmt="dd-mmm-yyyy";}
+    const ce=swd.getCell(r,5);ce.value={formula:`IF(C${r}="","",($B$1-C${r})/365.25)`,result:row.svc==null?"":Number(row.svc.toFixed(4))};ce.numFmt="0.0";
+    const cf=swd.getCell(r,6);cf.value={formula:`IF(D${r}="","",($B$1-D${r})/365.25)`,result:row.age==null?"":Number(row.age.toFixed(4))};cf.numFmt="0.0";
+    swd.getCell(r,7).value={formula:bandFormula(r),result:serviceBand(row.svc)||""};
+    for(let c=1;c<=7;c++){const cc=swd.getCell(r,c);cc.border=borders;if(c<3||c===7)cc.font=font(9);else cc.font=font(9);cc.alignment={horizontal:c===1||c===2?"left":"center"};}
+  });
+  const sLast=svcX.rows.length+3;
+  const bandRng=`'Service Data'!$G$4:$G$${sLast}`,svcRng=`'Service Data'!$E$4:$E$${sLast}`,ageRng=`'Service Data'!$F$4:$F$${sLast}`;
+
+  const sss=wb.addWorksheet("Service Summary",{views:[{showGridLines:false}]});
+  [34,14,16].forEach((w,i)=>{sss.getColumn(i+1).width=w;});
+  ["Length of Service","Headcount","Percentage (%)"]
+    .forEach((h,i)=>{const c=sss.getCell(1,i+1);c.value=h;c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
+  const svcTR=SERVICE_BANDS.length+2;
+  SERVICE_BANDS.forEach((b,i)=>{
+    const r=i+2,cnt=svcX.bands[i].count;
+    sss.getCell(r,1).value=b;
+    sss.getCell(r,2).value={formula:`COUNTIF(${bandRng},A${r})`,result:cnt};
+    sss.getCell(r,3).value={formula:`IF($B$${svcTR}=0,0,B${r}/$B$${svcTR})`,result:svcX.total>0?cnt/svcX.total:0};
+    sss.getCell(r,3).numFmt="0.0%";
+    for(let c=1;c<=3;c++){const cc=sss.getCell(r,c);cc.border=borders;cc.font=font(10);cc.alignment={horizontal:c===1?"left":"center"};}
+  });
+  sss.getCell(svcTR,1).value="Total";
+  sss.getCell(svcTR,2).value={formula:`SUM(B2:B${svcTR-1})`,result:svcX.total};
+  sss.getCell(svcTR,3).value={formula:`SUM(C2:C${svcTR-1})`,result:1};sss.getCell(svcTR,3).numFmt="0.0%";
+  for(let c=1;c<=3;c++){const cc=sss.getCell(svcTR,c);cc.font=font(10,true,white);cc.fill=hFill(navy);cc.border=borders;cc.alignment={horizontal:c===1?"left":"center"};}
+
+  const mR=svcTR+2; // ตาราง Average
+  ["Metric","Average"].forEach((h,i)=>{const c=sss.getCell(mR,i+1);c.value=h;c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
+  [["Average Age (อายุตัวเฉลี่ย)",ageRng,svcX.avgAge],["Average Service Length (อายุงานเฉลี่ย)",svcRng,svcX.avgSvc]]
+    .forEach(([label,rng,val],i)=>{
+      const r=mR+1+i;
+      sss.getCell(r,1).value=label;
+      sss.getCell(r,2).value={formula:`IFERROR(AVERAGE(${rng}),0)`,result:val==null?0:Number(val.toFixed(4))};
+      sss.getCell(r,2).numFmt='0.0" Years"';
+      for(let c=1;c<=2;c++){const cc=sss.getCell(r,c);cc.border=borders;cc.font=font(10);cc.alignment={horizontal:c===1?"left":"center"};}
+    });
 
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
