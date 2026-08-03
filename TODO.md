@@ -1,8 +1,22 @@
 # TODO / สถานะงาน
 
-อัปเดตล่าสุด: 2026-07-20
+อัปเดตล่าสุด: 2026-07-31
+
+## 🐛 บั๊กค้างรอแก้ (ทำต่อจากตรงนี้)
+- **Position Quota: เพิ่ม/แก้ quota แล้วไม่บันทึก ("ไม่เข้า")** — ผู้ใช้ยืนยันว่าเป็นหน้า Position Quota (2026-07-31)
+  - ต้นเหตุที่สงสัยสุด: **RLS block** — ตาราง `position_quota` ไม่มีไฟล์ schema/RLS ในโปรเจกต์เลย (สร้างมือใน Supabase)
+  - ยังไม่รู้อาการชัด: รอผู้ใช้บอกข้อความ toast (A=error "row-level security"/policy, B=สำเร็จแต่ไม่โผล่, C=ไม่มี toast)
+  - **แผนแก้ที่เตรียมไว้:** ทำไฟล์ `sql/schema_position_quota.sql` — enable RLS + policy อ่าน=authenticated, เขียน=hr/admin (เหมือนตารางอื่น) + โค้ด `js/vacancy.js` `_vAdd/_vEdit/_vDel` มี error handling อยู่แล้ว (เด้ง toast) ไม่ต้องแก้ JS
+  - โค้ดที่เกี่ยว: `js/vacancy.js:222` `_vAdd`, `:235` `_vEdit`, `:244` `_vDel`, `:7` `loadPosQuota`
 
 ## ✅ เสร็จ + push ขึ้น production แล้ว
+
+### Staff Movement + Admin controls (2026-07-31, commit `5375873`)
+- **Import Excel ปรับตำแหน่งหลายคน (bulk)** หน้า Staff Movement (HR/Admin) — สร้าง movement + อัปเดตพนักงาน (ตำแหน่ง/แผนก/**job_level** จากคอลัมน์ "ระดับใหม่") · รองรับ date serial ของ Excel · helper ร่วม `empUpdateFromMovement`
+- **ปุ่มลบทุกแถว** ใน Staff Movement (admin ลบ/แก้ได้ทุกรายการ)
+- **User Management เฉพาะ Admin** (guard) + RLS กัน HR/user แก้ role
+- **ไม่เด้งกลับ Dashboard** เมื่อ token refresh/สลับแท็บ (boot ครั้งเดียวต่อ session — `appBooted`)
+- **Export พนักงานเพิ่มคอลัมน์ Province** (เดิมหาย ทำ column เลื่อนไปปนกับ Status)
 
 ### กระดิ่งแจ้งเตือน (Notification Bell)
 - กระดิ่งมุมขวาบน sidebar + badge นับที่ยังไม่อ่าน + dropdown panel
@@ -26,6 +40,8 @@
 รันใน SQL Editor (ทีละไฟล์, idempotent):
 1. `sql/schema_notifications.sql` — ตารางกระดิ่ง shared
 2. `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
+3. `sql/schema_admin_permissions.sql` — admin แก้/ลบ movement ได้ทุกอัน + เฉพาะ admin แก้ role (สำคัญต่อ #1/#2 ของงาน 31 ก.ค.)
+4. (รอทำ) `sql/schema_position_quota.sql` — RLS ให้ Position Quota (ดูบั๊กค้างด้านบน)
 
 ## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)
 1. **RLS + ข้อมูลเงินเดือน** — ตอนนี้ user ที่ล็อกอินอ่าน `salary` ผ่าน API ได้ แม้หน้า Payroll ซ่อนไว้ → แยกตาราง/จำกัด RLS (สำคัญสุด)
