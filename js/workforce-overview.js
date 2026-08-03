@@ -4,7 +4,17 @@ import { PROVINCES } from "./masterdata.js";
 
 const MO=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const MS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const PROV_CLR={"Phichit":"#16a34a","Phetchabun":"#2563eb","Phitsanulok":"#8b5cf6","Other":"#f59e0b"};
+const PROV_CLR={"Phichit":"#16a34a","Phetchabun":"#2563eb","Phitsanulok":"#8b5cf6","Other Domestic Provinces":"#f59e0b","International (Overseas)":"#0891b2","Other":"#f59e0b"};
+// กลุ่มภูมิลำเนา 5 กลุ่มตามที่ HR ต้องการ (fix: จังหวัดอื่นๆ นอก 3 จังหวัด ไม่หายไปอีก)
+const REGIONS=["Phichit","Phetchabun","Phitsanulok","Other Domestic Provinces","International (Overseas)"];
+const SPECIFIC_PROV=["Phichit","Phetchabun","Phitsanulok"];
+// ต่างชาติ (nationality ไม่ใช่ Thai) -> Overseas ; คนไทยจังหวัดนอก 3 จังหวัด -> Other Domestic
+function domicileGroup(e){
+  const nat=(e.nationality||"").trim().toLowerCase();
+  if(nat && nat!=="thai" && nat!=="ไทย") return "International (Overseas)";
+  const p=(e.province||"").trim();
+  return SPECIFIC_PROV.includes(p)?p:"Other Domestic Provinces";
+}
 
 function prevYM(ym){const[y,m]=ym.split("-").map(Number);return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`;}
 function nextYM(ym){const[y,m]=ym.split("-").map(Number);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;}
@@ -159,10 +169,9 @@ export async function renderWorkforceOverview(){
     const mgrs=endHC.filter(e=>mLvls.includes((e.job_level||"").toUpperCase())).length;
     const mgrR=hcE>0?((mgrs/hcE)*100).toFixed(1):"0.0";
 
-    const provData=PROVINCES.map(p=>({name:p,count:endHC.filter(e=>getProv(e)===p).length}))
-      .map(p=>({...p,pct:hcE>0?(p.count/hcE*100).toFixed(1):"0.0"}))
-      .filter(p=>p.count>0).sort((a,b)=>b.count-a.count);
-    const maxProv=provData[0]?.count||1;
+    const provData=REGIONS.map(p=>({name:p,count:endHC.filter(e=>domicileGroup(e)===p).length}))
+      .map(p=>({...p,pct:hcE>0?(p.count/hcE*100).toFixed(1):"0.0"}));
+    const maxProv=Math.max(...provData.map(p=>p.count),1);
 
     const trendM=[];
     for(let m=1;m<=12;m++){
@@ -170,10 +179,10 @@ export async function renderWorkforceOverview(){
       trendM.push({ym,mo:MS[m-1],fut:ym>curYM});
     }
     const provTrend={};
-    PROVINCES.forEach(prov=>{
-      provTrend[prov]=trendM.map(t=>t.fut?"—":hcAtMonth(t.ym).filter(e=>getProv(e)===prov).length);
+    REGIONS.forEach(prov=>{
+      provTrend[prov]=trendM.map(t=>t.fut?"—":hcAtMonth(t.ym).filter(e=>domicileGroup(e)===prov).length);
     });
-    const tTotals=trendM.map((t,i)=>t.fut?"—":PROVINCES.reduce((s,p)=>{const v=provTrend[p][i];return s+(typeof v==="number"?v:0);},0));
+    const tTotals=trendM.map((t,i)=>t.fut?"—":REGIONS.reduce((s,p)=>{const v=provTrend[p][i];return s+(typeof v==="number"?v:0);},0));
 
     const ca=(c,p)=>{const d=c-p;return d>0?`<span style="color:#16a34a;">&#9650; +${d}</span>`:d<0?`<span style="color:#dc2626;">&#9660; ${d}</span>`:`<span style="color:#94a3b8;">— 0</span>`;};
     const cp=(c,p)=>{if(p===0)return"—";const v=((c-p)/p*100).toFixed(2);return `${v>=0?"+":""}${v}%`;};
@@ -351,11 +360,11 @@ export async function renderWorkforceOverview(){
       <div>
         <div class="wf-section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a365d" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          HEADCOUNT BY PROVINCE <span style="font-weight:400;color:#64748b;">(as of ${mLbl})</span>
+          HEADCOUNT BY DOMICILE / REGION <span style="font-weight:400;color:#64748b;">(as of ${mLbl})</span>
         </div>
         <div style="display:flex;justify-content:flex-end;padding:6px 18px 0;font-size:10px;color:#94a3b8;">Unit : Persons</div>
         <table class="wf-prov-tbl">
-          <thead><tr><th style="width:24px;"></th><th style="text-align:left;">PROVINCE</th><th>EMPLOYEE</th><th>% OF TOTAL</th></tr></thead>
+          <thead><tr><th style="width:24px;"></th><th style="text-align:left;">DOMICILE / REGION</th><th>EMPLOYEE</th><th>% OF TOTAL</th></tr></thead>
           <tbody>
             ${provData.map(p=>`<tr>
               <td><div style="width:12px;height:12px;border-radius:3px;background:${PROV_CLR[p.name]||PROV_CLR.Other};"></div></td>
@@ -386,7 +395,7 @@ export async function renderWorkforceOverview(){
     <div class="wf-section" style="margin-top:20px;margin-bottom:24px;">
       <div class="wf-section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a365d" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-        HEADCOUNT TREND BY PROVINCE <span style="font-weight:400;color:#64748b;">(Calendar Year ${sy})</span>
+        HEADCOUNT TREND BY DOMICILE / REGION <span style="font-weight:400;color:#64748b;">(Calendar Year ${sy})</span>
       </div>
       <div style="display:flex;justify-content:flex-end;padding:6px 18px 0;font-size:10px;color:#94a3b8;">Unit : Persons</div>
       <div class="table-wrap">
@@ -397,7 +406,7 @@ export async function renderWorkforceOverview(){
             ${trendM.map(t=>`<th style="${t.ym===selYM?'color:#1a365d;font-weight:800;border-bottom-color:#2563eb;':''}">${t.mo.toUpperCase()}</th>`).join("")}
           </tr></thead>
           <tbody>
-            ${PROVINCES.filter(prov=>provData.find(p=>p.name===prov)).map(prov=>`<tr>
+            ${REGIONS.filter(prov=>provData.find(p=>p.name===prov)).map(prov=>`<tr>
               <td><div style="width:12px;height:12px;border-radius:3px;background:${PROV_CLR[prov]||PROV_CLR.Other};"></div></td>
               <td style="font-weight:600;text-align:left;">${esc(prov)}</td>
               ${trendM.map((t,i)=>{const v=provTrend[prov][i];return`<td style="${t.ym===selYM?'font-weight:800;color:#1a365d;':''}${t.fut?'color:#cbd5e1;':''}">${v}</td>`;}).join("")}
@@ -454,9 +463,8 @@ async function exportOverview(ym){
   const mLvls=["M1","M2","M3","M4"];
   const mgrs=endHC.filter(e=>mLvls.includes((e.job_level||"").toUpperCase())).length;
 
-  const provData=PROVINCES.map(p=>({name:p,count:endHC.filter(e=>getProv(e)===p).length}))
-    .map(p=>({...p,pct:hcE>0?(p.count/hcE*100).toFixed(1):"0.0"}))
-    .filter(p=>p.count>0).sort((a,b)=>b.count-a.count);
+  const provData=REGIONS.map(p=>({name:p,count:endHC.filter(e=>domicileGroup(e)===p).length}))
+    .map(p=>({...p,pct:hcE>0?(p.count/hcE*100).toFixed(1):"0.0"}));
 
   const trendM=[];
   for(let m=1;m<=12;m++){
@@ -464,8 +472,8 @@ async function exportOverview(ym){
     trendM.push({ym:ym2,mo:MS[m-1],fut:ym2>curYM});
   }
   const provTrend={};
-  PROVINCES.forEach(prov=>{
-    provTrend[prov]=trendM.map(t=>t.fut?"—":hcAtMonth(t.ym).filter(e=>getProv(e)===prov).length);
+  REGIONS.forEach(prov=>{
+    provTrend[prov]=trendM.map(t=>t.fut?"—":hcAtMonth(t.ym).filter(e=>domicileGroup(e)===prov).length);
   });
 
   const wb=new ExcelJS.Workbook();wb.creator="Akara HR System";
@@ -595,7 +603,7 @@ async function exportOverview(ym){
   });
   row++;
 
-  PROVINCES.filter(prov=>provData.find(p=>p.name===prov)).forEach((prov,pi)=>{
+  REGIONS.filter(prov=>provData.find(p=>p.name===prov)).forEach((prov,pi)=>{
     ws.getCell(row,1).value="";ws.getCell(row,1).border=borders;
     ws.getCell(row,2).value=prov;ws.getCell(row,2).font=font(10,true);ws.getCell(row,2).border=borders;ws.getCell(row,2).alignment={horizontal:"left"};
     trendM.forEach((t,mi)=>{
@@ -610,12 +618,47 @@ async function exportOverview(ym){
   ws.getCell(row,1).value="";ws.getCell(row,1).fill=hFill(navy);ws.getCell(row,1).border=borders;
   ws.getCell(row,2).value="GRAND TOTAL";ws.getCell(row,2).font=font(10,true,white);ws.getCell(row,2).fill=hFill(navy);ws.getCell(row,2).border=borders;
   trendM.forEach((t,mi)=>{
-    const total=t.fut?"—":PROVINCES.reduce((s,p)=>{const v=provTrend[p][mi];return s+(typeof v==="number"?v:0);},0);
+    const total=t.fut?"—":REGIONS.reduce((s,p)=>{const v=provTrend[p][mi];return s+(typeof v==="number"?v:0);},0);
     const c=ws.getCell(row,mi+3);c.value=total;c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};
   });
 
   ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9,
     margins:{left:.5,right:.5,top:.5,bottom:.5,header:.3,footer:.3}};
+
+  // ===== Domicile / Region — sheet แบบ "ใส่สูตร" (แก้ Province/Nationality ในไฟล์ Excel แล้วสรุปคำนวณใหม่เอง) =====
+  // Domicile Data: ข้อมูลดิบ + คอลัมน์ Region เป็นสูตรจาก Nationality/Province
+  const dws=wb.addWorksheet("Domicile Data",{views:[{showGridLines:false}]});
+  dws.columns=[{header:"Employee Code",width:16},{header:"Name",width:28},{header:"Nationality",width:16},{header:"Province",width:20},{header:"Domicile / Region",width:26}];
+  dws.getRow(1).eachCell(c=>{c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
+  endHC.forEach((e,i)=>{
+    const r=i+2;
+    const nm=`${e.firstname_th||e.firstname_en||""} ${e.lastname_th||e.lastname_en||""}`.trim();
+    dws.getCell(r,1).value=e.emp_code||"";
+    dws.getCell(r,2).value=nm;
+    dws.getCell(r,3).value=e.nationality||"";
+    dws.getCell(r,4).value=e.province||"";
+    dws.getCell(r,5).value={formula:`IF(AND(TRIM(LOWER(C${r}))<>"thai",TRIM(C${r})<>""),"International (Overseas)",IF(OR(D${r}="Phichit",D${r}="Phetchabun",D${r}="Phitsanulok"),D${r},"Other Domestic Provinces"))`,result:domicileGroup(e)};
+    for(let c=1;c<=5;c++){dws.getCell(r,c).border=borders;dws.getCell(r,c).font=font(9);}
+  });
+  const dLast=endHC.length+1, dRng=`'Domicile Data'!$E$2:$E$${dLast}`;
+
+  // Domicile Summary: headcount = COUNTIF จาก Region ของ Data (อัปเดตอัตโนมัติเมื่อแก้ข้อมูล)
+  const sws=wb.addWorksheet("Domicile Summary",{views:[{showGridLines:false}]});
+  sws.columns=[{header:"Domicile / Region",width:28},{header:"Headcount",width:14},{header:"Percentage (%)",width:16}];
+  sws.getRow(1).eachCell(c=>{c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
+  const tR=REGIONS.length+2; // แถว Total
+  REGIONS.forEach((rg,i)=>{
+    const r=i+2, cnt=endHC.filter(e=>domicileGroup(e)===rg).length;
+    sws.getCell(r,1).value=rg;
+    sws.getCell(r,2).value={formula:`COUNTIF(${dRng},A${r})`,result:cnt};
+    sws.getCell(r,3).value={formula:`IF($B$${tR}=0,0,B${r}/$B$${tR})`,result:hcE>0?cnt/hcE:0};
+    sws.getCell(r,3).numFmt="0.0%";
+    for(let c=1;c<=3;c++){sws.getCell(r,c).border=borders;sws.getCell(r,c).font=font(10);sws.getCell(r,c).alignment={horizontal:c===1?"left":"center"};}
+  });
+  sws.getCell(tR,1).value="Total";
+  sws.getCell(tR,2).value={formula:`SUM(B2:B${tR-1})`,result:hcE};
+  sws.getCell(tR,3).value={formula:`SUM(C2:C${tR-1})`,result:1};sws.getCell(tR,3).numFmt="0.0%";
+  for(let c=1;c<=3;c++){const cc=sws.getCell(tR,c);cc.font=font(10,true,white);cc.fill=hFill(navy);cc.border=borders;cc.alignment={horizontal:c===1?"left":"center"};}
 
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
