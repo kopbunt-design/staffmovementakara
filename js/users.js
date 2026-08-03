@@ -1,10 +1,14 @@
 import { supabase } from "./supabase-config.js";
-import { currentUser, esc, toast } from "./app.js";
+import { currentUser, userRole, esc, toast } from "./app.js";
 
 let unsubUsers = null;
 
 export async function renderUsers() {
   const pg = document.getElementById("pageUsers");
+  if (userRole !== "admin") {
+    pg.innerHTML = `<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ Admin เท่านั้นที่จัดการผู้ใช้/สิทธิ์ได้</div></div>`;
+    return;
+  }
   pg.innerHTML = `
   <div class="page-header">
     <div><div class="page-heading">จัดการผู้ใช้ระบบ</div><div class="page-sub" id="usersCount">กำลังโหลด...</div></div>

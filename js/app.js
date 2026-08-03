@@ -295,9 +295,12 @@ function startRealtime() {
 }
 
 // ===== AUTH =====
+let appBooted = false; // boot (โหลดข้อมูล+ตั้งหน้า) ครั้งเดียวต่อ session
 supabase.auth.onAuthStateChange(async (_event, session) => {
-  if (!session?.user) return;
-  currentUser = session.user;
+  if (!session?.user) { appBooted = false; return; }
+  currentUser = session.user; // อัปเดต token เสมอ
+  if (appBooted) return;      // token refresh/สลับแท็บ = ไม่ต้อง re-init และไม่เด้งกลับ dashboard
+  appBooted = true;
 
   const name = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "";
 
@@ -448,6 +451,30 @@ function renderDashboard() {
 
 // ===== MOVEMENTS =====
 let movFilter="", movFilterType="", movFilterMonth="";
+const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment"];
+
+// object อัปเดตพนักงานตามประเภท movement (ใช้ร่วมทั้งฟอร์มและ import bulk)
+// jobLevel: ระดับใหม่ (optional) — ถ้ามีจะอัปเดต job_level ให้สำหรับประเภทที่ยังทำงานอยู่
+function empUpdateFromMovement(type, toDept, date, jobLevel) {
+  const upd = {};
+  if(["Resignation","Termination","Retirement"].includes(type)){
+    upd.status = {Resignation:"Resigned",Termination:"Terminated",Retirement:"Retired"}[type];
+    if(date) upd.end_date = date;
+  } else if(type==="Transfer"){
+    if(toDept) upd.department = toDept;
+    if(date) upd.effective_date = date;
+    if(jobLevel) upd.job_level = jobLevel;
+  } else if(type==="Promotion"||type==="Demotion"){
+    if(toDept) upd.position = toDept;
+    if(date) upd.effective_date = date;
+    if(jobLevel) upd.job_level = jobLevel;
+  } else if(type==="New Hire"){
+    upd.status = "Active";
+    if(date) upd.join_date = date;
+    if(jobLevel) upd.job_level = jobLevel;
+  }
+  return upd;
+}
 
 export function renderMovements() {
   const pg = document.getElementById("pageMovements");
@@ -463,6 +490,10 @@ export function renderMovements() {
   <div class="page-header">
     <div><div class="page-heading">Staff Movement</div><div class="page-sub">${filtered.length} รายการ</div></div>
     <div class="header-actions">
+      ${(userRole==="hr"||userRole==="admin")?`
+      <input type="file" id="movFile" accept=".xlsx,.xls" style="display:none;" onchange="window._movImport(this)">
+      <button class="btn btn-secondary" onclick="window._movTemplate()">📄 Template</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('movFile').click()">📥 Import Excel</button>`:""}
       <button class="btn btn-primary" onclick="window._openMovModal()">+ บันทึกรายการ</button>
     </div>
   </div>
@@ -495,7 +526,7 @@ export function renderMovements() {
         <td class="text-muted" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(m.reason||"-")}</td>
         <td class="text-muted">${esc(m.recorded_by||"-")}</td>
         <td class="text-muted">${fmtDate(m.created_at)}</td>
-        <td>${m.created_by===currentUser?.id?`<button class="btn btn-secondary btn-sm" onclick="window._editMov('${m.id}')">แก้ไข</button>`:""}</td>
+        <td style="white-space:nowrap;">${(m.created_by===currentUser?.id||userRole==="admin")?`<button class="btn btn-secondary btn-sm" onclick="window._editMov('${m.id}')">แก้ไข</button> <button class="btn btn-danger btn-sm" onclick="window._delMovRow('${m.id}')">ลบ</button>`:""}</td>
       </tr>`).join("")}</tbody>
     </table>
   </div></div></div>`;
@@ -506,6 +537,14 @@ export function renderMovements() {
   window._openMovModal = () => openMovModal(null);
   window._editMov = id => openMovModal(allMovements.find(m=>m.id===id));
   window._exportMovCSV = exportMovCSV;
+  window._movTemplate = movTemplate;
+  window._movImport = movImport;
+  window._delMovRow = async (id) => {
+    if(!confirm("ลบรายการนี้?")) return;
+    const { error } = await supabase.from("movements").delete().eq("id", id);
+    if(error){ toast("ลบไม่สำเร็จ: "+error.message,"error"); return; }
+    toast("ลบเรียบร้อย","info"); // realtime จะรีเฟรชตารางให้เอง
+  };
 }
 
 function openMovModal(entry=null) {
@@ -541,7 +580,7 @@ function openMovModal(entry=null) {
         </div>
       </div>
       <div class="modal-footer">
-        ${isEdit&&entry?.created_by===currentUser?.id?`<button class="btn btn-danger" onclick="window._delMov('${entry.id}')">ลบ</button>`:""}
+        ${isEdit&&(entry?.created_by===currentUser?.id||userRole==="admin")?`<button class="btn btn-danger" onclick="window._delMov('${entry.id}')">ลบ</button>`:""}
         <button class="btn btn-secondary" onclick="document.getElementById('movModal').remove()">ยกเลิก</button>
         <button class="btn btn-primary" onclick="window._saveMov('${entry?.id||""}')">บันทึก</button>
       </div>
@@ -565,22 +604,7 @@ function openMovModal(entry=null) {
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
     if(data.emp_code){
-      const empUpdate = { updated_at: new Date().toISOString() };
-      const t = data.type;
-      if(["Resignation","Termination","Retirement"].includes(t)){
-        const statusMap = {Resignation:"Resigned",Termination:"Terminated",Retirement:"Retired"};
-        empUpdate.status = statusMap[t];
-        if(data.date) empUpdate.end_date = data.date;
-      } else if(t==="Transfer"){
-        if(data.to_dept) empUpdate.department = data.to_dept;
-        if(data.date) empUpdate.effective_date = data.date;
-      } else if(t==="Promotion"||t==="Demotion"){
-        if(data.to_dept) empUpdate.position = data.to_dept;
-        if(data.date) empUpdate.effective_date = data.date;
-      } else if(t==="New Hire"){
-        empUpdate.status = "Active";
-        if(data.date) empUpdate.join_date = data.date;
-      }
+      const empUpdate = { updated_at: new Date().toISOString(), ...empUpdateFromMovement(data.type, data.to_dept, data.date) };
       if(Object.keys(empUpdate).length>1){
         await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
       }
@@ -607,6 +631,84 @@ function exportMovCSV() {
   const rows=[["Employee Code","Name","Type","From","To","Date","Reason","Recorded By","Created At"],...filtered.map(m=>[m.emp_code||"",m.name,m.type,m.from_dept||"",m.to_dept||"",m.date||"",m.reason||"",m.recorded_by||"",fmtDate(m.created_at)])];
   const csv=rows.map(r=>r.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"})); a.download=`movements_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+// ===== BULK IMPORT (\u0E1B\u0E23\u0E31\u0E1A\u0E15\u0E33\u0E41\u0E2B\u0E19\u0E48\u0E07\u0E2B\u0E25\u0E32\u0E22\u0E04\u0E19) =====
+// \u0E2D\u0E48\u0E32\u0E19\u0E04\u0E48\u0E32\u0E08\u0E32\u0E01 row \u0E42\u0E14\u0E22\u0E25\u0E2D\u0E07\u0E2B\u0E25\u0E32\u0E22\u0E0A\u0E37\u0E48\u0E2D\u0E04\u0E2D\u0E25\u0E31\u0E21\u0E19\u0E4C (\u0E44\u0E17\u0E22/\u0E2D\u0E31\u0E07\u0E01\u0E24\u0E29)
+const movPick = (row, keys) => { for(const k of keys){ if(k in row && String(row[k]).trim()!=="") return String(row[k]).trim(); } return ""; };
+// normalize \u0E27\u0E31\u0E19\u0E17\u0E35\u0E48 -> 'YYYY-MM-DD' (\u0E23\u0E31\u0E1A serial \u0E02\u0E2D\u0E07 Excel \u0E17\u0E31\u0E49\u0E07\u0E41\u0E1A\u0E1A number \u0E41\u0E25\u0E30 string, YYYY-MM-DD, DD/MM/YYYY)
+function movNormDate(v){
+  if(v===""||v==null) return "";
+  const s=String(v).trim();
+  // serial \u0E02\u0E2D\u0E07 Excel \u2014 \u0E2D\u0E32\u0E08\u0E21\u0E32\u0E40\u0E1B\u0E47\u0E19 number \u0E2B\u0E23\u0E37\u0E2D string \u0E15\u0E31\u0E27\u0E40\u0E25\u0E02\u0E25\u0E49\u0E27\u0E19 (\u0E21\u0E35 . \u0E44\u0E14\u0E49) \u0E40\u0E0A\u0E48\u0E19 "46234" \u0E15\u0E49\u0E2D\u0E07\u0E41\u0E1B\u0E25\u0E07\u0E01\u0E48\u0E2D\u0E19
+  if(/^\d+(\.\d+)?$/.test(s) && window.XLSX?.SSF){
+    const n=Number(s);
+    if(n>=1 && n<600000){ const o=window.XLSX.SSF.parse_date_code(n); if(o&&o.y) return `${o.y}-${String(o.m).padStart(2,"0")}-${String(o.d).padStart(2,"0")}`; }
+  }
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return `${m[1]}-${String(+m[2]).padStart(2,"0")}-${String(+m[3]).padStart(2,"0")}`;
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return `${m[3]}-${String(+m[2]).padStart(2,"0")}-${String(+m[1]).padStart(2,"0")}`;
+  return "";
+}
+
+function movTemplate(){
+  if(!window.XLSX){ toast("\u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E2D\u0E42\u0E2B\u0E25\u0E14 library","error"); return; }
+  const h=["\u0E23\u0E2B\u0E31\u0E2A\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19","\u0E0A\u0E37\u0E48\u0E2D-\u0E2A\u0E01\u0E38\u0E25","\u0E1B\u0E23\u0E30\u0E40\u0E20\u0E17","\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48\u0E21\u0E35\u0E1C\u0E25","\u0E08\u0E32\u0E01","\u0E40\u0E1B\u0E47\u0E19","\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E43\u0E2B\u0E21\u0E48","\u0E40\u0E2B\u0E15\u0E38\u0E1C\u0E25"];
+  const ex1=["AKR001","(\u0E40\u0E27\u0E49\u0E19\u0E27\u0E48\u0E32\u0E07\u0E44\u0E14\u0E49 \u0E23\u0E30\u0E1A\u0E1A\u0E14\u0E36\u0E07\u0E08\u0E32\u0E01\u0E23\u0E30\u0E1A\u0E1A)","Promotion","2026-08-01","Officer","Senior Officer","O1","\u0E40\u0E25\u0E37\u0E48\u0E2D\u0E19\u0E15\u0E33\u0E41\u0E2B\u0E19\u0E48\u0E07\u0E1B\u0E23\u0E30\u0E08\u0E33\u0E1B\u0E35"];
+  const ex2=["AKR002","","Transfer","2026-08-01","Mining","Processing","","\u0E22\u0E49\u0E32\u0E22\u0E15\u0E32\u0E21\u0E42\u0E04\u0E23\u0E07\u0E2A\u0E23\u0E49\u0E32\u0E07"];
+  const ws=window.XLSX.utils.aoa_to_sheet([h,ex1,ex2]); ws["!cols"]=h.map(()=>({wch:22}));
+  const wb=window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb,ws,"Template");
+  window.XLSX.writeFile(wb,"movement_import_template.xlsx");
+  toast("\u0E14\u0E32\u0E27\u0E19\u0E4C\u0E42\u0E2B\u0E25\u0E14 Template \u0E41\u0E25\u0E49\u0E27 \u00B7 \"\u0E40\u0E1B\u0E47\u0E19\"=\u0E41\u0E1C\u0E19\u0E01/\u0E15\u0E33\u0E41\u0E2B\u0E19\u0E48\u0E07\u0E43\u0E2B\u0E21\u0E48 \u00B7 \"\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E43\u0E2B\u0E21\u0E48\"=job level (\u0E40\u0E27\u0E49\u0E19\u0E27\u0E48\u0E32\u0E07=\u0E44\u0E21\u0E48\u0E40\u0E1B\u0E25\u0E35\u0E48\u0E22\u0E19)","success");
+}
+
+async function movImport(inputEl){
+  const file = inputEl.files?.[0]; inputEl.value="";
+  if(!file) return;
+  if(!window.XLSX){ toast("\u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E2D\u0E42\u0E2B\u0E25\u0E14 library","error"); return; }
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const wb = window.XLSX.read(ev.target.result,{type:"binary"});
+      const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:true});
+      if(!rows.length){ toast("\u0E44\u0E1F\u0E25\u0E4C\u0E27\u0E48\u0E32\u0E07","error"); return; }
+      const empByCode = new Map(allEmployees.map(e=>[String(e.emp_code||"").trim(), e]));
+      const batch=[]; let skipped=0; const errors=[];
+      rows.forEach((r,i)=>{
+        const emp_code = movPick(r,["\u0E23\u0E2B\u0E31\u0E2A\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19","emp_code","Employee_ID","\u0E23\u0E2B\u0E31\u0E2A"]);
+        const type = movPick(r,["\u0E1B\u0E23\u0E30\u0E40\u0E20\u0E17","type","Type"]);
+        if(!emp_code || !type){ skipped++; return; }
+        if(!MOV_TYPES.includes(type)){ errors.push(`\u0E41\u0E16\u0E27 ${i+2}: \u0E1B\u0E23\u0E30\u0E40\u0E20\u0E17 "${type}" \u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07`); skipped++; return; }
+        let name = movPick(r,["\u0E0A\u0E37\u0E48\u0E2D-\u0E2A\u0E01\u0E38\u0E25","\u0E0A\u0E37\u0E48\u0E2D","name","Name"]);
+        if(!name){ const e=empByCode.get(emp_code); name = e?`${e.firstname_th||""} ${e.lastname_th||""}`.trim():emp_code; }
+        batch.push({
+          emp_code, name, type,
+          date: movNormDate(movPick(r,["\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48\u0E21\u0E35\u0E1C\u0E25","date","Date","\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48"]))||null,
+          from_dept: movPick(r,["\u0E08\u0E32\u0E01","from","from_dept","\u0E41\u0E1C\u0E19\u0E01\u0E40\u0E14\u0E34\u0E21"]),
+          to_dept: movPick(r,["\u0E40\u0E1B\u0E47\u0E19","to","to_dept","\u0E41\u0E1C\u0E19\u0E01\u0E43\u0E2B\u0E21\u0E48","\u0E15\u0E33\u0E41\u0E2B\u0E19\u0E48\u0E07\u0E43\u0E2B\u0E21\u0E48"]),
+          job_level: movPick(r,["\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E43\u0E2B\u0E21\u0E48","job_level","Job Level","\u0E23\u0E30\u0E14\u0E31\u0E1A"]).toUpperCase(),
+          reason: movPick(r,["\u0E40\u0E2B\u0E15\u0E38\u0E1C\u0E25","reason","Reason","\u0E2B\u0E21\u0E32\u0E22\u0E40\u0E2B\u0E15\u0E38"]) || "\u0E19\u0E33\u0E40\u0E02\u0E49\u0E32\u0E08\u0E32\u0E01 Excel",
+          recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"Import",
+          created_by: currentUser?.id,
+        });
+      });
+      if(!batch.length){ toast("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E17\u0E35\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07"+(errors.length?": "+errors[0]:""),"error"); return; }
+      // job_level \u0E44\u0E21\u0E48\u0E43\u0E0A\u0E48\u0E04\u0E2D\u0E25\u0E31\u0E21\u0E19\u0E4C\u0E02\u0E2D\u0E07 movements \u2014 \u0E15\u0E31\u0E14\u0E2D\u0E2D\u0E01\u0E01\u0E48\u0E2D\u0E19 insert (\u0E40\u0E01\u0E47\u0E1A\u0E44\u0E27\u0E49\u0E43\u0E0A\u0E49\u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19)
+      const movRows = batch.map(({job_level, ...m})=>m);
+      const { error } = await supabase.from("movements").insert(movRows);
+      if(error){ toast("Import \u0E44\u0E21\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08: "+error.message,"error"); return; }
+      // \u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19 \u2014 \u0E40\u0E23\u0E35\u0E22\u0E07\u0E15\u0E32\u0E21\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48 (\u0E40\u0E01\u0E48\u0E32->\u0E43\u0E2B\u0E21\u0E48) \u0E43\u0E2B\u0E49\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14\u0E17\u0E31\u0E1A
+      let updated=0;
+      const ordered=[...batch].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+      for(const m of ordered){
+        const upd = empUpdateFromMovement(m.type, m.to_dept, m.date, m.job_level);
+        if(Object.keys(upd).length){ upd.updated_at=new Date().toISOString(); const {error:ue}=await supabase.from("employees").update(upd).eq("emp_code",m.emp_code); if(!ue) updated++; }
+      }
+      if(errors.length) console.warn("Movement import errors:", errors);
+      const warn=(skipped?` \u00B7 \u0E02\u0E49\u0E32\u0E21 ${skipped}`:"")+(errors.length?` (${errors.length} error \u2014 \u0E14\u0E39 console)`:"");
+      notify("\u0E19\u0E33\u0E40\u0E02\u0E49\u0E32\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E31\u0E1A\u0E15\u0E33\u0E41\u0E2B\u0E19\u0E48\u0E07", `${batch.length} \u0E23\u0E32\u0E22\u0E01\u0E32\u0E23 \u00B7 \u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19 ${updated}${warn}`, {category:"movement", toastMsg:`Import \u0E40\u0E2A\u0E23\u0E47\u0E08: ${batch.length} \u0E23\u0E32\u0E22\u0E01\u0E32\u0E23${warn}`});
+    } catch(err){ toast("\u0E2D\u0E48\u0E32\u0E19\u0E44\u0E1F\u0E25\u0E4C\u0E44\u0E21\u0E48\u0E44\u0E14\u0E49: "+err.message,"error"); }
+  };
+  reader.readAsBinaryString(file);
 }
 
 // ===== ANALYTICS =====

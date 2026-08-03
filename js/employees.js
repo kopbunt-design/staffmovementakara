@@ -359,8 +359,8 @@ async function handleImport(inputEl) {
 
 function handleExport() {
   if(!window.XLSX){ toast("กรุณารอโหลด library","error"); return; }
-  const h=["Employee Code","First Name TH","Last Name TH","First Name EN","Last Name EN","Gender","Nationality","DOB","Phone","Division","Department","Section","Team","Position","Job Level","Site","Contract Type","Join Date","Effective Date","End Date","Salary","Status","Remark"];
-  const rows=allEmployees.map(e=>[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,e.gender,e.nationality,e.dob,e.phone,e.division,e.department,e.section,e.team,e.position,e.job_level,e.site,e.contract_type,e.join_date,e.effective_date,e.end_date,e.salary,e.status,e.remark]);
+  const h=["Employee Code","First Name TH","Last Name TH","First Name EN","Last Name EN","Gender","Nationality","DOB","Phone","Division","Department","Section","Team","Position","Job Level","Site","Province","Contract Type","Join Date","Effective Date","End Date","Salary","Status","Remark"];
+  const rows=allEmployees.map(e=>[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,e.gender,e.nationality,e.dob,e.phone,e.division,e.department,e.section,e.team,e.position,e.job_level,e.site,e.province,e.contract_type,e.join_date,e.effective_date,e.end_date,e.salary,e.status,e.remark]);
   const ws=window.XLSX.utils.aoa_to_sheet([h,...rows]); ws["!cols"]=h.map(()=>({wch:16}));
   const wb=window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb,ws,"Employees");
   window.XLSX.writeFile(wb,`employees_${new Date().toISOString().slice(0,10)}.xlsx`);
