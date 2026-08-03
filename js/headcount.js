@@ -355,10 +355,10 @@ export function renderHeadcount() {
   window._hcMode=m=>{ mode=m; const opts=getOptions(); selNum=opts[0].val; render(); };
   window._hcNum=n=>{ selNum=n; brkYM=null; render(); };
   window._hcBrk=v=>{ brkYM=v; render(); };
-  window._exportHC=()=>exportExcel(mode,selNum).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
+  window._exportHC=()=>exportExcel(mode,selNum,brkYM).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
 }
 
-async function exportExcel(mode,num){
+async function exportExcel(mode,num,brkYM){
   if(!window.ExcelJS){toast("กรุณารอโหลด library","error");return;}
   const periodYMs=buildPeriodMonths(mode,num);
   const d=buildData(periodYMs);
@@ -583,6 +583,70 @@ async function exportExcel(mode,num){
   noteL2.value="Voluntary = Resignation + Retirement  |  Involuntary = Termination  |  Turnover = Resigned ÷ Avg HC × 100";
   noteL2.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
   noteL2.alignment={horizontal:"left",vertical:"middle",wrapText:true};noteL2.border=borders;
+
+  // ===== Turnover Rate Breakdown — ใส่สูตรอ้างอิงตารางรายเดือนด้านบน =====
+  // คอลัมน์ในตารางด้านบน: F=Voluntary, J=Involuntary, N=Total Resigned, R=Headcount สิ้นเดือน
+  const dataIdx=rows.map((r,i)=>({r,i})).filter(x=>!x.r.future);
+  let bIdx=brkYM?rows.findIndex(r=>r.ym===brkYM):-1;
+  if(bIdx<0||rows[bIdx]?.future) bIdx=dataIdx.length?dataIdx[dataIdx.length-1].i:-1;
+  if(bIdx>=0){
+    const bRow=rows[bIdx];
+    const xr=DSTART+bIdx, first=DSTART;                 // แถว Excel ของเดือนที่เลือก / เดือนแรกของช่วง
+    const ytd=dataIdx.filter(x=>x.i<=bIdx).map(x=>x.r);
+    const ytdAvg=ytd.length?ytd.reduce((s,r)=>s+r.hT,0)/ytd.length:0;
+    const BR=SR+4;
+
+    ws.mergeCells(BR,1,BR,12);
+    const bt=ws.getCell(BR,1);
+    bt.value=`TURNOVER RATE BREAKDOWN — ${bRow.month} ${bRow.ym.split("-")[0]}`;
+    bt.font={name:"Calibri",size:11,bold:true,color:white};
+    bt.fill=hdrFill(navy);bt.alignment={horizontal:"left",vertical:"middle",indent:1};bt.border=borders;
+    ws.getRow(BR).height=22;
+
+    const bh=[["Metric",1,4],["Headcount",5,6],["Monthly Turnover Rate (%)",7,9],["YTD Turnover Rate (%)",10,12]];
+    bh.forEach(([txt,c1,c2])=>{
+      ws.mergeCells(BR+1,c1,BR+1,c2);
+      const c=ws.getCell(BR+1,c1);
+      c.value=txt;c.font={name:"Calibri",size:9,bold:true,color:{argb:"FF64748B"}};
+      c.fill=hdrFill(ltGray);c.alignment={horizontal:c1===1?"left":"center",vertical:"middle",indent:c1===1?1:0};c.border=borders;
+    });
+
+    // [ป้าย, คอลัมน์ต้นทางในตารางด้านบน, ค่าที่คำนวณไว้ (cached), สี, ตัวหนา]
+    [["Voluntary Resignation (ลาออก)","F",bRow.vT,ytd.reduce((s,r)=>s+r.vT,0),gold,false],
+     ["Involuntary Termination (ให้ออก)","J",bRow.iT,ytd.reduce((s,r)=>s+r.iT,0),{argb:"FF7C3AED"},false],
+     ["Total Leavers (รวม)","N",bRow.rT,ytd.reduce((s,r)=>s+r.rT,0),red,true]
+    ].forEach(([lbl,col,n,ytdN,clr,bold],i)=>{
+      const r=BR+2+i;
+      ws.getRow(r).height=20;
+      ws.mergeCells(r,1,r,4);
+      const lc=ws.getCell(r,1);
+      lc.value=lbl;lc.font={name:"Calibri",size:10,bold:bold,color:{argb:"FF1E293B"}};
+      lc.alignment={horizontal:"left",vertical:"middle",indent:1};lc.border=borders;
+
+      ws.mergeCells(r,5,r,6);
+      const hc=ws.getCell(r,5);
+      hc.value={formula:`${col}${xr}`,result:n};
+      hc.font={name:"Calibri",size:10,bold:bold};hc.alignment={horizontal:"center",vertical:"middle"};hc.border=borders;
+
+      ws.mergeCells(r,7,r,9);
+      const mc=ws.getCell(r,7);
+      mc.value={formula:`IF(R${xr}=0,0,${col}${xr}/R${xr})`,result:bRow.hT?n/bRow.hT:0};
+      mc.numFmt="0.00%";mc.font={name:"Calibri",size:10,bold:bold,color:clr};
+      mc.alignment={horizontal:"center",vertical:"middle"};mc.border=borders;
+
+      ws.mergeCells(r,10,r,12);
+      const yc=ws.getCell(r,10);
+      yc.value={formula:`IF(AVERAGE(R${first}:R${xr})=0,0,SUM(${col}${first}:${col}${xr})/AVERAGE(R${first}:R${xr}))`,result:ytdAvg?ytdN/ytdAvg:0};
+      yc.numFmt="0.00%";yc.font={name:"Calibri",size:10,bold:bold,color:clr};
+      yc.alignment={horizontal:"center",vertical:"middle"};yc.border=borders;
+    });
+
+    ws.mergeCells(BR+5,1,BR+5,12);
+    const bn=ws.getCell(BR+5,1);
+    bn.value=`Monthly = จำนวนที่ออกในเดือนนั้น ÷ Headcount สิ้นเดือน  |  YTD = สะสม ${dataIdx[0]?.r.month||"-"}–${bRow.month} ÷ Headcount เฉลี่ยสะสม (${ytd.length} เดือน)  |  ทุกช่องเป็นสูตร แก้ตัวเลขด้านบนแล้วคำนวณใหม่อัตโนมัติ`;
+    bn.font={name:"Calibri",size:8.5,color:{argb:"FF64748B"}};
+    bn.alignment={horizontal:"left",vertical:"middle",indent:1,wrapText:true};bn.border=borders;
+  }
 
   // --- Column widths ---
   ws.getColumn(1).width=14;
