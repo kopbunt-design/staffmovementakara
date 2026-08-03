@@ -717,7 +717,7 @@ async function exportOverview(ym){
   });
   const dLast=endHC.length+1, dRng=`'Domicile Data'!$E$2:$E$${dLast}`;
 
-  // Domicile Summary: headcount = COUNTIF จาก Region ของ Data (อัปเดตอัตโนมัติเมื่อแก้ข้อมูล)
+  // Domicile Summary: headcount นับจากคอลัมน์ Region ของชีต Data (อัปเดตอัตโนมัติเมื่อแก้ข้อมูล)
   const sws=wb.addWorksheet("Domicile Summary",{views:[{showGridLines:false}]});
   sws.columns=[{header:"Domicile / Region",width:28},{header:"Headcount",width:14},{header:"Percentage (%)",width:16}];
   sws.getRow(1).eachCell(c=>{c.font=font(10,true,white);c.fill=hFill(navy);c.border=borders;c.alignment={horizontal:"center"};});
@@ -725,7 +725,8 @@ async function exportOverview(ym){
   REGIONS.forEach((rg,i)=>{
     const r=i+2, cnt=endHC.filter(e=>domicileGroup(e)===rg).length;
     sws.getCell(r,1).value=rg;
-    sws.getCell(r,2).value={formula:`COUNTIF(${dRng},A${r})`,result:cnt};
+    // ใช้ EXACT แทน COUNTIF ด้วยเหตุผลเดียวกับชีต Service Summary (กันป้ายที่มี operator/wildcard นับผิด)
+    sws.getCell(r,2).value={formula:`SUMPRODUCT(--EXACT(${dRng},A${r}))`,result:cnt};
     sws.getCell(r,3).value={formula:`IF($B$${tR}=0,0,B${r}/$B$${tR})`,result:hcE>0?cnt/hcE:0};
     sws.getCell(r,3).numFmt="0.0%";
     for(let c=1;c<=3;c++){sws.getCell(r,c).border=borders;sws.getCell(r,c).font=font(10);sws.getCell(r,c).alignment={horizontal:c===1?"left":"center"};}
@@ -776,7 +777,10 @@ async function exportOverview(ym){
   SERVICE_BANDS.forEach((b,i)=>{
     const r=i+2,cnt=svcX.bands[i].count;
     sss.getCell(r,1).value=b;
-    sss.getCell(r,2).value={formula:`COUNTIF(${bandRng},A${r})`,result:cnt};
+    // ห้ามใช้ COUNTIF: ป้ายช่วงขึ้นต้นด้วย "<" / ">" ซึ่ง Excel ตีความเป็นเครื่องหมายเปรียบเทียบ
+    // ทำให้ "< 1 year" นับได้ 0 และ "> 10 years" นับมั่ว (ยอดรวมเกินจำนวนคนจริง)
+    // EXACT = เทียบข้อความตรงตัว ไม่ตีความ operator/wildcard
+    sss.getCell(r,2).value={formula:`SUMPRODUCT(--EXACT(${bandRng},A${r}))`,result:cnt};
     sss.getCell(r,3).value={formula:`IF($B$${svcTR}=0,0,B${r}/$B$${svcTR})`,result:svcX.total>0?cnt/svcX.total:0};
     sss.getCell(r,3).numFmt="0.0%";
     for(let c=1;c<=3;c++){const cc=sss.getCell(r,c);cc.border=borders;cc.font=font(10);cc.alignment={horizontal:c===1?"left":"center"};}
