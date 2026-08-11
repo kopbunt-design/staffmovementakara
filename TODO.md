@@ -1,15 +1,42 @@
 # TODO / สถานะงาน
 
-อัปเดตล่าสุด: 2026-07-31
+อัปเดตล่าสุด: 2026-08-11
 
 ## 🐛 บั๊กค้างรอแก้ (ทำต่อจากตรงนี้)
 - **Position Quota: เพิ่ม/แก้ quota แล้วไม่บันทึก ("ไม่เข้า")** — ผู้ใช้ยืนยันว่าเป็นหน้า Position Quota (2026-07-31)
   - ต้นเหตุที่สงสัยสุด: **RLS block** — ตาราง `position_quota` ไม่มีไฟล์ schema/RLS ในโปรเจกต์เลย (สร้างมือใน Supabase)
+  - เช็คได้เร็ว ๆ ด้วย: `select tablename,policyname,cmd,qual from pg_policies where tablename='position_quota';`
+    ถ้าไม่มีแถวเลยแต่ RLS เปิดอยู่ = เขียนไม่ได้ทั้งหมด
   - ยังไม่รู้อาการชัด: รอผู้ใช้บอกข้อความ toast (A=error "row-level security"/policy, B=สำเร็จแต่ไม่โผล่, C=ไม่มี toast)
   - **แผนแก้ที่เตรียมไว้:** ทำไฟล์ `sql/schema_position_quota.sql` — enable RLS + policy อ่าน=authenticated, เขียน=hr/admin (เหมือนตารางอื่น) + โค้ด `js/vacancy.js` `_vAdd/_vEdit/_vDel` มี error handling อยู่แล้ว (เด้ง toast) ไม่ต้องแก้ JS
   - โค้ดที่เกี่ยว: `js/vacancy.js:222` `_vAdd`, `:235` `_vEdit`, `:244` `_vDel`, `:7` `loadPosQuota`
+  - **กระทบ Dashboard ด้วย**: ถ้าอ่าน `position_quota` ไม่ได้ ส่วน "เทียบแผนอัตรากำลัง" จะขึ้น empty state แทนตัวเลข
+
+## 🔍 รอผู้ใช้ตรวจตัวเลขจริง (ยังไม่มีใครยืนยัน)
+Dashboard ใหม่ + กฎวันที่ push ขึ้น production แล้ว (commit `e7ebf63`) แต่ยังไม่ได้เทียบกับข้อมูลจริง:
+- เดือน **ก.ค. พ้นสภาพ +1 / ส.ค. −1** เทียบกับก่อนเปลี่ยนกฎ
+- Dashboard / Headcount Report / Movement Report / Workforce Overview ต้องได้เลข **ตรงกันทั้ง 4 หน้า**
+- Console ไม่มี error
 
 ## ✅ เสร็จ + push ขึ้น production แล้ว
+
+### Dashboard ผู้บริหาร + รวมกฎวันที่ (2026-08-11, commit `e7ebf63`)
+- **Dashboard เขียนใหม่ทั้งหน้า** สไตล์ Premium Executive (navy/ทอง, การ์ดมุมโค้ง 16px, design tokens `--exec-*`)
+  1. KPI: การ์ด Headcount เด่น + เทียบเดือนก่อน (จำนวน+%) + progress เทียบแผน · เข้าใหม่ / พ้นสภาพ / อัตราลาออก
+  2. ข้อมูลเชิงลึกกำลังคน + กำลังพ้นสภาพ 30/60/90 วัน
+  3. กราฟแนวโน้ม 6 เดือน — เส้นกำลังคน + แท่งเข้า/ออก + เส้นประแผน + tooltip
+  4. Waterfall (ยกมา+เข้า−ออก=ยกไป) + แผนก Actual/Plan/Gap (เกณฑ์ ครบ/เฝ้าระวัง ≤10%/วิกฤต >10%) + ประเภทสัญญา
+  5. Timeline ความเคลื่อนไหว + ปุ่มดูทั้งหมด
+- **Approved Plan** มาจากตาราง `position_quota` (โหลดเข้า state กลาง `allPosQuota`)
+- **กฎวันที่รวมไว้ที่ `js/app.js` จุดเดียว** — `sepYM` / `isActiveAtMonthEnd` / `hcAtMonthEnd` / `lastDayOfMonth`
+  ทุกรายงาน import ไปใช้ (เดิมก๊อป 4 ไฟล์ = ต้นเหตุ regression 8 ครั้ง)
+  **termination 1/8 → ทำงานถึง 31 ก.ค. → พ้นสภาพนับ ก.ค. และหลุดจาก headcount ก.ค.** (ยืนยัน 2026-08-03)
+- เทสต์ `test/headcount-date.test.js` (46) + `test/dashboard.test.js` (33) — ดึงฟังก์ชันจริงจาก app.js มารัน
+- `index.html` ใส่ `css/style.css?v=N` กัน browser cache CSS เก่า (แก้ CSS แล้วหน้าไม่เปลี่ยน = บวกเลขนี้)
+
+### สิทธิ์ระดับฐานข้อมูล — รันใน Supabase แล้ว ✅ (ยืนยัน 2026-08-11)
+- `movements_update` / `movements_delete` = `created_by = auth.uid() OR get_my_role() = 'admin'`
+- `roles_update` / `roles_delete` = `get_my_role() = 'admin'` (HR/user แก้สิทธิ์ admin ไม่ได้แล้ว)
 
 ### Staff Movement + Admin controls (2026-07-31, commit `5375873`)
 - **Import Excel ปรับตำแหน่งหลายคน (bulk)** หน้า Staff Movement (HR/Admin) — สร้าง movement + อัปเดตพนักงาน (ตำแหน่ง/แผนก/**job_level** จากคอลัมน์ "ระดับใหม่") · รองรับ date serial ของ Excel · helper ร่วม `empUpdateFromMovement`
@@ -38,10 +65,10 @@
 
 ## ⚠️ ต้องทำใน Supabase (ถ้ายังไม่ได้ทำในโปรเจกต์จริง)
 รันใน SQL Editor (ทีละไฟล์, idempotent):
-1. `sql/schema_notifications.sql` — ตารางกระดิ่ง shared
-2. `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
-3. `sql/schema_admin_permissions.sql` — admin แก้/ลบ movement ได้ทุกอัน + เฉพาะ admin แก้ role (สำคัญต่อ #1/#2 ของงาน 31 ก.ค.)
-4. (รอทำ) `sql/schema_position_quota.sql` — RLS ให้ Position Quota (ดูบั๊กค้างด้านบน)
+1. ✅ `sql/schema_notifications.sql` — ตารางกระดิ่ง shared
+2. ✅ `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
+3. ✅ `sql/schema_admin_permissions.sql` — รันแล้ว ยืนยันด้วย pg_policies เมื่อ 2026-08-11
+4. ⬜ (รอทำ) `sql/schema_position_quota.sql` — RLS ให้ Position Quota (ดูบั๊กค้างด้านบน · ยังไม่ได้สร้างไฟล์)
 
 ## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)
 1. **RLS + ข้อมูลเงินเดือน** — ตอนนี้ user ที่ล็อกอินอ่าน `salary` ผ่าน API ได้ แม้หน้า Payroll ซ่อนไว้ → แยกตาราง/จำกัด RLS (สำคัญสุด)
