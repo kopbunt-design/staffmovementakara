@@ -28,18 +28,25 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
 
 - **Report date attribution — ONE rule, used by every report.** This is the #1 recurring bug source (8+ commits fixing regressions). Read this before touching any month/date logic.
 
-  `end_date` (employees) and `date` (movements) hold the **effective date of separation** — the first day the person is *no longer* working. The month a separation belongs to is the month of the **last working day**, i.e. effective date minus one day (`lastWorkYM`).
+  `end_date` (employees) and `date` (movements) hold the **termination date** — the first day the person is *no longer* working. The month a separation belongs to is the month of the **last working day**, i.e. termination date minus one day.
 
-  - `lastWorkYM(dateStr)`: subtracts 1 day from the effective date, returns `"YYYY-MM"`. Defined identically in `headcount.js`, `movement-report.js`, `workforce-overview.js`, and `app.js`.
-  - `hcAtMonth(ym)`: exclude when `lastWorkYM(end_date) <= ym`; exclude future hires when `join_date` month `> ym`.
-  - Separations counted by `lastWorkYM(end_date) === ym` (employees) / `lastWorkYM(v.date) === ym` (movements).
-  - New hires counted by `join_date` month, and by `movYM` for New Hire movements.
-  - **Example (the canonical case):** effective date 1 Aug 2026 → last working day 31 Jul → the separation shows in **July**, and the person is **excluded from July's ending headcount** (still counted in June).
-  - Formula balances exactly: Opening + New Hires − Separations = Ending.
+  **All of this lives in one place now — `js/app.js`. Do not re-define it per report; that duplication is what caused the repeat regressions.**
 
-  Confirmed with the user on 2026-08-03; the Headcount Report previously counted separations by the effective date's own month, which put a 1 Aug separation in August. Do not reintroduce that.
+  - `sepYM(dateStr)` — subtracts 1 day, returns `"YYYY-MM"`. The separation month.
+  - `isActiveAtMonthEnd(e, ym)` / `hcAtMonthEnd(emps, ym)` — excludes when `sepYM(end_date) <= ym`, and excludes not-yet-hired when `join_date > lastDayOfMonth(ym)`. It deliberately uses **the same `sepYM`**, so a person leaves the headcount in exactly the month their separation is counted and the balance below can never drift.
+  - Separations: `sepYM(e.end_date) === ym` (employees) / `sepYM(m.date) === ym` (movements). **Not `movYM`** — `movYM` does not subtract the day.
+  - New hires: `join_date` month, and `movYM` for New Hire movements.
+  - **Canonical case:** termination 1 Aug 2026 → last working day 31 Jul → separation counted in **July**, person **excluded from July's** headcount, still counted in June.
+  - Balances exactly: Opening + New Hires − Separations = Ending.
 
-  Regression test: `osascript -l JavaScript test/headcount-date.test.js` (extracts the real functions from all four files and checks they agree — no browser or Supabase needed).
+  Confirmed with the user on 2026-08-03. This flipped twice that day: a written spec asked for the separation to sit in August (the termination date's own month), but on seeing real numbers the user confirmed **July**. If a future request says "August", check it against this line before changing anything.
+
+  Regression tests (no browser or Supabase needed):
+  ```
+  osascript -l JavaScript test/headcount-date.test.js   # 46 cases
+  osascript -l JavaScript test/dashboard.test.js        # 33 cases
+  ```
+  They extract the real functions from `js/app.js` and assert the other reports do not re-define their own copies.
 
 - **`movYM` vs `lastWorkYM`**: `movYM(movement)` in `app.js` returns the month of `movement.date` (falling back to `created_at`) **without** subtracting a day — it is for new hires and general movement filtering. `lastWorkYM(dateStr)` subtracts a day and is only for separations. Do not swap them.
 

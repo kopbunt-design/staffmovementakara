@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, esc, toast, userRole, navigate } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, esc, toast, userRole, navigate } from "./app.js";
 import { PROVINCES } from "./masterdata.js";
 
 const MO=["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -51,32 +51,21 @@ function buildServiceStats(emps,ym){
 
 function prevYM(ym){const[y,m]=ym.split("-").map(Number);return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`;}
 function nextYM(ym){const[y,m]=ym.split("-").map(Number);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;}
-function lastWorkYM(dateStr){
-  if(!dateStr) return "";
-  const d=new Date(dateStr);d.setUTCDate(d.getUTCDate()-1);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
-}
-function hcAtMonth(ym){
-  return allEmployees.filter(e=>{
-    const jm=(e.join_date||"").substring(0,7);
-    if(jm&&jm>ym)return false;
-    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm<=ym) return false; }
-    return true;
-  });
-}
+// ใช้กฎกลางจาก app.js (hcAtMonthEnd / sepYM) — ห้ามนิยามซ้ำในไฟล์นี้
+const hcAtMonth = ym => hcAtMonthEnd(allEmployees, ym);
 function getNewHires(ym){
   const mc=new Set(allMovements.filter(m=>movYM(m)===ym&&m.type==="New Hire").map(m=>m.emp_code));
   const eo=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym&&!mc.has(e.emp_code));
   return mc.size+eo.length;
 }
 function getResignations(ym){
-  const mc=new Set(allMovements.filter(m=>lastWorkYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
-  const eo=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!mc.has(e.emp_code));
+  const mc=new Set(allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
+  const eo=allEmployees.filter(e=>sepYM(e.end_date)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!mc.has(e.emp_code));
   return mc.size+eo.length;
 }
 function getFirstYearCount(ym){
-  const mc=new Set(allMovements.filter(m=>lastWorkYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
-  const eo=allEmployees.filter(e=>lastWorkYM(e.end_date)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!mc.has(e.emp_code));
+  const mc=new Set(allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
+  const eo=allEmployees.filter(e=>sepYM(e.end_date)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!mc.has(e.emp_code));
   const codes=[...mc,...eo.map(e=>e.emp_code)];
   let n=0;
   for(const c of codes){

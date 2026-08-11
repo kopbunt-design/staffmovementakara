@@ -7,12 +7,41 @@ export let currentUser = null;
 export let userRole = "user";
 export let allMovements = [];
 export let allEmployees = [];
+export let allPosQuota = [];   // Approved Headcount Plan (ตาราง position_quota) — ว่างได้ถ้ายังไม่ตั้งแผน
 
 // ===== UTILS =====
 export const esc = s => (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const fmtDate = d => d ? String(d).substring(0,10) : "-";
 // เดือนของ movement: ใช้วันที่มีผล (date) ก่อน ถ้าไม่มีใช้วันที่บันทึก
 export const movYM = m => (m.date || m.created_at || "").substring(0,7);
+
+// ===== กฎการนับเดือนของรายงาน — นิยามเดียว ใช้ร่วมทุกหน้า (เดิมก๊อปไว้ 4 ไฟล์จนหลุดจากกัน) =====
+// end_date (พนักงาน) / date (movement) = "วันแรกที่พ้นสภาพ" (termination date)
+// เดือนที่นับการพ้นสภาพ = เดือนของ "วันทำงานวันสุดท้าย" = termination date ลบ 1 วัน (sepYM)
+// และคนคนนั้นจะหลุดจาก Headcount ตั้งแต่เดือนเดียวกันนั้น — ใช้ sepYM ตัวเดียวกันทั้งสองที่
+// จึงรับประกันว่า ยกมา + เข้าใหม่ − พ้นสภาพ = ยกไป เสมอ
+// ตัวอย่าง termination 2026-08-01 -> ทำงานถึง 31 ก.ค. -> พ้นสภาพนับเดือน ก.ค. และไม่อยู่ใน Headcount ก.ค. (ยังอยู่ใน มิ.ย.)
+// ยืนยันกับผู้ใช้ 2026-08-03
+export const lastDayOfMonth = ym => {
+  const [y,m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(d).padStart(2,"0")}`;
+};
+export const sepYM = dateStr => {
+  if (!dateStr) return "";
+  const d = new Date(String(dateStr).substring(0,10) + "T00:00:00Z");
+  if (isNaN(d.getTime())) return "";
+  d.setUTCDate(d.getUTCDate() - 1);             // ถอย 1 วัน = วันทำงานวันสุดท้าย
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+};
+export function isActiveAtMonthEnd(e, ym) {
+  const jd = (e.join_date||"").substring(0,10);
+  if (jd && jd > lastDayOfMonth(ym)) return false;   // ยังไม่เริ่มงาน ณ สิ้นเดือนนั้น
+  const sm = sepYM(e.end_date);
+  if (sm && sm <= ym) return false;                  // พ้นสภาพในเดือนนั้นหรือก่อนหน้า
+  return true;
+}
+export const hcAtMonthEnd = (emps, ym) => emps.filter(e => isActiveAtMonthEnd(e, ym));
 export const initials = n => { const p=(n||"").trim().split(/\s+/); return ((p[0]||"")[0]||"").toUpperCase()+((p[1]||"")[0]||"").toUpperCase()||"?"; };
 export const avatarColor = n => { const pal=["#2B5AC7","#0D7C4B","#6D28D9","#C0392B","#D97706","#1A3E9A"]; let h=0; for(const c of (n||"")) h=(h*31+c.charCodeAt(0))>>>0; return pal[h%pal.length]; };
 export const timeAgo = ts => { const s=Math.floor((Date.now()-new Date(ts).getTime())/1000); if(s<60) return "เมื่อสักครู่"; if(s<3600) return Math.floor(s/60)+" นาทีที่แล้ว"; if(s<86400) return Math.floor(s/3600)+" ชม.ที่แล้ว"; return Math.floor(s/86400)+" วันที่แล้ว"; };
@@ -137,6 +166,11 @@ export const MOV_COLORS = {
   "Retirement":["#D97706","#FEF7E8"],"Secondment":["#2B5AC7","#EEF3FB"],
 };
 export const movBadge = type => { const [c,bg]=MOV_COLORS[type]||["#64748B","#f1f5f9"]; return `<span class="badge" style="color:${c};background:${bg};">${esc(type)}</span>`; };
+// ป้ายภาษาไทยของประเภทความเคลื่อนไหว (ใช้ในหน้า Dashboard ให้ภาษาสม่ำเสมอ)
+export const MOV_TH = {
+  "New Hire":"เข้าใหม่","Resignation":"ลาออก","Termination":"เลิกจ้าง","Retirement":"เกษียณ",
+  "Transfer":"โอนย้าย","Promotion":"เลื่อนตำแหน่ง","Demotion":"ปรับลดตำแหน่ง","Secondment":"ยืมตัว",
+};
 
 // ===== ROUTING =====
 const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","shiftallow","users","settings"];
@@ -183,9 +217,21 @@ async function loadMovements() {
 async function loadEmployees() {
   const { data } = await supabase.from("employees").select("*").order("emp_code");
   allEmployees = data || [];
+  // ตัวเลขข้างเมนู Employees = นับตาม "สถานะ Active ปัจจุบัน" ซึ่งคนละนิยามกับ Headcount บน Dashboard
+  // (Dashboard นับตามวันที่ ณ สิ้นเดือนที่เลือก) จึงอาจไม่เท่ากันได้ — ใส่ title อธิบายไว้กันเข้าใจผิด
   const active = allEmployees.filter(e=>e.status==="Active"||!e.status).length;
-  document.getElementById("empNavCount").textContent = active||"";
+  const navCount = document.getElementById("empNavCount");
+  navCount.textContent = active||"";
+  navCount.title = `พนักงานสถานะ Active ปัจจุบัน ${active} คน (Dashboard นับตามวันที่ ณ สิ้นเดือนที่เลือก จึงอาจต่างกัน)`;
   checkProactiveAlerts();
+}
+
+// Approved Headcount Plan — ถ้าโหลดไม่ได้ (ยังไม่ตั้งแผน/สิทธิ์ไม่ถึง) ให้เป็น [] แล้ว Dashboard จะแสดง empty state
+async function loadPosQuota() {
+  try {
+    const { data, error } = await supabase.from("position_quota").select("*");
+    allPosQuota = error ? [] : (data || []);
+  } catch { allPosQuota = []; }
 }
 
 // ===== PROACTIVE ALERTS (สัญญาใกล้หมดอายุ / พ้นทดลองงาน / ใกล้เกษียณ) =====
@@ -332,7 +378,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
     document.getElementById("settingsNavItem").style.display = "flex";
   }
 
-  await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications()]);
+  await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications(), loadPosQuota()]);
   startRealtime();
   navigate("dashboard");
 });
@@ -341,112 +387,367 @@ document.getElementById("logoutBtn")?.addEventListener("click", logout);
 
 // ===== DASHBOARD =====
 let dashMonth = ""; // "" = เดือนปัจจุบัน
-function lastWorkYM(dateStr){
-  if(!dateStr) return "";
-  const d=new Date(dateStr);d.setUTCDate(d.getUTCDate()-1);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
-}
+// การพ้นสภาพนับในเดือนของ end_date / movement date เอง (ดูกฎที่ hcAtMonthEnd ด้านบน)
 function getMonthStats(ym) {
   const movMonth = allMovements.filter(m => movYM(m) === ym);
   const movJoinCodes = new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
   const empJoined = allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym && !movJoinCodes.has(e.emp_code));
-  const movResignCodes = new Set(allMovements.filter(m=>lastWorkYM(m.date)===ym&&["Resignation","Termination","Retirement"].includes(m.type)).map(m=>m.emp_code));
-  const empResigned = allEmployees.filter(e=>lastWorkYM(e.end_date)===ym && ["Resigned","Terminated","Retired"].includes(e.status) && !movResignCodes.has(e.emp_code));
+  const movResignCodes = new Set(allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Termination","Retirement"].includes(m.type)).map(m=>m.emp_code));
+  const empResigned = allEmployees.filter(e=>sepYM(e.end_date)===ym && ["Resigned","Terminated","Retired"].includes(e.status) && !movResignCodes.has(e.emp_code));
   return { joined: movJoinCodes.size + empJoined.length, resigned: movResignCodes.size + empResigned.length };
 }
+// ปีงบประมาณ: เริ่ม ก.ค. (ก.ค. 2025 - มิ.ย. 2026 = FY2026) — ตรงกับหน้า Position Quota
+const dashFY = ym => { const [y,m]=ym.split("-").map(Number); return m>=7 ? y+1 : y; };
+const prevYMof = ym => { const [y,m]=ym.split("-").map(Number); return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`; };
+const thMonth = (ym,opt={month:"long",year:"numeric"}) => {
+  const [y,m]=ym.split("-").map(Number);
+  return new Date(y,m-1,1).toLocaleDateString("th-TH",opt);
+};
+// เกณฑ์สถานะแผนกำลังคน (อธิบายบนหน้าจอ): ครบแผน = Healthy, ขาด ≤10% = Watch, ขาด >10% = Critical
+const planStatus = (actual, plan) => {
+  if(!plan) return null;
+  if(actual >= plan) return {key:"healthy", label:"ครบตามแผน", c:"var(--exec-pos)", bg:"var(--exec-pos-soft)"};
+  const shortPct = (plan-actual)/plan*100;
+  return shortPct <= 10
+    ? {key:"watch", label:"เฝ้าระวัง", c:"var(--exec-warn)", bg:"var(--exec-warn-soft)"}
+    : {key:"critical", label:"วิกฤต", c:"var(--exec-neg)", bg:"var(--exec-neg-soft)"};
+};
+
 function renderDashboard() {
   const pg = document.getElementById("pageDashboard");
-  const active = allEmployees.filter(e=>e.status==="Active"||!e.status);
   const now = new Date();
   const currentYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const ym = dashMonth || currentYM;
+  const pYM = prevYMof(ym);
 
-  // สร้าง list เดือนย้อนหลัง 12 เดือน
+  // list เดือนย้อนหลัง 12 เดือน
   const monthOpts = [];
   for(let i=0;i<12;i++){
     const d=new Date(); d.setMonth(d.getMonth()-i);
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    const lbl=d.toLocaleDateString("th-TH",{month:"long",year:"numeric"});
-    monthOpts.push({key,lbl});
+    monthOpts.push({key,lbl:thMonth(key)});
   }
+  const selectedLabel = thMonth(ym);
+
+  // ===== Headcount ณ สิ้นเดือน (กฎกลาง hcAtMonthEnd) =====
+  const hcList  = hcAtMonthEnd(allEmployees, ym);
+  const total   = hcList.length;
+  const prevHC  = hcAtMonthEnd(allEmployees, pYM).length;
+  const dHC     = total - prevHC;
+  const dHCpct  = prevHC ? (dHC/prevHC*100) : null;
 
   const {joined,resigned} = getMonthStats(ym);
-  // ใช้เดือนของ "วันทำงานวันสุดท้าย" (lastWorkYM) เหมือนทุกรายงาน — effective 1 ส.ค. = ทำงานถึง 31 ก.ค. จึงตัดออกตั้งแต่ ก.ค.
-  const activeAtMonth = allEmployees.filter(e=>{
-    const jm=(e.join_date||"").substring(0,7);
-    if(jm && jm>ym) return false;
-    if(e.end_date){ const lm=lastWorkYM(e.end_date); if(lm && lm<=ym) return false; }
-    return true;
-  });
-  const total = activeAtMonth.length;
-  const turnover = total ? ((resigned/total)*100).toFixed(1) : "0.0";
-  const selectedLabel = monthOpts.find(m=>m.key===ym)?.lbl || ym;
+  const prevStats = getMonthStats(pYM);
+  const dJoin = joined - prevStats.joined;
+  const dExit = resigned - prevStats.resigned;
+  const turnover = total ? (resigned/total*100) : 0;
+  const prevTurnover = prevHC ? (prevStats.resigned/prevHC*100) : 0;
+  const dTurnover = turnover - prevTurnover;
 
-  const byDept = {}; activeAtMonth.forEach(e=>{ if(e.department) byDept[e.department]=(byDept[e.department]||0)+1; });
-  const topDepts = Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const maxD = topDepts[0]?.[1]||1;
+  // ===== Approved Headcount Plan (position_quota ของปีงบนั้น) =====
+  const fy = dashFY(ym);
+  const planRows = allPosQuota.filter(q=>Number(q.fiscal_year)===fy);
+  const hasPlan = planRows.length > 0;
+  const planTotal = planRows.reduce((s,q)=>s+(Number(q.quota)||0),0);
+  const planPct = hasPlan && planTotal ? Math.min(100, total/planTotal*100) : 0;
+  const planGap = hasPlan ? planTotal - total : 0;
 
-  const months = [];
+  // ===== แผนก: Actual / Plan / Gap =====
+  const actualByDept = {};
+  hcList.forEach(e=>{ const d=e.department||"ไม่ระบุแผนก"; actualByDept[d]=(actualByDept[d]||0)+1; });
+  const planByDept = {};
+  planRows.forEach(q=>{ const d=q.department||"ไม่ระบุแผนก"; planByDept[d]=(planByDept[d]||0)+(Number(q.quota)||0); });
+  const deptRows = [...new Set([...Object.keys(actualByDept),...Object.keys(planByDept)])].map(d=>{
+    const actual=actualByDept[d]||0, plan=planByDept[d]||0;
+    return {name:d, actual, plan, gap:plan-actual, st:planStatus(actual,plan)};
+  }).sort((a,b)=> hasPlan ? (b.gap-a.gap)||(b.actual-a.actual) : b.actual-a.actual).slice(0,6);
+  const maxDeptBase = Math.max(...deptRows.map(d=>Math.max(d.actual,d.plan)),1);
+  const topGapDept = hasPlan ? deptRows.filter(d=>d.gap>0).sort((a,b)=>b.gap-a.gap)[0] : null;
+
+  // ===== แนวโน้ม 6 เดือน =====
+  const trend = [];
   for(let i=5;i>=0;i--){
-    const d=new Date(ym+"-15"); d.setMonth(d.getMonth()-i);
+    const [yy,mm]=ym.split("-").map(Number);
+    const d=new Date(yy,mm-1-i,1);
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    const lbl=d.toLocaleDateString("th-TH",{month:"short"});
     const st=getMonthStats(key);
-    months.push({lbl,j:st.joined,r:st.resigned});
+    const kfy=dashFY(key);
+    const kplan=allPosQuota.filter(q=>Number(q.fiscal_year)===kfy).reduce((s,q)=>s+(Number(q.quota)||0),0);
+    trend.push({ym:key, lbl:thMonth(key,{month:"short"}), hc:hcAtMonthEnd(allEmployees,key).length,
+      j:st.joined, r:st.resigned, plan:kplan||null});
   }
-  const maxB = Math.max(...months.flatMap(m=>[m.j,m.r]),1);
-  const recent = allMovements.filter(m=>movYM(m)===ym).slice(0,5);
-  const byContract={}; activeAtMonth.forEach(e=>{ const c=e.contract_type||"Permanent"; byContract[c]=(byContract[c]||0)+1; });
+  const maxBar = Math.max(...trend.flatMap(t=>[t.j,t.r]),1);
+  const lineVals = [...trend.map(t=>t.hc), ...(hasPlan?trend.map(t=>t.plan).filter(v=>v):[])];
+  const lMin = Math.min(...lineVals), lMax = Math.max(...lineVals);
+  const lSpan = (lMax-lMin)||1;
+  const yOf = v => 70 - ((v-lMin)/lSpan)*58;          // แปลงค่าเป็นพิกัด y (70=ล่าง, 12=บน)
+  const xOf = i => ((i+0.5)/trend.length)*100;
+
+  // ===== Waterfall: ยกมา + เข้าใหม่ − พ้นสภาพ = ยกไป =====
+  const wfCalc = prevHC + joined - resigned;
+  const wfDiff = total - wfCalc;   // ถ้าไม่ 0 = ข้อมูลไม่สอดคล้อง (แจ้งให้เห็น ไม่กลบ)
+  const wfMax = Math.max(prevHC, total, 1);
+
+  // ===== พนักงานที่กำลังพ้นสภาพ (นับจากวันนี้) =====
+  const upcoming = allEmployees
+    .map(e=>({e, d:daysUntil(e.end_date)}))
+    .filter(x=>x.d!==null && x.d>=0 && isActiveAtMonthEnd(x.e, currentYM));
+  const up30=upcoming.filter(x=>x.d<=30).length;
+  const up60=upcoming.filter(x=>x.d<=60).length;
+  const up90=upcoming.filter(x=>x.d<=90).length;
+
+  // ===== ประเภทสัญญา =====
+  const byContract={}; hcList.forEach(e=>{ const c=e.contract_type||"Permanent"; byContract[c]=(byContract[c]||0)+1; });
+  const contractRows = Object.entries(byContract).sort((a,b)=>b[1]-a[1]);
+
+  // ===== ความเคลื่อนไหวล่าสุดของเดือนที่เลือก =====
+  const recent = allMovements.filter(m=>movYM(m)===ym)
+    .sort((a,b)=>String(b.date||b.created_at||"").localeCompare(String(a.date||a.created_at||"")))
+    .slice(0,6);
+
+  // ป้ายเปรียบเทียบเดือนก่อน — สีแดงเฉพาะค่าลบ/สิ่งที่ต้องเตือน (warn=true คือ "เพิ่มขึ้นแล้วไม่ดี")
+  const pill = (v, {suffix="", warn=false, hero=false}={}) => {
+    const good = warn ? v<0 : v>0;
+    const bad  = warn ? v>0 : v<0;
+    const cls = hero ? "dsh-delta-hero" : good ? "up" : bad ? "down" : "flat";
+    const arrow = v>0 ? "▲" : v<0 ? "▼" : "—";
+    const num = v>0 ? `+${v}` : `${v}`;
+    return `<span class="dsh-delta ${cls}">${arrow} ${num}${suffix} <span style="font-weight:500;opacity:.8;">เทียบเดือนก่อน</span></span>`;
+  };
+  const emptyBox = (title, sub) => `<div class="dsh-empty">
+    <div class="dsh-empty-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div>
+    <div class="dsh-empty-t">${esc(title)}</div><div class="dsh-empty-s">${esc(sub)}</div></div>`;
+
+  const hcPts = trend.map((t,i)=>`${xOf(i)},${yOf(t.hc)}`).join(" ");
+  const planPts = hasPlan ? trend.map((t,i)=>`${xOf(i)},${yOf(t.plan||lMin)}`).join(" ") : "";
 
   pg.innerHTML = `
-  <div class="page-header">
-    <div><div class="page-heading">Dashboard</div><div class="page-sub">Akara Resources · ${selectedLabel}</div></div>
-    <select class="filter-select" onchange="window._dashMonth(this.value)" style="min-width:180px;">
-      ${monthOpts.map(m=>`<option value="${m.key}" ${m.key===ym?"selected":""}>${m.lbl}</option>`).join("")}
-    </select>
-  </div>
-  <div class="kpi-grid">
-    <div class="kpi-card blue"><div class="kpi-label">Headcount รวม</div><div class="kpi-value" style="color:var(--blue);">${total}</div><div class="kpi-delta delta-neutral">พนักงาน Active</div></div>
-    <div class="kpi-card green"><div class="kpi-label">เข้าใหม่</div><div class="kpi-value" style="color:var(--green);">${joined}</div><div class="kpi-delta delta-up">New Hire</div></div>
-    <div class="kpi-card red"><div class="kpi-label">ลาออก/สิ้นสุด</div><div class="kpi-value" style="color:var(--red);">${resigned}</div><div class="kpi-delta delta-neutral">${selectedLabel}</div></div>
-    <div class="kpi-card gold"><div class="kpi-label">Turnover Rate</div><div class="kpi-value" style="color:var(--gold-dark);">${turnover}%</div><div class="kpi-delta delta-neutral">${selectedLabel}</div></div>
-  </div>
-  <div class="section grid-2-1 mt-4">
-    <div class="card card-body">
-      <div class="card-title">แนวโน้ม Join vs Resign (6 เดือน)</div>
-      <div style="display:flex;gap:12px;margin-bottom:10px;">
-        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:var(--green);display:inline-block;"></span>เข้าใหม่</span>
-        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:var(--red);display:inline-block;"></span>ลาออก</span>
+  <div class="dsh">
+    <div class="dsh-head">
+      <div>
+        <div class="dsh-title">ภาพรวมกำลังคน</div>
+        <div class="dsh-sub">อัครา รีซอร์สเซส · ข้อมูล ณ สิ้นเดือน${selectedLabel} · นับพนักงานที่เริ่มงานแล้วและยังไม่พ้นสภาพ ณ สิ้นเดือนนั้น</div>
       </div>
-      <div class="bar-chart">
-        ${months.map(m=>`<div class="bar-col">
-          <div style="display:flex;gap:3px;align-items:flex-end;height:90px;">
-            <div style="width:14px;height:${Math.round((m.j/maxB)*90)}px;background:var(--green);opacity:0.85;border-radius:3px 3px 0 0;min-height:2px;"></div>
-            <div style="width:14px;height:${Math.round((m.r/maxB)*90)}px;background:var(--red);opacity:0.85;border-radius:3px 3px 0 0;min-height:2px;"></div>
+      <select class="dsh-month" aria-label="เลือกเดือน" onchange="window._dashMonth(this.value)">
+        ${monthOpts.map(m=>`<option value="${m.key}" ${m.key===ym?"selected":""}>${m.lbl}</option>`).join("")}
+      </select>
+    </div>
+
+    <!-- แถว 1: Executive KPI -->
+    <div class="dsh-kpi">
+      <div class="dsh-hero">
+        <div>
+          <div class="dsh-hero-l" title="นับพนักงานที่วันเริ่มงาน ≤ สิ้นเดือน และยังไม่พ้นสภาพ ณ สิ้นเดือนนั้น">กำลังคน ณ สิ้นเดือน</div>
+          <div class="dsh-hero-v">${total.toLocaleString("th-TH")}<span class="dsh-hero-u">คน</span></div>
+          ${pill(dHC,{suffix:` คน${dHCpct!==null?` (${dHCpct>0?"+":""}${dHCpct.toFixed(1)}%)`:""}`,hero:true})}
+        </div>
+        <div class="dsh-plan">
+          ${hasPlan ? `
+          <div class="dsh-plan-row">
+            <span>เทียบแผนอัตรากำลัง (ปีงบ ${fy})</span>
+            <span style="color:#fff;font-weight:700;">${total.toLocaleString("th-TH")} / ${planTotal.toLocaleString("th-TH")}</span>
           </div>
-          <div class="bar-label">${m.lbl}</div>
-        </div>`).join("")}
+          <div class="dsh-plan-bar"><div class="dsh-plan-fill" style="width:${planPct.toFixed(1)}%;"></div></div>
+          <div class="dsh-plan-row" style="margin:7px 0 0;">
+            <span>${planGap>0?`ต่ำกว่าแผน ${planGap.toLocaleString("th-TH")} คน`:planGap<0?`เกินแผน ${Math.abs(planGap).toLocaleString("th-TH")} คน`:"เป็นไปตามแผน"}</span>
+            <span>${planPct.toFixed(1)}%</span>
+          </div>` : `
+          <div class="dsh-plan-row"><span>ยังไม่ได้ตั้งแผนอัตรากำลังของปีงบ ${fy}</span></div>
+          <div class="dsh-plan-row" style="margin:0;"><span style="color:rgba(255,255,255,.55);">ตั้งได้ที่เมนู “อัตรากำลังที่อนุมัติ”</span></div>`}
+        </div>
+      </div>
+
+      <div class="dsh-kpi-card">
+        <div class="dsh-kpi-l">เข้าใหม่</div>
+        <div><div class="dsh-kpi-v" style="color:var(--exec-pos);">${joined}</div>${pill(dJoin,{suffix:" คน"})}</div>
+      </div>
+      <div class="dsh-kpi-card">
+        <div class="dsh-kpi-l">พ้นสภาพ</div>
+        <div><div class="dsh-kpi-v" style="color:${resigned>0?"var(--exec-neg)":"var(--exec-ink)"};">${resigned}</div>${pill(dExit,{suffix:" คน",warn:true})}</div>
+      </div>
+      <div class="dsh-kpi-card">
+        <div class="dsh-kpi-l">อัตราการลาออก</div>
+        <div><div class="dsh-kpi-v">${turnover.toFixed(2)}<span style="font-size:17px;font-weight:600;color:var(--exec-muted);">%</span></div>${pill(Number(dTurnover.toFixed(2)),{suffix:"%",warn:true})}</div>
       </div>
     </div>
-    <div class="card card-body">
-      <div class="card-title">ประเภทสัญญา</div>
-      ${Object.entries(byContract).map(([t,n])=>`<div class="hbar-row"><div class="hbar-label">${esc(t)}</div><div class="hbar-track"><div class="hbar-fill" style="width:${Math.round(n/(total||1)*100)}%;background:var(--blue);"></div></div><div class="hbar-val">${n}</div></div>`).join("")||`<div class="text-muted text-sm text-center" style="padding:20px 0;">ยังไม่มีข้อมูล</div>`}
+
+    <!-- แถว 2: ข้อมูลเชิงลึก + การแจ้งเตือน -->
+    <div class="dsh-2">
+      <div class="dsh-card">
+        <div class="dsh-card-t">ข้อมูลเชิงลึกกำลังคน</div>
+        <div class="dsh-card-s">สรุปจากข้อมูลจริงของเดือน${selectedLabel}</div>
+        <div class="dsh-insight">
+          <div class="dsh-ic" style="background:${dHC>=0?"var(--exec-pos-soft)":"var(--exec-neg-soft)"};color:${dHC>=0?"var(--exec-pos)":"var(--exec-neg)"};">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${dHC>=0?"M3 17l6-6 4 4 8-8":"M3 7l6 6 4-4 8 8"}"/></svg></div>
+          <div><div class="dsh-insight-t">${dHC===0?"กำลังคนเท่าเดิมกับเดือนก่อน":dHC>0?`กำลังคนเพิ่มขึ้น ${dHC} คน`:`กำลังคนลดลง ${Math.abs(dHC)} คน`}</div>
+            <div class="dsh-insight-s">${prevHC.toLocaleString("th-TH")} คน (${thMonth(pYM)}) → ${total.toLocaleString("th-TH")} คน</div></div>
+        </div>
+        ${hasPlan ? `
+        <div class="dsh-insight">
+          <div class="dsh-ic" style="background:${planGap>0?"var(--exec-warn-soft)":"var(--exec-pos-soft)"};color:${planGap>0?"var(--exec-warn)":"var(--exec-pos)"};">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+          <div><div class="dsh-insight-t">${planGap>0?`ต่ำกว่าแผน ${planGap} คน`:planGap<0?`เกินแผน ${Math.abs(planGap)} คน`:"กำลังคนเป็นไปตามแผน"}</div>
+            <div class="dsh-insight-s">คิดเป็น ${planPct.toFixed(1)}% ของแผนอัตรากำลังปีงบ ${fy} (${planTotal.toLocaleString("th-TH")} คน)</div></div>
+        </div>
+        ${topGapDept ? `
+        <div class="dsh-insight">
+          <div class="dsh-ic" style="background:var(--exec-navy-soft);color:var(--exec-navy);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/></svg></div>
+          <div><div class="dsh-insight-t">แผนกที่ขาดมากที่สุด: ${esc(topGapDept.name)}</div>
+            <div class="dsh-insight-s">มีจริง ${topGapDept.actual} คน จากแผน ${topGapDept.plan} คน (ขาด ${topGapDept.gap} คน)</div></div>
+        </div>` : ""}` : `
+        <div class="dsh-insight">
+          <div class="dsh-ic" style="background:var(--exec-navy-soft);color:var(--exec-muted);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div>
+          <div><div class="dsh-insight-t">ยังเทียบกับแผนอัตรากำลังไม่ได้</div>
+            <div class="dsh-insight-s">ยังไม่มีข้อมูลแผนของปีงบ ${fy} — เพิ่มได้ที่เมนู “อัตรากำลังที่อนุมัติ”</div></div>
+        </div>`}
+        <div class="dsh-insight">
+          <div class="dsh-ic" style="background:var(--exec-navy-soft);color:var(--exec-navy);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg></div>
+          <div><div class="dsh-insight-t">เข้าใหม่ ${joined} คน · พ้นสภาพ ${resigned} คน</div>
+            <div class="dsh-insight-s">สุทธิ ${joined-resigned>0?"+":""}${joined-resigned} คน ในเดือน${selectedLabel}</div></div>
+        </div>
+      </div>
+
+      <div class="dsh-card">
+        <div class="dsh-card-t">กำลังพ้นสภาพ</div>
+        <div class="dsh-card-s">นับจากวันนี้ (สะสม) · อ้างอิงวันที่มีผลพ้นสภาพ</div>
+        ${upcoming.length===0 ? emptyBox("ไม่มีพนักงานที่กำลังพ้นสภาพ","ยังไม่มีใครมีวันที่มีผลพ้นสภาพในอีก 90 วันข้างหน้า") : `
+        <div class="dsh-alert-row"><span class="dsh-alert-l">ภายใน 30 วัน</span><span class="dsh-alert-n" style="color:${up30?"var(--exec-neg)":"var(--exec-muted)"};">${up30}</span></div>
+        <div class="dsh-alert-row"><span class="dsh-alert-l">ภายใน 60 วัน</span><span class="dsh-alert-n" style="color:${up60?"var(--exec-warn)":"var(--exec-muted)"};">${up60}</span></div>
+        <div class="dsh-alert-row"><span class="dsh-alert-l">ภายใน 90 วัน</span><span class="dsh-alert-n" style="color:var(--exec-navy);">${up90}</span></div>`}
+      </div>
     </div>
-  </div>
-  <div class="section grid-2 mt-4 pb-4">
-    <div class="card card-body">
-      <div class="card-title">Headcount by Department</div>
-      ${topDepts.map(([d,n])=>`<div class="hbar-row"><div class="hbar-label">${esc(d)}</div><div class="hbar-track"><div class="hbar-fill" style="width:${Math.round(n/maxD*100)}%;background:var(--blue);"></div></div><div class="hbar-val">${n}</div></div>`).join("")||`<div class="text-muted text-sm text-center" style="padding:20px 0;">ยังไม่มีข้อมูล</div>`}
+
+    <!-- แถว 3: แนวโน้มกำลังคน -->
+    <div class="dsh-card" style="margin-top:16px;">
+      <div class="dsh-card-t">แนวโน้มกำลังคน 6 เดือน</div>
+      <div class="dsh-card-s">เส้น = กำลังคนสิ้นเดือน · แท่ง = เข้าใหม่/พ้นสภาพ${hasPlan?" · เส้นประ = แผนที่อนุมัติ":""}</div>
+      <div class="dsh-legend">
+        <span class="dsh-lg"><span class="dsh-lg-s" style="background:var(--exec-navy);"></span>กำลังคน</span>
+        <span class="dsh-lg"><span class="dsh-lg-s" style="background:var(--exec-pos);"></span>เข้าใหม่</span>
+        <span class="dsh-lg"><span class="dsh-lg-s" style="background:var(--exec-neg);"></span>พ้นสภาพ</span>
+        ${hasPlan?`<span class="dsh-lg"><span class="dsh-lg-s" style="background:var(--exec-gold);"></span>แผนที่อนุมัติ</span>`:""}
+      </div>
+      <div class="dsh-chart">
+        <svg class="dsh-chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="dshHcGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style="stop-color:var(--exec-navy);stop-opacity:.16"/>
+            <stop offset="100%" style="stop-color:var(--exec-navy);stop-opacity:0"/>
+          </linearGradient></defs>
+          <polygon points="${xOf(0)},89.5 ${hcPts} ${xOf(trend.length-1)},89.5" fill="url(#dshHcGrad)"/>
+          ${hasPlan?`<polyline points="${planPts}" fill="none" style="stroke:var(--exec-gold);" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>`:""}
+          <polyline points="${hcPts}" fill="none" style="stroke:var(--exec-navy);" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="dsh-cols">
+          ${trend.map((t,i)=>`<div class="dsh-col">
+            <div class="dsh-tip">
+              <div style="font-weight:700;margin-bottom:3px;">${t.lbl} ${t.ym.split("-")[0]}</div>
+              <div class="dsh-tip-r"><span class="dsh-tip-k">กำลังคน</span><span>${t.hc.toLocaleString("th-TH")} คน</span></div>
+              <div class="dsh-tip-r"><span class="dsh-tip-k">เข้าใหม่</span><span>${t.j} คน</span></div>
+              <div class="dsh-tip-r"><span class="dsh-tip-k">พ้นสภาพ</span><span>${t.r} คน</span></div>
+              ${t.plan?`<div class="dsh-tip-r"><span class="dsh-tip-k">แผน</span><span>${t.plan.toLocaleString("th-TH")} คน</span></div>`:""}
+            </div>
+            <span style="position:absolute;top:${yOf(t.hc)}%;left:50%;transform:translate(-50%,-50%);width:9px;height:9px;border-radius:50%;background:#fff;border:2.5px solid var(--exec-navy);"></span>
+            <div class="dsh-bars">
+              <div class="dsh-bar" style="height:${Math.round(t.j/maxBar*72)}px;background:var(--exec-pos);opacity:.9;"></div>
+              <div class="dsh-bar" style="height:${Math.round(t.r/maxBar*72)}px;background:var(--exec-neg);opacity:.9;"></div>
+            </div>
+            <div class="dsh-xl">${t.lbl}</div>
+          </div>`).join("")}
+        </div>
+      </div>
     </div>
-    <div class="card card-body">
-      <div class="card-title">รายการล่าสุด</div>
-      ${recent.length===0?`<div class="empty-state"><div class="empty-title">ยังไม่มีรายการ</div></div>`:recent.map(m=>{
-        const [c,bg]=MOV_COLORS[m.type]||["#64748B","#f1f5f9"]; const av=avatarColor(m.name||"");
-        return `<div class="feed-item"><div class="feed-avatar" style="background:${av}18;color:${av};">${initials(m.name||"")}</div><div class="feed-body"><div class="feed-name">${esc(m.name||"-")} <span class="badge" style="color:${c};background:${bg};">${esc(m.type)}</span></div><div class="feed-meta">${esc(m.from_dept||"")}${m.to_dept?` → ${m.to_dept}`:""}</div></div><div class="feed-time">${timeAgo(m.created_at)}</div></div>`;
-      }).join("")}
+
+    <!-- แถว 4: วิเคราะห์กำลังคน -->
+    <div class="dsh-4">
+      <div class="dsh-card">
+        <div class="dsh-card-t">การเปลี่ยนแปลงกำลังคน</div>
+        <div class="dsh-card-s">ยกมา + เข้าใหม่ − พ้นสภาพ = ยกไป</div>
+        <div class="dsh-wf">
+          <div class="dsh-wf-row"><span class="dsh-wf-l">ยกมา</span>
+            <div class="dsh-wf-track"><div class="dsh-wf-fill" style="left:0;width:${(prevHC/wfMax*100).toFixed(1)}%;background:var(--exec-navy);opacity:.85;"></div></div>
+            <span class="dsh-wf-v">${prevHC.toLocaleString("th-TH")}</span></div>
+          <div class="dsh-wf-row"><span class="dsh-wf-l">เข้าใหม่</span>
+            <div class="dsh-wf-track"><div class="dsh-wf-fill" style="left:0;width:${Math.max(joined/wfMax*100,joined?2:0).toFixed(1)}%;background:var(--exec-pos);"></div></div>
+            <span class="dsh-wf-v" style="color:var(--exec-pos);">+${joined}</span></div>
+          <div class="dsh-wf-row"><span class="dsh-wf-l">พ้นสภาพ</span>
+            <div class="dsh-wf-track"><div class="dsh-wf-fill" style="left:0;width:${Math.max(resigned/wfMax*100,resigned?2:0).toFixed(1)}%;background:var(--exec-neg);"></div></div>
+            <span class="dsh-wf-v" style="color:${resigned?"var(--exec-neg)":"var(--exec-ink)"};">−${resigned}</span></div>
+          <div class="dsh-wf-row" style="border-top:1px solid var(--exec-line);padding-top:11px;"><span class="dsh-wf-l" style="font-weight:700;color:var(--exec-ink);">ยกไป</span>
+            <div class="dsh-wf-track"><div class="dsh-wf-fill" style="left:0;width:${(total/wfMax*100).toFixed(1)}%;background:var(--exec-navy);"></div></div>
+            <span class="dsh-wf-v">${total.toLocaleString("th-TH")}</span></div>
+        </div>
+        ${wfDiff!==0?`<div style="margin-top:10px;font-size:11px;color:var(--exec-warn);line-height:1.5;">หมายเหตุ: ยกมา+เข้าใหม่−พ้นสภาพ = ${wfCalc.toLocaleString("th-TH")} ต่างจากยกไป ${Math.abs(wfDiff)} คน — อาจมีพนักงานที่วันที่ไม่ครบหรือสถานะไม่ตรงกับวันที่</div>`:""}
+      </div>
+
+      <div class="dsh-card">
+        <div class="dsh-card-t">กำลังคนรายแผนก</div>
+        <div class="dsh-card-s">${hasPlan?"มีจริง / แผน · เรียงตามจำนวนที่ขาดมากสุด":"มีจริง · เรียงตามจำนวนมากสุด"}</div>
+        ${deptRows.length===0 ? emptyBox("ยังไม่มีข้อมูลแผนก","ยังไม่มีพนักงานที่ระบุแผนกในเดือนนี้") : `
+        <div class="dsh-dept">
+          ${deptRows.map(d=>`<div>
+            <div class="dsh-dept-h">
+              <span class="dsh-dept-n">${esc(d.name)}</span>
+              <span class="dsh-dept-m">${d.actual}${d.plan?` / ${d.plan}`:""} คน${d.st?` <span class="dsh-pill" style="color:${d.st.c};background:${d.st.bg};">${d.st.label}</span>`:""}</span>
+            </div>
+            <div class="dsh-dept-track">
+              ${d.plan?`<div class="dsh-dept-fill" style="width:${(d.plan/maxDeptBase*100).toFixed(1)}%;background:var(--exec-navy);opacity:.14;position:absolute;"></div>`:""}
+              <div class="dsh-dept-fill" style="width:${(d.actual/maxDeptBase*100).toFixed(1)}%;background:${d.st?d.st.c:"var(--exec-navy)"};position:absolute;"></div>
+            </div>
+          </div>`).join("")}
+        </div>
+        ${hasPlan?`<div style="margin-top:12px;font-size:10.5px;color:var(--exec-muted);line-height:1.6;">เกณฑ์: ครบตามแผน = มีจริง ≥ แผน · เฝ้าระวัง = ขาด ≤ 10% · วิกฤต = ขาด &gt; 10%</div>`:""}`}
+      </div>
+
+      <div class="dsh-card">
+        <div class="dsh-card-t">ประเภทสัญญาจ้าง</div>
+        <div class="dsh-card-s">สัดส่วนของกำลังคน ${total.toLocaleString("th-TH")} คน</div>
+        ${contractRows.length===0 ? emptyBox("ยังไม่มีข้อมูลสัญญาจ้าง","ยังไม่มีพนักงานในเดือนที่เลือก") : `
+        <div class="dsh-ct">
+          ${contractRows.map(([t,n],i)=>{
+            const p = total? n/total*100 : 0;
+            const shades=["var(--exec-navy)","var(--exec-navy-2)","var(--exec-gold)","var(--exec-muted)"];
+            return `<div>
+              <div class="dsh-ct-h"><span style="font-weight:600;color:var(--exec-ink);">${esc(t)}</span>
+                <span style="color:var(--exec-muted);">${n.toLocaleString("th-TH")} คน · ${p.toFixed(1)}%</span></div>
+              <div class="dsh-dept-track"><div class="dsh-dept-fill" style="width:${p.toFixed(1)}%;background:${shades[i%shades.length]};"></div></div>
+            </div>`;
+          }).join("")}
+        </div>`}
+      </div>
+    </div>
+
+    <!-- แถว 5: ความเคลื่อนไหวล่าสุด -->
+    <div class="dsh-card dsh-tl">
+      <div class="dsh-tl-head">
+        <div>
+          <div class="dsh-card-t">ความเคลื่อนไหวล่าสุด</div>
+          <div class="dsh-card-s" style="margin-bottom:0;">รายการของเดือน${selectedLabel}</div>
+        </div>
+        <button class="dsh-btn" onclick="window._dashGoMovements()">ดูความเคลื่อนไหวทั้งหมด</button>
+      </div>
+      ${recent.length===0 ? emptyBox("ยังไม่มีความเคลื่อนไหวในเดือนนี้","เมื่อมีการบันทึกการเข้าใหม่ โอนย้าย เลื่อนตำแหน่ง หรือพ้นสภาพ รายการจะแสดงที่นี่") : `
+      <div class="dsh-tl-list" style="margin-top:8px;">
+        ${recent.map(m=>{
+          const [c,bg]=MOV_COLORS[m.type]||["#64748B","#F2F4F7"];
+          const av=avatarColor(m.name||"");
+          const where=[m.from_dept,m.to_dept].filter(Boolean).join(" → ");
+          return `<div class="dsh-tl-item">
+            <div class="dsh-tl-dot" style="background:${av}1A;color:${av};">${initials(m.name||"")}</div>
+            <div class="dsh-tl-b">
+              <div class="dsh-tl-n">${esc(m.name||"-")}<span class="dsh-pill" style="color:${c};background:${bg};">${esc(MOV_TH[m.type]||m.type||"")}</span></div>
+              <div class="dsh-tl-m">${esc(where||m.reason||"ไม่ระบุรายละเอียด")}</div>
+            </div>
+            <div class="dsh-tl-d">${m.date?fmtDate(m.date):"—"}</div>
+          </div>`;
+        }).join("")}
+      </div>`}
     </div>
   </div>`;
   window._dashMonth = v => { dashMonth = v; renderDashboard(); };
+  window._dashGoMovements = () => navigate("movements");
 }
 
 // ===== MOVEMENTS =====

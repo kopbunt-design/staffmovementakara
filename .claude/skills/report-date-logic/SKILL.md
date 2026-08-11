@@ -21,18 +21,24 @@ rather than re-deriving it from scratch.
   (`js/app.js`) computes this by taking the stored `end_date`/`date` (which is
   the *effective date* — the first non-working day) and subtracting one day
   to land on the actual last working day, then formats it as `YYYY-MM`.
-- **Month-end headcount** (`hcAtMonth`, defined identically in
-  `js/headcount.js`, `js/movement-report.js`, `js/workforce-overview.js`, and
-  inline in `renderDashboard` in `js/app.js`) excludes an employee once
-  `lastWorkYM(end_date) <= ym` — the same last-working-day month used for
+- **One definition, in `js/app.js`.** `sepYM`, `isActiveAtMonthEnd`,
+  `hcAtMonthEnd` and `lastDayOfMonth` are exported from there and imported by
+  every report. Re-defining any of them inside a report file is the bug this
+  skill exists to prevent — `test/headcount-date.test.js` asserts they stay
+  absent.
+- **Month-end headcount** (`hcAtMonthEnd`) excludes an employee once
+  `sepYM(end_date) <= ym` — deliberately the *same* helper used for
   separations, so the person leaves the headcount in exactly the month their
-  separation is counted and Opening + New − Separations = Ending balances.
-- **Canonical example:** effective date 1 Aug 2026 → last working day
+  separation is counted and Opening + New − Separations = Ending balances by
+  construction.
+- **Canonical example:** termination date 1 Aug 2026 → last working day
   31 Jul → separation shows in **July**, person is **excluded from July's**
   ending headcount and still counted in June. Confirmed with the user on
-  2026-08-03. Headcount Report used to count that separation in August (by
-  the effective date's own month); that behaviour was replaced, not kept —
-  there is no longer a second, competing approach anywhere in the app.
+  2026-08-03 after it flipped twice that day: a written spec asked for the
+  separation to sit in August (the termination date's own month), but on
+  seeing real numbers the user confirmed July. **If a future request says
+  "August", surface this line and confirm before changing anything** — the
+  cost of guessing is a production HR number that moves twice.
 - Effective date (the field literally labeled "Effective Date" in the UI,
   stored as `end_date` on employees / `date` on movements) always takes
   precedence over `created_at` for month attribution. `created_at` is only a
