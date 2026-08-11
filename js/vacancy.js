@@ -5,8 +5,16 @@ function getFY(ym){const[y,m]=ym.split("-").map(Number);return m>=7?y+1:y;}
 
 let posQuota=[];
 async function loadPosQuota(){
-  try{const{data,error}=await supabase.from("position_quota").select("*").order("division").order("department").order("position");if(!error)posQuota=data||[];}
-  catch(e){posQuota=[];}
+  // เดิม error ถูกกลืนเงียบ ๆ (posQuota คงค่าเดิม ไม่มีอะไรบอกผู้ใช้) ทำให้ปัญหา schema/สิทธิ์
+  // แสดงออกมาเป็นแค่ "ข้อมูลไม่เข้า" โดยไม่รู้สาเหตุ — ตอนนี้แจ้งให้เห็นเสมอ
+  try{
+    const{data,error}=await supabase.from("position_quota").select("*").order("division").order("department").order("position");
+    if(error){ console.error("loadPosQuota:",error); toast("โหลดข้อมูลอัตรากำลังไม่สำเร็จ: "+error.message,"error"); return; }
+    posQuota=data||[];
+  }catch(e){
+    console.error("loadPosQuota:",e);
+    toast("โหลดข้อมูลอัตรากำลังไม่สำเร็จ: "+e.message,"error");
+  }
 }
 
 function calcVacancy(activeEmps,fy){
