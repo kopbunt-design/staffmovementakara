@@ -2,15 +2,8 @@
 
 อัปเดตล่าสุด: 2026-08-11
 
-## 🐛 บั๊กค้างรอแก้ (ทำต่อจากตรงนี้)
-- **Position Quota: เพิ่ม/แก้ quota แล้วไม่บันทึก ("ไม่เข้า")** — ผู้ใช้ยืนยันว่าเป็นหน้า Position Quota (2026-07-31)
-  - ต้นเหตุที่สงสัยสุด: **RLS block** — ตาราง `position_quota` ไม่มีไฟล์ schema/RLS ในโปรเจกต์เลย (สร้างมือใน Supabase)
-  - เช็คได้เร็ว ๆ ด้วย: `select tablename,policyname,cmd,qual from pg_policies where tablename='position_quota';`
-    ถ้าไม่มีแถวเลยแต่ RLS เปิดอยู่ = เขียนไม่ได้ทั้งหมด
-  - ยังไม่รู้อาการชัด: รอผู้ใช้บอกข้อความ toast (A=error "row-level security"/policy, B=สำเร็จแต่ไม่โผล่, C=ไม่มี toast)
-  - **แผนแก้ที่เตรียมไว้:** ทำไฟล์ `sql/schema_position_quota.sql` — enable RLS + policy อ่าน=authenticated, เขียน=hr/admin (เหมือนตารางอื่น) + โค้ด `js/vacancy.js` `_vAdd/_vEdit/_vDel` มี error handling อยู่แล้ว (เด้ง toast) ไม่ต้องแก้ JS
-  - โค้ดที่เกี่ยว: `js/vacancy.js:222` `_vAdd`, `:235` `_vEdit`, `:244` `_vDel`, `:7` `loadPosQuota`
-  - **กระทบ Dashboard ด้วย**: ถ้าอ่าน `position_quota` ไม่ได้ ส่วน "เทียบแผนอัตรากำลัง" จะขึ้น empty state แทนตัวเลข
+## 🐛 บั๊กค้างรอแก้
+ไม่มีบั๊กค้างแล้ว ✅
 
 ## 🔍 รอผู้ใช้ตรวจตัวเลขจริง (ยังไม่มีใครยืนยัน)
 Dashboard ใหม่ + กฎวันที่ push ขึ้น production แล้ว (commit `e7ebf63`) แต่ยังไม่ได้เทียบกับข้อมูลจริง:
@@ -33,6 +26,15 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
   **termination 1/8 → ทำงานถึง 31 ก.ค. → พ้นสภาพนับ ก.ค. และหลุดจาก headcount ก.ค.** (ยืนยัน 2026-08-03)
 - เทสต์ `test/headcount-date.test.js` (46) + `test/dashboard.test.js` (33) — ดึงฟังก์ชันจริงจาก app.js มารัน
 - `index.html` ใส่ `css/style.css?v=N` กัน browser cache CSS เก่า (แก้ CSS แล้วหน้าไม่เปลี่ยน = บวกเลขนี้)
+
+### แก้ Position Quota บันทึกไม่เข้า (2026-08-11, commit `e9bc0c7`) ✅
+- **ต้นเหตุ:** ตาราง `position_quota` สร้างมือใน Supabase โดย**ไม่มีคอลัมน์ `fiscal_year`** แต่ `js/vacancy.js`
+  ส่ง `fiscal_year` ไปทุกครั้ง → Postgres ปฏิเสธ insert ทั้งหมด → ตารางว่าง 0 แถวมาตลอด
+  (และทำให้ Dashboard ขึ้นว่า "ยังไม่ได้ตั้งแผนอัตรากำลัง")
+- **ที่ทำให้หายาก:** `loadPosQuota()` กลืน error เงียบ ๆ ไม่แจ้งอะไรเลย — แก้แล้วให้เด้ง toast + log
+- **แก้:** `sql/schema_position_quota.sql` เติมคอลัมน์ที่โค้ดใช้ + unique index + RLS (อ่าน=authenticated,
+  เขียน=hr/admin ให้ตรงกับที่ UI จำกัดไว้ เดิมเป็น `Allow all for authenticated` ซึ่งหลวมเกิน)
+- รันใน Supabase แล้ว ทดสอบเพิ่ม quota ผ่านหน้าเว็บได้จริง (ยืนยัน 2026-08-11)
 
 ### สิทธิ์ระดับฐานข้อมูล — รันใน Supabase แล้ว ✅ (ยืนยัน 2026-08-11)
 - `movements_update` / `movements_delete` = `created_by = auth.uid() OR get_my_role() = 'admin'`
@@ -68,7 +70,7 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
 1. ✅ `sql/schema_notifications.sql` — ตารางกระดิ่ง shared
 2. ✅ `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
 3. ✅ `sql/schema_admin_permissions.sql` — รันแล้ว ยืนยันด้วย pg_policies เมื่อ 2026-08-11
-4. ⬜ (รอทำ) `sql/schema_position_quota.sql` — RLS ให้ Position Quota (ดูบั๊กค้างด้านบน · ยังไม่ได้สร้างไฟล์)
+4. ✅ `sql/schema_position_quota.sql` — เติมคอลัมน์ fiscal_year ฯลฯ + RLS hr/admin (รันแล้ว 2026-08-11)
 
 ## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)
 1. **RLS + ข้อมูลเงินเดือน** — ตอนนี้ user ที่ล็อกอินอ่าน `salary` ผ่าน API ได้ แม้หน้า Payroll ซ่อนไว้ → แยกตาราง/จำกัด RLS (สำคัญสุด)
