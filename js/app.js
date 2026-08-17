@@ -753,6 +753,8 @@ function renderDashboard() {
 // ===== MOVEMENTS =====
 let movFilter="", movFilterType="", movFilterMonth="";
 const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment"];
+// ประเภทที่ทำให้พ้นสภาพ — คนหนึ่งมีได้ครั้งเดียว (ใช้กันบันทึกซ้ำ)
+const SEPARATION_TYPES = ["Resignation","Termination","Retirement"];
 
 // object อัปเดตพนักงานตามประเภท movement (ใช้ร่วมทั้งฟอร์มและ import bulk)
 // jobLevel: ระดับใหม่ (optional) — ถ้ามีจะอัปเดต job_level ให้สำหรับประเภทที่ยังทำงานอยู่
@@ -819,7 +821,7 @@ export function renderMovements() {
       <tbody>${filtered.length===0?`<tr><td colspan="10" class="text-center text-muted" style="padding:36px;">ไม่พบรายการ</td></tr>`:
       filtered.map(m=>`<tr>
         <td><b style="color:var(--blue);font-size:12px;">${esc(m.emp_code||"-")}</b></td>
-        <td style="font-weight:600;">${esc(m.name||"-")}</td>
+        <td style="font-weight:600;">${esc(m.name||"-")}${m.attachment_path?` <button onclick="window._movDoc('${esc(m.attachment_path)}')" title="เปิดเอกสารแนบ: ${esc(m.attachment_name||"")}" style="border:none;background:none;cursor:pointer;padding:0 2px;font-size:13px;">📎</button>`:""}</td>
         <td>${movBadge(m.type)}</td>
         <td class="text-muted">${esc(m.from_dept||"-")}</td>
         <td class="text-muted">${esc(m.to_dept||"-")}</td>
@@ -877,7 +879,18 @@ function openMovModal(entry=null) {
           <div class="form-group col-span-2"><label class="form-label">เหตุผล / หมายเหตุ</label><textarea id="mv_reason" class="form-control">${esc(entry?.reason||"")}</textarea></div>
           ${userRole==="hr"||userRole==="admin"?`
           <div class="form-group"><label class="form-label">เงินเดือน/อัตราใหม่ (บาท)</label><input id="mv_sal" type="number" class="form-control" value="${entry?.salary||""}"></div>
-          <div class="form-group"><label class="form-label">Cost Center</label><input id="mv_cc" class="form-control" value="${esc(entry?.cost_center||"")}"></div>`:""}
+          <div class="form-group"><label class="form-label">Cost Center</label><input id="mv_cc" class="form-control" value="${esc(entry?.cost_center||"")}"></div>
+          <div class="form-group col-span-2">
+            <label class="form-label">เอกสารแนบ <span style="font-weight:400;color:var(--muted);">(เช่น ใบลาออก หนังสืออนุมัติ — PDF/รูป/Word ไม่เกิน 10 MB)</span></label>
+            ${entry?.attachment_path?`<div id="mv_curDoc" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--blue-light);border-radius:var(--radius-sm);margin-bottom:8px;font-size:12.5px;">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📎 ${esc(entry.attachment_name||"เอกสารแนบ")}</span>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="window._movDoc('${esc(entry.attachment_path)}')">เปิดดู</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="window._movDocRemove()" title="ลบไฟล์แนบออกจากรายการนี้">ลบไฟล์</button>
+            </div>`:""}
+            <input type="hidden" id="mv_docPath" value="${esc(entry?.attachment_path||"")}">
+            <input type="hidden" id="mv_docName" value="${esc(entry?.attachment_name||"")}">
+            <input type="file" id="mv_file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx">
+          </div>`:""}
         </div>
       </div>
       <div class="modal-footer">
@@ -891,14 +904,45 @@ function openMovModal(entry=null) {
   window._saveMov = async (existId) => {
     const g = id => document.getElementById(id)?.value?.trim()||"";
     const name = g("mv_name"); if(!name){ toast("กรุณากรอกชื่อ","error"); return; }
+    const type = g("mv_type"), empCode = g("mv_code");
+
+    // กันบันทึกการพ้นสภาพซ้ำ — คนหนึ่งพ้นสภาพได้ครั้งเดียว
+    if(empCode && SEPARATION_TYPES.includes(type)){
+      const dup = allMovements.find(m =>
+        m.emp_code === empCode && SEPARATION_TYPES.includes(m.type) && String(m.id) !== String(existId));
+      if(dup){
+        toast(`บันทึกไม่ได้: ${name} มีรายการ${MOV_TH[dup.type]||dup.type}อยู่แล้ว (มีผล ${fmtDate(dup.date)} · บันทึกโดย ${dup.recorded_by||"-"}) — ถ้าต้องแก้ ให้เปิดรายการเดิมแล้วกดแก้ไข`,"error");
+        return;
+      }
+    }
+
     const data = {
-      emp_code: g("mv_code"), name, type: g("mv_type"),
+      emp_code: empCode, name, type,
       date: g("mv_date")||null, from_dept: g("mv_from"), to_dept: g("mv_to"),
       reason: g("mv_reason"),
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
       ...(userRole==="hr"||userRole==="admin" ? { salary: Number(document.getElementById("mv_sal")?.value)||null, cost_center: g("mv_cc") } : {})
     };
+
+    // อัปโหลดเอกสารแนบ (ถ้าเลือกไฟล์ใหม่) — ทำก่อนบันทึก เพื่อไม่ให้มีรายการที่อ้างไฟล์ที่อัปโหลดไม่สำเร็จ
+    if(userRole==="hr"||userRole==="admin"){
+      const fileEl = document.getElementById("mv_file");
+      const file = fileEl?.files?.[0];
+      if(file){
+        if(file.size > 10*1024*1024){ toast("ไฟล์ใหญ่เกิน 10 MB กรุณาย่อขนาดก่อน","error"); return; }
+        const safe = file.name.replace(/[^\w.\-]/g,"_");
+        const path = `${empCode||"no-code"}/${Date.now()}-${safe}`;
+        const { error: upErr } = await supabase.storage.from("movement-docs").upload(path, file);
+        if(upErr){ toast("อัปโหลดเอกสารไม่สำเร็จ: "+upErr.message,"error"); return; }
+        data.attachment_path = path;
+        data.attachment_name = file.name;
+      } else {
+        data.attachment_path = g("mv_docPath")||null;   // คงไฟล์เดิม หรือ null ถ้ากดลบไฟล์
+        data.attachment_name = g("mv_docName")||null;
+      }
+    }
+
     const { error } = existId
       ? await supabase.from("movements").update({...data, updated_at: new Date().toISOString()}).eq("id", existId)
       : await supabase.from("movements").insert(data);
@@ -913,6 +957,19 @@ function openMovModal(entry=null) {
     document.getElementById("modalPortal").innerHTML="";
     if(existId) toast("บันทึกสำเร็จ","success");
     else notify("เพิ่มรายการเคลื่อนไหว", `${name} · ${data.type||"-"}`, {category:"movement"});
+  };
+  // เปิดเอกสารแนบ — bucket เป็น private จึงต้องขอ signed URL อายุสั้นทุกครั้ง
+  window._movDoc = async (path) => {
+    const { data, error } = await supabase.storage.from("movement-docs").createSignedUrl(path, 60);
+    if(error||!data?.signedUrl){ toast("เปิดเอกสารไม่ได้: "+(error?.message||"ไม่พบไฟล์"),"error"); return; }
+    window.open(data.signedUrl, "_blank");
+  };
+  // ถอดไฟล์ออกจากรายการ (ไฟล์ยังอยู่ใน storage เผื่อกู้คืน — ไม่ลบทิ้งทันที)
+  window._movDocRemove = () => {
+    document.getElementById("mv_docPath").value="";
+    document.getElementById("mv_docName").value="";
+    document.getElementById("mv_curDoc")?.remove();
+    toast("ถอดไฟล์แนบออกแล้ว — กดบันทึกเพื่อยืนยัน","info");
   };
   window._delMov = async (id) => {
     if(!confirm("ลบรายการนี้?")) return;

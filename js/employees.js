@@ -19,7 +19,15 @@ export function renderEmployees() {
   const filtered = allEmployees.filter(e => {
     if(empStatus && e.status!==empStatus) return false;
     if(empDept && e.department!==empDept) return false;
-    if(empSearch){ const h=[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,e.position].join(" ").toLowerCase(); if(!h.includes(empSearch.toLowerCase())) return false; }
+    if(empSearch){
+      // ค้นได้ทุกฟิลด์ที่แสดงในตาราง + พิมพ์หลายคำได้ (ทุกคำต้องเจอ ไม่สนลำดับ)
+      // เช่น "mining s2" หรือ "สมชาย ลาออก" -> เจอทันที
+      const hay=[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,
+        e.position,e.department,e.division,e.section,e.team,e.job_level,
+        e.contract_type,e.site,e.province,e.status,e.phone,e.remark].join(" ").toLowerCase();
+      const terms=empSearch.toLowerCase().split(/\s+/).filter(Boolean);
+      if(!terms.every(t=>hay.includes(t))) return false;
+    }
     return true;
   });
   const canWrite = userRole==="hr"||userRole==="admin";
@@ -40,7 +48,8 @@ export function renderEmployees() {
   <div class="search-bar">
     <div class="search-input-wrap">
       <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="search-input" placeholder="ค้นหาชื่อ / รหัส / ตำแหน่ง..." value="${esc(empSearch)}" oninput="window._empSearch(this.value)">
+      <input class="search-input" style="padding-right:30px;" placeholder="ค้นหา ชื่อ / รหัส / ตำแหน่ง / แผนก / ระดับ / จังหวัด — พิมพ์หลายคำได้" value="${esc(empSearch)}" oninput="window._empSearch(this.value)" title="พิมพ์หลายคำคั่นด้วยเว้นวรรค ระบบจะหาแถวที่มีครบทุกคำ เช่น: mining s2">
+      ${empSearch?`<button onclick="window._empSearch('')" title="ล้างคำค้นหา" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:4px;">×</button>`:""}
     </div>
     <select class="filter-select" onchange="window._empDept(this.value)">
       <option value="">ทุก Department</option>
@@ -297,6 +306,7 @@ async function handleImport(inputEl) {
         return obj;
       }).filter(Boolean);
       // ดึงข้อมูลเดิมจาก DB เพื่อ merge กับข้อมูลใหม่ (ไม่ทับ column ที่ไม่ได้ส่งมา)
+      const badStatus=[];  // แถวที่ค่าในคอลัมน์ Status ไม่ใช่สถานะที่ระบบรู้จัก
       const codes=batch.map(r=>r.emp_code);
       const {data:existingEmps}=await supabase.from("employees").select("*").in("emp_code",codes);
       const existMap=Object.fromEntries((existingEmps||[]).map(e=>[e.emp_code,e]));
@@ -308,7 +318,15 @@ async function handleImport(inputEl) {
             if(!(k in r)) r[k]=v;
           }
         }
-        r.status=r._rawStatus||ex?.status||"Active";
+        // รับเฉพาะสถานะที่ถูกต้องเท่านั้น — เคยมีค่าจากคอลัมน์อื่น (เช่นชื่อจังหวัด) หลุดเข้ามาอยู่ในช่องนี้
+        // ถ้าค่าไม่ถูกต้อง ให้คงสถานะเดิมใน DB ไว้ แล้วเก็บไปเตือนท้าย import
+        const rawStatus=(r._rawStatus||"").trim();
+        if(rawStatus && !EMP_STATUSES.includes(rawStatus)){
+          badStatus.push(`${r.emp_code}: "${rawStatus}"`);
+          r.status=ex?.status||"Active";
+        } else {
+          r.status=rawStatus||ex?.status||"Active";
+        }
         delete r._rawStatus;
       });
       const {error}=await supabase.from("employees").upsert(batch,{onConflict:"emp_code"});
@@ -352,6 +370,10 @@ async function handleImport(inputEl) {
 
       const extra=[]; if(movCreated) extra.push(`สร้าง Movement ${movCreated} รายการ`); if(movUpdated) extra.push(`อัปเดตวันที่ ${movUpdated} รายการ`);
       notify("นำเข้าพนักงาน", `${batch.length} รายการ${extra.length?` · ${extra.join(", ")}`:""}`, {category:"employee", toastMsg:`Import เสร็จสิ้น: ${batch.length} รายการ${extra.length?` · ${extra.join(", ")}`:""}`});
+      if(badStatus.length){
+        console.warn("ค่าสถานะไม่ถูกต้อง (ไม่ได้บันทึก):", badStatus);
+        toast(`ข้าม Status ที่ไม่ถูกต้อง ${badStatus.length} รายการ (เช่น ${badStatus[0]}) — ต้องเป็น ${EMP_STATUSES.join("/")} · ดูทั้งหมดใน Console`,"error");
+      }
     }catch(err){ toast("อ่านไฟล์ไม่ได้: "+err.message,"error"); }
   };
   reader.readAsBinaryString(file);

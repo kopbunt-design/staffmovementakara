@@ -82,6 +82,14 @@ eq(hc("2026-06") + newIn("2026-07") - sepIn("2026-07"), hc("2026-07"), "waterfal
 eq(sepIn("2026-08"), 0, "ส.ค.: ไม่นับ C ซ้ำ");
 eq(hc("2026-07") + newIn("2026-08") - sepIn("2026-08"), hc("2026-08"), "waterfall ส.ค. ลงตัว (เดือนที่ไม่มีคนออก)");
 
+// ---- ประเภทที่ถือว่าพ้นสภาพ ต้องตรงกันทุกที่ที่ใช้ (กันบันทึกซ้ำ vs การนับในรายงาน) ----
+const SEPARATION_TYPES = new Function(`return ${extractConst(APP,"SEPARATION_TYPES")};`)();
+eq(SEPARATION_TYPES.sort(), ["Resignation","Retirement","Termination"], "SEPARATION_TYPES ครบ 3 ชนิด");
+// getMonthStats นับพ้นสภาพด้วยชนิดเดียวกัน — ถ้าเพิ่มชนิดใหม่ที่เดียวจะจับได้ตรงนี้
+const statsSrc = extractFn(APP, "getMonthStats");
+SEPARATION_TYPES.forEach(t =>
+  eq(statsSrc.includes(`"${t}"`), true, `getMonthStats นับ ${t} เป็นการพ้นสภาพด้วย`));
+
 // ---- ป้ายไทยของประเภทความเคลื่อนไหว ครอบคลุมทุกชนิดที่ระบบใช้ ----
 const MOV_TH = new Function(`return ${extractConst(APP,"MOV_TH")};`)();
 ["New Hire","Resignation","Termination","Retirement","Transfer","Promotion","Demotion","Secondment"]
