@@ -172,7 +172,10 @@ const fmtB = n => Number(n).toLocaleString("th-TH",{minimumFractionDigits:2,maxi
 // เจอ = ใช้เป็นเงื่อนไขเพิ่ม · ไม่เจอ = ข้ามไป ระบบยังทำงานได้เหมือนเดิม
 const COL_SUSPEND   = ["suspend","suspended","suspension","พักงาน","ถูกพักงาน","standdown"];
 const COL_LEAVETYPE = ["leavetype","typeofleave","leavecode","ประเภทการลา","ประเภทลา","ชนิดการลา"];
+// ปกติพักงาน/ลาป่วยไม่มีคอลัมน์เฉพาะ แต่เขียนไว้ในช่องหมายเหตุแบบข้อความอิสระ
+const COL_NOTE      = ["note","notes","หมายเหตุ","remark","remarks","comment","comments"];
 const SICK_WORDS    = ["sick","ป่วย"];
+const SUSPEND_WORDS = ["พักงาน","suspend","suspension"];
 // คอลัมน์ที่ระบบใช้อยู่แล้ว — กันไม่ให้การเดาชื่อไปทับของเดิม (เช่น "leave" ไปโดน Leave_Deduct)
 const KNOWN_COLS = new Set(["leavededuct","leavenodeduct","deductday","daytype","checkin","checkout","shift"]);
 
@@ -182,20 +185,33 @@ export function detectExtraCols(cols) {
     for (const c of cands) { const h = cols.find(k => norm(k).includes(c) && !KNOWN_COLS.has(norm(k))); if (h) return h; }
     return null;
   };
-  return { suspendCol: pick(COL_SUSPEND), leaveTypeCol: pick(COL_LEAVETYPE) };
+  return { suspendCol: pick(COL_SUSPEND), leaveTypeCol: pick(COL_LEAVETYPE), noteCol: pick(COL_NOTE) };
 }
 
-// วันนั้นเป็นลาป่วยไหม (ดูจากคอลัมน์ประเภทการลา ถ้าไฟล์มี)
-function isSickRow(row, cols) {
-  if (!cols?.leaveTypeCol) return false;
-  const v = String(row[cols.leaveTypeCol] ?? "").toLowerCase();
-  return !!v && SICK_WORDS.some(w => v.includes(w));
+const noteText = (row, cols) => cols?.noteCol ? String(row[cols.noteCol] ?? "").trim() : "";
+const hitWords = (txt, words) => { const t = txt.toLowerCase(); return words.some(w => t.includes(w)); };
+
+// พักงานไหม — คอลัมน์เฉพาะก่อน ถ้าไม่มีให้จับคำในช่องหมายเหตุ
+export function isSuspendRow(row, cols) {
+  if (cols?.suspendCol && has(row[cols.suspendCol])) return true;
+  const t = noteText(row, cols);
+  return !!t && hitWords(t, SUSPEND_WORDS);
+}
+
+// ลาป่วยไหม — คอลัมน์ประเภทการลาก่อน ถ้าไม่มีให้จับคำในช่องหมายเหตุ
+export function isSickRow(row, cols) {
+  if (cols?.leaveTypeCol) {
+    const v = String(row[cols.leaveTypeCol] ?? "").toLowerCase();
+    if (v && SICK_WORDS.some(w => v.includes(w))) return true;
+  }
+  const t = noteText(row, cols);
+  return !!t && hitWords(t, SICK_WORDS);
 }
 
 // หา day_status ตามสเปค §4 (ลำดับเงื่อนไขสำคัญ)
 function dayStatus(row, cols) {
   // พักงาน = ไม่จ่ายวันนั้น ต้องมาก่อนทุกเงื่อนไข (แม้จะมีเวลาเข้างานติดมา)
-  if (cols?.suspendCol && has(row[cols.suspendCol])) return "SUSPENDED";
+  if (isSuspendRow(row, cols)) return "SUSPENDED";
   if (has(row.Deduct_Day))      return "ABSENT";        // ขาดงาน / หักวันเหมือนกัน
   if (has(row.Leave_Deduct))    return "UNPAID_LEAVE";  // ลาไม่รับค่าจ้าง
   if (row.Day_Type === "H")     return "WEEKLY_OFF_DAY"; // วันหยุดประจำสัปดาห์
@@ -214,6 +230,9 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
   const sickRuns = [];       // คนที่ลาป่วยติดต่อกันหลายวัน (ให้ HR ตรวจก่อนจ่าย)
   const noWork = [];         // คนที่ไม่มีวันทำงานจริงเลยทั้งเดือน -> ไม่จ่าย
   const cols = detectExtraCols(Object.keys(rows[0] || {}));
+  // การจับคำในช่องหมายเหตุอาจจับผิด — เก็บข้อความที่จับได้ไว้ให้คนตรวจว่าถูกจริง
+  const noteHits = { suspend: new Map(), sick: new Map() };
+  const bump = (m, t) => m.set(t, (m.get(t) || 0) + 1);
   const groups = new Map();
   for (const row of rows) {
     const ymd = parseYMD(row.Date);
@@ -273,7 +292,11 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
         u.emps.add(empId);
         unknown.set(code, u);
       }
-      return { row, family, status, code, sick: isSickRow(row, cols), date: rowDate(row) };
+      const sick = isSickRow(row, cols);
+      const note = noteText(row, cols);
+      if (status === "SUSPENDED" && note) bump(noteHits.suspend, note);
+      if (sick && note)                   bump(noteHits.sick, note);
+      return { row, family, status, code, sick, date: rowDate(row) };
     });
 
     // ลาป่วยติดต่อกันกี่วันมากสุด (เรียงตามวันที่ก่อน เผื่อไฟล์ไม่ได้เรียงมา)
@@ -360,7 +383,10 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
   const unknownCodes = [...unknown.values()]
     .map(u => ({ code:u.code, days:u.days, payDays:u.payDays, emps:u.emps.size }))
     .sort((a,b) => b.payDays - a.payDays || b.days - a.days);
-  return { summary, detail, hasManual, unknownCodes, clipped, sickRuns, noWork, cols };
+  const topHits = m => [...m.entries()].map(([text,count])=>({text,count}))
+    .sort((a,b)=>b.count-a.count).slice(0,8);
+  return { summary, detail, hasManual, unknownCodes, clipped, sickRuns, noWork, cols,
+           noteHits: { suspend: topHits(noteHits.suspend), sick: topHits(noteHits.sick) } };
 }
 
 let lastResult = null;
@@ -629,6 +655,13 @@ export function renderShiftAllowance() {
   };
 }
 
+// บอกว่าเงื่อนไขนี้อ่านจากไหน — คอลัมน์เฉพาะ, ช่องหมายเหตุ (จับคำ), หรือยังใช้ไม่ได้
+function srcTxt(ownCol, noteCol, words) {
+  if (ownCol)  return `คอลัมน์ <b>${esc(ownCol)}</b>`;
+  if (noteCol) return `จับคำ <b>${words.map(esc).join(" / ")}</b> ในช่อง <b>${esc(noteCol)}</b>`;
+  return `<b style="color:#b91c1c;">ไม่พบคอลัมน์ — กฎนี้ยังไม่มีผล</b>`;
+}
+
 function renderResults() {
   const el = document.getElementById("saResults");
   document.getElementById("saExportBtn").style.display = "inline-flex";
@@ -659,6 +692,7 @@ function renderResults() {
   const sickR = lastResult.sickRuns || [];
   const noWk  = lastResult.noWork || [];
   const xcols = lastResult.cols || {};
+  const hits  = lastResult.noteHits || { suspend:[], sick:[] };
   const suspendN = all.reduce((s,r)=>s+(r.suspendDays||0), 0);
   const warns = [];
   if (soloN)     warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
@@ -677,8 +711,8 @@ function renderResults() {
       <div>
         <div class="card-title" style="margin:0;">ผลการคำนวณ · ${all.length} คน-เดือน <span style="font-weight:400;color:var(--muted);font-size:12px;">(sheet "${esc(sheetName)}" ${rowCount} แถว)</span></div>
         <div class="text-muted" style="font-size:11px;margin-top:2px;">
-          พักงาน: ${xcols.suspendCol ? `อ่านจากคอลัมน์ <b>${esc(xcols.suspendCol)}</b>` : "<b>ไม่พบคอลัมน์</b> — ยังไม่ได้ใช้กฎนี้"}
-          · ลาป่วย: ${xcols.leaveTypeCol ? `อ่านจากคอลัมน์ <b>${esc(xcols.leaveTypeCol)}</b>` : "<b>ไม่พบคอลัมน์ประเภทการลา</b> — ยังแยกลาป่วยจากลาอื่นไม่ได้"}
+          พักงาน: ${srcTxt(xcols.suspendCol, xcols.noteCol, SUSPEND_WORDS)}
+          · ลาป่วย: ${srcTxt(xcols.leaveTypeCol, xcols.noteCol, SICK_WORDS)}
         </div>
       </div>
       <div style="font-size:13px;">รวมค่ากะ: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
@@ -700,6 +734,16 @@ function renderResults() {
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
+    ${(hits.suspend.length || hits.sick.length) ? `<div class="card-body" style="background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px;">🔎 ข้อความในช่องหมายเหตุที่ระบบตีความ — ตรวจว่าถูกต้องไหม</div>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:11px;">
+        ${["suspend","sick"].map(k => hits[k].length ? `<div>
+          <div class="text-muted" style="margin-bottom:2px;">${k==="suspend"?"ตีความว่า <b>พักงาน</b> (ไม่จ่ายวันนั้น)":"ตีความว่า <b>ลาป่วย</b>"}</div>
+          ${hits[k].map(h=>`<div>• "${esc(h.text)}" <span class="text-muted">— ${h.count} วัน</span></div>`).join("")}
+        </div>` : "").join("")}
+      </div>
+      <div class="text-muted" style="font-size:11px;margin-top:5px;">ถ้ามีข้อความที่ไม่ควรถูกนับ (หรือมีคำอื่นที่ควรนับแต่ไม่อยู่ในลิสต์) บอกได้ จะปรับคำที่ใช้จับให้</div>
+    </div>` : ""}
     ${sickR.length ? `<div class="card-body" style="background:#fff7ed;border-bottom:1px solid var(--border);padding:11px 16px;">
       <div style="font-size:13px;color:#c2410c;font-weight:700;margin-bottom:2px;">🩺 ลาป่วยติดต่อกันตั้งแต่ ${SICK_RUN_WARN} วันขึ้นไป ${sickR.length} คน — ให้ตรวจก่อนจ่าย</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:7px;">

@@ -12,7 +12,8 @@ const logic = SRC
   .replace(/^export /gm, "");
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
-           parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols };`)();
+           parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols,
+           isSuspendRow, isSickRow };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -339,13 +340,42 @@ eq(M.PAYABLE.has("ABSENT"),       false, "ขาดงาน ไม่ใช่�
   eq(one(rows).payDays, 30, "ลาไม่รับค่าจ้าง 1 วัน -> วันจ่ายลดเหลือ 30");
 }
 
-// เดาคอลัมน์ "พักงาน" / "ประเภทการลา" ต้องไม่ไปทับคอลัมน์เดิมที่ระบบใช้อยู่
+// เดาคอลัมน์ "พักงาน" / "ประเภทการลา" / "หมายเหตุ" ต้องไม่ไปทับคอลัมน์เดิมที่ระบบใช้อยู่
 eq(M.detectExtraCols(["Employee_ID","Suspend","Leave_Type"]),
-   { suspendCol:"Suspend", leaveTypeCol:"Leave_Type" }, "จับคอลัมน์อังกฤษได้");
+   { suspendCol:"Suspend", leaveTypeCol:"Leave_Type", noteCol:null }, "จับคอลัมน์อังกฤษได้");
 eq(M.detectExtraCols(["พักงาน","ประเภทการลา"]),
-   { suspendCol:"พักงาน", leaveTypeCol:"ประเภทการลา" }, "จับหัวคอลัมน์ไทยได้");
+   { suspendCol:"พักงาน", leaveTypeCol:"ประเภทการลา", noteCol:null }, "จับหัวคอลัมน์ไทยได้");
 eq(M.detectExtraCols(["Leave_Deduct","Leave_No_Deduct","Check_In"]),
-   { suspendCol:null, leaveTypeCol:null }, "ไม่มีคอลัมน์เสริม -> ต้องไม่ไปหยิบ Leave_Deduct มาใช้ผิด");
+   { suspendCol:null, leaveTypeCol:null, noteCol:null }, "ไม่มีคอลัมน์เสริม -> ต้องไม่ไปหยิบ Leave_Deduct มาใช้ผิด");
+eq(M.detectExtraCols(["Employee_ID","Note"]).noteCol,     "Note",     "จับช่องหมายเหตุอังกฤษ");
+eq(M.detectExtraCols(["Employee_ID","หมายเหตุ"]).noteCol, "หมายเหตุ", "จับช่องหมายเหตุไทย");
+
+// ---- จับพักงาน/ลาป่วยจากข้อความในช่องหมายเหตุ (ที่ไฟล์จริงใช้) ----
+{
+  const c = { noteCol:"หมายเหตุ" };
+  eq(M.isSuspendRow({ "หมายเหตุ":"พักงาน 3 วัน" }, c), true,  "หมายเหตุมีคำว่าพักงาน -> พักงาน");
+  eq(M.isSuspendRow({ "หมายเหตุ":"Suspended" }, c),    true,  "คำอังกฤษก็จับได้ ไม่สนตัวพิมพ์");
+  eq(M.isSuspendRow({ "หมายเหตุ":"ลาพักร้อน" }, c),    false, "ลาพักร้อน ไม่ใช่พักงาน");
+  eq(M.isSuspendRow({ "หมายเหตุ":"" }, c),             false, "หมายเหตุว่าง -> ไม่ใช่");
+  eq(M.isSickRow({ "หมายเหตุ":"ลาป่วย" }, c),          true,  "หมายเหตุมีคำว่าป่วย -> ลาป่วย");
+  eq(M.isSickRow({ "หมายเหตุ":"Sick Leave" }, c),      true,  "คำอังกฤษก็จับได้");
+  eq(M.isSickRow({ "หมายเหตุ":"ลากิจ" }, c),           false, "ลากิจ ไม่ใช่ลาป่วย");
+  eq(M.isSickRow({ "หมายเหตุ":"ลาป่วยครึ่งวัน" }, c),  true,  "ข้อความยาวกว่าคำ ก็ยังจับได้");
+}
+{
+  // ไม่มีช่องหมายเหตุเลย -> ต้องไม่พัง และไม่ตีความอะไร
+  eq(M.isSuspendRow({ Note:"พักงาน" }, {}), false, "ไม่ได้ระบุคอลัมน์ -> ไม่ตีความ");
+}
+{
+  // เก็บข้อความที่จับได้ไว้ให้คนตรวจ
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map((r,i)=> i<2 ? { ...r, "หมายเหตุ":"พักงาน" }
+              : i<5 ? { ...r, Check_In:"", Leave_No_Deduct:1, "หมายเหตุ":"ลาป่วย" } : { ...r, "หมายเหตุ":"" });
+  const res = run(rows);
+  eq(res.noteHits.suspend, [{text:"พักงาน", count:2}], "รายงานข้อความที่ตีความว่าพักงาน");
+  eq(res.noteHits.sick,    [{text:"ลาป่วย", count:3}], "รายงานข้อความที่ตีความว่าลาป่วย");
+  eq(res.summary[0].suspendDays, 2, "พักงาน 2 วัน");
+}
 
 // พักงาน = ไม่จ่ายวันนั้น แม้จะมีเวลาเข้างานติดมาด้วย
 {
