@@ -102,7 +102,7 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
 7. **ต่อยอด** — Employee profile + timeline, Global search, Analytics (turnover rate, headcount trend)
 
 ## 📝 เรื่องค้าง/ยังไม่ทดสอบเต็ม
-- คำนวณค่ากะ: ควรเทียบยอดจริงกับคอลัมน์ `Shift_Allowance` (เฉลยมือ) ในไฟล์ Test_Report ให้ครบ
+- คำนวณค่ากะ: หน้าเว็บเทียบกับคอลัมน์ `Shift_Allowance` (เฉลยมือ) ในไฟล์ให้อัตโนมัติแล้ว — เหลือให้ผู้ใช้อัปโหลด Test_Report จริงแล้วดูว่ามีรายการไม่ตรงไหม
 - §7.3 ลาเศษวัน = คิดเต็มวัน (ตาม pseudocode ที่ผู้ใช้เลือก 2026-07-20)
 
 ## หมายเหตุ (ต่อเครื่องอื่น)
