@@ -48,6 +48,8 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
   ```
   They extract the real functions from `js/app.js` and assert the other reports do not re-define their own copies.
 
+- **Shift allowance: one shift family all month pays nothing — this is intended, not a bug.** The rate comes from how many shift *families* (เช้า/บ่าย/ดึก) a person actually worked in payable days that month: 3 families → 1,800/month, 2 → 1,200, **1 or 0 → 0**. So an O-level employee who worked only the morning shift every day of the month earns ฿0 in shift allowance, even with a full 31 payable days. Confirmed with the user on 2026-08-18 after they saw a real case (AKR17030409, O3, เช้า only, ฿0). The allowance pays for *rotating* between shifts, not for working shifts as such. Do not "fix" this by paying a floor amount for a single family.
+
 - **`movYM` vs `lastWorkYM`**: `movYM(movement)` in `app.js` returns the month of `movement.date` (falling back to `created_at`) **without** subtracting a day — it is for new hires and general movement filtering. `lastWorkYM(dateStr)` subtracts a day and is only for separations. Do not swap them.
 
 ## Workflow
