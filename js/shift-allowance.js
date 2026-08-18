@@ -31,6 +31,19 @@ const SICK_RUN_WARN = 3;
 // NOR = เวลางานปกติ ไม่ถือเป็นการเข้ากะ จึงไม่จ่ายวัน NOR (ผู้ใช้ยืนยัน 2026-08-18)
 // ใช้เฉพาะคู่นี้เท่านั้น — NOR คู่กับกะอื่นยังใช้กติกาเฉลี่ยทั้งเดือนตามปกติ
 const PAY_ON_SHIFT_ONLY = { codes: ["NOR","N03"], payCode: "N03" };
+// ...แต่ถ้าเข้า N03 (รวมวันหยุด/วันลาที่จ่ายได้) เกินจำนวนนี้ = ถือว่าอยู่กะดึกทั้งเดือน จ่ายเต็มอัตราไปเลย
+const N03_FULL_THRESHOLD = 15;
+// พนักงานสาย Process ไม่ได้ค่ากะสำหรับวันที่เข้า N03 (วันกะอื่นยังได้ตามปกติ)
+const PROCESS_WORDS = ["process"];
+const PROCESS_NO_PAY_CODE = "N03";
+
+// ดูจากข้อมูลพนักงานใน DB (จับคู่ด้วยรหัสพนักงาน) ว่าอยู่สาย Process ไหม
+export function isProcessEmp(emp) {
+  if (!emp) return false;
+  const t = [emp.division, emp.department, emp.section, emp.team, emp.position]
+    .map(v => String(v ?? "").toLowerCase()).join(" | ");
+  return PROCESS_WORDS.some(w => t.includes(w));
+}
 
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
@@ -224,11 +237,14 @@ function dayStatus(row, cols) {
 // คำนวณจาก rows ทั้งหมด + map พนักงาน (emp_code -> {job_level}) -> { summary:[], detail:[] }
 // famMap: รหัสกะ (ตัวใหญ่) -> ตระกูล — ปกติมาจากตาราง master_shift_codes ใน DB
 // ส่งไม่มา = ใช้ค่าเริ่มต้นในโค้ด (เผื่อยังไม่ได้สร้างตาราง)
-export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap = SOLO_RATE) {
+// approvedNoWork = เซ็ตของ "รหัส||เดือน" ที่ HR กดอนุมัติให้จ่ายทั้งที่ไม่มีวันทำงานจริง (ลาป่วยยาว)
+export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap = SOLO_RATE,
+                                      approvedNoWork = new Set()) {
   const unknown = new Map(); // รหัสกะที่ไม่รู้จัก -> จำนวนวัน/คน (ทำให้นับตระกูลขาด ต้องเตือน)
   const clipped = [];        // คนที่มีวันนอกช่วงการจ้างถูกตัดออก (ต้องขึ้นเตือนให้ตรวจ)
   const sickRuns = [];       // คนที่ลาป่วยติดต่อกันหลายวัน (ให้ HR ตรวจก่อนจ่าย)
-  const noWork = [];         // คนที่ไม่มีวันทำงานจริงเลยทั้งเดือน -> ไม่จ่าย
+  const noWork = [];         // คนที่ไม่มีวันทำงานจริงเลยทั้งเดือน -> ไม่จ่ายจนกว่าจะอนุมัติ
+  const processEmps = new Map(); // คนที่ระบบมองว่าเป็นสาย Process (ให้ตรวจว่าจับถูก)
   const cols = detectExtraCols(Object.keys(rows[0] || {}));
   // การจับคำในช่องหมายเหตุอาจจับผิด — เก็บข้อความที่จับได้ไว้ให้คนตรวจว่าถูกจริง
   const noteHits = { suspend: new Map(), sick: new Map() };
@@ -323,24 +339,42 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     // ต้องมีวันทำงานจริงอย่างน้อย 1 วัน — ลา/หยุดทั้งเดือน (เช่น ลาป่วยยาว) ไม่ได้ค่ากะ
     const workedDays = days.filter(d => d.status === "WORKED").length;
     const noWorkedDay = days.length > 0 && workedDays === 0;
+    const approved = approvedNoWork.has(`${empId}||${g.ym}`);
     if (noWorkedDay && eligible && shiftRate > 0)
-      noWork.push({ empId, name:first.Employee_Name, month:g.ym, days:days.length, sickDays });
+      noWork.push({ empId, name:first.Employee_Name, month:g.ym, days:days.length, sickDays, approved });
     if (maxSickRun >= SICK_RUN_WARN)
       sickRuns.push({ empId, name:first.Employee_Name, month:g.ym, run:maxSickRun, sickDays });
 
-    const monthlyRate = (eligible && !noWorkedDay) ? shiftRate : 0; // ไม่เข้าเกณฑ์ / ไม่ได้ทำงานเลย → 0
+    // ไม่เข้าเกณฑ์ระดับ → 0 · ไม่มีวันทำงานจริงเลย → 0 จนกว่า HR จะกดอนุมัติรายคน
+    const monthlyRate = (eligible && (!noWorkedDay || approved)) ? shiftRate : 0;
 
-    // ทำ NOR สลับ N03 เท่านั้น -> จ่ายเฉพาะวันที่เข้า N03 จริง (วัน NOR ไม่จ่าย)
+    // ทำ NOR สลับ N03 เท่านั้น -> ปกติจ่ายเฉพาะวันที่เข้า N03 (วัน NOR ไม่จ่าย)
+    // แต่ถ้า N03 + วันหยุด/วันลาที่จ่ายได้ เกิน 15 วัน = อยู่กะดึกทั้งเดือน -> จ่ายเต็มอัตราไปเลย
     const shiftOnly = PAY_ON_SHIFT_ONLY.codes.length === codesUsed.size
       && PAY_ON_SHIFT_ONLY.codes.every(c => codesUsed.has(c));
-    const earns = d => PAYABLE.has(d.status) && (!shiftOnly || d.code === PAY_ON_SHIFT_ONLY.payCode);
+    const n03AndOff = days.filter(d => PAYABLE.has(d.status)
+      && (d.code === PAY_ON_SHIFT_ONLY.payCode || !d.code)).length;
+    const shiftOnlyFull = shiftOnly && n03AndOff > N03_FULL_THRESHOLD;
+    const payShiftDaysOnly = shiftOnly && !shiftOnlyFull;
+
+    // สาย Process: วันที่เข้า N03 ไม่จ่าย (วันกะอื่นยังจ่ายตามปกติ)
+    const isProc = isProcessEmp(emp);
+    if (isProc) processEmps.set(empId, { empId, name:first.Employee_Name,
+      where: [emp?.division, emp?.department, emp?.section, emp?.team].filter(Boolean).join(" / ") });
+
+    const earns = d => PAYABLE.has(d.status)
+      && (!payShiftDaysOnly || d.code === PAY_ON_SHIFT_ONLY.payCode)
+      && !(isProc && d.code === PROCESS_NO_PAY_CODE);
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
     // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน) แต่รวมทั้งเดือนต้องไม่เกินอัตราเดือน
     // ผู้ใช้ยืนยันกติกานี้ 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
     const payDays = days.filter(earns).length;
-    const dailyRate = payDays ? Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays) : 0;
-    const capped = payDays > DAILY_DIVISOR && monthlyRate > 0;
+    // อยู่กะดึกเกิน 15 วัน = จ่ายเต็มอัตราไปเลย ไม่ pro-rate
+    const dailyRate = !payDays ? 0
+      : shiftOnlyFull ? monthlyRate / payDays
+      : Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays);
+    const capped = !shiftOnlyFull && payDays > DAILY_DIVISOR && monthlyRate > 0;
 
     // ถ้าไฟล์มีคอลัมน์ Shift_Allowance มาด้วย = "เฉลย" ที่คิดมือไว้แล้ว -> เก็บไว้เทียบ
     let total = 0, noPayDays = 0, checkDays = 0;
@@ -370,7 +404,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
       clippedDays: outOfPeriod.length, sickDays, maxSickRun, suspendDays, workedDays, noWorkedDay,
-      shiftOnly,
+      shiftOnly: payShiftDaysOnly, shiftOnlyFull, isProcess: isProc, approvedNoWork: approved,
       payDays, noPayDays, checkDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
@@ -386,6 +420,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
   const topHits = m => [...m.entries()].map(([text,count])=>({text,count}))
     .sort((a,b)=>b.count-a.count).slice(0,8);
   return { summary, detail, hasManual, unknownCodes, clipped, sickRuns, noWork, cols,
+           processEmps: [...processEmps.values()],
            noteHits: { suspend: topHits(noteHits.suspend), sick: topHits(noteHits.sick) } };
 }
 
@@ -394,6 +429,7 @@ let lastMeta = null; // {sheetName, rowCount, notFound, ineligible}
 let onlyDiff = false; // โหมดเทียบเฉลย: แสดงเฉพาะรายการที่ไม่ตรง
 let lastRows = null;  // แถวดิบจากไฟล์ลงเวลา — เก็บไว้คำนวณใหม่เมื่อเพิ่มรหัสกะ
 let lastKey = null;   // เฉลยที่อ่านไว้ — เอามาแปะซ้ำหลังคำนวณใหม่
+let approvedNoWork = new Set(); // "รหัส||เดือน" ที่ HR อนุมัติให้จ่ายทั้งที่ไม่มีวันทำงาน (ลาป่วยยาว)
 
 // รหัสกะเก็บใน DB (master_shift_codes) เพื่อให้เพิ่มกะใหม่ได้เองโดยไม่ต้องแก้โค้ด
 // ถ้ายังไม่ได้สร้างตาราง/อ่านไม่ได้ ให้ถอยไปใช้ค่าเริ่มต้นในโค้ด ระบบจะได้ไม่พัง
@@ -511,8 +547,8 @@ export function renderShiftAllowance() {
         // map emp_code -> employee (จาก state ที่โหลดไว้แล้ว)
         const empMap = new Map();
         for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
-        lastRows = rows; lastKey = null;
-        lastResult = computeShiftAllowance(rows, empMap, famMap, shiftSoloMap);
+        lastRows = rows; lastKey = null; approvedNoWork = new Set(); // ไฟล์ใหม่ = เริ่มอนุมัติใหม่
+        lastResult = computeShiftAllowance(rows, empMap, famMap, shiftSoloMap, approvedNoWork);
         const notFound = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
         const ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
         lastMeta = { sheetName, rowCount: rows.length, notFound, ineligible };
@@ -533,13 +569,22 @@ export function renderShiftAllowance() {
 
   window._saOnlyDiff = () => { onlyDiff = !onlyDiff; renderResults(); };
 
+  // อนุมัติ/ยกเลิกอนุมัติจ่ายรายคน สำหรับคนที่ไม่มีวันทำงานจริงเลย (ลาป่วยยาว)
+  window._saApprove = async (empId, month) => {
+    const k = `${empId}||${month}`;
+    if (approvedNoWork.has(k)) approvedNoWork.delete(k); else approvedNoWork.add(k);
+    await recalc();
+    toast(approvedNoWork.has(k) ? `อนุมัติจ่าย ${empId} แล้ว` : `ยกเลิกอนุมัติ ${empId}`,
+          approvedNoWork.has(k) ? "success" : "info");
+  };
+
   // คำนวณใหม่จากแถวเดิม (ใช้หลังเพิ่มรหัสกะ) แล้วแปะเฉลยเดิมกลับเข้าไป
   const recalc = async () => {
     if (!lastRows) return;
     const famMap = await ensureShiftCodes();
     const empMap = new Map();
     for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
-    lastResult = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap);
+    lastResult = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork);
     lastMeta.notFound   = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
     lastMeta.ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
     if (lastKey) {
@@ -693,13 +738,15 @@ function renderResults() {
   const noWk  = lastResult.noWork || [];
   const xcols = lastResult.cols || {};
   const hits  = lastResult.noteHits || { suspend:[], sick:[] };
+  const proc  = lastResult.processEmps || [];
   const suspendN = all.reduce((s,r)=>s+(r.suspendDays||0), 0);
   const warns = [];
   if (soloN)     warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
   const shiftOnlyN = all.filter(r=>r.shiftOnly).length;
   if (shiftOnlyN) warns.push(`${shiftOnlyN} คนทำ NOR สลับ N03 → จ่ายเฉพาะวันที่เข้า N03`);
   if (suspendN)  warns.push(`${suspendN} วันถูกพักงาน ไม่นับเป็นวันจ่าย`);
-  if (noWk.length) warns.push(`${noWk.length} คนไม่มีวันทำงานจริงเลยทั้งเดือน → ฿0`);
+  const shiftFullN = all.filter(r=>r.shiftOnlyFull).length;
+  if (shiftFullN) warns.push(`${shiftFullN} คนอยู่ N03 เกิน ${N03_FULL_THRESHOLD} วัน → จ่ายเต็มอัตรา`);
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
   if (ineligible)  warns.push(`${ineligible} คนไม่ใช่ระดับ O → ฿0`);
   if (granted)     warns.push(`${granted} คนระดับไม่ใช่ O แต่ได้ค่ากะ (HR กำหนดพิเศษ)`);
@@ -734,6 +781,31 @@ function renderResults() {
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
+    ${noWk.length ? `<div class="card-body" style="background:#fef2f2;border-bottom:1px solid var(--border);padding:11px 16px;">
+      <div style="font-size:13px;color:#b91c1c;font-weight:700;margin-bottom:2px;">🛑 ไม่มีวันทำงานจริงเลยทั้งเดือน ${noWk.length} คน — รออนุมัติรายคน</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:7px;">
+        ส่วนใหญ่คือลาป่วยยาว · ระบบตั้งไว้ที่ <b>฿0 ก่อน</b> ถ้าจะจ่ายให้กด "อนุมัติจ่าย" เป็นรายคน แล้วยอดจะคิดใหม่ทันที
+      </div>
+      <div class="table-wrap" style="max-height:170px;overflow:auto;">
+        <table class="data-table" style="font-size:11px;">
+          <thead><tr><th>รหัส</th><th>ชื่อ</th><th class="text-right">ลาป่วย</th><th class="text-right">วันทั้งหมด</th><th></th></tr></thead>
+          <tbody>${noWk.map(c=>`<tr${c.approved?' style="background:rgba(22,163,74,.09);"':''}>
+            <td><b>${esc(c.empId)}</b></td><td>${esc(c.name||"-")}</td>
+            <td class="text-right">${c.sickDays} วัน</td><td class="text-right">${c.days} วัน</td>
+            <td class="text-right"><button class="btn btn-sm ${c.approved?"btn-secondary":"btn-primary"}"
+              onclick="window._saApprove('${esc(c.empId)}','${esc(c.month)}')">${c.approved?"✓ อนุมัติแล้ว (กดเพื่อยกเลิก)":"อนุมัติจ่าย"}</button></td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>` : ""}
+    ${proc.length ? `<div class="card-body" style="background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:3px;">🏭 พนักงานสาย Process ${proc.length} คน — วันที่เข้า ${PROCESS_NO_PAY_CODE} ไม่จ่าย (วันกะอื่นจ่ายปกติ)</div>
+      <div class="text-muted" style="font-size:11px;">
+        จับจากรหัสพนักงาน → ดูคำว่า "process" ในสังกัดที่บันทึกไว้ในระบบ · ถ้ามีคนที่ไม่ควรอยู่ในลิสต์นี้ (หรือขาดไป) บอกได้<br>
+        ${proc.slice(0,12).map(p=>`<span style="display:inline-block;margin-right:12px;">• <b>${esc(p.empId)}</b> ${esc(p.name||"")} <span class="text-muted">(${esc(p.where||"-")})</span></span>`).join("")}
+        ${proc.length>12?`<span class="text-muted">…และอีก ${proc.length-12} คน</span>`:""}
+      </div>
+    </div>` : ""}
     ${(hits.suspend.length || hits.sick.length) ? `<div class="card-body" style="background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;">
       <div style="font-size:12px;font-weight:700;margin-bottom:4px;">🔎 ข้อความในช่องหมายเหตุที่ระบบตีความ — ตรวจว่าถูกต้องไหม</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:11px;">
@@ -807,7 +879,7 @@ function renderResults() {
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
             <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
-            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำ NOR สลับ N03 — จ่ายเฉพาะวันที่เข้า N03">เฉพาะวัน N03</span>`:""}</td>
+            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำ NOR สลับ N03 — จ่ายเฉพาะวันที่เข้า N03">เฉพาะวัน N03</span>`:""}${r.shiftOnlyFull?` <span class="badge badge-blue" title="อยู่ N03 เกิน ${N03_FULL_THRESHOLD} วัน (รวมวันหยุด) — จ่ายเต็มอัตรา">N03 เต็มเดือน</span>`:""}${r.isProcess?` <span class="badge badge-gray" title="สาย Process — วัน ${PROCESS_NO_PAY_CODE} ไม่จ่าย">Process</span>`:""}${r.approvedNoWork?` <span class="badge badge-green" title="HR อนุมัติจ่ายทั้งที่ไม่มีวันทำงานจริง">อนุมัติแล้ว</span>`:""}</td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>

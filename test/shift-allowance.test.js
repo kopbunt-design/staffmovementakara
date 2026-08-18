@@ -13,7 +13,7 @@ const logic = SRC
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
            parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols,
-           isSuspendRow, isSickRow };`)();
+           isSuspendRow, isSickRow, isProcessEmp };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -327,6 +327,78 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   const shifts = Array.from({length:31}, (_,i) => i < 8 ? "N03" : (i < 26 ? "NOR" : null));
   const r = one(month("E1",2026,7, shifts));
   eq([r.shiftOnly, r.payDays, r.total], [true, 8, 320], "วันหยุดไม่มีรหัสกะ -> ยังเข้าเกณฑ์ จ่าย 8 วัน");
+}
+
+// ---------- N03 เกิน 15 วัน (รวมวันหยุด) -> จ่ายเต็มอัตรา ----------
+{
+  // N03 20 วัน + NOR 11 วัน -> 20 > 15 -> จ่ายเต็ม 1,200 ไม่ pro-rate
+  const shifts = Array.from({length:31}, (_,i) => i < 20 ? "N03" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnlyFull, r.total], [true, 1200], "N03 20 วัน -> เต็ม 1,200");
+  eq(r.shiftOnly, false, "เข้าโหมดเต็มแล้ว ไม่ใช่โหมดจ่ายเฉพาะวัน N03");
+}
+{
+  // N03 10 วัน + วันหยุด 8 วัน = 18 > 15 -> เต็ม (คำว่า "รวมวันหยุด")
+  const shifts = Array.from({length:31}, (_,i) => i < 10 ? "N03" : (i < 18 ? null : "NOR"));
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnlyFull, r.total], [true, 1200], "N03 10 + วันหยุด 8 = 18 -> เต็ม 1,200");
+}
+{
+  // N03 10 วัน + วันหยุด 3 วัน = 13 ไม่เกิน 15 -> จ่ายเฉพาะวัน N03
+  const shifts = Array.from({length:31}, (_,i) => i < 10 ? "N03" : (i < 13 ? null : "NOR"));
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnlyFull, r.shiftOnly], [false, true], "13 วัน -> ยังอยู่โหมดจ่ายเฉพาะวัน N03");
+  eq([r.payDays, r.total], [10, 400], "จ่าย 40 x 10 = 400");
+}
+{
+  // 15 วันพอดี = ยังไม่เกิน -> ยังไม่เต็ม (เกณฑ์คือ "มากกว่า 15")
+  const shifts = Array.from({length:31}, (_,i) => i < 15 ? "N03" : "NOR");
+  eq(one(month("E1",2026,7, shifts)).shiftOnlyFull, false, "15 วันพอดี -> ยังไม่ใช่เต็ม");
+  const s16 = Array.from({length:31}, (_,i) => i < 16 ? "N03" : "NOR");
+  eq(one(month("E1",2026,7, s16)).shiftOnlyFull, true, "16 วัน -> เต็ม");
+}
+
+// ---------- สาย Process: วัน N03 ไม่จ่าย ----------
+{
+  const procMap = new Map([
+    ["P1", { emp_code:"P1", job_level:"O2", section:"Process Plant" }],
+    ["P2", { emp_code:"P2", job_level:"O2", department:"Mining" }],
+  ]);
+  eq(M.isProcessEmp({ section:"Process Plant" }), true,  "สังกัดมีคำว่า Process");
+  eq(M.isProcessEmp({ department:"PROCESS" }),    true,  "ไม่สนตัวพิมพ์");
+  eq(M.isProcessEmp({ department:"Mining" }),     false, "แผนกอื่น ไม่ใช่ Process");
+  eq(M.isProcessEmp(null),                        false, "ไม่พบพนักงาน -> ไม่ใช่ Process");
+
+  // P1 (Process): เข้า D01/A01/N03 -> 3 ตระกูล = 1,800 แต่วัน N03 ไม่จ่าย
+  const shifts = Array.from({length:31}, (_,i) => ["D01","A01","N03"][i%3]);
+  const rP = M.computeShiftAllowance(month("P1",2026,7, shifts), procMap).summary[0];
+  eq([rP.isProcess, rP.monthlyRate], [true, 1800], "Process ยังนับตระกูลตามปกติ");
+  eq(rP.payDays, 21, "31 วัน หักวัน N03 10 วัน -> จ่าย 21 วัน");
+  eq(rP.total, 1260, "60 x 21 = 1,260");
+
+  // P2 (ไม่ใช่ Process): เข้าเหมือนกัน -> จ่ายครบ
+  const rN = M.computeShiftAllowance(month("P2",2026,7, shifts), procMap).summary[0];
+  eq([rN.isProcess, rN.payDays, rN.total], [false, 31, 1800], "คนไม่ใช่ Process -> จ่ายวัน N03 ด้วย");
+
+  // รายงานรายชื่อ Process ให้ตรวจ
+  const res = M.computeShiftAllowance(month("P1",2026,7, shifts), procMap);
+  eq(res.processEmps.map(p=>p.empId), ["P1"], "รายงานว่าใครถูกมองเป็น Process");
+}
+
+// ---------- ลาป่วยยาว: ต้องกดอนุมัติถึงจะจ่าย ----------
+{
+  const sickAll = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map(r=>({ ...r, Check_In:"", Leave_No_Deduct:1, "หมายเหตุ":"ลาป่วย" }));
+  // ยังไม่อนุมัติ -> 0
+  const r0 = run(sickAll);
+  eq([r0.summary[0].total, r0.noWork[0].approved], [0, false], "ยังไม่อนุมัติ -> ฿0");
+  // อนุมัติแล้ว -> จ่ายตามปกติ
+  const r1 = M.computeShiftAllowance(sickAll, empMap, M.FAMILY_MAP, undefined, new Set(["E1||2026-07"]));
+  eq([r1.summary[0].total, r1.summary[0].approvedNoWork], [1800, true], "อนุมัติแล้ว -> จ่าย 1,800");
+  eq(r1.noWork[0].approved, true, "ธงอนุมัติขึ้นในรายการให้เห็น");
+  // อนุมัติคนละเดือน ไม่ควรมีผล
+  const r2 = M.computeShiftAllowance(sickAll, empMap, M.FAMILY_MAP, undefined, new Set(["E1||2026-06"]));
+  eq(r2.summary[0].total, 0, "อนุมัติคนละเดือน -> ไม่มีผล");
 }
 
 // ---------- ลาไม่รับค่าจ้าง / พักงาน / ลาป่วย ----------
