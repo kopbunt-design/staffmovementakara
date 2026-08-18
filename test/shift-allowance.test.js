@@ -11,7 +11,8 @@ const logic = SRC
   .split("\n").filter(l => !/^\s*import\s/.test(l)).join("\n")
   .replace(/^export /gm, "");
 const M = new Function(`${logic}
-  return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS };`)();
+  return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
+           parseKeyFile, applyKeyFile, toYM, findCol };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -108,6 +109,74 @@ eq(mixedSum.find(r=>r.Employee_ID==="E3").diff,   null, "คนที่ไม�
 ["A01","A02","A03"].forEach(c => eq(M.FAMILY_MAP[c], "AFT", `${c} = กะบ่าย`));
 ["N01","N02","N03","N05","N07"].forEach(c => eq(M.FAMILY_MAP[c], "NIT", `${c} = กะดึก`));
 eq(one(month("E1",2026,7, jul31(["d01","a01","n01"]))).monthlyRate, 1800, "รหัสกะพิมพ์เล็ก ต้องอ่านได้");
+
+// ---------- ไฟล์เฉลยแยก (ไฟล์สรุป 1 บรรทัด/คน) ----------
+eq(M.toYM("2026-07"), "2026-07", "อ่าน '2026-07'");
+eq(M.toYM("2026-07-15"), "2026-07", "อ่านวันที่เต็ม -> เดือน");
+eq(M.toYM("7/2026"), "2026-07", "อ่าน '7/2026' (เดือน/ปี)");
+eq(M.toYM("2026/7"), "2026-07", "อ่าน '2026/7' และเติม 0 หน้าเดือน");
+eq(M.toYM("ไม่ใช่วันที่"), null, "ข้อความมั่ว -> null");
+
+// เดาชื่อคอลัมน์: ตรงเป๊ะต้องมาก่อนการเดาแบบมีคำนั้นอยู่ข้างใน
+eq(M.findCol(["Employee_Name","Employee_ID"], ["employeeid"]), "Employee_ID", "จับ Employee_ID ไม่ใช่ Employee_Name");
+eq(M.findCol(["รหัสพนักงาน","ชื่อ"], ["employeeid","empcode","รหัสพนักงาน"]), "รหัสพนักงาน", "จับหัวคอลัมน์ภาษาไทยได้");
+eq(M.findCol(["ชื่อ","แผนก"], ["employeeid"]), null, "ไม่มีคอลัมน์ที่ต้องการ -> null");
+
+const calc = () => run([
+  ...month("E1",2026,7, jul31(["D01","A01","N01"])),   // 1,800
+  ...month("E3",2026,7, jul31(["D01","A01"])),         // 1,200 (override)
+]).summary;
+
+// แบบมีคอลัมน์เดือน + หัวคอลัมน์ภาษาไทย
+{
+  const s = calc();
+  const k = M.parseKeyFile([
+    { รหัสพนักงาน:"E1", เดือน:"2026-07", ยอดค่ากะ:1800 },
+    { รหัสพนักงาน:"E3", เดือน:"2026-07", ยอดค่ากะ:"1,200.00" },
+  ]);
+  eq([k.empCol,k.amtCol,k.monCol], ["รหัสพนักงาน","ยอดค่ากะ","เดือน"], "เดาคอลัมน์ไฟล์เฉลยภาษาไทยถูก");
+  eq(k.hasMonth, true, "มีคอลัมน์เดือน -> จับคู่ด้วยคน+เดือน");
+  const res = M.applyKeyFile(s, k);
+  eq([res.matched,res.missing,res.extra], [2,0,0], "จับคู่ครบ 2 รายการ");
+  eq(s.map(r=>r.diff), [0,0], "ตรงกับเฉลยทั้งคู่");
+}
+
+// แบบไม่มีคอลัมน์เดือน -> จับคู่ด้วยรหัสอย่างเดียว
+{
+  const s = calc();
+  const k = M.parseKeyFile([{ emp_code:"E1", total:1800 }, { emp_code:"E3", total:1000 }]);
+  eq(k.hasMonth, false, "ไม่มีคอลัมน์เดือน");
+  const res = M.applyKeyFile(s, k);
+  eq(res.matched, 2, "ยังจับคู่ได้ด้วยรหัส");
+  eq(s.find(r=>r.Employee_ID==="E3").diff, 200, "E3 เฉลย 1,000 แต่ระบบได้ 1,200 -> ต่าง +200");
+}
+
+// เฉลยมีคนที่ระบบไม่มี / ระบบมีคนที่เฉลยไม่มี -> ต้องรายงาน ไม่ใช่นับเป็นไม่ตรง
+{
+  const s = calc();
+  const k = M.parseKeyFile([{ Employee_ID:"E1", Shift_Allowance:1800 }, { Employee_ID:"E9", Shift_Allowance:900 }]);
+  const res = M.applyKeyFile(s, k);
+  eq([res.matched,res.missing,res.extra], [1,1,1], "จับคู่ 1 · ระบบมีแต่เฉลยไม่มี 1 · เฉลยมีแต่ระบบไม่มี 1");
+  eq(s.find(r=>r.Employee_ID==="E3").diff, null, "คนที่เฉลยไม่ครอบคลุม -> ไม่คิดส่วนต่าง");
+}
+
+// เฉลยแยกหลายบรรทัดต่อคน (เช่นแตกรายกะ) ต้องรวมยอดให้
+{
+  const s = calc();
+  const k = M.parseKeyFile([
+    { Employee_ID:"E1", เดือน:"2026-07", ค่ากะ:800 },
+    { Employee_ID:"E1", เดือน:"2026-07", ค่ากะ:1000 },
+  ]);
+  M.applyKeyFile(s, k);
+  eq(s.find(r=>r.Employee_ID==="E1").manual, 1800, "รวมหลายบรรทัดของคนเดียวกันเป็น 1,800");
+}
+
+// ไฟล์ที่หาคอลัมน์ไม่เจอ ต้องคืน error พร้อมรายชื่อคอลัมน์ (ไว้ขึ้นข้อความบอกผู้ใช้)
+{
+  const k = M.parseKeyFile([{ ชื่อ:"ก", แผนก:"ข" }]);
+  eq(k.error, "หาคอลัมน์ไม่เจอ", "ไม่มีคอลัมน์ที่ต้องการ -> error");
+  eq(k.cols, ["ชื่อ","แผนก"], "คืนรายชื่อคอลัมน์ที่พบมาด้วย");
+}
 
 console.log(`\n${P} passed, ${F} failed`);
 if (F > 0) throw new Error(F + " test(s) failed");

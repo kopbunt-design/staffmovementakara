@@ -29,6 +29,69 @@ const num = v => {
 // ต่างกันไม่เกิน 1 บาท = ถือว่าตรง (ต่างแค่การปัดเศษ)
 const MATCH_TOL = 1;
 
+// ===== อ่าน "ไฟล์เฉลย" ที่คิดมือ (คนละไฟล์กับไฟล์ลงเวลา) =====
+// ไฟล์เฉลยมักเป็นไฟล์สรุป 1 บรรทัด/คน และตั้งชื่อคอลัมน์ได้หลายแบบ จึงต้องเดาให้
+const norm = s => String(s).toLowerCase().replace(/[\s_\-.()]/g, "");
+const COL_EMP = ["employeeid","empcode","empid","employeecode","employeeno","รหัสพนักงาน","รหัสพนง","รหัส","code","id"];
+const COL_AMT = ["shiftallowance","ยอดค่ากะ","ค่ากะ","เบี้ยกะ","ยอดรวม","รวม","total","amount","จำนวนเงิน","ยอด"];
+const COL_MON = ["month","เดือน","period","งวด","yearmonth","date","วันที่"];
+
+// หาคอลัมน์แรกที่ชื่อ "ตรงเป๊ะ" ก่อน แล้วค่อยยอมให้ชื่อมีคำนั้นอยู่ข้างใน
+function findCol(cols, cands) {
+  for (const c of cands) { const hit = cols.find(k => norm(k) === c); if (hit) return hit; }
+  for (const c of cands) { const hit = cols.find(k => norm(k).includes(c)); if (hit) return hit; }
+  return null;
+}
+
+// แปลงค่าในคอลัมน์เดือนให้เป็น "YYYY-MM" (รับได้ทั้ง "2026-07", "07/2026", วันที่, serial)
+function toYM(v) {
+  const s = String(v ?? "").trim();
+  let m = /^(\d{4})[-/](\d{1,2})/.exec(s);
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2,"0")}`;
+  m = /^(\d{1,2})[-/](\d{4})$/.exec(s);
+  if (m) return `${m[2]}-${String(+m[1]).padStart(2,"0")}`;
+  const ymd = parseYMD(v);
+  return ymd ? `${ymd.y}-${String(ymd.m).padStart(2,"0")}` : null;
+}
+
+// rows ของไฟล์เฉลย -> { byKey:Map("emp||ym"->ยอด), byEmp:Map(emp->ยอด), hasMonth, empCol, amtCol, monCol }
+export function parseKeyFile(rows) {
+  const cols = Object.keys(rows[0] || {});
+  const empCol = findCol(cols, COL_EMP);
+  const amtCol = findCol(cols, COL_AMT);
+  const monCol = findCol(cols, COL_MON);
+  if (!empCol || !amtCol) return { error: "หาคอลัมน์ไม่เจอ", cols, empCol, amtCol };
+
+  const byKey = new Map(), byEmp = new Map();
+  let counted = 0;
+  for (const r of rows) {
+    const emp = String(r[empCol] ?? "").trim();
+    const amt = num(r[amtCol]);
+    if (!emp || amt === null) continue;
+    counted++;
+    byEmp.set(emp, round2((byEmp.get(emp) || 0) + amt));
+    const ym = monCol ? toYM(r[monCol]) : null;
+    if (ym) { const k = `${emp}||${ym}`; byKey.set(k, round2((byKey.get(k) || 0) + amt)); }
+  }
+  return { byKey, byEmp, hasMonth: byKey.size > 0, empCol, amtCol, monCol, counted, cols };
+}
+
+// เอาเฉลยไปแปะลง summary ที่คำนวณไว้แล้ว -> { matched, missing, extra }
+export function applyKeyFile(summary, key) {
+  const used = new Set();
+  let matched = 0, missing = 0;
+  for (const r of summary) {
+    const k = `${r.Employee_ID}||${r.month}`;
+    // มีคอลัมน์เดือน = จับคู่ด้วยคน+เดือน · ไม่มี = จับคู่ด้วยรหัสคนอย่างเดียว
+    let v = key.hasMonth ? key.byKey.get(k) : key.byEmp.get(r.Employee_ID);
+    if (v === undefined) { r.manual = null; r.diff = null; missing++; continue; }
+    used.add(key.hasMonth ? k : r.Employee_ID);
+    r.manual = v; r.diff = round2(r.total - v); matched++;
+  }
+  const total = key.hasMonth ? key.byKey.size : key.byEmp.size;
+  return { matched, missing, extra: total - used.size };
+}
+
 // แปลงเซลล์วันที่ (serial number / string / Date) -> {y,m,d}
 function parseYMD(v) {
   if (!has(v)) return null;
@@ -166,6 +229,9 @@ export function renderShiftAllowance() {
           <input type="file" id="saFile" accept=".xlsx,.xls" onchange="window._saUpload(this)"
                  style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip:rect(0 0 0 0);">
           <label for="saFile" class="btn btn-primary" style="cursor:pointer;">📁 เลือกไฟล์ Excel</label>
+          <input type="file" id="saKeyFile" accept=".xlsx,.xls" onchange="window._saKeyUpload(this)"
+                 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip:rect(0 0 0 0);">
+          <label for="saKeyFile" class="btn btn-secondary" id="saKeyBtn" style="cursor:pointer;display:none;">📋 เทียบกับไฟล์เฉลย</label>
           <button class="btn btn-secondary" id="saSaveBtn" onclick="window._saSave()" style="display:none;">💾 บันทึกเดือนนี้</button>
           <button class="btn btn-gold" id="saExportBtn" onclick="window._saExport()" style="display:none;">📤 Export</button>
         </div>
@@ -173,7 +239,8 @@ export function renderShiftAllowance() {
       <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-top:10px;">
         • จ่ายเฉพาะพนักงาน <b>ระดับ O</b> (O1/O2/O3) — ตรวจจาก job_level ในระบบ · ระดับอื่น/ไม่พบ = ฿0<br>
         • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · น้อยกว่า = <b>0</b> · จ่าย pro-rate รายวัน<br>
-        • ถ้าไฟล์มีคอลัมน์ <b>Shift_Allowance</b> (ยอดที่คิดมือไว้) ระบบจะ<b>เทียบให้อัตโนมัติ</b> และชี้รายการที่ไม่ตรง
+        • <b>เทียบกับที่คิดมือ:</b> ถ้าไฟล์ลงเวลามีคอลัมน์ <b>Shift_Allowance</b> อยู่แล้ว ระบบเทียบให้เอง —
+          ถ้าเฉลยอยู่คนละไฟล์ (ไฟล์สรุป 1 บรรทัด/คน) ให้คำนวณก่อน แล้วกด <b>📋 เทียบกับไฟล์เฉลย</b>
       </div>
     </div>
     <div id="saResults" class="mt-4"></div>
@@ -242,6 +309,49 @@ export function renderShiftAllowance() {
 
   window._saOnlyDiff = () => { onlyDiff = !onlyDiff; renderResults(); };
 
+  // อัปโหลด "ไฟล์เฉลย" ที่คิดมือไว้ (คนละไฟล์กับไฟล์ลงเวลา) มาเทียบกับผลที่คำนวณไว้แล้ว
+  window._saKeyUpload = (inputEl) => {
+    const file = inputEl.files?.[0];
+    inputEl.value = "";
+    if (!file) return;
+    if (!lastResult) { toast("ให้อัปโหลดไฟล์ลงเวลาแล้วคำนวณก่อน","error"); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb = window.XLSX.read(ev.target.result, { type:"binary" });
+        // เลือกชีตแรกที่หาคอลัมน์รหัสพนักงาน+ยอดเงินเจอ
+        let picked = null;
+        for (const sn of wb.SheetNames) {
+          const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval:"", raw:true });
+          if (!rows.length) continue;
+          const k = parseKeyFile(rows);
+          if (!k.error) { picked = { sheet: sn, key: k, rowCount: rows.length }; break; }
+        }
+        if (!picked) {
+          const first = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:"", raw:true });
+          const cols = Object.keys(first[0] || {});
+          console.warn("[ค่ากะ] ไฟล์เฉลย — ชีต:", wb.SheetNames, "คอลัมน์ชีตแรก:", cols);
+          toast(`ไฟล์เฉลยต้องมีคอลัมน์รหัสพนักงาน + ยอดค่ากะ — ที่พบคือ: ${cols.slice(0,8).join(", ")||"(ว่าง)"}`,"error");
+          return;
+        }
+        const res = applyKeyFile(lastResult.summary, picked.key);
+        lastResult.hasManual = res.matched > 0;
+        if (!res.matched) { toast("จับคู่รหัสพนักงานไม่ได้เลย — ตรวจว่ารหัสในไฟล์เฉลยตรงกับ Employee_ID","error"); return; }
+        lastMeta.keyFile = {
+          name: file.name, sheet: picked.sheet, empCol: picked.key.empCol,
+          amtCol: picked.key.amtCol, monCol: picked.key.monCol, ...res,
+        };
+        onlyDiff = false;
+        renderResults();
+        const bad = lastResult.summary.filter(r => r.diff !== null && Math.abs(r.diff) > MATCH_TOL).length;
+        toast(bad ? `เทียบแล้ว: ไม่ตรง ${bad} รายการ` : `เทียบแล้ว: ตรงทุกรายการ ✅ (${res.matched})`, bad ? "error" : "success");
+      } catch (err) {
+        toast("อ่านไฟล์เฉลยไม่ได้: " + err.message, "error");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   window._saSave = async () => {
     if (!lastResult) { toast("ยังไม่มีข้อมูลให้บันทึก","error"); return; }
     const rows = lastResult.summary
@@ -290,16 +400,18 @@ function renderResults() {
   const el = document.getElementById("saResults");
   document.getElementById("saExportBtn").style.display = "inline-flex";
   document.getElementById("saSaveBtn").style.display = "inline-flex";
+  document.getElementById("saKeyBtn").style.display = "inline-flex";
   const all = lastResult.summary;
   const cmp = lastResult.hasManual;                       // ไฟล์มีคอลัมน์เฉลยมาด้วยไหม
   const isBad = r => r.diff !== null && Math.abs(r.diff) > MATCH_TOL;
   const badRows = all.filter(isBad);
+  const cmpCount = all.filter(r => r.diff !== null).length;   // เทียบได้จริงกี่รายการ
   const rows = (cmp && onlyDiff) ? badRows : all;
 
   const grand = round2(all.reduce((s,r)=>s+r.total, 0));
   const grandManual = round2(all.reduce((s,r)=>s+(r.manual||0), 0));
   const totalCheck = all.reduce((s,r)=>s+r.checkDays, 0);
-  const { sheetName, rowCount, notFound, ineligible } = lastMeta;
+  const { sheetName, rowCount, notFound, ineligible, keyFile: kf } = lastMeta;
 
   const granted = all.filter(r=>r.granted).length;
   const warns = [];
@@ -317,9 +429,13 @@ function renderResults() {
     ${cmp ? `<div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${badRows.length?"var(--gold-light)":"rgba(22,163,74,.08)"};">
       <div style="font-size:13px;">
         ${badRows.length
-          ? `<b style="color:var(--gold-dark);">⚠️ ไม่ตรงกับเฉลย ${badRows.length} รายการ</b> <span class="text-muted">· ตรง ${all.length-badRows.length} รายการ (ต่างไม่เกิน ${MATCH_TOL} บาท = ถือว่าตรง)</span>`
-          : `<b style="color:var(--green);">✅ ตรงกับเฉลยในไฟล์ทุกรายการ (${all.length})</b>`}
+          ? `<b style="color:var(--gold-dark);">⚠️ ไม่ตรงกับเฉลย ${badRows.length} รายการ</b> <span class="text-muted">· ตรง ${cmpCount-badRows.length} รายการ (ต่างไม่เกิน ${MATCH_TOL} บาท = ถือว่าตรง)</span>`
+          : `<b style="color:var(--green);">✅ ตรงกับเฉลยทุกรายการที่เทียบได้ (${cmpCount})</b>`}
         <span class="text-muted"> · เฉลยรวม ${fmtB(grandManual)} · แอปคำนวณ ${fmtB(grand)} · ส่วนต่าง ${fmtB(round2(grand-grandManual))}</span>
+        ${kf ? `<div class="text-muted" style="font-size:11px;margin-top:3px;">
+          เฉลยจาก "${esc(kf.name)}" · ชีต "${esc(kf.sheet)}" · อ่านรหัสจากคอลัมน์ <b>${esc(kf.empCol)}</b> · ยอดจาก <b>${esc(kf.amtCol)}</b>${kf.monCol?` · เดือนจาก <b>${esc(kf.monCol)}</b>`:" · ไม่มีคอลัมน์เดือน จับคู่ด้วยรหัสอย่างเดียว"}
+          ${kf.missing?` · <b>${kf.missing} รายการในระบบไม่มีในเฉลย</b>`:""}${kf.extra?` · <b>${kf.extra} รายการในเฉลยไม่มีในระบบ</b>`:""}
+        </div>` : ""}
       </div>
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
