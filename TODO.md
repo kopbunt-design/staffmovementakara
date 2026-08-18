@@ -91,6 +91,7 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
 4. ✅ `sql/schema_position_quota.sql` — เติมคอลัมน์ fiscal_year ฯลฯ + RLS hr/admin (รันแล้ว 2026-08-11)
 5. ✅ `sql/schema_movement_attachment.sql` — คอลัมน์ไฟล์แนบ + storage bucket + สิทธิ์ (รันแล้ว 2026-08-18)
 6. ⏸️ `sql/fix_employee_status.sql` — ซ่อม status ที่เป็นชื่อจังหวัด (พักไว้ก่อน ดูหัวข้อด้านบน)
+8. ⬜ `sql/schema_shift_codes_solo.sql` — **ยังไม่ได้รัน** เพิ่มคอลัมน์ solo_rate + ตั้ง N03 = 1,200 (ถ้าไม่รัน โค้ดใช้ค่าเริ่มต้น N03=1200 ในโค้ดแทน แต่เพิ่มกะยกเว้นอื่นไม่ได้)
 7. ✅ `sql/schema_shift_codes.sql` — ย้ายรหัสกะมาเก็บใน DB เพิ่มกะใหม่ได้จากหน้าเว็บ (รันแล้ว 2026-08-18 · ยืนยัน 14 รหัส: DAY 6, AFT 3, NIT 5)
 
 ## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)

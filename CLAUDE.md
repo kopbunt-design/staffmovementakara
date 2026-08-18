@@ -48,6 +48,11 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
   ```
   They extract the real functions from `js/app.js` and assert the other reports do not re-define their own copies.
 
+- **Shift allowance rules, all confirmed against the hand-worked July 2026 answers on 2026-08-18.** Do not change any of these without checking with the user first — they were settled by reconciling against real payroll figures, not from a spec.
+  - **Daily rate = monthly rate ÷ 30, flat, every month** — *not* ÷ days-in-month. The month's total is then capped at the monthly rate. So 31 payable days pays 1,800 (capped), 28 payable days pays 1,680. `DAILY_DIVISOR` in `js/shift-allowance.js`.
+  - **Days outside employment are dropped before counting.** Timesheets run to month end even for people who left mid-month. A day counts only when `join_date <= date` and `date < end_date` — `end_date` is the first day *not* worked, the same rule the reports use. Accuracy depends entirely on `join_date`/`end_date` being correct, so the page lists everyone affected.
+  - **`solo_rate` on `master_shift_codes`** overrides the single-family zero: N03 pays 1,200 worked alone all month. It applies only when that code is the *only* one worked; mixed with others, the ordinary family count applies. Add exceptions in the DB, never in the source.
+
 - **Shift allowance: one shift family all month pays nothing — this is intended, not a bug.** The rate comes from how many shift *families* (เช้า/บ่าย/ดึก) a person actually worked in payable days that month: 3 families → 1,800/month, 2 → 1,200, **1 or 0 → 0**. So an O-level employee who worked only the morning shift every day of the month earns ฿0 in shift allowance, even with a full 31 payable days. Confirmed with the user on 2026-08-18 after they saw a real case (AKR17030409, O3, เช้า only, ฿0). The allowance pays for *rotating* between shifts, not for working shifts as such. Do not "fix" this by paying a floor amount for a single family.
 
 - **`movYM` vs `lastWorkYM`**: `movYM(movement)` in `app.js` returns the month of `movement.date` (falling back to `created_at`) **without** subtracting a day — it is for new hires and general movement filtering. `lastWorkYM(dateStr)` subtracts a day and is only for separations. Do not swap them.
