@@ -76,6 +76,45 @@ export function parseKeyFile(rows) {
   return { byKey, byEmp, hasMonth: byKey.size > 0, empCol, amtCol, monCol, counted, cols };
 }
 
+// ===== เดาสาเหตุที่ยอดไม่ตรงกับเฉลย =====
+// เฉลยที่คิดมือคิดอัตรารายวัน = อัตราเดือน ÷ 30 เสมอ (ยืนยันจากข้อมูลจริง ก.ค. 2026: ลงตัว 9/9 ราย)
+// ระบบหารด้วยจำนวนวันจริงในเดือน จึงเอา "อัตรา ÷ 30" มาถอดกลับว่าเฉลยคิดกี่วัน แล้วเทียบกับที่ระบบคิด
+const KEY_DIVISOR = 30;
+const REASON_TH = {
+  "base30":        `ตัวหารต่างกัน (${30} vs วันจริง)`,
+  "days":          "จำนวนวันที่คิดไม่ตรงกัน",
+  "single-family": "เกณฑ์กะเดียว",
+  "zero-key":      "เฉลยไม่จ่ายเลย",
+  "other":         "ยังไม่รู้สาเหตุ",
+};
+export function classifyDiff(r, tol = MATCH_TOL) {
+  if (r.diff === null || Math.abs(r.diff) <= tol) return null;
+  const rate = r.monthlyRate, perDay = rate / KEY_DIVISOR;
+
+  // ระบบนับได้ตระกูลเดียว (อัตรา 0) แต่เฉลยยังจ่าย -> เกณฑ์จำนวนตระกูลไม่ตรงกัน
+  if (rate === 0 && r.manual > 0)
+    return { key:"single-family", label:`เฉลยจ่ายทั้งที่ระบบนับได้กะเดียว (${r.families})` };
+  // เฉลยไม่จ่ายเลยทั้งที่ระบบจ่าย -> คนละเกณฑ์สิทธิ์ หรือไม่อยู่ในรอบจ่าย
+  if (r.manual === 0)
+    return { key:"zero-key", label:"เฉลยไม่จ่ายเลย (ระบบมองว่าเข้าเกณฑ์)" };
+
+  if (rate) {
+    // วันเท่ากัน ต่างแค่ตัวหาร (30 vs วันจริงในเดือน)
+    if (Math.abs(r.manual - Math.min(perDay * r.payDays, rate)) <= tol)
+      return { key:"base30", label:`เฉลยหารด้วย ${KEY_DIVISOR} · ระบบหารด้วยวันจริงในเดือน` };
+    // จำนวนวันไม่ตรง -> ถอดกลับว่าเฉลยคิดกี่วัน
+    const d = r.manual / perDay;
+    if (Math.abs(d - Math.round(d)) < 0.02) {
+      const n = Math.round(d);
+      const hint = dateInMonth(r.endDate, r.month)  ? ` · พ้นสภาพ ${r.endDate}`
+                 : dateInMonth(r.joinDate, r.month) ? ` · เข้าใหม่ ${r.joinDate}` : "";
+      return { key:"days", label:`เฉลยคิด ${n} วัน · ระบบคิด ${r.payDays} วัน${hint}`, keyDays:n };
+    }
+  }
+  return { key:"other", label:"ยังไม่เข้ารูปแบบที่รู้จัก" };
+}
+const dateInMonth = (d, ym) => !!d && String(d).substring(0,7) === ym;
+
 // เอาเฉลยไปแปะลง summary ที่คำนวณไว้แล้ว -> { matched, missing, extra }
 export function applyKeyFile(summary, key) {
   const used = new Set();
@@ -199,6 +238,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
     summary.push({
       Employee_ID: empId, Employee_Name: first.Employee_Name, Department: first.Department,
       month: g.ym, job_level: jobLevel, eligible, granted, reason,
+      joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate,
       payDays, noPayDays, checkDays,
@@ -458,7 +498,7 @@ export function renderShiftAllowance() {
       เดือน:r.month, ระดับ:r.job_level, เข้าเกณฑ์:r.eligible?"ใช่":"ไม่", หมายเหตุ:r.granted?"HR กำหนดพิเศษ":r.reason,
       ตระกูลกะ:r.families, จำนวนตระกูล:r.familyCount, อัตราต่อเดือน:r.monthlyRate,
       วันจ่าย:r.payDays, วันไม่จ่าย:r.noPayDays, ต้องตรวจสอบ:r.checkDays, ยอดค่ากะ:r.total,
-      ...(lastResult.hasManual ? { เฉลยในไฟล์:r.manual, ส่วนต่าง:r.diff } : {}),
+      ...(lastResult.hasManual ? { เฉลยในไฟล์:r.manual, ส่วนต่าง:r.diff, สาเหตุที่น่าจะเป็น:classifyDiff(r)?.label || "" } : {}),
     }));
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(s), "สรุปค่ากะ");
@@ -491,6 +531,11 @@ function renderResults() {
   const totalCheck = all.reduce((s,r)=>s+r.checkDays, 0);
   const { sheetName, rowCount, notFound, ineligible, keyFile: kf } = lastMeta;
 
+  // สรุปว่าที่ไม่ตรงทั้งหมด เกิดจากสาเหตุไหนบ้าง กี่รายการ
+  const reasonCount = {};
+  for (const r of badRows) { const c = classifyDiff(r); if (c) reasonCount[c.key] = (reasonCount[c.key]||0)+1; }
+  const reasons = Object.entries(reasonCount).sort((a,b)=>b[1]-a[1]);
+
   const unk = lastResult.unknownCodes || [];
   const granted = all.filter(r=>r.granted).length;
   const warns = [];
@@ -511,6 +556,9 @@ function renderResults() {
           ? `<b style="color:var(--gold-dark);">⚠️ ไม่ตรงกับเฉลย ${badRows.length} รายการ</b> <span class="text-muted">· ตรง ${cmpCount-badRows.length} รายการ (ต่างไม่เกิน ${MATCH_TOL} บาท = ถือว่าตรง)</span>`
           : `<b style="color:var(--green);">✅ ตรงกับเฉลยทุกรายการที่เทียบได้ (${cmpCount})</b>`}
         <span class="text-muted"> · เฉลยรวม ${fmtB(grandManual)} · แอปคำนวณ ${fmtB(grand)} · ส่วนต่าง ${fmtB(round2(grand-grandManual))}</span>
+        ${reasons.length ? `<div style="font-size:12px;margin-top:5px;color:var(--text);">
+          <b>สาเหตุที่จับได้:</b> ${reasons.map(([k,n])=>`${esc(REASON_TH[k]||k)} <b>${n}</b>`).join(" · ")}
+        </div>` : ""}
         ${kf ? `<div class="text-muted" style="font-size:11px;margin-top:3px;">
           เฉลยจาก "${esc(kf.name)}" · ชีต "${esc(kf.sheet)}" · อ่านรหัสจากคอลัมน์ <b>${esc(kf.empCol)}</b> · ยอดจาก <b>${esc(kf.amtCol)}</b>${kf.monCol?` · เดือนจาก <b>${esc(kf.monCol)}</b>`:" · ไม่มีคอลัมน์เดือน จับคู่ด้วยรหัสอย่างเดียว"}
           ${kf.missing?` · <b>${kf.missing} รายการในระบบไม่มีในเฉลย</b>`:""}${kf.extra?` · <b>${kf.extra} รายการในเฉลยไม่มีในระบบ</b>`:""}
@@ -545,7 +593,7 @@ function renderResults() {
         <thead><tr>
           <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>เดือน</th><th>ระดับ</th><th>ตระกูลกะ</th>
           <th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">ต้องตรวจ</th><th class="text-right">ยอดค่ากะ</th>
-          ${cmp ? `<th class="text-right">เฉลยในไฟล์</th><th class="text-right">ส่วนต่าง</th>` : ""}
+          ${cmp ? `<th class="text-right">เฉลยในไฟล์</th><th class="text-right">ส่วนต่าง</th><th>สาเหตุที่น่าจะเป็น</th>` : ""}
         </tr></thead>
         <tbody>
         ${rows.length===0 ? `<tr><td colspan="${cmp?12:10}" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
@@ -561,7 +609,8 @@ function renderResults() {
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>
             <td class="text-right"><b>${fmtB(r.total)}</b></td>
             ${cmp ? `<td class="text-right ${r.manual===null?"text-muted":""}">${r.manual===null?"-":fmtB(r.manual)}</td>
-            <td class="text-right${isBad(r)?"":" text-muted"}"${isBad(r)?' style="color:#dc2626;font-weight:700;"':""}>${r.diff===null?"-":(isBad(r)?(r.diff>0?"+":"")+fmtB(r.diff):"✓")}</td>` : ""}
+            <td class="text-right${isBad(r)?"":" text-muted"}"${isBad(r)?' style="color:#dc2626;font-weight:700;"':""}>${r.diff===null?"-":(isBad(r)?(r.diff>0?"+":"")+fmtB(r.diff):"✓")}</td>
+            <td style="font-size:11px;">${(()=>{const c=classifyDiff(r);return c?`<span class="badge ${c.key==="other"?"badge-gray":"badge-gold"}">${esc(c.label)}</span>`:'<span class="text-muted">-</span>';})()}</td>` : ""}
           </tr>`).join("")}
         </tbody>
       </table>

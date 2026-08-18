@@ -12,7 +12,7 @@ const logic = SRC
   .replace(/^export /gm, "");
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
-           parseKeyFile, applyKeyFile, toYM, findCol };`)();
+           parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -212,6 +212,42 @@ const calc = () => run([
   const r = run(rows);
   eq(r.unknownCodes.map(u=>u.code), ["ZZ1","ZZ2"], "เรียงตามผลกระทบมาก -> น้อย");
 }
+
+// ---------- เดาสาเหตุที่ไม่ตรง (อิงเคสจริง ก.ค. 2026 ทั้ง 11 ราย) ----------
+// r จำลอง: อัตรา/เดือน, วันจ่ายที่ระบบคิด, ยอดระบบ, เฉลย
+const cd = (monthlyRate, payDays, total, manual, extra={}) => M.classifyDiff({
+  monthlyRate, payDays, total, manual, diff: Math.round((total-manual)*100)/100,
+  families:"ดึก", month:"2026-07", joinDate:"", endDate:"", ...extra,
+});
+eq(cd(1800, 31, 1800, 1800), null, "ตรงกันพอดี -> ไม่ต้องเดาสาเหตุ");
+eq(cd(1800, 31, 1800, 1799.5), null, "ต่างต่ำกว่าเกณฑ์ -> ไม่ถือว่าไม่ตรง");
+
+// กลุ่ม 1: วันเท่ากัน ต่างแค่ตัวหาร 30 vs วันจริงในเดือน
+eq(cd(1800, 30, 1741.94, 1800).key,  "base30", "AKR23030950: 30 วัน x (1800/30) = 1800");
+eq(cd(1800, 19, 1103.23, 1140).key,  "base30", "AKR26071372: 19 วัน x 60 = 1,140");
+
+// กลุ่ม 2: จำนวนวันที่คิดไม่ตรงกัน — ต้องถอดกลับได้ว่าเฉลยคิดกี่วัน
+eq(cd(1800, 28, 1625.81, 1620).keyDays, 27, "AKR23030899: เฉลยคิด 27 วัน (ระบบ 28)");
+eq(cd(1800, 31, 1800, 1620).keyDays,    27, "AKR23030890: เฉลยคิด 27 วัน (ระบบ 31)");
+eq(cd(1800, 31, 1800, 1020).keyDays,    17, "AKR24021099: เฉลยคิด 17 วัน");
+eq(cd(1800, 26, 1509.68, 360).keyDays,   6, "AKR24111246: เฉลยคิด 6 วัน");
+eq(cd(1200, 31, 1200, 160).keyDays,      4, "AKR23020867: อัตรา 1,200 -> 40/วัน -> 4 วัน");
+
+// ถ้าคนนั้นพ้นสภาพ/เข้าใหม่ในเดือนนั้น ให้บอกไว้ในป้ายด้วย
+eq(cd(1800, 31, 1800, 1020, {endDate:"2026-07-18"}).label.includes("พ้นสภาพ 2026-07-18"), true,
+   "มี end_date ในเดือนนั้น -> ชี้เบาะแสให้");
+eq(cd(1800, 31, 1800, 1020, {joinDate:"2026-07-15"}).label.includes("เข้าใหม่ 2026-07-15"), true,
+   "มี join_date ในเดือนนั้น -> ชี้เบาะแสให้");
+eq(cd(1800, 31, 1800, 1020, {endDate:"2026-05-18"}).label.includes("พ้นสภาพ"), false,
+   "วันพ้นสภาพคนละเดือน -> ไม่ใช่เบาะแสของเดือนนี้");
+
+// กลุ่ม 3: เกณฑ์จำนวนตระกูลไม่ตรงกัน
+eq(cd(0, 31, 0, 1200).key, "single-family", "AKR23020866: ระบบนับกะเดียว -> 0 แต่เฉลยจ่าย 1,200");
+eq(cd(1800, 31, 1800, 0).key, "zero-key",   "AKR23030887: เฉลยไม่จ่ายเลย");
+eq(cd(1200, 31, 1200, 0).key, "zero-key",   "AKR24061198: เฉลยไม่จ่ายเลย");
+
+// ยอดที่ถอดกลับเป็นจำนวนวันเต็มไม่ได้ -> ต้องไม่มั่วสาเหตุ
+eq(cd(1800, 31, 1800, 777.77).key, "other", "ยอดแปลก ๆ -> บอกตรง ๆ ว่ายังไม่รู้สาเหตุ");
 
 console.log(`\n${P} passed, ${F} failed`);
 if (F > 0) throw new Error(F + " test(s) failed");
