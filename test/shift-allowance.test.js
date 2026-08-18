@@ -44,9 +44,21 @@ eq(one(month("E1",2026,7, jul31(["D01","A01"]))).monthlyRate,       1200, "2 ต
 eq(one(month("E1",2026,7, jul31(["D01"]))).monthlyRate,                0, "ตระกูลเดียว -> 0");
 
 // ทำครบทุกวัน = ได้เต็มเดือนพอดี (pro-rate ต้องไม่ทำให้ขาด/เกิน)
-eq(one(month("E1",2026,7, jul31(["D01","A01","N01"]))).total, 1800, "ทำครบเดือน ก.ค. -> 1,800 พอดี");
-eq(one(month("E1",2026,2, Array.from({length:28},(_,i)=>["D01","A01","N01"][i%3]))).total, 1800,
-   "ก.พ. 28 วัน ทำครบ -> 1,800 พอดี (หารด้วยวันในเดือนจริง)");
+// อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ · ยอดรวมไม่เกินอัตราเดือน
+eq(one(month("E1",2026,7, jul31(["D01","A01","N01"]))).total, 1800,
+   "ก.ค. 31 วันจ่าย -> 60x31=1,860 แต่ติดเพดาน 1,800");
+eq(one(month("E1",2026,2, Array.from({length:28},(_,i)=>["D01","A01","N01"][i%3]))).total, 1680,
+   "ก.พ. 28 วันจ่าย -> 60x28 = 1,680 (ไม่ถึงอัตราเดือน เพราะหารด้วย 30 คงที่)");
+eq(one(month("E1",2026,7, jul31(["D01","A01","N01"]))).capped, true, "ก.ค. 31 วัน -> ติดเพดาน");
+eq(one(month("E1",2026,2, Array.from({length:28},(_,i)=>["D01","A01","N01"][i%3]))).capped, false,
+   "ก.พ. 28 วัน -> ไม่ติดเพดาน");
+{
+  // เคสจริง ก.ค. 2026 ที่เคยไม่ตรงเพราะตัวหาร — ตอนนี้ต้องตรงกับเฉลย
+  const d19 = month("E1",2026,7, jul31(["D01","A01","N01"])).slice(0,19);
+  eq(one(d19).total, 1140, "AKR26071372: จ่าย 19 วัน -> 60x19 = 1,140 ตรงกับเฉลย");
+  const d30 = month("E1",2026,7, jul31(["D01","A01","N01"])).slice(0,30);
+  eq(one(d30).total, 1800, "AKR23030950: จ่าย 30 วัน -> 60x30 = 1,800 ตรงกับเฉลย");
+}
 
 // ---------- สิทธิ์ตามระดับ ----------
 eq(one(month("E2",2026,7, jul31(["D01","A01","N01"]))).total, 0, "ระดับ S2 ไม่ได้ค่ากะ");
@@ -67,7 +79,11 @@ eq(M.dayStatus({}), "CHECK_NOTE",                    "ไม่มีข้อ�
 const absent1 = month("E1",2026,7, jul31(["D01","A01","N01"]));
 absent1[0] = { ...absent1[0], Deduct_Day:1 };
 const a1 = one(absent1);
-eq([a1.payDays, a1.total], [30, Math.round(1800/31*30*100)/100], "ขาด 1 วัน -> จ่าย 30 วัน");
+eq([a1.payDays, a1.total], [30, 1800], "ขาด 1 วัน -> จ่าย 30 วัน = 60x30 = 1,800 พอดี");
+// ขาด 2 วัน -> 29 วัน ถึงจะเริ่มเห็นยอดลด (เพราะเดือน 31 วันมีวันเกินเพดานอยู่ 1 วัน)
+const absent2 = month("E1",2026,7, jul31(["D01","A01","N01"]));
+absent2[0] = { ...absent2[0], Deduct_Day:1 }; absent2[1] = { ...absent2[1], Deduct_Day:1 };
+eq([one(absent2).payDays, one(absent2).total], [29, 1740], "ขาด 2 วัน -> 60x29 = 1,740");
 
 // วันหยุด/ลาได้เงิน ไม่ทำให้เสียตระกูลกะ (Pass 1 นับเฉพาะวันที่จ่ายได้)
 eq(one(month("E1",2026,7, jul31([null,null,null]))).familyCount, 0, "หยุดทั้งเดือน -> ไม่มีตระกูลกะ -> 0");
@@ -176,6 +192,73 @@ const calc = () => run([
   const k = M.parseKeyFile([{ ชื่อ:"ก", แผนก:"ข" }]);
   eq(k.error, "หาคอลัมน์ไม่เจอ", "ไม่มีคอลัมน์ที่ต้องการ -> error");
   eq(k.cols, ["ชื่อ","แผนก"], "คืนรายชื่อคอลัมน์ที่พบมาด้วย");
+}
+
+// ---------- กฎกะเดี่ยว (บางกะทำกะเดียวทั้งเดือนก็ได้เงิน) ----------
+{
+  const r = one(month("E1",2026,7, jul31(["N03"])));
+  eq([r.monthlyRate, r.total, r.solo, r.soloCode], [1200, 1200, true, "N03"],
+     "N03 กะเดียวทั้งเดือน -> 1,200 และติดธง solo");
+}
+eq(one(month("E1",2026,7, jul31(["N01"]))).total, 0, "N01 กะเดียว -> 0 (ไม่ได้ตั้ง solo_rate)");
+eq(one(month("E1",2026,7, jul31(["D01"]))).total, 0, "กะเช้าอย่างเดียว -> 0 (ยืนยันกับผู้ใช้แล้ว)");
+{
+  // N03 ปนกะอื่น = หมุนกะจริง ใช้กติกาปกติ ไม่ใช่กฎกะเดี่ยว
+  const r = one(month("E1",2026,7, jul31(["N03","D01"])));
+  eq([r.monthlyRate, r.solo], [1200, false], "N03 + เช้า = 2 ตระกูล -> 1,200 ตามกติกาปกติ");
+  const r3 = one(month("E1",2026,7, jul31(["N03","D01","A01"])));
+  eq([r3.monthlyRate, r3.solo], [1800, false], "N03 + เช้า + บ่าย = 3 ตระกูล -> 1,800");
+}
+{
+  // N03 + N01 = ตระกูลเดียว (ดึก) แต่ไม่ได้ใช้ N03 กะเดียว -> ไม่เข้ากฎกะเดี่ยว
+  const r = one(month("E1",2026,7, jul31(["N03","N01"])));
+  eq([r.monthlyRate, r.solo], [0, false], "ดึก 2 รหัส = ตระกูลเดียว และไม่ใช่ N03 ล้วน -> 0");
+}
+// กะเดี่ยวต้องยังเช็คสิทธิ์ระดับตำแหน่งอยู่
+eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว แต่ระดับ S2 -> ยังได้ 0");
+// ตั้ง solo_rate กะอื่นจาก DB ได้ ไม่ต้องแก้โค้ด
+{
+  const r = M.computeShiftAllowance(month("E1",2026,7, jul31(["A02"])), empMap,
+                                    M.FAMILY_MAP, { A02: 900 }).summary[0];
+  eq([r.monthlyRate, r.soloCode], [900, "A02"], "ตั้ง solo_rate ให้กะอื่นได้จาก DB");
+}
+
+// ---------- ตัดวันนอกช่วงการจ้าง ----------
+{
+  // ออกวันที่ 18 ก.ค. (end_date = วันแรกที่พ้นสภาพ) -> ทำงานถึง 17 ก.ค. = 17 วัน
+  const empOut = new Map([["E5", { emp_code:"E5", job_level:"O1", end_date:"2026-07-18" }]]);
+  const r = M.computeShiftAllowance(month("E5",2026,7, jul31(["D01","A01","N01"])), empOut).summary[0];
+  eq(r.payDays, 17, "นับแค่ 17 วัน (ถึงวันก่อน end_date)");
+  eq(r.clippedDays, 14, "ตัดออก 14 วัน");
+  eq(r.total, 1020, "AKR24021099: 60 x 17 = 1,020 ตรงกับเฉลย");
+}
+{
+  // เข้าใหม่ 13 ก.ค. -> ทำงาน 13-31 = 19 วัน
+  const empIn = new Map([["E6", { emp_code:"E6", job_level:"O1", join_date:"2026-07-13" }]]);
+  const r = M.computeShiftAllowance(month("E6",2026,7, jul31(["D01","A01","N01"])), empIn).summary[0];
+  eq([r.payDays, r.clippedDays, r.total], [19, 12, 1140], "เข้าใหม่กลางเดือน -> 60 x 19 = 1,140");
+}
+{
+  // พ้นสภาพก่อนเดือนนี้ -> ไม่ได้เลย และต้องไม่พังตอนหารด้วย 0 วัน
+  const empGone = new Map([["E7", { emp_code:"E7", job_level:"O1", end_date:"2026-07-01" }]]);
+  const r = M.computeShiftAllowance(month("E7",2026,7, jul31(["D01","A01","N01"])), empGone);
+  eq([r.summary[0].payDays, r.summary[0].total], [0, 0], "พ้นสภาพก่อนเดือน -> 0 ไม่ใช่ NaN");
+  eq(r.clipped.length, 1, "รายงานว่ามีคนถูกตัดวัน");
+  eq([r.clipped[0].empId, r.clipped[0].days], ["E7", 31], "บอกว่าใครถูกตัดกี่วัน");
+}
+{
+  // ไม่มี join_date / end_date -> ต้องไม่ตัดอะไรเลย
+  const r = run(month("E1",2026,7, jul31(["D01","A01","N01"])));
+  eq(r.clipped.length, 0, "ไม่มีวันเข้า/ออกในระบบ -> ไม่ตัด");
+  eq(r.summary[0].clippedDays, 0, "clippedDays = 0");
+}
+{
+  // วันที่ถูกตัดต้องยังอยู่ในชีตรายวัน เพื่อให้ตรวจย้อนได้
+  const empOut = new Map([["E5", { emp_code:"E5", job_level:"O1", end_date:"2026-07-18" }]]);
+  const r = M.computeShiftAllowance(month("E5",2026,7, jul31(["D01"])), empOut);
+  const out = r.detail.filter(d => d.day_status === "OUT_OF_PERIOD");
+  eq(out.length, 14, "วันที่ถูกตัดยังบันทึกไว้ในรายวัน");
+  eq(out[0].หมายเหตุ, "หลังพ้นสภาพ", "บอกเหตุผลที่ตัด");
 }
 
 // ---------- รหัสกะที่ไม่รู้จัก ----------

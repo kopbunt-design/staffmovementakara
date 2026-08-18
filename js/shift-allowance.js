@@ -1,9 +1,13 @@
 // ===== คำนวณค่ากะ (Shift Allowance) =====
 // อ้างอิงสเปค shift_allowance_calculation_spec.md
 // Input: ไฟล์ Excel (sheet "Clean_Data") 1 แถว = 1 คน-1 วัน
-// เรต: ใช้ครบ 3 ตระกูลกะ (เช้า/บ่าย/ดึก) = 1,800/เดือน, 2 ตระกูล = 1,200, ≤1 หรือไม่มีสิทธิ์ = 0
-// จ่ายแบบ pro-rate รายวัน: daily_rate = monthly_rate / วันในเดือน แล้วบวกทุกวันที่ "จ่าย" (payable)
+// เรต: ใช้ครบ 3 ตระกูลกะ (เช้า/บ่าย/ดึก) = 1,800/เดือน, 2 ตระกูล = 1,200, ≤1 = 0
+//      ยกเว้นกะที่ตั้ง solo_rate ไว้ (เช่น N03) ทำกะเดียวทั้งเดือนก็ยังได้ — ตั้งค่าที่ master_shift_codes
+// จ่ายแบบ pro-rate รายวัน: daily_rate = monthly_rate / 30 คงที่ทุกเดือน (ไม่ใช่วันจริงในเดือน)
+//      แล้วบวกทุกวันที่ "จ่าย" (payable) โดยยอดรวมทั้งเดือนต้องไม่เกิน monthly_rate
+// ตัดวันนอกช่วงการจ้าง (ก่อน join_date / ตั้งแต่ end_date) ออกก่อนคำนวณเสมอ
 // เกณฑ์เพิ่ม: จ่ายเฉพาะพนักงานระดับ O (O1/O2/O3) — เช็คจาก job_level ในตาราง employees
+// กติกาทั้งหมดนี้ผู้ใช้ยืนยัน 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
 import { esc, toast, userRole, allEmployees, currentUser } from "./app.js";
 import { supabase } from "./supabase-config.js";
 
@@ -16,6 +20,11 @@ const FAMILY_MAP = {
 const FAMILY_TH = { DAY:"เช้า", AFT:"บ่าย", NIT:"ดึก" };
 const PAYABLE = new Set(["WORKED","WEEKLY_OFF_DAY","HOLIDAY","PAID_LEAVE"]);
 const ELIGIBLE_LEVELS = new Set(["O1","O2","O3"]); // เฉพาะระดับ O ได้ค่ากะ
+
+// อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ ทุกเดือน (ยอดรวมทั้งเดือนไม่เกินอัตราเดือน)
+const DAILY_DIVISOR = 30;
+// กะที่จ่ายแม้ทำกะเดียวทั้งเดือน (ปกติกะเดียว = 0) — ค่าเริ่มต้น เผื่อยังไม่ได้ตั้งใน DB
+const SOLO_RATE = { N03: 1200 };
 
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
@@ -79,9 +88,9 @@ export function parseKeyFile(rows) {
 // ===== เดาสาเหตุที่ยอดไม่ตรงกับเฉลย =====
 // เฉลยที่คิดมือคิดอัตรารายวัน = อัตราเดือน ÷ 30 เสมอ (ยืนยันจากข้อมูลจริง ก.ค. 2026: ลงตัว 9/9 ราย)
 // ระบบหารด้วยจำนวนวันจริงในเดือน จึงเอา "อัตรา ÷ 30" มาถอดกลับว่าเฉลยคิดกี่วัน แล้วเทียบกับที่ระบบคิด
-const KEY_DIVISOR = 30;
+const KEY_DIVISOR = DAILY_DIVISOR;
 const REASON_TH = {
-  "base30":        `ตัวหารต่างกัน (${30} vs วันจริง)`,
+  "base30":        "ตัวหารต่างกัน",
   "days":          "จำนวนวันที่คิดไม่ตรงกัน",
   "single-family": "เกณฑ์กะเดียว",
   "zero-key":      "เฉลยไม่จ่ายเลย",
@@ -101,7 +110,7 @@ export function classifyDiff(r, tol = MATCH_TOL) {
   if (rate) {
     // วันเท่ากัน ต่างแค่ตัวหาร (30 vs วันจริงในเดือน)
     if (Math.abs(r.manual - Math.min(perDay * r.payDays, rate)) <= tol)
-      return { key:"base30", label:`เฉลยหารด้วย ${KEY_DIVISOR} · ระบบหารด้วยวันจริงในเดือน` };
+      return { key:"base30", label:`วันเท่ากัน ต่างที่ตัวหาร (เฉลยหารด้วย ${KEY_DIVISOR})` };
     // จำนวนวันไม่ตรง -> ถอดกลับว่าเฉลยคิดกี่วัน
     const d = r.manual / perDay;
     if (Math.abs(d - Math.round(d)) < 0.02) {
@@ -145,6 +154,11 @@ function parseYMD(v) {
   return isNaN(dt) ? null : { y:dt.getFullYear(), m:dt.getMonth()+1, d:dt.getDate() };
 }
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+// วันที่ของแถวในรูป "YYYY-MM-DD" (ใช้เทียบกับ join_date / end_date ที่เก็บเป็นข้อความ)
+function rowDate(row) {
+  const d = parseYMD(row.Date);
+  return d ? `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}` : null;
+}
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const fmtB = n => Number(n).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -162,8 +176,9 @@ function dayStatus(row) {
 // คำนวณจาก rows ทั้งหมด + map พนักงาน (emp_code -> {job_level}) -> { summary:[], detail:[] }
 // famMap: รหัสกะ (ตัวใหญ่) -> ตระกูล — ปกติมาจากตาราง master_shift_codes ใน DB
 // ส่งไม่มา = ใช้ค่าเริ่มต้นในโค้ด (เผื่อยังไม่ได้สร้างตาราง)
-export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
+export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap = SOLO_RATE) {
   const unknown = new Map(); // รหัสกะที่ไม่รู้จัก -> จำนวนวัน/คน (ทำให้นับตระกูลขาด ต้องเตือน)
+  const clipped = [];        // คนที่มีวันนอกช่วงการจ้างถูกตัดออก (ต้องขึ้นเตือนให้ตรวจ)
   const groups = new Map();
   for (const row of rows) {
     const ymd = parseYMD(row.Date);
@@ -176,7 +191,6 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
 
   const summary = [], detail = [];
   for (const g of groups.values()) {
-    const dim = daysInMonth(g.y, g.m);
     const first = g.rows[0] || {};
     const empId = String(first.Employee_ID || "").trim();
 
@@ -190,8 +204,29 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
     const granted = eligible && !levelOk; // ได้เพราะ HR ให้พิเศษ (ไม่ใช่ระดับ O)
     const reason = !found ? "ไม่พบใน DB" : (levelOk || override) ? "" : `ระดับ ${jobLevel || "-"}`;
 
+    // ตัดวันที่อยู่นอกช่วงการจ้างออกก่อน — ไฟล์ลงเวลามักมีแถวยาวถึงสิ้นเดือนแม้คนออกไปแล้ว
+    // end_date = "วันแรกที่พ้นสภาพ" (ตามกฎเดียวกับรายงานอื่น) วันทำงานวันสุดท้ายจึงเป็นวันก่อนหน้า
+    const joinDate = emp?.join_date || "", endDate = emp?.end_date || "";
+    const outOfPeriod = [];
+    const inPeriod = g.rows.filter(row => {
+      const d = rowDate(row);
+      if (!d) return true;                                   // อ่านวันที่ไม่ได้ ให้ผ่านไปก่อน
+      if (joinDate && d < joinDate)  { outOfPeriod.push({ row, why:"ก่อนเข้าทำงาน" }); return false; }
+      if (endDate  && d >= endDate)  { outOfPeriod.push({ row, why:"หลังพ้นสภาพ" });  return false; }
+      return true;
+    });
+    if (outOfPeriod.length) clipped.push({ empId, name:first.Employee_Name, month:g.ym,
+      days:outOfPeriod.length, joinDate, endDate });
+    for (const o of outOfPeriod) detail.push({
+      Employee_ID: o.row.Employee_ID, Employee_Name: o.row.Employee_Name,
+      Department: o.row.Department, Date: o.row.Date, Shift: o.row.Shift,
+      Day_Type: o.row.Day_Type, day_status: "OUT_OF_PERIOD", family: "",
+      job_level: jobLevel, eligible, Shift_Allowance: 0,
+      เฉลยในไฟล์: "", ส่วนต่าง: "", หมายเหตุ: o.why,
+    });
+
     // เตรียม status + family ของแต่ละแถว · รหัสกะที่ไม่รู้จักให้เก็บไว้เตือน
-    const days = g.rows.map(row => {
+    const days = inPeriod.map(row => {
       const raw = String(row.Shift || "").trim();
       const code = raw.toUpperCase();
       const family = famMap[code] || null;
@@ -203,24 +238,36 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
         u.emps.add(empId);
         unknown.set(code, u);
       }
-      return { row, family, status };
+      return { row, family, status, code };
     });
 
     // Pass 1: นับตระกูลกะที่ใช้ในวันที่จ่ายได้ (นับไว้แสดงเสมอเพื่อความโปร่งใส)
-    const famUsed = new Set();
-    for (const d of days) if (PAYABLE.has(d.status) && d.family) famUsed.add(d.family);
-    const shiftRate = famUsed.size >= 3 ? 1800 : famUsed.size === 2 ? 1200 : 0;
+    const famUsed = new Set(), codesUsed = new Set();
+    for (const d of days) if (PAYABLE.has(d.status)) {
+      if (d.family) famUsed.add(d.family);
+      if (d.code) codesUsed.add(d.code);
+    }
+    // ปกติกะเดียว = 0 แต่บางกะจ่ายแม้ทำกะเดียวทั้งเดือน (เช่น N03) — ตั้งค่าได้ที่ master_shift_codes.solo_rate
+    const soloCode = codesUsed.size === 1 ? [...codesUsed][0] : null;
+    const soloRate = soloCode ? (soloMap[soloCode] || 0) : 0;
+    const shiftRate = famUsed.size >= 3 ? 1800 : famUsed.size === 2 ? 1200 : soloRate;
+    const solo = famUsed.size <= 1 && soloRate > 0;  // ได้เพราะกฎกะเดี่ยว ไม่ใช่เพราะหมุนกะ
     const monthlyRate = eligible ? shiftRate : 0; // ไม่เข้าเกณฑ์ระดับ → 0
-    const dailyRate = monthlyRate / dim;
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
+    // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน) แต่รวมทั้งเดือนต้องไม่เกินอัตราเดือน
+    // ผู้ใช้ยืนยันกติกานี้ 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
+    const payDays = days.filter(d => PAYABLE.has(d.status)).length;
+    const dailyRate = payDays ? Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays) : 0;
+    const capped = payDays > DAILY_DIVISOR && monthlyRate > 0;
+
     // ถ้าไฟล์มีคอลัมน์ Shift_Allowance มาด้วย = "เฉลย" ที่คิดมือไว้แล้ว -> เก็บไว้เทียบ
-    let total = 0, payDays = 0, noPayDays = 0, checkDays = 0;
+    let total = 0, noPayDays = 0, checkDays = 0;
     let manual = 0, hasManualRow = false;
     for (const d of days) {
       const payable = PAYABLE.has(d.status);
       const amt = payable ? dailyRate : 0;
-      if (payable) { total += amt; payDays++; }
+      if (payable) total += amt;
       else { noPayDays++; if (d.status === "CHECK_NOTE") checkDays++; }
       const mv = num(d.row.Shift_Allowance);
       if (mv !== null) { manual += mv; hasManualRow = true; }
@@ -240,7 +287,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
       month: g.ym, job_level: jobLevel, eligible, granted, reason,
       joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
-      familyCount: famUsed.size, monthlyRate,
+      familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
+      clippedDays: outOfPeriod.length,
       payDays, noPayDays, checkDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
@@ -253,7 +301,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
   const unknownCodes = [...unknown.values()]
     .map(u => ({ code:u.code, days:u.days, payDays:u.payDays, emps:u.emps.size }))
     .sort((a,b) => b.payDays - a.payDays || b.days - a.days);
-  return { summary, detail, hasManual, unknownCodes };
+  return { summary, detail, hasManual, unknownCodes, clipped };
 }
 
 let lastResult = null;
@@ -265,15 +313,21 @@ let lastKey = null;   // เฉลยที่อ่านไว้ — เอ�
 // รหัสกะเก็บใน DB (master_shift_codes) เพื่อให้เพิ่มกะใหม่ได้เองโดยไม่ต้องแก้โค้ด
 // ถ้ายังไม่ได้สร้างตาราง/อ่านไม่ได้ ให้ถอยไปใช้ค่าเริ่มต้นในโค้ด ระบบจะได้ไม่พัง
 let shiftFamilyMap = null;
+let shiftSoloMap = null;
 let shiftCodesFromDB = false;
 async function ensureShiftCodes() {
   if (shiftFamilyMap) return shiftFamilyMap;
   try {
     const { data, error } = await supabase
-      .from("master_shift_codes").select("code,family").eq("is_active", true);
+      .from("master_shift_codes").select("code,family,solo_rate").eq("is_active", true);
     if (error) throw error;
     if (data?.length) {
-      shiftFamilyMap = Object.fromEntries(data.map(r => [String(r.code).trim().toUpperCase(), r.family]));
+      shiftFamilyMap = {}; shiftSoloMap = {};
+      for (const r of data) {
+        const c = String(r.code).trim().toUpperCase();
+        shiftFamilyMap[c] = r.family;
+        if (Number(r.solo_rate) > 0) shiftSoloMap[c] = Number(r.solo_rate);
+      }
       shiftCodesFromDB = true;
       return shiftFamilyMap;
     }
@@ -282,6 +336,7 @@ async function ensureShiftCodes() {
     console.warn("[ค่ากะ] อ่าน master_shift_codes ไม่ได้ ใช้รหัสกะเริ่มต้นในโค้ด:", e.message);
   }
   shiftFamilyMap = { ...FAMILY_MAP };
+  shiftSoloMap = { ...SOLO_RATE };
   shiftCodesFromDB = false;
   return shiftFamilyMap;
 }
@@ -319,7 +374,8 @@ export function renderShiftAllowance() {
       </div>
       <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-top:10px;">
         • จ่ายเฉพาะพนักงาน <b>ระดับ O</b> (O1/O2/O3) — ตรวจจาก job_level ในระบบ · ระดับอื่น/ไม่พบ = ฿0<br>
-        • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · น้อยกว่า = <b>0</b> · จ่าย pro-rate รายวัน<br>
+        • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · กะเดียว = <b>0</b> (ยกเว้นกะที่ตั้ง "กะเดี่ยว" ไว้ เช่น N03 = 1,200)<br>
+        • อัตรารายวัน = อัตราเดือน <b>÷ 30 คงที่</b> ทุกเดือน · ยอดรวมทั้งเดือนไม่เกินอัตราเดือน · <b>ตัดวันนอกช่วงการจ้างออก</b>ก่อนคำนวณ<br>
         • <b>เทียบกับที่คิดมือ:</b> ถ้าไฟล์ลงเวลามีคอลัมน์ <b>Shift_Allowance</b> อยู่แล้ว ระบบเทียบให้เอง —
           ถ้าเฉลยอยู่คนละไฟล์ (ไฟล์สรุป 1 บรรทัด/คน) ให้คำนวณก่อน แล้วกด <b>📋 เทียบกับไฟล์เฉลย</b>
       </div>
@@ -371,7 +427,7 @@ export function renderShiftAllowance() {
         const empMap = new Map();
         for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
         lastRows = rows; lastKey = null;
-        lastResult = computeShiftAllowance(rows, empMap, famMap);
+        lastResult = computeShiftAllowance(rows, empMap, famMap, shiftSoloMap);
         const notFound = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
         const ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
         lastMeta = { sheetName, rowCount: rows.length, notFound, ineligible };
@@ -398,7 +454,7 @@ export function renderShiftAllowance() {
     const famMap = await ensureShiftCodes();
     const empMap = new Map();
     for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
-    lastResult = computeShiftAllowance(lastRows, empMap, famMap);
+    lastResult = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap);
     lastMeta.notFound   = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
     lastMeta.ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
     if (lastKey) {
@@ -536,9 +592,13 @@ function renderResults() {
   for (const r of badRows) { const c = classifyDiff(r); if (c) reasonCount[c.key] = (reasonCount[c.key]||0)+1; }
   const reasons = Object.entries(reasonCount).sort((a,b)=>b[1]-a[1]);
 
-  const unk = lastResult.unknownCodes || [];
+  const unk  = lastResult.unknownCodes || [];
+  const clip = lastResult.clipped || [];
+  const clipSum = clip.reduce((s,c)=>s+c.days, 0);
   const granted = all.filter(r=>r.granted).length;
+  const soloN   = all.filter(r=>r.solo).length;
   const warns = [];
+  if (soloN) warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
   if (ineligible)  warns.push(`${ineligible} คนไม่ใช่ระดับ O → ฿0`);
   if (granted)     warns.push(`${granted} คนระดับไม่ใช่ O แต่ได้ค่ากะ (HR กำหนดพิเศษ)`);
@@ -567,6 +627,20 @@ function renderResults() {
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
+    ${clip.length ? `<div class="card-body" style="background:var(--gold-light);border-bottom:1px solid var(--border);padding:11px 16px;">
+      <div style="font-size:13px;color:var(--gold-dark);font-weight:700;margin-bottom:2px;">✂️ ตัดวันนอกช่วงการจ้างออก ${clip.length} คน (รวม ${clipSum} วัน)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:${clip.length?"7px":"0"};">
+        ไฟล์ลงเวลามีแถวของคนเหล่านี้เลยวันเข้าทำงาน/วันพ้นสภาพไป — ระบบไม่นับวันนอกช่วงเป็นวันจ่าย
+        · <b>ถ้าวันในระบบพนักงานไม่ถูกต้อง ยอดจะผิดตามไปด้วย ให้ตรวจก่อนบันทึก</b>
+      </div>
+      <div class="table-wrap" style="max-height:150px;overflow:auto;">
+        <table class="data-table" style="font-size:11px;">
+          <thead><tr><th>รหัส</th><th>ชื่อ</th><th class="text-right">วันที่ตัด</th><th>เข้าทำงาน</th><th>พ้นสภาพ</th></tr></thead>
+          <tbody>${clip.map(c=>`<tr><td><b>${esc(c.empId)}</b></td><td>${esc(c.name||"-")}</td>
+            <td class="text-right">${c.days}</td><td>${esc(c.joinDate||"-")}</td><td>${esc(c.endDate||"-")}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>` : ""}
     ${unk.length ? `<div class="card-body" style="background:#fef2f2;border-bottom:1px solid var(--border);padding:12px 16px;">
       <div style="font-size:13px;color:#b91c1c;font-weight:700;margin-bottom:2px;">🚨 พบรหัสกะที่ระบบไม่รู้จัก ${unk.length} รหัส — ยอดค่ากะอาจต่ำกว่าที่ควรเป็น</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
@@ -603,7 +677,7 @@ function renderResults() {
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
             <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
-            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span></td>
+            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}</td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>
