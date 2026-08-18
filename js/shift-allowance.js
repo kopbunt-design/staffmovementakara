@@ -27,6 +27,10 @@ const DAILY_DIVISOR = 30;
 const SOLO_RATE = { N03: 1200 };
 // ลาป่วยติดต่อกันกี่วันขึ้นไปถึงจะเด้งเตือนให้ HR ตรวจ
 const SICK_RUN_WARN = 3;
+// คู่กะที่จ่าย "เฉพาะวันที่เข้ากะจริง" ไม่ใช่เฉลี่ยทั้งเดือน
+// NOR = เวลางานปกติ ไม่ถือเป็นการเข้ากะ จึงไม่จ่ายวัน NOR (ผู้ใช้ยืนยัน 2026-08-18)
+// ใช้เฉพาะคู่นี้เท่านั้น — NOR คู่กับกะอื่นยังใช้กติกาเฉลี่ยทั้งเดือนตามปกติ
+const PAY_ON_SHIFT_ONLY = { codes: ["NOR","N03"], payCode: "N03" };
 
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
@@ -303,10 +307,15 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 
     const monthlyRate = (eligible && !noWorkedDay) ? shiftRate : 0; // ไม่เข้าเกณฑ์ / ไม่ได้ทำงานเลย → 0
 
+    // ทำ NOR สลับ N03 เท่านั้น -> จ่ายเฉพาะวันที่เข้า N03 จริง (วัน NOR ไม่จ่าย)
+    const shiftOnly = PAY_ON_SHIFT_ONLY.codes.length === codesUsed.size
+      && PAY_ON_SHIFT_ONLY.codes.every(c => codesUsed.has(c));
+    const earns = d => PAYABLE.has(d.status) && (!shiftOnly || d.code === PAY_ON_SHIFT_ONLY.payCode);
+
     // Pass 2: pro-rate รายวัน + เก็บ row-level
     // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน) แต่รวมทั้งเดือนต้องไม่เกินอัตราเดือน
     // ผู้ใช้ยืนยันกติกานี้ 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
-    const payDays = days.filter(d => PAYABLE.has(d.status)).length;
+    const payDays = days.filter(earns).length;
     const dailyRate = payDays ? Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays) : 0;
     const capped = payDays > DAILY_DIVISOR && monthlyRate > 0;
 
@@ -314,7 +323,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     let total = 0, noPayDays = 0, checkDays = 0;
     let manual = 0, hasManualRow = false;
     for (const d of days) {
-      const payable = PAYABLE.has(d.status);
+      const payable = earns(d);
       const amt = payable ? dailyRate : 0;
       if (payable) total += amt;
       else { noPayDays++; if (d.status === "CHECK_NOTE") checkDays++; }
@@ -338,6 +347,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
       clippedDays: outOfPeriod.length, sickDays, maxSickRun, suspendDays, workedDays, noWorkedDay,
+      shiftOnly,
       payDays, noPayDays, checkDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
@@ -652,6 +662,8 @@ function renderResults() {
   const suspendN = all.reduce((s,r)=>s+(r.suspendDays||0), 0);
   const warns = [];
   if (soloN)     warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
+  const shiftOnlyN = all.filter(r=>r.shiftOnly).length;
+  if (shiftOnlyN) warns.push(`${shiftOnlyN} คนทำ NOR สลับ N03 → จ่ายเฉพาะวันที่เข้า N03`);
   if (suspendN)  warns.push(`${suspendN} วันถูกพักงาน ไม่นับเป็นวันจ่าย`);
   if (noWk.length) warns.push(`${noWk.length} คนไม่มีวันทำงานจริงเลยทั้งเดือน → ฿0`);
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
@@ -751,7 +763,7 @@ function renderResults() {
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
             <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
-            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}</td>
+            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำ NOR สลับ N03 — จ่ายเฉพาะวันที่เข้า N03">เฉพาะวัน N03</span>`:""}</td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>

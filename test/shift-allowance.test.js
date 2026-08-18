@@ -296,6 +296,38 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   eq(r.unknownCodes.map(u=>u.code), ["ZZ1","ZZ2"], "เรียงตามผลกระทบมาก -> น้อย");
 }
 
+// ---------- NOR สลับ N03: จ่ายเฉพาะวันที่เข้ากะจริง ----------
+{
+  // เดือน 31 วัน: N03 10 วัน + NOR 21 วัน -> 2 ตระกูล = 1,200 -> 40/วัน x 10 วัน N03
+  const shifts = Array.from({length:31}, (_,i) => i < 10 ? "N03" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.monthlyRate, r.shiftOnly], [1200, true], "NOR+N03 -> อัตรา 1,200 และเข้าโหมดจ่ายเฉพาะวันเข้ากะ");
+  eq([r.payDays, r.total], [10, 400], "จ่ายเฉพาะ 10 วันที่เข้า N03 = 40 x 10 = 400");
+}
+{
+  // NOR + N01 (ไม่ใช่ N03) -> กติกาปกติ เฉลี่ยทั้งเดือน
+  const shifts = Array.from({length:31}, (_,i) => i < 10 ? "N01" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnly, r.payDays, r.total], [false, 31, 1200], "NOR+N01 -> เฉลี่ยทั้งเดือนตามเดิม");
+}
+{
+  // NOR + A01 -> กติกาปกติ
+  const shifts = Array.from({length:31}, (_,i) => i < 10 ? "A01" : "NOR");
+  eq(one(month("E1",2026,7, shifts)).shiftOnly, false, "NOR+A01 -> ไม่เข้าเกณฑ์นี้");
+}
+{
+  // NOR + N03 + กะที่สาม -> ไม่ใช่คู่ NOR+N03 ล้วน ใช้กติกาปกติ
+  const shifts = Array.from({length:31}, (_,i) => ["NOR","N03","A01"][i%3]);
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnly, r.monthlyRate], [false, 1800], "NOR+N03+บ่าย = 3 ตระกูล -> 1,800 เฉลี่ยทั้งเดือน");
+}
+{
+  // วันหยุด/ลาได้เงิน ที่ไม่มีรหัสกะ ต้องไม่ทำให้หลุดออกจากเกณฑ์ NOR+N03
+  const shifts = Array.from({length:31}, (_,i) => i < 8 ? "N03" : (i < 26 ? "NOR" : null));
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnly, r.payDays, r.total], [true, 8, 320], "วันหยุดไม่มีรหัสกะ -> ยังเข้าเกณฑ์ จ่าย 8 วัน");
+}
+
 // ---------- ลาไม่รับค่าจ้าง / พักงาน / ลาป่วย ----------
 // ลาไม่รับค่าจ้าง = ไม่จ่าย (ล็อกกติกานี้ไว้ ห้ามหลุด)
 eq(M.PAYABLE.has("UNPAID_LEAVE"), false, "ลาไม่รับค่าจ้าง ไม่ใช่วันจ่าย");
