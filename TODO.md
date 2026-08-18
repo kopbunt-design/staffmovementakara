@@ -1,9 +1,16 @@
 # TODO / สถานะงาน
 
-อัปเดตล่าสุด: 2026-08-11
+อัปเดตล่าสุด: 2026-08-18
 
 ## 🐛 บั๊กค้างรอแก้
 ไม่มีบั๊กค้างแล้ว ✅
+
+## ⏸️ พักไว้ก่อน (ผู้ใช้ขอชะลอ 2026-08-18)
+- **ซ่อม status ที่เป็นชื่อจังหวัด** — `sql/fix_employee_status.sql`
+  - โค้ดฝั่งเว็บกันค่าผิดตอน import แล้ว (ของใหม่จะไม่เพี้ยนอีก) เหลือแค่ล้างของเดิมที่ค้างใน DB
+  - ไฟล์ทำเป็น review-first: **STEP 1 = SELECT ดูก่อน** ว่ากระทบใครบ้าง, STEP 2 = UPDATE (comment ไว้ ต้องเปิดเอง)
+  - คนที่มี `end_date` อยู่แล้วต้องดูเป็นราย ๆ ว่าควรเป็น Resigned / Terminated / Retired — ไม่เดาแทน เพราะมีผลต่อรายงาน
+  - จนกว่าจะซ่อม: หน้า Employees จะยังเห็น badge สถานะเป็นชื่อจังหวัดในบางแถว และตัวกรอง "ทุกสถานะ" จะกรองคนกลุ่มนี้ไม่เจอ
 
 ## 🔍 รอผู้ใช้ตรวจตัวเลขจริง (ยังไม่มีใครยืนยัน)
 Dashboard ใหม่ + กฎวันที่ push ขึ้น production แล้ว (commit `e7ebf63`) แต่ยังไม่ได้เทียบกับข้อมูลจริง:
@@ -26,6 +33,17 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
   **termination 1/8 → ทำงานถึง 31 ก.ค. → พ้นสภาพนับ ก.ค. และหลุดจาก headcount ก.ค.** (ยืนยัน 2026-08-03)
 - เทสต์ `test/headcount-date.test.js` (46) + `test/dashboard.test.js` (33) — ดึงฟังก์ชันจริงจาก app.js มารัน
 - `index.html` ใส่ `css/style.css?v=N` กัน browser cache CSS เก่า (แก้ CSS แล้วหน้าไม่เปลี่ยน = บวกเลขนี้)
+
+### เอกสารแนบ + กันบันทึกซ้ำ + ค้นหา (2026-08-18, commit `a9e1427`) ✅
+- **แนบเอกสารใน Staff Movement** — เก็บใน Supabase Storage bucket `movement-docs` แบบ private,
+  เปิดดูผ่าน signed URL อายุ 60 วินาที · อัปโหลด/ลบเฉพาะ HR+Admin · ไฟล์ไม่เกิน 10 MB
+  · ตารางแสดง 📎 กดเปิดได้ · แก้ไขรายการเดิมเปลี่ยน/ถอดไฟล์ได้
+  · ต้องรัน `sql/schema_movement_attachment.sql` (รันแล้ว 2026-08-18)
+- **กันบันทึกการพ้นสภาพซ้ำ** — คนที่มี Resignation/Termination/Retirement อยู่แล้ว บันทึกซ้ำไม่ได้
+  แจ้งชื่อ + วันที่มีผล + คนบันทึกของรายการเดิม (แก้รายการเดิมยังทำได้ปกติ)
+- **ค้นหาพนักงาน** — ครอบคลุมทุกฟิลด์ในตาราง + พิมพ์หลายคำได้ (ต้องเจอครบทุกคำ) + ปุ่ม × ล้างคำค้น
+- **กัน Status เพี้ยน** — import รับเฉพาะ Active/Resigned/Terminated/Retired/Transferred
+  ค่าอื่นจะไม่เขียนทับและเด้ง toast บอกจำนวนที่ข้าม (ต้นเหตุที่เคยมีชื่อจังหวัดโผล่ในช่องสถานะ)
 
 ### แก้ Position Quota บันทึกไม่เข้า (2026-08-11, commit `e9bc0c7`) ✅
 - **ต้นเหตุ:** ตาราง `position_quota` สร้างมือใน Supabase โดย**ไม่มีคอลัมน์ `fiscal_year`** แต่ `js/vacancy.js`
@@ -71,6 +89,8 @@ Dashboard ใหม่ + กฎวันที่ push ขึ้น production �
 2. ✅ `sql/schema_shift_allowance.sql` — ตารางประวัติค่ากะ + คอลัมน์ `shift_allowance_override` ในตาราง employees
 3. ✅ `sql/schema_admin_permissions.sql` — รันแล้ว ยืนยันด้วย pg_policies เมื่อ 2026-08-11
 4. ✅ `sql/schema_position_quota.sql` — เติมคอลัมน์ fiscal_year ฯลฯ + RLS hr/admin (รันแล้ว 2026-08-11)
+5. ✅ `sql/schema_movement_attachment.sql` — คอลัมน์ไฟล์แนบ + storage bucket + สิทธิ์ (รันแล้ว 2026-08-18)
+6. ⏸️ `sql/fix_employee_status.sql` — ซ่อม status ที่เป็นชื่อจังหวัด (พักไว้ก่อน ดูหัวข้อด้านบน)
 
 ## 🗺️ Roadmap (ยังไม่เริ่ม เรียงตามความสำคัญ)
 1. **RLS + ข้อมูลเงินเดือน** — ตอนนี้ user ที่ล็อกอินอ่าน `salary` ผ่าน API ได้ แม้หน้า Payroll ซ่อนไว้ → แยกตาราง/จำกัด RLS (สำคัญสุด)
