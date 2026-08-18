@@ -358,6 +358,32 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   eq(one(month("E1",2026,7, s16)).shiftOnlyFull, true, "16 วัน -> เต็ม");
 }
 
+// ---------- NOR + F01 = ไม่คิดค่ากะเลย ----------
+{
+  const shifts = Array.from({length:31}, (_,i) => i < 8 ? "F01" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.monthlyRate, r.total], [0, 0], "NOR + F01 -> ไม่คิดค่ากะ");
+  eq(r.noPayPair, "NOR + F01", "บอกเหตุผลไว้ในแถวให้เห็น");
+}
+{
+  // ต้องได้ 0 ไม่ว่าจะจัด F01 เป็นตระกูลไหน — เช็คจากรหัสตรง ๆ ไม่ผ่านตระกูล
+  const shifts = Array.from({length:31}, (_,i) => i < 8 ? "F01" : "NOR");
+  const asNight = M.computeShiftAllowance(month("E1",2026,7, shifts), empMap,
+                                          { ...M.FAMILY_MAP, F01:"NIT" }).summary[0];
+  eq(asNight.monthlyRate, 0, "ต่อให้ตั้ง F01 เป็นกะดึก (2 ตระกูล) ก็ยังไม่คิดค่ากะ");
+}
+{
+  // F01 ปนกับกะอื่นด้วย = ไม่ใช่คู่ NOR+F01 ล้วน -> กลับไปใช้กติกาปกติ
+  const shifts = Array.from({length:31}, (_,i) => ["NOR","F01","A01"][i%3]);
+  const r = M.computeShiftAllowance(month("E1",2026,7, shifts), empMap,
+                                    { ...M.FAMILY_MAP, F01:"DAY" }).summary[0];
+  eq([r.noPayPair, r.monthlyRate], ["", 1200], "NOR+F01+บ่าย -> ใช้กติกาปกติ (เช้า+บ่าย = 1,200)");
+}
+{
+  // F01 อย่างเดียวทั้งเดือน = ไม่ใช่คู่ -> กติกาปกติ (กะเดียว = 0 อยู่ดี)
+  eq(one(month("E1",2026,7, jul31(["F01"]))).noPayPair, "", "F01 ล้วน ไม่ใช่คู่ NOR+F01");
+}
+
 // ---------- สาย Process: วัน N03 ไม่จ่าย ----------
 {
   const procMap = new Map([
