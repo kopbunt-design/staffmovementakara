@@ -121,7 +121,10 @@ function dayStatus(row) {
 }
 
 // คำนวณจาก rows ทั้งหมด + map พนักงาน (emp_code -> {job_level}) -> { summary:[], detail:[] }
-export function computeShiftAllowance(rows, empMap) {
+// famMap: รหัสกะ (ตัวใหญ่) -> ตระกูล — ปกติมาจากตาราง master_shift_codes ใน DB
+// ส่งไม่มา = ใช้ค่าเริ่มต้นในโค้ด (เผื่อยังไม่ได้สร้างตาราง)
+export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP) {
+  const unknown = new Map(); // รหัสกะที่ไม่รู้จัก -> จำนวนวัน/คน (ทำให้นับตระกูลขาด ต้องเตือน)
   const groups = new Map();
   for (const row of rows) {
     const ymd = parseYMD(row.Date);
@@ -148,12 +151,21 @@ export function computeShiftAllowance(rows, empMap) {
     const granted = eligible && !levelOk; // ได้เพราะ HR ให้พิเศษ (ไม่ใช่ระดับ O)
     const reason = !found ? "ไม่พบใน DB" : (levelOk || override) ? "" : `ระดับ ${jobLevel || "-"}`;
 
-    // เตรียม status + family ของแต่ละแถว
-    const days = g.rows.map(row => ({
-      row,
-      family: FAMILY_MAP[String(row.Shift || "").toUpperCase()] || null,
-      status: dayStatus(row),
-    }));
+    // เตรียม status + family ของแต่ละแถว · รหัสกะที่ไม่รู้จักให้เก็บไว้เตือน
+    const days = g.rows.map(row => {
+      const raw = String(row.Shift || "").trim();
+      const code = raw.toUpperCase();
+      const family = famMap[code] || null;
+      const status = dayStatus(row);
+      if (raw && !family) {
+        const u = unknown.get(code) || { code, days:0, payDays:0, emps:new Set() };
+        u.days++;
+        if (PAYABLE.has(status)) u.payDays++; // เฉพาะวันที่จ่ายได้เท่านั้นที่มีผลกับการนับตระกูล
+        u.emps.add(empId);
+        unknown.set(code, u);
+      }
+      return { row, family, status };
+    });
 
     // Pass 1: นับตระกูลกะที่ใช้ในวันที่จ่ายได้ (นับไว้แสดงเสมอเพื่อความโปร่งใส)
     const famUsed = new Set();
@@ -198,12 +210,41 @@ export function computeShiftAllowance(rows, empMap) {
 
   summary.sort((a,b) => (a.Employee_ID>b.Employee_ID?1:-1) || (a.month>b.month?1:-1));
   const hasManual = summary.some(r => r.manual !== null);
-  return { summary, detail, hasManual };
+  const unknownCodes = [...unknown.values()]
+    .map(u => ({ code:u.code, days:u.days, payDays:u.payDays, emps:u.emps.size }))
+    .sort((a,b) => b.payDays - a.payDays || b.days - a.days);
+  return { summary, detail, hasManual, unknownCodes };
 }
 
 let lastResult = null;
 let lastMeta = null; // {sheetName, rowCount, notFound, ineligible}
 let onlyDiff = false; // โหมดเทียบเฉลย: แสดงเฉพาะรายการที่ไม่ตรง
+let lastRows = null;  // แถวดิบจากไฟล์ลงเวลา — เก็บไว้คำนวณใหม่เมื่อเพิ่มรหัสกะ
+let lastKey = null;   // เฉลยที่อ่านไว้ — เอามาแปะซ้ำหลังคำนวณใหม่
+
+// รหัสกะเก็บใน DB (master_shift_codes) เพื่อให้เพิ่มกะใหม่ได้เองโดยไม่ต้องแก้โค้ด
+// ถ้ายังไม่ได้สร้างตาราง/อ่านไม่ได้ ให้ถอยไปใช้ค่าเริ่มต้นในโค้ด ระบบจะได้ไม่พัง
+let shiftFamilyMap = null;
+let shiftCodesFromDB = false;
+async function ensureShiftCodes() {
+  if (shiftFamilyMap) return shiftFamilyMap;
+  try {
+    const { data, error } = await supabase
+      .from("master_shift_codes").select("code,family").eq("is_active", true);
+    if (error) throw error;
+    if (data?.length) {
+      shiftFamilyMap = Object.fromEntries(data.map(r => [String(r.code).trim().toUpperCase(), r.family]));
+      shiftCodesFromDB = true;
+      return shiftFamilyMap;
+    }
+    console.warn("[ค่ากะ] ตาราง master_shift_codes ว่าง — ใช้รหัสกะเริ่มต้นในโค้ด");
+  } catch (e) {
+    console.warn("[ค่ากะ] อ่าน master_shift_codes ไม่ได้ ใช้รหัสกะเริ่มต้นในโค้ด:", e.message);
+  }
+  shiftFamilyMap = { ...FAMILY_MAP };
+  shiftCodesFromDB = false;
+  return shiftFamilyMap;
+}
 
 export function renderShiftAllowance() {
   const pg = document.getElementById("pageShiftallow");
@@ -271,8 +312,9 @@ export function renderShiftAllowance() {
     if (!file) return;
     if (!window.XLSX) { toast("กรุณารอโหลด library","error"); return; }
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = async ev => {
       try {
+        const famMap = await ensureShiftCodes();
         const wb = window.XLSX.read(ev.target.result, { type:"binary" });
         const sheetName = wb.SheetNames.find(n => /clean/i.test(n)) || wb.SheetNames[0];
         const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:"", raw:true });
@@ -288,7 +330,8 @@ export function renderShiftAllowance() {
         // map emp_code -> employee (จาก state ที่โหลดไว้แล้ว)
         const empMap = new Map();
         for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
-        lastResult = computeShiftAllowance(rows, empMap);
+        lastRows = rows; lastKey = null;
+        lastResult = computeShiftAllowance(rows, empMap, famMap);
         const notFound = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
         const ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
         lastMeta = { sheetName, rowCount: rows.length, notFound, ineligible };
@@ -308,6 +351,40 @@ export function renderShiftAllowance() {
   };
 
   window._saOnlyDiff = () => { onlyDiff = !onlyDiff; renderResults(); };
+
+  // คำนวณใหม่จากแถวเดิม (ใช้หลังเพิ่มรหัสกะ) แล้วแปะเฉลยเดิมกลับเข้าไป
+  const recalc = async () => {
+    if (!lastRows) return;
+    const famMap = await ensureShiftCodes();
+    const empMap = new Map();
+    for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
+    lastResult = computeShiftAllowance(lastRows, empMap, famMap);
+    lastMeta.notFound   = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
+    lastMeta.ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
+    if (lastKey) {
+      const res = applyKeyFile(lastResult.summary, lastKey);
+      lastResult.hasManual = res.matched > 0;
+      lastMeta.keyFile = { ...lastMeta.keyFile, ...res };
+    }
+    renderResults();
+  };
+
+  // เพิ่มรหัสกะที่ระบบยังไม่รู้จัก เข้าตาราง master_shift_codes แล้วคำนวณใหม่ทันที
+  window._saAddCode = async (code, idx) => {
+    const sel = document.getElementById(`saFam${idx}`);
+    if (!sel?.value) { toast("เลือกตระกูลกะก่อน","error"); return; }
+    const { error } = await supabase.from("master_shift_codes")
+      .insert({ code, family: sel.value, note: "เพิ่มจากหน้าคำนวณค่ากะ" });
+    if (error) {
+      toast(error.message.includes("row-level security")
+        ? "ไม่มีสิทธิ์เพิ่มรหัสกะ (เฉพาะ HR/Admin)"
+        : "เพิ่มไม่สำเร็จ: " + error.message, "error");
+      return;
+    }
+    shiftFamilyMap = null;              // ล้าง cache ให้ไปอ่านใหม่
+    await recalc();
+    toast(`เพิ่มรหัสกะ ${code} = ${FAMILY_TH[sel.value]} แล้ว — คำนวณใหม่ให้เรียบร้อย`,"success");
+  };
 
   // อัปโหลด "ไฟล์เฉลย" ที่คิดมือไว้ (คนละไฟล์กับไฟล์ลงเวลา) มาเทียบกับผลที่คำนวณไว้แล้ว
   window._saKeyUpload = (inputEl) => {
@@ -334,6 +411,7 @@ export function renderShiftAllowance() {
           toast(`ไฟล์เฉลยต้องมีคอลัมน์รหัสพนักงาน + ยอดค่ากะ — ที่พบคือ: ${cols.slice(0,8).join(", ")||"(ว่าง)"}`,"error");
           return;
         }
+        lastKey = picked.key;
         const res = applyKeyFile(lastResult.summary, picked.key);
         lastResult.hasManual = res.matched > 0;
         if (!res.matched) { toast("จับคู่รหัสพนักงานไม่ได้เลย — ตรวจว่ารหัสในไฟล์เฉลยตรงกับ Employee_ID","error"); return; }
@@ -413,6 +491,7 @@ function renderResults() {
   const totalCheck = all.reduce((s,r)=>s+r.checkDays, 0);
   const { sheetName, rowCount, notFound, ineligible, keyFile: kf } = lastMeta;
 
+  const unk = lastResult.unknownCodes || [];
   const granted = all.filter(r=>r.granted).length;
   const warns = [];
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
@@ -440,6 +519,27 @@ function renderResults() {
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
+    ${unk.length ? `<div class="card-body" style="background:#fef2f2;border-bottom:1px solid var(--border);padding:12px 16px;">
+      <div style="font-size:13px;color:#b91c1c;font-weight:700;margin-bottom:2px;">🚨 พบรหัสกะที่ระบบไม่รู้จัก ${unk.length} รหัส — ยอดค่ากะอาจต่ำกว่าที่ควรเป็น</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+        รหัสที่ไม่รู้จักจะ<b>ไม่ถูกนับเป็นตระกูลกะ</b> ทำให้บางคนนับได้ 2 ตระกูลแทน 3 (ขาด 600 บาท) หรือ 1 แทน 2
+        · เลือกตระกูลแล้วกดเพิ่ม ระบบจะจำไว้และคำนวณใหม่ให้ทันที
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${unk.map((u,i)=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <b style="font-family:monospace;font-size:13px;min-width:70px;">${esc(u.code)}</b>
+          <span class="text-muted" style="font-size:12px;min-width:190px;">${u.days} วัน · ${u.emps} คน · กระทบวันจ่าย ${u.payDays} วัน</span>
+          <select class="form-control" id="saFam${i}" style="width:auto;padding:4px 8px;font-size:12px;">
+            <option value="">-- เลือกตระกูลกะ --</option>
+            <option value="DAY">เช้า</option><option value="AFT">บ่าย</option><option value="NIT">ดึก</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="window._saAddCode('${esc(u.code)}',${i})">+ เพิ่ม</button>
+        </div>`).join("")}
+      </div>
+      ${!shiftCodesFromDB ? `<div class="text-muted" style="font-size:11px;margin-top:9px;">
+        ⓘ ยังไม่ได้สร้างตาราง <b>master_shift_codes</b> ใน Supabase — ตอนนี้ใช้รหัสกะเริ่มต้นในโค้ด และ<b>ยังเพิ่มรหัสใหม่ไม่ได้</b> (ต้องรัน <code>sql/schema_shift_codes.sql</code> ก่อน)
+      </div>` : ""}
+    </div>` : ""}
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>

@@ -178,5 +178,40 @@ const calc = () => run([
   eq(k.cols, ["ชื่อ","แผนก"], "คืนรายชื่อคอลัมน์ที่พบมาด้วย");
 }
 
+// ---------- รหัสกะที่ไม่รู้จัก ----------
+{
+  const r = run(month("E1",2026,7, jul31(["D01","A01","N01"])));
+  eq(r.unknownCodes, [], "รหัสที่รู้จักทั้งหมด -> ไม่มีอะไรให้เตือน");
+}
+{
+  // N04 ยังไม่มีในระบบ -> นับได้แค่ 2 ตระกูล ยอดตกจาก 1,800 เหลือ 1,200
+  const r = run(month("E1",2026,7, jul31(["D01","A01","N04"])));
+  eq(r.summary[0].monthlyRate, 1200, "รหัสไม่รู้จักทำให้นับตระกูลขาด");
+  eq(r.unknownCodes.length, 1, "เตือน 1 รหัส");
+  eq([r.unknownCodes[0].code, r.unknownCodes[0].emps], ["N04", 1], "บอกรหัสและจำนวนคนที่ใช้");
+  eq(r.unknownCodes[0].days, 10, "นับจำนวนวันที่เจอรหัสนั้น");
+  eq(r.unknownCodes[0].payDays, 10, "นับเฉพาะวันจ่ายที่ได้รับผลกระทบด้วย");
+}
+{
+  // พอใส่ N04 = ดึก เข้า famMap ยอดต้องกลับมาเต็ม และคำเตือนต้องหาย
+  const rows = month("E1",2026,7, jul31(["D01","A01","N04"]));
+  const fixed = M.computeShiftAllowance(rows, empMap, { ...M.FAMILY_MAP, N04:"NIT" });
+  eq(fixed.summary[0].monthlyRate, 1800, "เพิ่มรหัสแล้วนับได้ 3 ตระกูล");
+  eq(fixed.unknownCodes, [], "เพิ่มรหัสแล้วไม่เตือนอีก");
+}
+{
+  // ช่องกะว่าง = วันหยุด ไม่ใช่รหัสไม่รู้จัก ต้องไม่เตือน
+  const r = run(month("E1",2026,7, jul31([null,"A01","N01"])));
+  eq(r.unknownCodes, [], "ช่องกะว่าง ไม่ใช่รหัสไม่รู้จัก");
+}
+{
+  // เรียงรหัสที่กระทบวันจ่ายมากที่สุดขึ้นก่อน
+  const rows = [
+    ...month("E1",2026,7, Array.from({length:31},(_,i)=> i<20 ? "ZZ1" : "ZZ2")),
+  ];
+  const r = run(rows);
+  eq(r.unknownCodes.map(u=>u.code), ["ZZ1","ZZ2"], "เรียงตามผลกระทบมาก -> น้อย");
+}
+
 console.log(`\n${P} passed, ${F} failed`);
 if (F > 0) throw new Error(F + " test(s) failed");
