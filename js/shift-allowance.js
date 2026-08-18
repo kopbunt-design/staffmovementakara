@@ -20,6 +20,15 @@ const ELIGIBLE_LEVELS = new Set(["O1","O2","O3"]); // เฉพาะระด�
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
 
+// แปลงเซลล์เป็นตัวเลข (รองรับ "1,234.50") — คืน null ถ้าไม่ใช่ตัวเลข
+const num = v => {
+  if (!has(v)) return null;
+  const n = Number(String(v).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : null;
+};
+// ต่างกันไม่เกิน 1 บาท = ถือว่าตรง (ต่างแค่การปัดเศษ)
+const MATCH_TOL = 1;
+
 // แปลงเซลล์วันที่ (serial number / string / Date) -> {y,m,d}
 function parseYMD(v) {
   if (!has(v)) return null;
@@ -91,18 +100,24 @@ export function computeShiftAllowance(rows, empMap) {
     const dailyRate = monthlyRate / dim;
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
+    // ถ้าไฟล์มีคอลัมน์ Shift_Allowance มาด้วย = "เฉลย" ที่คิดมือไว้แล้ว -> เก็บไว้เทียบ
     let total = 0, payDays = 0, noPayDays = 0, checkDays = 0;
+    let manual = 0, hasManualRow = false;
     for (const d of days) {
       const payable = PAYABLE.has(d.status);
       const amt = payable ? dailyRate : 0;
       if (payable) { total += amt; payDays++; }
       else { noPayDays++; if (d.status === "CHECK_NOTE") checkDays++; }
+      const mv = num(d.row.Shift_Allowance);
+      if (mv !== null) { manual += mv; hasManualRow = true; }
       detail.push({
         Employee_ID: d.row.Employee_ID, Employee_Name: d.row.Employee_Name,
         Department: d.row.Department, Date: d.row.Date, Shift: d.row.Shift,
         Day_Type: d.row.Day_Type, day_status: d.status,
         family: d.family || "", job_level: jobLevel, eligible,
         Shift_Allowance: round2(amt),
+        เฉลยในไฟล์: hasManualRow ? (mv ?? "") : "",
+        ส่วนต่าง: mv === null ? "" : round2(amt - mv),
       });
     }
 
@@ -113,15 +128,19 @@ export function computeShiftAllowance(rows, empMap) {
       familyCount: famUsed.size, monthlyRate,
       payDays, noPayDays, checkDays,
       total: round2(total),
+      manual: hasManualRow ? round2(manual) : null,
+      diff:   hasManualRow ? round2(total - manual) : null,
     });
   }
 
   summary.sort((a,b) => (a.Employee_ID>b.Employee_ID?1:-1) || (a.month>b.month?1:-1));
-  return { summary, detail };
+  const hasManual = summary.some(r => r.manual !== null);
+  return { summary, detail, hasManual };
 }
 
 let lastResult = null;
 let lastMeta = null; // {sheetName, rowCount, notFound, ineligible}
+let onlyDiff = false; // โหมดเทียบเฉลย: แสดงเฉพาะรายการที่ไม่ตรง
 
 export function renderShiftAllowance() {
   const pg = document.getElementById("pageShiftallow");
@@ -143,15 +162,18 @@ export function renderShiftAllowance() {
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div class="card-title" style="margin:0;">อัปโหลดไฟล์</div>
         <div>
-          <input type="file" id="saFile" accept=".xlsx,.xls" style="display:none;" onchange="window._saUpload(this)">
-          <button class="btn btn-primary" onclick="document.getElementById('saFile').click()">📁 เลือกไฟล์ Excel</button>
+          <!-- ใช้ <label for> แทนการสั่ง .click() ด้วย JS — Safari บล็อก .click() บน input ที่ display:none -->
+          <input type="file" id="saFile" accept=".xlsx,.xls" onchange="window._saUpload(this)"
+                 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip:rect(0 0 0 0);">
+          <label for="saFile" class="btn btn-primary" style="cursor:pointer;">📁 เลือกไฟล์ Excel</label>
           <button class="btn btn-secondary" id="saSaveBtn" onclick="window._saSave()" style="display:none;">💾 บันทึกเดือนนี้</button>
           <button class="btn btn-gold" id="saExportBtn" onclick="window._saExport()" style="display:none;">📤 Export</button>
         </div>
       </div>
       <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-top:10px;">
         • จ่ายเฉพาะพนักงาน <b>ระดับ O</b> (O1/O2/O3) — ตรวจจาก job_level ในระบบ · ระดับอื่น/ไม่พบ = ฿0<br>
-        • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · น้อยกว่า = <b>0</b> · จ่าย pro-rate รายวัน
+        • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · น้อยกว่า = <b>0</b> · จ่าย pro-rate รายวัน<br>
+        • ถ้าไฟล์มีคอลัมน์ <b>Shift_Allowance</b> (ยอดที่คิดมือไว้) ระบบจะ<b>เทียบให้อัตโนมัติ</b> และชี้รายการที่ไม่ตรง
       </div>
     </div>
     <div id="saResults" class="mt-4"></div>
@@ -187,9 +209,14 @@ export function renderShiftAllowance() {
         const wb = window.XLSX.read(ev.target.result, { type:"binary" });
         const sheetName = wb.SheetNames.find(n => /clean/i.test(n)) || wb.SheetNames[0];
         const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:"", raw:true });
-        if (!rows.length) { toast("ไฟล์ว่าง หรือไม่พบข้อมูล","error"); return; }
-        if (!("Employee_ID" in rows[0]) || !("Date" in rows[0])) {
-          toast("ไม่พบคอลัมน์ Employee_ID / Date — ตรวจรูปแบบไฟล์","error"); return;
+        if (!rows.length) { toast(`sheet "${sheetName}" ไม่มีข้อมูล (ชีตในไฟล์: ${wb.SheetNames.join(", ")})`,"error"); return; }
+        const cols = Object.keys(rows[0]);
+        const missing = ["Employee_ID","Date"].filter(c => !cols.includes(c));
+        if (missing.length) {
+          // บอกให้ชัดว่าขาดอะไร และไฟล์มีคอลัมน์อะไรบ้าง จะได้แก้ไฟล์ถูก
+          console.warn("[ค่ากะ] sheet:", sheetName, "คอลัมน์ที่พบ:", cols);
+          toast(`sheet "${sheetName}" ขาดคอลัมน์ ${missing.join(" / ")} — ที่พบคือ: ${cols.slice(0,8).join(", ")}${cols.length>8?" …":""}`,"error");
+          return;
         }
         // map emp_code -> employee (จาก state ที่โหลดไว้แล้ว)
         const empMap = new Map();
@@ -198,14 +225,22 @@ export function renderShiftAllowance() {
         const notFound = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
         const ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
         lastMeta = { sheetName, rowCount: rows.length, notFound, ineligible };
+        onlyDiff = false;
         renderResults();
-        toast(`คำนวณเสร็จ: ${lastResult.summary.length} คน-เดือน`,"success");
+        if (lastResult.hasManual) {
+          const bad = lastResult.summary.filter(r => r.diff !== null && Math.abs(r.diff) > MATCH_TOL).length;
+          toast(bad ? `พบไม่ตรงกับเฉลย ${bad} รายการ` : "ตรงกับเฉลยในไฟล์ทุกรายการ ✅", bad ? "error" : "success");
+        } else {
+          toast(`คำนวณเสร็จ: ${lastResult.summary.length} คน-เดือน`,"success");
+        }
       } catch (err) {
         toast("อ่านไฟล์ไม่ได้: " + err.message, "error");
       }
     };
     reader.readAsBinaryString(file);
   };
+
+  window._saOnlyDiff = () => { onlyDiff = !onlyDiff; renderResults(); };
 
   window._saSave = async () => {
     if (!lastResult) { toast("ยังไม่มีข้อมูลให้บันทึก","error"); return; }
@@ -235,9 +270,16 @@ export function renderShiftAllowance() {
       เดือน:r.month, ระดับ:r.job_level, เข้าเกณฑ์:r.eligible?"ใช่":"ไม่", หมายเหตุ:r.granted?"HR กำหนดพิเศษ":r.reason,
       ตระกูลกะ:r.families, จำนวนตระกูล:r.familyCount, อัตราต่อเดือน:r.monthlyRate,
       วันจ่าย:r.payDays, วันไม่จ่าย:r.noPayDays, ต้องตรวจสอบ:r.checkDays, ยอดค่ากะ:r.total,
+      ...(lastResult.hasManual ? { เฉลยในไฟล์:r.manual, ส่วนต่าง:r.diff } : {}),
     }));
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(s), "สรุปค่ากะ");
+    // แยกชีตเฉพาะรายการที่ไม่ตรงกับเฉลย — ใช้ไล่หาสาเหตุได้เร็ว
+    if (lastResult.hasManual) {
+      const bad = s.filter(r => r.ส่วนต่าง !== null && Math.abs(r.ส่วนต่าง) > MATCH_TOL);
+      window.XLSX.utils.book_append_sheet(wb,
+        window.XLSX.utils.json_to_sheet(bad.length ? bad : [{ ผล:"ตรงกับเฉลยทุกรายการ" }]), "ไม่ตรงกับเฉลย");
+    }
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(lastResult.detail), "รายวัน");
     window.XLSX.writeFile(wb, `shift_allowance_${new Date().toISOString().substring(0,10)}.xlsx`);
     toast("Export เสร็จสิ้น","success");
@@ -248,12 +290,18 @@ function renderResults() {
   const el = document.getElementById("saResults");
   document.getElementById("saExportBtn").style.display = "inline-flex";
   document.getElementById("saSaveBtn").style.display = "inline-flex";
-  const rows = lastResult.summary;
-  const grand = round2(rows.reduce((s,r)=>s+r.total, 0));
-  const totalCheck = rows.reduce((s,r)=>s+r.checkDays, 0);
+  const all = lastResult.summary;
+  const cmp = lastResult.hasManual;                       // ไฟล์มีคอลัมน์เฉลยมาด้วยไหม
+  const isBad = r => r.diff !== null && Math.abs(r.diff) > MATCH_TOL;
+  const badRows = all.filter(isBad);
+  const rows = (cmp && onlyDiff) ? badRows : all;
+
+  const grand = round2(all.reduce((s,r)=>s+r.total, 0));
+  const grandManual = round2(all.reduce((s,r)=>s+(r.manual||0), 0));
+  const totalCheck = all.reduce((s,r)=>s+r.checkDays, 0);
   const { sheetName, rowCount, notFound, ineligible } = lastMeta;
 
-  const granted = rows.filter(r=>r.granted).length;
+  const granted = all.filter(r=>r.granted).length;
   const warns = [];
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
   if (ineligible)  warns.push(`${ineligible} คนไม่ใช่ระดับ O → ฿0`);
@@ -263,18 +311,28 @@ function renderResults() {
   el.innerHTML = `
   <div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
-      <div class="card-title" style="margin:0;">ผลการคำนวณ · ${rows.length} คน-เดือน <span style="font-weight:400;color:var(--muted);font-size:12px;">(sheet "${esc(sheetName)}" ${rowCount} แถว)</span></div>
+      <div class="card-title" style="margin:0;">ผลการคำนวณ · ${all.length} คน-เดือน <span style="font-weight:400;color:var(--muted);font-size:12px;">(sheet "${esc(sheetName)}" ${rowCount} แถว)</span></div>
       <div style="font-size:13px;">รวมค่ากะ: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
     </div>
+    ${cmp ? `<div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${badRows.length?"var(--gold-light)":"rgba(22,163,74,.08)"};">
+      <div style="font-size:13px;">
+        ${badRows.length
+          ? `<b style="color:var(--gold-dark);">⚠️ ไม่ตรงกับเฉลย ${badRows.length} รายการ</b> <span class="text-muted">· ตรง ${all.length-badRows.length} รายการ (ต่างไม่เกิน ${MATCH_TOL} บาท = ถือว่าตรง)</span>`
+          : `<b style="color:var(--green);">✅ ตรงกับเฉลยในไฟล์ทุกรายการ (${all.length})</b>`}
+        <span class="text-muted"> · เฉลยรวม ${fmtB(grandManual)} · แอปคำนวณ ${fmtB(grand)} · ส่วนต่าง ${fmtB(round2(grand-grandManual))}</span>
+      </div>
+      ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
+    </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
           <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>เดือน</th><th>ระดับ</th><th>ตระกูลกะ</th>
           <th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">ต้องตรวจ</th><th class="text-right">ยอดค่ากะ</th>
+          ${cmp ? `<th class="text-right">เฉลยในไฟล์</th><th class="text-right">ส่วนต่าง</th>` : ""}
         </tr></thead>
         <tbody>
-        ${rows.length===0 ? `<tr><td colspan="10" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
+        ${rows.length===0 ? `<tr><td colspan="${cmp?12:10}" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
           rows.map(r=>`<tr${r.eligible?"":' style="opacity:0.6;"'}>
             <td><b>${esc(r.Employee_ID||"-")}</b></td>
             <td>${esc(r.Employee_Name||"-")}</td>
@@ -286,6 +344,8 @@ function renderResults() {
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>
             <td class="text-right"><b>${fmtB(r.total)}</b></td>
+            ${cmp ? `<td class="text-right ${r.manual===null?"text-muted":""}">${r.manual===null?"-":fmtB(r.manual)}</td>
+            <td class="text-right${isBad(r)?"":" text-muted"}"${isBad(r)?' style="color:#dc2626;font-weight:700;"':""}>${r.diff===null?"-":(isBad(r)?(r.diff>0?"+":"")+fmtB(r.diff):"✓")}</td>` : ""}
           </tr>`).join("")}
         </tbody>
       </table>
