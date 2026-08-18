@@ -394,7 +394,8 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   eq([r0.summary[0].total, r0.noWork[0].approved], [0, false], "ยังไม่อนุมัติ -> ฿0");
   // อนุมัติแล้ว -> จ่ายตามปกติ
   const r1 = M.computeShiftAllowance(sickAll, empMap, M.FAMILY_MAP, undefined, new Set(["E1||2026-07"]));
-  eq([r1.summary[0].total, r1.summary[0].approvedNoWork], [1800, true], "อนุมัติแล้ว -> จ่าย 1,800");
+  eq([r1.summary[0].total, r1.summary[0].approvedNoWork], [1800, true],
+     "อนุมัติแล้ว -> จ่าย 1,800 (อนุมัติทับทั้งกฎไม่มีวันทำงาน และกฎลาป่วยยาว)");
   eq(r1.noWork[0].approved, true, "ธงอนุมัติขึ้นในรายการให้เห็น");
   // อนุมัติคนละเดือน ไม่ควรมีผล
   const r2 = M.computeShiftAllowance(sickAll, empMap, M.FAMILY_MAP, undefined, new Set(["E1||2026-06"]));
@@ -457,20 +458,59 @@ eq(M.detectExtraCols(["Employee_ID","หมายเหตุ"]).noteCol, "ห�
   eq(r.total, 1680, "60 x 28 = 1,680");
 }
 
-// ลาป่วยติดต่อกัน -> เด้งเตือน แต่ยังจ่ายตามปกติ
+// ลาป่วยติดต่อกัน 3 วันขึ้นไป -> ไม่จ่ายวันลาในช่วงนั้น
+const sickDay = r => ({ ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick Leave" });
 {
-  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
-    .map((r,i)=> i<4 ? { ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick Leave" } : r);
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"])).map((r,i)=> i<4 ? sickDay(r) : r);
   const res = run(rows);
   eq(res.sickRuns.length, 1, "ลาป่วยติดกัน 4 วัน -> ขึ้นเตือน");
-  eq([res.sickRuns[0].run, res.sickRuns[0].sickDays], [4, 4], "บอกจำนวนวันติดกันและรวม");
-  eq(res.summary[0].payDays, 31, "ลาป่วยแบบได้เงิน ยังนับเป็นวันจ่าย");
+  eq([res.sickRuns[0].run, res.sickRuns[0].unpaidSickDays], [4, 4], "ตัด 4 วันนั้นออก");
+  eq([res.summary[0].payDays, res.summary[0].total], [27, 1620], "จ่าย 27 วัน = 60 x 27 = 1,620");
 }
 {
-  // ลาป่วยกระจาย ไม่ติดกัน -> ไม่ต้องเตือน
+  // ลาป่วยยาวบางส่วน + HR กดอนุมัติ -> จ่ายคืนวันลาให้
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"])).map((r,i)=> i<4 ? sickDay(r) : r);
+  const ok = M.computeShiftAllowance(rows, empMap, M.FAMILY_MAP, undefined, new Set(["E1||2026-07"]));
+  eq([ok.summary[0].payDays, ok.summary[0].total], [31, 1800], "อนุมัติแล้ว -> จ่ายวันลาป่วยด้วย");
+  eq(ok.sickRuns[0].approved, true, "ธงอนุมัติขึ้นในรายการลาป่วย");
+}
+{
+  // ติดกัน 2 วัน ยังไม่ถึงเกณฑ์ -> จ่ายตามปกติ
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"])).map((r,i)=> i<2 ? sickDay(r) : r);
+  const res = run(rows);
+  eq(res.sickRuns.length, 0, "ป่วย 2 วันติด -> ไม่เข้าเกณฑ์");
+  eq(res.summary[0].payDays, 31, "ยังจ่ายครบ");
+}
+{
+  // ลาป่วยกระจาย วันเว้นวัน -> ไม่ติดกัน จ่ายตามปกติ
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"])).map((r,i)=> i%5===0 ? sickDay(r) : r);
+  const res = run(rows);
+  eq([res.sickRuns.length, res.summary[0].payDays], [0, 31], "ลาป่วยวันเว้นวัน -> จ่ายครบ");
+}
+{
+  // ⚠️ ลาข้ามวันหยุดประจำสัปดาห์: ป่วย-ป่วย-หยุด-ป่วย-ป่วย = ติดกัน 4 วัน ไม่ใช่ 2+2
+  const shifts = Array.from({length:31}, (_,i) => i===2 ? null : "D01");
+  const rows = month("E1",2026,7, shifts).map((r,i)=> (i<2 || i===3 || i===4) ? sickDay(r) : r)
+    .map((r,i)=> i>=5 ? { ...r, Shift: ["D01","A01","N01"][i%3] } : r);
+  const res = run(rows);
+  eq(res.sickRuns[0].run, 4, "วันหยุดคั่นกลาง ไม่ตัดช่วง -> นับได้ 4 วันติด");
+  eq(res.sickRuns[0].unpaidSickDays, 4, "ตัดวันลาทั้ง 4 วัน");
+  eq(res.summary[0].payDays, 27, "31 - 4 = 27 (วันหยุดที่คั่นยังจ่าย)");
+}
+{
+  // วันหยุดคั่น แต่มีป่วยแค่ข้างละ 1 = ติดกัน 2 วัน ยังไม่ถึงเกณฑ์
+  const shifts = Array.from({length:31}, (_,i) => i===1 ? null : "D01");
+  const rows = month("E1",2026,7, shifts).map((r,i)=> (i===0 || i===2) ? sickDay(r) : r)
+    .map((r,i)=> i>=3 ? { ...r, Shift: ["D01","A01","N01"][i%3] } : r);
+  const res = run(rows);
+  eq(res.sickRuns.length, 0, "ป่วย-หยุด-ป่วย = 2 วัน ยังไม่เข้าเกณฑ์");
+  eq(res.summary[0].payDays, 31, "จ่ายครบ");
+}
+{
+  // วันทำงานปกติคั่นกลาง = ตัดช่วงจริง -> 2+2 ไม่เข้าเกณฑ์
   const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
-    .map((r,i)=> i%5===0 ? { ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick" } : r);
-  eq(run(rows).sickRuns.length, 0, "ลาป่วยวันเว้นวัน -> ไม่เตือน");
+    .map((r,i)=> (i<2 || i===3 || i===4) ? sickDay(r) : r);
+  eq(run(rows).sickRuns.length, 0, "วันทำงานคั่นกลาง -> ตัดช่วง เป็น 2+2");
 }
 {
   // ลาป่วยทั้งเดือน ไม่มีวันทำงานจริงเลย -> ไม่จ่าย

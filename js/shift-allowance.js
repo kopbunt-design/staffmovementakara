@@ -326,13 +326,29 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       return { row, family, status, code, sick, date: rowDate(row) };
     });
 
-    // ลาป่วยติดต่อกันกี่วันมากสุด (เรียงตามวันที่ก่อน เผื่อไฟล์ไม่ได้เรียงมา)
+    // ===== ลาป่วยติดต่อกัน =====
+    // ติดกันตั้งแต่ SICK_RUN_WARN วันขึ้นไป -> วันลาป่วยในช่วงนั้นไม่จ่าย (จ่ายเฉพาะวันที่ไม่ได้ลา)
+    // สำคัญ: วันหยุดประจำสัปดาห์/วันหยุดนักขัตฤกษ์ที่คั่นกลาง ต้อง "ไม่ตัด" ช่วงให้ขาดตอน
+    // มิฉะนั้น ป่วย-ป่วย-หยุด-ป่วย-ป่วย จะกลายเป็น 2+2 วัน แล้วหลุดเกณฑ์ทั้งที่ลายาว 4 วัน
     const byDate = [...days].sort((a,b) => String(a.date||"").localeCompare(String(b.date||"")));
-    let run = 0, maxSickRun = 0, sickDays = 0;
-    for (const d of byDate) {
-      if (d.sick) { run++; sickDays++; maxSickRun = Math.max(maxSickRun, run); }
-      else run = 0;
+    const isOffDay = d => d.status === "WEEKLY_OFF_DAY" || d.status === "HOLIDAY";
+    let maxSickRun = 0;
+    const sickDays = byDate.filter(d => d.sick).length;
+    for (let i = 0; i < byDate.length; ) {
+      if (!byDate[i].sick) { i++; continue; }
+      let j = i, lastSick = i, count = 0;
+      while (j < byDate.length) {
+        if (byDate[j].sick)        { count++; lastSick = j; j++; }
+        else if (isOffDay(byDate[j])) j++;        // วันหยุดคั่นกลาง = ข้ามไป ไม่ตัดช่วง
+        else break;
+      }
+      maxSickRun = Math.max(maxSickRun, count);
+      // ลายาวเกินเกณฑ์ -> วันลาป่วยในช่วง i..lastSick ไม่จ่าย (วันหยุดที่คั่นยังจ่ายตามปกติ)
+      if (count >= SICK_RUN_WARN)
+        for (let k = i; k <= lastSick; k++) if (byDate[k].sick) byDate[k].unpaidSick = true;
+      i = lastSick + 1;
     }
+    const unpaidSickDays = byDate.filter(d => d.unpaidSick).length;
     const suspendDays = days.filter(d => d.status === "SUSPENDED").length;
 
     // Pass 1: นับตระกูลกะที่ใช้ในวันที่จ่ายได้ (นับไว้แสดงเสมอเพื่อความโปร่งใส)
@@ -354,7 +370,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     if (noWorkedDay && eligible && shiftRate > 0)
       noWork.push({ empId, name:first.Employee_Name, month:g.ym, days:days.length, sickDays, approved });
     if (maxSickRun >= SICK_RUN_WARN)
-      sickRuns.push({ empId, name:first.Employee_Name, month:g.ym, run:maxSickRun, sickDays });
+      sickRuns.push({ empId, name:first.Employee_Name, month:g.ym, run:maxSickRun,
+                      sickDays, unpaidSickDays, approved });
 
     // ไม่เข้าเกณฑ์ระดับ → 0 · ไม่มีวันทำงานจริงเลย → 0 จนกว่า HR จะกดอนุมัติรายคน
     const monthlyRate = (eligible && (!noWorkedDay || approved)) ? shiftRate : 0;
@@ -374,6 +391,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       where: [emp?.division, emp?.department, emp?.section, emp?.team].filter(Boolean).join(" / ") });
 
     const earns = d => PAYABLE.has(d.status)
+      && (!d.unpaidSick || approved)                     // ลาป่วยยาว -> ไม่จ่าย เว้นแต่ HR อนุมัติ
       && (!payShiftDaysOnly || d.code === PAY_ON_SHIFT_ONLY.payCode)
       && !(isProc && d.code === PROCESS_NO_PAY_CODE);
 
@@ -400,7 +418,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       detail.push({
         Employee_ID: d.row.Employee_ID, Employee_Name: d.row.Employee_Name,
         Department: d.row.Department, Date: d.row.Date, Shift: d.row.Shift,
-        Day_Type: d.row.Day_Type, day_status: d.status,
+        Day_Type: d.row.Day_Type, day_status: d.unpaidSick ? `${d.status} (ลาป่วยยาว-ไม่จ่าย)` : d.status,
         family: d.family || "", job_level: jobLevel, eligible,
         Shift_Allowance: round2(amt),
         เฉลยในไฟล์: hasManualRow ? (mv ?? "") : "",
@@ -414,7 +432,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
-      clippedDays: outOfPeriod.length, sickDays, maxSickRun, suspendDays, workedDays, noWorkedDay,
+      clippedDays: outOfPeriod.length, sickDays, maxSickRun, unpaidSickDays,
+      suspendDays, workedDays, noWorkedDay,
       shiftOnly: payShiftDaysOnly, shiftOnlyFull, isProcess: isProc, approvedNoWork: approved,
       payDays, noPayDays, checkDays,
       total: round2(total),
@@ -831,15 +850,20 @@ function renderResults() {
       <div class="text-muted" style="font-size:11px;margin-top:5px;">ถ้ามีข้อความที่ไม่ควรถูกนับ (หรือมีคำอื่นที่ควรนับแต่ไม่อยู่ในลิสต์) บอกได้ จะปรับคำที่ใช้จับให้</div>
     </div>` : ""}
     ${sickR.length ? `<div class="card-body" style="background:#fff7ed;border-bottom:1px solid var(--border);padding:11px 16px;">
-      <div style="font-size:13px;color:#c2410c;font-weight:700;margin-bottom:2px;">🩺 ลาป่วยติดต่อกันตั้งแต่ ${SICK_RUN_WARN} วันขึ้นไป ${sickR.length} คน — ให้ตรวจก่อนจ่าย</div>
+      <div style="font-size:13px;color:#c2410c;font-weight:700;margin-bottom:2px;">🩺 ลาป่วยติดต่อกันตั้งแต่ ${SICK_RUN_WARN} วันขึ้นไป ${sickR.length} คน — <b>ไม่จ่ายวันลาในช่วงนั้น</b></div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:7px;">
-        ระบบยังจ่ายให้ตามปกติ (ลาป่วยแบบได้เงินนับเป็นวันจ่าย) — ยกเว้นคนที่<b>ไม่มีวันทำงานจริงเลยทั้งเดือน</b> ระบบตัดเป็น ฿0 ให้แล้ว
+        จ่ายเฉพาะวันที่ไม่ได้ลา · <b>วันหยุดประจำสัปดาห์ที่คั่นกลางไม่ตัดช่วง</b> (ป่วย-ป่วย-หยุด-ป่วย = ติดกัน 3 วัน)
+        แต่ตัววันหยุดเองยังจ่ายตามปกติ · ลาป่วยไม่ถึง ${SICK_RUN_WARN} วันติด ยังจ่ายเหมือนเดิม
       </div>
       <div class="table-wrap" style="max-height:140px;overflow:auto;">
         <table class="data-table" style="font-size:11px;">
-          <thead><tr><th>รหัส</th><th>ชื่อ</th><th class="text-right">ป่วยติดกันสูงสุด</th><th class="text-right">ลาป่วยรวม</th></tr></thead>
-          <tbody>${sickR.map(c=>`<tr><td><b>${esc(c.empId)}</b></td><td>${esc(c.name||"-")}</td>
-            <td class="text-right"><b>${c.run}</b> วัน</td><td class="text-right">${c.sickDays} วัน</td></tr>`).join("")}</tbody>
+          <thead><tr><th>รหัส</th><th>ชื่อ</th><th class="text-right">ป่วยติดกันสูงสุด</th><th class="text-right">ลาป่วยรวม</th><th class="text-right">วันที่ไม่จ่าย</th><th></th></tr></thead>
+          <tbody>${sickR.map(c=>`<tr${c.approved?' style="background:rgba(22,163,74,.09);"':''}>
+            <td><b>${esc(c.empId)}</b></td><td>${esc(c.name||"-")}</td>
+            <td class="text-right"><b>${c.run}</b> วัน</td><td class="text-right">${c.sickDays} วัน</td>
+            <td class="text-right" style="${c.approved?"color:var(--muted);text-decoration:line-through;":"color:#b91c1c;font-weight:700;"}">${c.unpaidSickDays} วัน</td>
+            <td class="text-right"><button class="btn btn-sm ${c.approved?"btn-secondary":"btn-primary"}"
+              onclick="window._saApprove('${esc(c.empId)}','${esc(c.month)}')">${c.approved?"✓ จ่ายให้แล้ว (กดเพื่อยกเลิก)":"อนุมัติจ่ายวันลา"}</button></td></tr>`).join("")}</tbody>
         </table>
       </div>
     </div>` : ""}
