@@ -13,7 +13,7 @@ const logic = SRC
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
            parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols,
-           isSuspendRow, isSickRow, isProcessEmp };`)();
+           isSuspendRow, isSickRow, isProcessEmp, isUnpaidNote };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -488,6 +488,36 @@ eq(M.detectExtraCols(["Employee_ID","หมายเหตุ"]).noteCol, "ห�
   const res = run(rows);
   eq([res.sickRuns.length, res.summary[0].sickDays], [0, 0], "ไม่มีคอลัมน์ -> ไม่นับว่าป่วย");
   eq(res.summary[0].payDays, 31, "ลาได้เงินยังนับเป็นวันจ่ายเหมือนเดิม");
+}
+
+// ---------- หมายเหตุที่บอกเองว่าไม่ได้เงิน (เคสจริง ก.ค. 2026) ----------
+{
+  const c = { noteCol:"หมายเหตุ" };
+  eq(M.isUnpaidNote({ "หมายเหตุ":"ลาป่วยไม่จ่ายเงินหักเงิน" }, c), true,
+     "ลาป่วยแบบไม่จ่ายเงิน -> ไม่ได้เงิน");
+  eq(M.isUnpaidNote({ "หมายเหตุ":"วันหยุดปกติ ลาป่วยไม่จ่ายเงินหักเงิน" }, c), true,
+     "ขึ้นต้นด้วยวันหยุดปกติ ก็ยังจับได้");
+  eq(M.isUnpaidNote({ "หมายเหตุ":"พักงานไม่รับค่าจ้าง" }, c), true, "ไม่รับค่าจ้าง -> ไม่ได้เงิน");
+  eq(M.isUnpaidNote({ "หมายเหตุ":"ลาป่วย ปวดท้อง" }, c),     false, "ลาป่วยธรรมดา -> ยังได้เงิน");
+  eq(M.isUnpaidNote({ "หมายเหตุ":"ลาป่วย ผ่าตัด" }, c),      false, "ลาป่วยผ่าตัด -> ยังได้เงิน");
+
+  // หมายเหตุชนะชนิดการลา: ถึงจะติด Leave_No_Deduct (ลาได้เงิน) ก็ต้องไม่จ่าย
+  eq(M.dayStatus({ Leave_No_Deduct:1, "หมายเหตุ":"ลาป่วยไม่จ่ายเงินหักเงิน" }, c), "UNPAID_LEAVE",
+     "หมายเหตุบอกไม่จ่าย -> ชนะ Leave_No_Deduct");
+  eq(M.dayStatus({ Leave_No_Deduct:1, "หมายเหตุ":"ลาป่วย ปวดท้อง" }, c), "PAID_LEAVE",
+     "ลาป่วยปกติ -> ยังเป็นวันจ่าย");
+  // พักงานยังมาก่อน
+  eq(M.dayStatus({ "หมายเหตุ":"พักงานไม่รับค่าจ้าง" }, c), "SUSPENDED", "พักงานมาก่อนเสมอ");
+}
+{
+  // 5 วันเป็นลาป่วยไม่จ่ายเงิน -> วันจ่ายลดจาก 31 เหลือ 26
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map((r,i)=> i<5 ? { ...r, Check_In:"", Leave_No_Deduct:1, "หมายเหตุ":"ลาป่วยไม่จ่ายเงินหักเงิน" } : r);
+  const res = run(rows);
+  eq(res.summary[0].payDays, 26, "ลาป่วยไม่จ่ายเงิน 5 วัน -> จ่าย 26 วัน");
+  eq(res.summary[0].total, 1560, "60 x 26 = 1,560");
+  eq(res.summary[0].sickDays, 5, "ยังนับเป็นลาป่วยสำหรับการเตือน");
+  eq(res.noteHits.unpaid, [{text:"ลาป่วยไม่จ่ายเงินหักเงิน", count:5}], "รายงานข้อความที่ตีว่าไม่ได้เงิน");
 }
 
 // ---------- เดาสาเหตุที่ไม่ตรง (อิงเคสจริง ก.ค. 2026 ทั้ง 11 ราย) ----------

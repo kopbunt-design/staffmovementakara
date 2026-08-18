@@ -189,6 +189,8 @@ const COL_LEAVETYPE = ["leavetype","typeofleave","leavecode","ประเภท
 const COL_NOTE      = ["note","notes","หมายเหตุ","remark","remarks","comment","comments"];
 const SICK_WORDS    = ["sick","ป่วย"];
 const SUSPEND_WORDS = ["พักงาน","suspend","suspension"];
+// หมายเหตุที่บอกเองว่าวันนั้นไม่ได้เงิน — สำคัญกว่าชนิดการลา เช่น "ลาป่วยไม่จ่ายเงินหักเงิน"
+const UNPAID_WORDS  = ["ไม่จ่ายเงิน","ไม่รับค่าจ้าง","ไม่ได้รับค่าจ้าง","หักเงิน","unpaid"];
 // คอลัมน์ที่ระบบใช้อยู่แล้ว — กันไม่ให้การเดาชื่อไปทับของเดิม (เช่น "leave" ไปโดน Leave_Deduct)
 const KNOWN_COLS = new Set(["leavededuct","leavenodeduct","deductday","daytype","checkin","checkout","shift"]);
 
@@ -221,10 +223,18 @@ export function isSickRow(row, cols) {
   return !!t && hitWords(t, SICK_WORDS);
 }
 
+// หมายเหตุระบุเองว่าวันนั้นไม่ได้เงิน (ไม่ว่าจะลาชนิดไหน)
+export function isUnpaidNote(row, cols) {
+  const t = noteText(row, cols);
+  return !!t && hitWords(t, UNPAID_WORDS);
+}
+
 // หา day_status ตามสเปค §4 (ลำดับเงื่อนไขสำคัญ)
 function dayStatus(row, cols) {
   // พักงาน = ไม่จ่ายวันนั้น ต้องมาก่อนทุกเงื่อนไข (แม้จะมีเวลาเข้างานติดมา)
   if (isSuspendRow(row, cols)) return "SUSPENDED";
+  // หมายเหตุบอกเองว่าไม่ได้เงิน -> เชื่อหมายเหตุ ก่อนจะไปดูว่าลาชนิดไหน
+  if (isUnpaidNote(row, cols))  return "UNPAID_LEAVE";
   if (has(row.Deduct_Day))      return "ABSENT";        // ขาดงาน / หักวันเหมือนกัน
   if (has(row.Leave_Deduct))    return "UNPAID_LEAVE";  // ลาไม่รับค่าจ้าง
   if (row.Day_Type === "H")     return "WEEKLY_OFF_DAY"; // วันหยุดประจำสัปดาห์
@@ -247,7 +257,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
   const processEmps = new Map(); // คนที่ระบบมองว่าเป็นสาย Process (ให้ตรวจว่าจับถูก)
   const cols = detectExtraCols(Object.keys(rows[0] || {}));
   // การจับคำในช่องหมายเหตุอาจจับผิด — เก็บข้อความที่จับได้ไว้ให้คนตรวจว่าถูกจริง
-  const noteHits = { suspend: new Map(), sick: new Map() };
+  const noteHits = { suspend: new Map(), sick: new Map(), unpaid: new Map() };
   const bump = (m, t) => m.set(t, (m.get(t) || 0) + 1);
   const groups = new Map();
   for (const row of rows) {
@@ -311,6 +321,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       const sick = isSickRow(row, cols);
       const note = noteText(row, cols);
       if (status === "SUSPENDED" && note) bump(noteHits.suspend, note);
+      else if (status === "UNPAID_LEAVE" && note && isUnpaidNote(row, cols)) bump(noteHits.unpaid, note);
       if (sick && note)                   bump(noteHits.sick, note);
       return { row, family, status, code, sick, date: rowDate(row) };
     });
@@ -421,7 +432,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     .sort((a,b)=>b.count-a.count).slice(0,8);
   return { summary, detail, hasManual, unknownCodes, clipped, sickRuns, noWork, cols,
            processEmps: [...processEmps.values()],
-           noteHits: { suspend: topHits(noteHits.suspend), sick: topHits(noteHits.sick) } };
+           noteHits: { suspend: topHits(noteHits.suspend), sick: topHits(noteHits.sick),
+                       unpaid: topHits(noteHits.unpaid) } };
 }
 
 let lastResult = null;
@@ -737,7 +749,7 @@ function renderResults() {
   const sickR = lastResult.sickRuns || [];
   const noWk  = lastResult.noWork || [];
   const xcols = lastResult.cols || {};
-  const hits  = lastResult.noteHits || { suspend:[], sick:[] };
+  const hits  = lastResult.noteHits || { suspend:[], sick:[], unpaid:[] };
   const proc  = lastResult.processEmps || [];
   const suspendN = all.reduce((s,r)=>s+(r.suspendDays||0), 0);
   const warns = [];
@@ -806,11 +818,13 @@ function renderResults() {
         ${proc.length>12?`<span class="text-muted">…และอีก ${proc.length-12} คน</span>`:""}
       </div>
     </div>` : ""}
-    ${(hits.suspend.length || hits.sick.length) ? `<div class="card-body" style="background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;">
+    ${(hits.suspend.length || hits.sick.length || hits.unpaid.length) ? `<div class="card-body" style="background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;">
       <div style="font-size:12px;font-weight:700;margin-bottom:4px;">🔎 ข้อความในช่องหมายเหตุที่ระบบตีความ — ตรวจว่าถูกต้องไหม</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:11px;">
-        ${["suspend","sick"].map(k => hits[k].length ? `<div>
-          <div class="text-muted" style="margin-bottom:2px;">${k==="suspend"?"ตีความว่า <b>พักงาน</b> (ไม่จ่ายวันนั้น)":"ตีความว่า <b>ลาป่วย</b>"}</div>
+        ${["unpaid","suspend","sick"].map(k => hits[k].length ? `<div>
+          <div class="text-muted" style="margin-bottom:2px;">${
+            k==="unpaid"  ? 'ตีความว่า <b style="color:#b91c1c;">ไม่ได้เงินวันนั้น</b> (หมายเหตุบอกเอง)' :
+            k==="suspend" ? "ตีความว่า <b>พักงาน</b> (ไม่จ่ายวันนั้น)" : "ตีความว่า <b>ลาป่วย</b>"}</div>
           ${hits[k].map(h=>`<div>• "${esc(h.text)}" <span class="text-muted">— ${h.count} วัน</span></div>`).join("")}
         </div>` : "").join("")}
       </div>
