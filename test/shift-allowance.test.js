@@ -12,7 +12,7 @@ const logic = SRC
   .replace(/^export /gm, "");
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
-           parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff };`)();
+           parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -294,6 +294,66 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   ];
   const r = run(rows);
   eq(r.unknownCodes.map(u=>u.code), ["ZZ1","ZZ2"], "เรียงตามผลกระทบมาก -> น้อย");
+}
+
+// ---------- ลาไม่รับค่าจ้าง / พักงาน / ลาป่วย ----------
+// ลาไม่รับค่าจ้าง = ไม่จ่าย (ล็อกกติกานี้ไว้ ห้ามหลุด)
+eq(M.PAYABLE.has("UNPAID_LEAVE"), false, "ลาไม่รับค่าจ้าง ไม่ใช่วันจ่าย");
+eq(M.PAYABLE.has("SUSPENDED"),    false, "วันพักงาน ไม่ใช่วันจ่าย");
+eq(M.PAYABLE.has("ABSENT"),       false, "ขาดงาน ไม่ใช่วันจ่าย");
+{
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]));
+  rows[0] = { ...rows[0], Leave_Deduct:1 };
+  eq(one(rows).payDays, 30, "ลาไม่รับค่าจ้าง 1 วัน -> วันจ่ายลดเหลือ 30");
+}
+
+// เดาคอลัมน์ "พักงาน" / "ประเภทการลา" ต้องไม่ไปทับคอลัมน์เดิมที่ระบบใช้อยู่
+eq(M.detectExtraCols(["Employee_ID","Suspend","Leave_Type"]),
+   { suspendCol:"Suspend", leaveTypeCol:"Leave_Type" }, "จับคอลัมน์อังกฤษได้");
+eq(M.detectExtraCols(["พักงาน","ประเภทการลา"]),
+   { suspendCol:"พักงาน", leaveTypeCol:"ประเภทการลา" }, "จับหัวคอลัมน์ไทยได้");
+eq(M.detectExtraCols(["Leave_Deduct","Leave_No_Deduct","Check_In"]),
+   { suspendCol:null, leaveTypeCol:null }, "ไม่มีคอลัมน์เสริม -> ต้องไม่ไปหยิบ Leave_Deduct มาใช้ผิด");
+
+// พักงาน = ไม่จ่ายวันนั้น แม้จะมีเวลาเข้างานติดมาด้วย
+{
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"])).map((r,i)=>({ ...r, Suspend: i<3 ? "Y" : "" }));
+  const r = one(rows);
+  eq([r.suspendDays, r.payDays], [3, 28], "พักงาน 3 วัน -> ไม่นับเป็นวันจ่าย");
+  eq(r.total, 1680, "60 x 28 = 1,680");
+}
+
+// ลาป่วยติดต่อกัน -> เด้งเตือน แต่ยังจ่ายตามปกติ
+{
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map((r,i)=> i<4 ? { ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick Leave" } : r);
+  const res = run(rows);
+  eq(res.sickRuns.length, 1, "ลาป่วยติดกัน 4 วัน -> ขึ้นเตือน");
+  eq([res.sickRuns[0].run, res.sickRuns[0].sickDays], [4, 4], "บอกจำนวนวันติดกันและรวม");
+  eq(res.summary[0].payDays, 31, "ลาป่วยแบบได้เงิน ยังนับเป็นวันจ่าย");
+}
+{
+  // ลาป่วยกระจาย ไม่ติดกัน -> ไม่ต้องเตือน
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map((r,i)=> i%5===0 ? { ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick" } : r);
+  eq(run(rows).sickRuns.length, 0, "ลาป่วยวันเว้นวัน -> ไม่เตือน");
+}
+{
+  // ลาป่วยทั้งเดือน ไม่มีวันทำงานจริงเลย -> ไม่จ่าย
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map(r=>({ ...r, Check_In:"", Leave_No_Deduct:1, Leave_Type:"Sick Leave" }));
+  const res = run(rows);
+  eq([res.summary[0].workedDays, res.summary[0].total], [0, 0], "ลาป่วยทั้งเดือน -> ฿0");
+  eq(res.noWork.length, 1, "รายงานว่าใครไม่มีวันทำงานเลย");
+  eq(res.summary[0].noWorkedDay, true, "ติดธงไว้ให้เห็นในตาราง");
+}
+{
+  // ไม่มีคอลัมน์ประเภทการลา -> แยกลาป่วยไม่ได้ ต้องไม่เดาเอง และไม่เตือนมั่ว
+  const rows = month("E1",2026,7, jul31(["D01","A01","N01"]))
+    .map((r,i)=> i<5 ? { ...r, Check_In:"", Leave_No_Deduct:1 } : r);
+  const res = run(rows);
+  eq([res.sickRuns.length, res.summary[0].sickDays], [0, 0], "ไม่มีคอลัมน์ -> ไม่นับว่าป่วย");
+  eq(res.summary[0].payDays, 31, "ลาได้เงินยังนับเป็นวันจ่ายเหมือนเดิม");
 }
 
 // ---------- เดาสาเหตุที่ไม่ตรง (อิงเคสจริง ก.ค. 2026 ทั้ง 11 ราย) ----------

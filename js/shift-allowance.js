@@ -25,6 +25,8 @@ const ELIGIBLE_LEVELS = new Set(["O1","O2","O3"]); // เฉพาะระด�
 const DAILY_DIVISOR = 30;
 // กะที่จ่ายแม้ทำกะเดียวทั้งเดือน (ปกติกะเดียว = 0) — ค่าเริ่มต้น เผื่อยังไม่ได้ตั้งใน DB
 const SOLO_RATE = { N03: 1200 };
+// ลาป่วยติดต่อกันกี่วันขึ้นไปถึงจะเด้งเตือนให้ HR ตรวจ
+const SICK_RUN_WARN = 3;
 
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
@@ -162,8 +164,34 @@ function rowDate(row) {
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const fmtB = n => Number(n).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
 
+// ===== คอลัมน์เสริมที่ไฟล์ลงเวลาอาจมี (ชื่อไม่แน่นอน จึงต้องตรวจจับ) =====
+// เจอ = ใช้เป็นเงื่อนไขเพิ่ม · ไม่เจอ = ข้ามไป ระบบยังทำงานได้เหมือนเดิม
+const COL_SUSPEND   = ["suspend","suspended","suspension","พักงาน","ถูกพักงาน","standdown"];
+const COL_LEAVETYPE = ["leavetype","typeofleave","leavecode","ประเภทการลา","ประเภทลา","ชนิดการลา"];
+const SICK_WORDS    = ["sick","ป่วย"];
+// คอลัมน์ที่ระบบใช้อยู่แล้ว — กันไม่ให้การเดาชื่อไปทับของเดิม (เช่น "leave" ไปโดน Leave_Deduct)
+const KNOWN_COLS = new Set(["leavededuct","leavenodeduct","deductday","daytype","checkin","checkout","shift"]);
+
+export function detectExtraCols(cols) {
+  const pick = cands => {
+    for (const c of cands) { const h = cols.find(k => norm(k) === c); if (h) return h; }
+    for (const c of cands) { const h = cols.find(k => norm(k).includes(c) && !KNOWN_COLS.has(norm(k))); if (h) return h; }
+    return null;
+  };
+  return { suspendCol: pick(COL_SUSPEND), leaveTypeCol: pick(COL_LEAVETYPE) };
+}
+
+// วันนั้นเป็นลาป่วยไหม (ดูจากคอลัมน์ประเภทการลา ถ้าไฟล์มี)
+function isSickRow(row, cols) {
+  if (!cols?.leaveTypeCol) return false;
+  const v = String(row[cols.leaveTypeCol] ?? "").toLowerCase();
+  return !!v && SICK_WORDS.some(w => v.includes(w));
+}
+
 // หา day_status ตามสเปค §4 (ลำดับเงื่อนไขสำคัญ)
-function dayStatus(row) {
+function dayStatus(row, cols) {
+  // พักงาน = ไม่จ่ายวันนั้น ต้องมาก่อนทุกเงื่อนไข (แม้จะมีเวลาเข้างานติดมา)
+  if (cols?.suspendCol && has(row[cols.suspendCol])) return "SUSPENDED";
   if (has(row.Deduct_Day))      return "ABSENT";        // ขาดงาน / หักวันเหมือนกัน
   if (has(row.Leave_Deduct))    return "UNPAID_LEAVE";  // ลาไม่รับค่าจ้าง
   if (row.Day_Type === "H")     return "WEEKLY_OFF_DAY"; // วันหยุดประจำสัปดาห์
@@ -179,6 +207,9 @@ function dayStatus(row) {
 export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap = SOLO_RATE) {
   const unknown = new Map(); // รหัสกะที่ไม่รู้จัก -> จำนวนวัน/คน (ทำให้นับตระกูลขาด ต้องเตือน)
   const clipped = [];        // คนที่มีวันนอกช่วงการจ้างถูกตัดออก (ต้องขึ้นเตือนให้ตรวจ)
+  const sickRuns = [];       // คนที่ลาป่วยติดต่อกันหลายวัน (ให้ HR ตรวจก่อนจ่าย)
+  const noWork = [];         // คนที่ไม่มีวันทำงานจริงเลยทั้งเดือน -> ไม่จ่าย
+  const cols = detectExtraCols(Object.keys(rows[0] || {}));
   const groups = new Map();
   for (const row of rows) {
     const ymd = parseYMD(row.Date);
@@ -230,7 +261,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       const raw = String(row.Shift || "").trim();
       const code = raw.toUpperCase();
       const family = famMap[code] || null;
-      const status = dayStatus(row);
+      const status = dayStatus(row, cols);
       if (raw && !family) {
         const u = unknown.get(code) || { code, days:0, payDays:0, emps:new Set() };
         u.days++;
@@ -238,8 +269,17 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
         u.emps.add(empId);
         unknown.set(code, u);
       }
-      return { row, family, status, code };
+      return { row, family, status, code, sick: isSickRow(row, cols), date: rowDate(row) };
     });
+
+    // ลาป่วยติดต่อกันกี่วันมากสุด (เรียงตามวันที่ก่อน เผื่อไฟล์ไม่ได้เรียงมา)
+    const byDate = [...days].sort((a,b) => String(a.date||"").localeCompare(String(b.date||"")));
+    let run = 0, maxSickRun = 0, sickDays = 0;
+    for (const d of byDate) {
+      if (d.sick) { run++; sickDays++; maxSickRun = Math.max(maxSickRun, run); }
+      else run = 0;
+    }
+    const suspendDays = days.filter(d => d.status === "SUSPENDED").length;
 
     // Pass 1: นับตระกูลกะที่ใช้ในวันที่จ่ายได้ (นับไว้แสดงเสมอเพื่อความโปร่งใส)
     const famUsed = new Set(), codesUsed = new Set();
@@ -252,7 +292,16 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     const soloRate = soloCode ? (soloMap[soloCode] || 0) : 0;
     const shiftRate = famUsed.size >= 3 ? 1800 : famUsed.size === 2 ? 1200 : soloRate;
     const solo = famUsed.size <= 1 && soloRate > 0;  // ได้เพราะกฎกะเดี่ยว ไม่ใช่เพราะหมุนกะ
-    const monthlyRate = eligible ? shiftRate : 0; // ไม่เข้าเกณฑ์ระดับ → 0
+
+    // ต้องมีวันทำงานจริงอย่างน้อย 1 วัน — ลา/หยุดทั้งเดือน (เช่น ลาป่วยยาว) ไม่ได้ค่ากะ
+    const workedDays = days.filter(d => d.status === "WORKED").length;
+    const noWorkedDay = days.length > 0 && workedDays === 0;
+    if (noWorkedDay && eligible && shiftRate > 0)
+      noWork.push({ empId, name:first.Employee_Name, month:g.ym, days:days.length, sickDays });
+    if (maxSickRun >= SICK_RUN_WARN)
+      sickRuns.push({ empId, name:first.Employee_Name, month:g.ym, run:maxSickRun, sickDays });
+
+    const monthlyRate = (eligible && !noWorkedDay) ? shiftRate : 0; // ไม่เข้าเกณฑ์ / ไม่ได้ทำงานเลย → 0
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
     // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน) แต่รวมทั้งเดือนต้องไม่เกินอัตราเดือน
@@ -288,7 +337,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
-      clippedDays: outOfPeriod.length,
+      clippedDays: outOfPeriod.length, sickDays, maxSickRun, suspendDays, workedDays, noWorkedDay,
       payDays, noPayDays, checkDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
@@ -301,7 +350,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
   const unknownCodes = [...unknown.values()]
     .map(u => ({ code:u.code, days:u.days, payDays:u.payDays, emps:u.emps.size }))
     .sort((a,b) => b.payDays - a.payDays || b.days - a.days);
-  return { summary, detail, hasManual, unknownCodes, clipped };
+  return { summary, detail, hasManual, unknownCodes, clipped, sickRuns, noWork, cols };
 }
 
 let lastResult = null;
@@ -597,8 +646,14 @@ function renderResults() {
   const clipSum = clip.reduce((s,c)=>s+c.days, 0);
   const granted = all.filter(r=>r.granted).length;
   const soloN   = all.filter(r=>r.solo).length;
+  const sickR = lastResult.sickRuns || [];
+  const noWk  = lastResult.noWork || [];
+  const xcols = lastResult.cols || {};
+  const suspendN = all.reduce((s,r)=>s+(r.suspendDays||0), 0);
   const warns = [];
-  if (soloN) warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
+  if (soloN)     warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
+  if (suspendN)  warns.push(`${suspendN} วันถูกพักงาน ไม่นับเป็นวันจ่าย`);
+  if (noWk.length) warns.push(`${noWk.length} คนไม่มีวันทำงานจริงเลยทั้งเดือน → ฿0`);
   if (notFound)    warns.push(`${notFound} คนไม่พบใน DB (ตรวจว่า Employee_ID ตรงกับ emp_code)`);
   if (ineligible)  warns.push(`${ineligible} คนไม่ใช่ระดับ O → ฿0`);
   if (granted)     warns.push(`${granted} คนระดับไม่ใช่ O แต่ได้ค่ากะ (HR กำหนดพิเศษ)`);
@@ -607,7 +662,13 @@ function renderResults() {
   el.innerHTML = `
   <div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
-      <div class="card-title" style="margin:0;">ผลการคำนวณ · ${all.length} คน-เดือน <span style="font-weight:400;color:var(--muted);font-size:12px;">(sheet "${esc(sheetName)}" ${rowCount} แถว)</span></div>
+      <div>
+        <div class="card-title" style="margin:0;">ผลการคำนวณ · ${all.length} คน-เดือน <span style="font-weight:400;color:var(--muted);font-size:12px;">(sheet "${esc(sheetName)}" ${rowCount} แถว)</span></div>
+        <div class="text-muted" style="font-size:11px;margin-top:2px;">
+          พักงาน: ${xcols.suspendCol ? `อ่านจากคอลัมน์ <b>${esc(xcols.suspendCol)}</b>` : "<b>ไม่พบคอลัมน์</b> — ยังไม่ได้ใช้กฎนี้"}
+          · ลาป่วย: ${xcols.leaveTypeCol ? `อ่านจากคอลัมน์ <b>${esc(xcols.leaveTypeCol)}</b>` : "<b>ไม่พบคอลัมน์ประเภทการลา</b> — ยังแยกลาป่วยจากลาอื่นไม่ได้"}
+        </div>
+      </div>
       <div style="font-size:13px;">รวมค่ากะ: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
     </div>
     ${cmp ? `<div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${badRows.length?"var(--gold-light)":"rgba(22,163,74,.08)"};">
@@ -627,6 +688,19 @@ function renderResults() {
       ${badRows.length ? `<button class="btn btn-sm ${onlyDiff?"btn-primary":"btn-secondary"}" onclick="window._saOnlyDiff()">${onlyDiff?"แสดงทั้งหมด":"แสดงเฉพาะที่ไม่ตรง"}</button>` : ""}
     </div>` : ""}
     ${warns.length ? `<div class="card-body" style="background:var(--gold-light);color:var(--gold-dark);font-size:12px;padding:8px 16px;">⚠️ ${warns.map(esc).join(" · ")}</div>` : ""}
+    ${sickR.length ? `<div class="card-body" style="background:#fff7ed;border-bottom:1px solid var(--border);padding:11px 16px;">
+      <div style="font-size:13px;color:#c2410c;font-weight:700;margin-bottom:2px;">🩺 ลาป่วยติดต่อกันตั้งแต่ ${SICK_RUN_WARN} วันขึ้นไป ${sickR.length} คน — ให้ตรวจก่อนจ่าย</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:7px;">
+        ระบบยังจ่ายให้ตามปกติ (ลาป่วยแบบได้เงินนับเป็นวันจ่าย) — ยกเว้นคนที่<b>ไม่มีวันทำงานจริงเลยทั้งเดือน</b> ระบบตัดเป็น ฿0 ให้แล้ว
+      </div>
+      <div class="table-wrap" style="max-height:140px;overflow:auto;">
+        <table class="data-table" style="font-size:11px;">
+          <thead><tr><th>รหัส</th><th>ชื่อ</th><th class="text-right">ป่วยติดกันสูงสุด</th><th class="text-right">ลาป่วยรวม</th></tr></thead>
+          <tbody>${sickR.map(c=>`<tr><td><b>${esc(c.empId)}</b></td><td>${esc(c.name||"-")}</td>
+            <td class="text-right"><b>${c.run}</b> วัน</td><td class="text-right">${c.sickDays} วัน</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>` : ""}
     ${clip.length ? `<div class="card-body" style="background:var(--gold-light);border-bottom:1px solid var(--border);padding:11px 16px;">
       <div style="font-size:13px;color:var(--gold-dark);font-weight:700;margin-bottom:2px;">✂️ ตัดวันนอกช่วงการจ้างออก ${clip.length} คน (รวม ${clipSum} วัน)</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:${clip.length?"7px":"0"};">
