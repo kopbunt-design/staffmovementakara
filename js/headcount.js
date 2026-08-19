@@ -8,6 +8,14 @@ const GRP = [
   { key:"O", label:"O", levels:["O1","O2","O3"] },
 ];
 function grp(jl){ const u=(jl||"").toUpperCase().trim(); for(const g of GRP) if(g.levels.includes(u)) return g.key; return ""; }
+
+// ต่างชาติ = สัญชาติที่ไม่ใช่ไทย (กฎเดียวกับ domicileGroup ใน workforce-overview.js — ต้องตรงกัน)
+// ไม่ระบุสัญชาติ ถือว่า "ไม่ใช่ต่างชาติ" เพื่อไม่ให้ข้อมูลที่ยังกรอกไม่ครบไปพองยอดต่างชาติ
+function isForeign(e){
+  const nat=String(e?.nationality??"").trim().toLowerCase();
+  return !!nat && nat!=="thai" && nat!=="ไทย";
+}
+const countF=list=>list.filter(isForeign).length;
 // ใช้กฎกลางจาก app.js (hcAtMonthEnd / sepYM) — ห้ามนิยามซ้ำในไฟล์นี้
 const hcAtMonth = ym => hcAtMonthEnd(allEmployees, ym);
 
@@ -57,6 +65,7 @@ function buildData(periodYMs) {
     // เก็บ "ตัวคน" ไว้ด้วย เพื่อให้ตารางแยกตามหน่วยงานใช้ชุดเดียวกันนี้
     // (ห้ามไปเขียนตรรกะคัดคนใหม่ ไม่งั้นยอดจะเพี้ยนจากตารางหลัก)
     rows.push({ym,month:MONTHS[mi],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG,future,
+               nF:countF(allNew),vF:countF(allVol),iF:countF(allInv),hF:countF(active),
                _new:allNew,_vol:allVol,_inv:allInv,_act:active});
   }
 
@@ -79,6 +88,7 @@ const ORG_LEVELS=[
   {key:"department",label:"Department"},
   {key:"section",   label:"Section"},
   {key:"team",      label:"Team"},
+  {key:"nationality",label:"สัญชาติ"},   // แยกตามสัญชาติตรง ๆ (Thai / Lao / Australian / Other)
 ];
 const UNSET="(ไม่ระบุ)";
 const orgOf=(e,field)=>String(e?.[field]??"").trim()||UNSET;
@@ -92,19 +102,23 @@ function buildBreakdown(rows,field){
   const U=new Map();
   const get=name=>{
     if(!U.has(name)) U.set(name,{name,nT:0,vT:0,iT:0,hT:0,hcSum:0,
-      nG:blank(),vG:blank(),iG:blank(),hG:blank()});
+      nF:0,vF:0,iF:0,hF:0,nG:blank(),vG:blank(),iG:blank(),hG:blank()});
     return U.get(name);
   };
   function blank(){ const o={}; GRP.forEach(g=>o[g.key]=0); return o; }
-  const add=(list,unitKey,grpKey)=>{
-    for(const e of list){ const u=get(orgOf(e,field)); u[unitKey]++; const k=grp(e.job_level); if(k) u[grpKey][k]++; }
+  const add=(list,unitKey,grpKey,forKey)=>{
+    for(const e of list){
+      const u=get(orgOf(e,field)); u[unitKey]++;
+      const k=grp(e.job_level); if(k) u[grpKey][k]++;
+      if(isForeign(e)) u[forKey]++;
+    }
   };
   for(const r of dataRows){
-    add(r._new,"nT","nG"); add(r._vol,"vT","vG"); add(r._inv,"iT","iG");
+    add(r._new,"nT","nG","nF"); add(r._vol,"vT","vG","vF"); add(r._inv,"iT","iG","iF");
     // headcount เฉลี่ย: นับหัวทุกเดือนแล้วหารจำนวนเดือนทีหลัง
     for(const e of r._act) get(orgOf(e,field)).hcSum++;
   }
-  add(last._act,"hT","hG");   // headcount ณ สิ้นเดือนล่าสุด
+  add(last._act,"hT","hG","hF");   // headcount ณ สิ้นเดือนล่าสุด
   const months=dataRows.length;
   const units=[...U.values()].map(u=>{
     const rT=u.vT+u.iT, avg=u.hcSum/months;
@@ -267,7 +281,7 @@ export function renderHeadcount() {
             <th colspan="${g.length+1}" class="sep">Involuntary Resigned</th>
             <th rowspan="2" class="sep">Total<br>Resigned</th>
             <th colspan="${g.length}" class="sep">Balance (In - Out)</th>
-            <th colspan="${g.length+1}" class="sep">Headcount (End of Month)</th>
+            <th colspan="${g.length+2}" class="sep">Headcount (End of Month)</th>
             <th rowspan="2" class="sep">Turnover<br>Rate<br><span style="font-weight:400;font-size:9px;">(Monthly)</span></th>
           </tr>
           <tr>
@@ -275,7 +289,7 @@ export function renderHeadcount() {
             <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
             <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
             ${g.map((x,i)=>`<th${i===0?' class="sep"':''}>${x.label}</th>`).join("")}
-            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
+            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}<th>ต่างชาติ</th>
           </tr>
         </thead>
         <tbody>
@@ -289,7 +303,7 @@ export function renderHeadcount() {
               <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
               <td class="sep">${d}</td>
               ${g.map((x,i)=>`<td${i===0?' class="sep"':''}>${d}</td>`).join("")}
-              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}
+              <td class="sep">${d}</td>${g.map(()=>`<td>${d}</td>`).join("")}<td>${d}</td>
               <td class="sep">${d}</td>
             </tr>`;
             }
@@ -302,6 +316,7 @@ export function renderHeadcount() {
               <td class="sep hc-red">${v(r.rT)}</td>
               ${g.map((x,i)=>`<td${i===0?' class="sep"':''}>${balC(r.bG[x.key])}</td>`).join("")}
               <td class="sep hc-hc" style="font-weight:700;">${r.hT}</td>${g.map(x=>`<td class="hc-hc">${v(r.hG[x.key])}</td>`).join("")}
+              <td class="hc-hc" ${r.hF?'style="color:#7c3aed;font-weight:700;"':""}>${v(r.hF)}</td>
               <td class="sep" style="font-weight:500;">${tr}</td>
             </tr>`;
           }).join("")}
@@ -312,7 +327,7 @@ export function renderHeadcount() {
             <td class="sep">${sum(r=>r.iT)}</td>${g.map(x=>`<td>${sum(r=>r.iG[x.key])}</td>`).join("")}
             <td class="sep" style="color:#fca5a5;">${sum(r=>r.rT)}</td>
             ${g.map((x,i)=>{const val=sum(r=>r.bG[x.key]);return `<td${i===0?' class="sep"':''} class="${val>0?'pos':val<0?'neg':''}">${val>0?"+":""}${val}</td>`;}).join("")}
-            <td class="sep"></td>${g.map(()=>`<td></td>`).join("")}
+            <td class="sep"></td>${g.map(()=>`<td></td>`).join("")}<td></td>
             <td class="sep">—</td>
           </tr>
         </tbody>
@@ -371,13 +386,13 @@ export function renderHeadcount() {
             <th colspan="2" class="sep">RESIGNED</th>
             <th rowspan="2" class="sep">TOTAL<br>RESIGNED</th>
             <th rowspan="2" class="sep">BALANCE<br>(IN - OUT)</th>
-            <th colspan="4" class="sep">HEADCOUNT (END OF MONTH)</th>
+            <th colspan="5" class="sep">HEADCOUNT (END OF MONTH)</th>
             <th rowspan="2" class="sep">TURNOVER<br>RATE</th>
           </tr>
           <tr>
             <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
             <th class="sep">Vol.</th><th>Invol.</th>
-            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
+            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}<th>ต่างชาติ</th>
           </tr>
         </thead>
         <tbody>
@@ -388,8 +403,9 @@ export function renderHeadcount() {
           <td class="sep ${u.rT?"hc-red":""}">${v(u.rT)}</td>
           <td class="sep">${balC(u.bT)}</td>
           <td class="sep hc-hc">${u.hT}</td>${g.map(x=>`<td class="hc-hc">${v(u.hG[x.key])}</td>`).join("")}
+          <td class="hc-hc" ${u.hF?'style="color:#7c3aed;font-weight:700;"':""}>${v(u.hF)}</td>
           <td class="sep">${u.tr}</td>
-        </tr>`).join(""):`<tr><td colspan="13" style="padding:32px;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}
+        </tr>`).join(""):`<tr><td colspan="14" style="padding:32px;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}
         </tbody>
         ${bd.units.length?`<tfoot><tr class="tot-row">
           <td class="cm">TOTAL</td>
@@ -398,6 +414,7 @@ export function renderHeadcount() {
           <td class="sep">${bd.units.reduce((s,u)=>s+u.rT,0)}</td>
           <td class="sep">${(x=>x>0?`<span class="pos">+${x}</span>`:x<0?`<span class="neg">${x}</span>`:"0")(bd.units.reduce((s,u)=>s+u.bT,0))}</td>
           <td class="sep">${bd.units.reduce((s,u)=>s+u.hT,0)}</td>${g.map(x=>`<td>${bd.units.reduce((s,u)=>s+u.hG[x.key],0)}</td>`).join("")}
+          <td>${bd.units.reduce((s,u)=>s+u.hF,0)}</td>
           <td class="sep">—</td>
         </tr></tfoot>`:""}
       </table>
@@ -450,21 +467,21 @@ function addBreakdownSheet(wb,rows,level,periodStr){
   const bd=buildBreakdown(rows,level.key);
   const ws=wb.addWorksheet(`By ${level.label}`,{views:[{showGridLines:false,state:"frozen",ySplit:4}]});
   const g=GRP;
-  ws.mergeCells(1,1,1,13);
+  ws.mergeCells(1,1,1,15);
   const t=ws.getCell(1,1);
   t.value=`HEADCOUNT BY ${level.label.toUpperCase()} — ${periodStr}`;
   t.font={bold:true,size:13,color:{argb:"FF1A365D"}}; t.alignment={horizontal:"left"};
-  ws.mergeCells(2,1,2,13);
+  ws.mergeCells(2,1,2,15);
   ws.getCell(2,1).value=`เข้า/ออก = รวมทั้งช่วง (${bd.months} เดือน) · Headcount = สิ้นเดือน ${bd.lastMonth||"-"}`;
   ws.getCell(2,1).font={size:9,color:{argb:"FF94A3B8"}};
 
-  const head1=[level.label,"NEW EMPLOYEE","","","","RESIGNED","","TOTAL RESIGNED","BALANCE","HEADCOUNT (END OF MONTH)","","","","TURNOVER RATE"];
-  const head2=["","Total",...g.map(x=>x.label),"Vol.","Invol.","","",  "Total",...g.map(x=>x.label),""];
+  const head1=[level.label,"NEW EMPLOYEE","","","","RESIGNED","","TOTAL RESIGNED","BALANCE","HEADCOUNT (END OF MONTH)","","","","","TURNOVER RATE"];
+  const head2=["","Total",...g.map(x=>x.label),"Vol.","Invol.","","",  "Total",...g.map(x=>x.label),"ต่างชาติ",""];
   ws.addRow([]); ws.addRow(head1); ws.addRow(head2);
   const r1=4,r2=5;
   ws.mergeCells(r1,2,r1,5); ws.mergeCells(r1,6,r1,7);
   ws.mergeCells(r1,8,r2,8); ws.mergeCells(r1,9,r2,9);
-  ws.mergeCells(r1,10,r1,13); ws.mergeCells(r1,14,r2,14); ws.mergeCells(r1,1,r2,1);
+  ws.mergeCells(r1,10,r1,14); ws.mergeCells(r1,15,r2,15); ws.mergeCells(r1,1,r2,1);
   for(const rr of [r1,r2]) ws.getRow(rr).eachCell(c=>{
     c.font={bold:true,size:9,color:{argb:"FFFFFFFF"}};
     c.fill={type:"pattern",pattern:"solid",fgColor:{argb:rr===r1?"FF1A365D":"FF234170"}};
@@ -473,20 +490,20 @@ function addBreakdownSheet(wb,rows,level,periodStr){
 
   for(const u of bd.units){
     const row=ws.addRow([u.name,u.nT,...g.map(x=>u.nG[x.key]),u.vT,u.iT,u.rT,u.bT,
-                         u.hT,...g.map(x=>u.hG[x.key]),u.tr]);
+                         u.hT,...g.map(x=>u.hG[x.key]),u.hF,u.tr]);
     row.eachCell((c,i)=>{ c.alignment={horizontal:i===1?"left":"center"}; c.font={size:10}; });
   }
   const sum=fn=>bd.units.reduce((s,u)=>s+fn(u),0);
   const tot=ws.addRow(["TOTAL",sum(u=>u.nT),...g.map(x=>sum(u=>u.nG[x.key])),
                        sum(u=>u.vT),sum(u=>u.iT),sum(u=>u.rT),sum(u=>u.bT),
-                       sum(u=>u.hT),...g.map(x=>sum(u=>u.hG[x.key])),"—"]);
+                       sum(u=>u.hT),...g.map(x=>sum(u=>u.hG[x.key])),sum(u=>u.hF),"—"]);
   tot.eachCell((c,i)=>{
     c.font={bold:true,size:10,color:{argb:"FFFFFFFF"}};
     c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A365D"}};
     c.alignment={horizontal:i===1?"left":"center"};
   });
   ws.getColumn(1).width=32;
-  for(let c=2;c<=14;c++) ws.getColumn(c).width=10;
+  for(let c=2;c<=15;c++) ws.getColumn(c).width=10;
   ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
 }
 
@@ -512,7 +529,7 @@ async function exportExcel(mode,num,brkYM,orgLevel){
   const borders={top:border,left:border,bottom:border,right:border};
   const thickL={top:border,left:{style:"medium",color:{argb:"FF94A3B8"}},bottom:border,right:border};
 
-  const totalCols=1+4+4+4+1+3+4+1; // 22 cols (A-V)
+  const totalCols=1+4+4+4+1+3+5+1; // 23 cols (A-W) — Headcount มีคอลัมน์ต่างชาติเพิ่ม
 
   // --- Title rows ---
   ws.mergeCells(1,1,1,totalCols);
@@ -552,8 +569,8 @@ async function exportExcel(mode,num,brkYM,orgLevel){
     {label:"Involuntary Resigned",start:10,end:13,color:navy},
     {label:"Total\nResigned",start:14,end:14,rowspan:true,color:{argb:"FF7F1D1D"}},
     {label:"Balance (In - Out)",start:15,end:17,color:navy},
-    {label:"Headcount (End of Month)",start:18,end:21,color:{argb:"FF14532D"}},
-    {label:"Turnover\nRate",start:22,end:22,rowspan:true,color:navy},
+    {label:"Headcount (End of Month)",start:18,end:22,color:{argb:"FF14532D"}},
+    {label:"Turnover\nRate",start:23,end:23,rowspan:true,color:navy},
   ];
 
   groups.forEach(gx=>{
@@ -566,7 +583,9 @@ async function exportExcel(mode,num,brkYM,orgLevel){
       ws.mergeCells(HR1,gx.start,HR1,gx.end);
       const cell=ws.getCell(HR1,gx.start);
       cell.value=gx.label;cell.font=hdrFont;cell.fill=hdrFill(c);cell.alignment=hdrAlign;cell.border=borders;
-      const subs=gx.start===15?g.map(x=>x.label):["Total",...g.map(x=>x.label)];
+      const subs=gx.start===15?g.map(x=>x.label)
+        :gx.start===18?["Total",...g.map(x=>x.label),"ต่างชาติ"]
+        :["Total",...g.map(x=>x.label)];
       subs.forEach((s,i)=>{
         const sc=ws.getCell(HR2,gx.start+i);
         sc.value=s;sc.font={name:"Calibri",size:8.5,bold:true,color:{argb:"FFCBD5E1"}};
@@ -590,7 +609,7 @@ async function exportExcel(mode,num,brkYM,orgLevel){
       r.iT,...g.map(x=>r.iG[x.key]),
       r.rT,
       ...g.map(x=>r.bG[x.key]),
-      r.hT,...g.map(x=>r.hG[x.key]),
+      r.hT,...g.map(x=>r.hG[x.key]),r.hF,
       r.hT?(r.rT/r.hT*100):0
     ];
 
@@ -605,7 +624,7 @@ async function exportExcel(mode,num,brkYM,orgLevel){
       }
       cell.border=borders;
       cell.alignment={horizontal:ci===0?"left":"center",vertical:"middle"};
-      const isHC=ci>=17&&ci<=20;
+      const isHC=ci>=17&&ci<=21;
       cell.fill=isHC?hcFill:bgFill;
 
       if(ci===0){
@@ -638,7 +657,7 @@ async function exportExcel(mode,num,brkYM,orgLevel){
     sum(r=>r.iT),...g.map(x=>sum(r=>r.iG[x.key])),
     sum(r=>r.rT),
     ...g.map(x=>sum(r=>r.bG[x.key])),
-    "","","","",""
+    "","","","","",""
   ];
   totVals.forEach((val,ci)=>{
     const cell=ws.getCell(totRow,ci+1);
@@ -785,7 +804,8 @@ async function exportExcel(mode,num,brkYM,orgLevel){
   for(let c=2;c<=totalCols;c++) ws.getColumn(c).width=9;
   ws.getColumn(14).width=10;
   ws.getColumn(17).width=10;
-  ws.getColumn(22).width=11;
+  ws.getColumn(22).width=10;
+  ws.getColumn(23).width=11;
 
   // --- Print setup ---
   ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,

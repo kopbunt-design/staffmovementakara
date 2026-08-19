@@ -39,16 +39,27 @@ const M = new Function(`
   const ORG_LEVELS = ${extractConst(HC,"ORG_LEVELS")};
   const UNSET = ${extractConst(HC,"UNSET")};
   const orgOf = ${extractConst(HC,"orgOf")};
+  ${extractFn(HC,"isForeign")}
   ${extractFn(HC,"buildBreakdown")}
   const lastDayOfMonth = ${extractConst(APP,"lastDayOfMonth")};
   ${extractFn(APP,"isActiveAtMonthEnd")}
   const sepYM = ${extractConst(APP,"sepYM")};
-  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM };
+  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM, isForeign };
 `)();
 
 // ---------- ระดับหน่วยงานครบ 4 ระดับ ----------
-eq(M.ORG_LEVELS.map(l=>l.key), ["division","department","section","team"],
-   "มีครบ 4 ระดับ เรียงจากใหญ่ไปเล็ก");
+eq(M.ORG_LEVELS.map(l=>l.key), ["division","department","section","team","nationality"],
+   "มีครบ 4 ระดับหน่วยงาน + แยกตามสัญชาติ");
+
+// ---------- จำแนกต่างชาติ (ต้องตรงกับกฎใน workforce-overview.js) ----------
+eq(M.isForeign({nationality:"Thai"}),       false, "Thai = ไม่ใช่ต่างชาติ");
+eq(M.isForeign({nationality:"ไทย"}),        false, "ไทย = ไม่ใช่ต่างชาติ");
+eq(M.isForeign({nationality:"  THAI  "}),   false, "ตัวพิมพ์ใหญ่/ช่องว่าง ก็ยังเป็นไทย");
+eq(M.isForeign({nationality:"Australian"}), true,  "Australian = ต่างชาติ");
+eq(M.isForeign({nationality:"Lao"}),        true,  "Lao = ต่างชาติ");
+eq(M.isForeign({nationality:""}),           false, "ไม่ระบุ -> ไม่นับเป็นต่างชาติ (กันข้อมูลไม่ครบพองยอด)");
+eq(M.isForeign({}),                         false, "ไม่มีฟิลด์ -> ไม่ใช่ต่างชาติ");
+eq(M.isForeign(null),                       false, "ไม่มีตัวพนักงาน -> ไม่พัง");
 
 // ---------- อ่านชื่อหน่วยงาน ----------
 eq(M.orgOf({division:"Operations"},"division"), "Operations", "อ่านชื่อหน่วยงานได้");
@@ -58,7 +69,8 @@ eq(M.orgOf({},"division"),             M.UNSET, "ไม่มีฟิลด์ 
 eq(M.orgOf(null,"division"),           M.UNSET, "ไม่มีตัวพนักงาน -> ไม่พัง");
 
 // ---------- ตัวช่วยสร้าง rows จำลอง (โครงเดียวกับที่ buildData คืนมา) ----------
-const e = (code, div, lvl) => ({emp_code:code, division:div, department:div+" Dept", job_level:lvl});
+const e = (code, div, lvl, nat) => ({emp_code:code, division:div, department:div+" Dept",
+                                    job_level:lvl, nationality:nat||"Thai"});
 const mkRow = (ym, month, o) => ({
   ym, month, future:false,
   _new:o.n||[], _vol:o.v||[], _inv:o.i||[], _act:o.a||[],
@@ -133,6 +145,32 @@ const X1=e("X1","","O1"); // ไม่ระบุหน่วยงาน
   const rows=[mkRow("2026-01","January",{a:[C1,C2,D1]})];
   const bd=M.buildBreakdown(rows,"division");
   eq(bd.units.map(u=>u.name), ["Zeta","Alpha"], "เรียงตามจำนวนคนมาก -> น้อย");
+}
+
+// ---------- นับต่างชาติในตารางแยก ----------
+{
+  const F1=e("F1","Mining","O1","Australian"), F2=e("F2","Mining","M1","Lao");
+  const T1=e("T1","Mining","O2","Thai"),       N1=e("N1","Mining","O2","");
+  const rows=[
+    mkRow("2026-01","January",{n:[F1], a:[F1,T1]}),
+    mkRow("2026-02","February",{n:[F2], v:[T1], a:[F1,F2,N1]}),
+  ];
+  const bd=M.buildBreakdown(rows,"division");
+  const u=bd.units[0];
+  eq(u.hF, 2, "headcount ต่างชาติ = 2 (คนไม่ระบุสัญชาติไม่ถูกนับ)");
+  eq(u.hT, 3, "headcount รวมยังเป็น 3");
+  eq(u.nF, 2, "เข้าใหม่ต่างชาติ 2 คน");
+  eq(u.vF, 0, "คนที่ลาออกเป็นคนไทย -> ต่างชาติที่ออก = 0");
+  eq(u.hF<=u.hT, true, "ต่างชาติต้องไม่เกินยอดรวมเสมอ");
+}
+{
+  // แยกตามสัญชาติโดยตรง
+  const rows=[mkRow("2026-01","January",{a:[
+    e("a","Mining","O1","Thai"), e("b","Mining","O1","Thai"), e("c","Ops","O1","Australian")]})];
+  const bd=M.buildBreakdown(rows,"nationality");
+  eq(bd.units.map(u=>[u.name,u.hT]), [["Thai",2],["Australian",1]], "จัดกลุ่มตามสัญชาติได้");
+  eq(bd.units.find(u=>u.name==="Thai").hF, 0,       "กลุ่ม Thai -> ต่างชาติ 0");
+  eq(bd.units.find(u=>u.name==="Australian").hF, 1, "กลุ่ม Australian -> ต่างชาติ 1");
 }
 
 // ---------- turnover รายหน่วยงาน ----------
