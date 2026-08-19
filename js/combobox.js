@@ -8,7 +8,7 @@
 // เพราะ .modal มี overflow-y:auto ถ้าวางข้างในจะโดนขอบ modal ตัดหายไปครึ่งรายการ
 import { esc } from "./app.js";
 
-const REG = new Map();   // id -> { items, onChange, placeholder }
+const REG = new Map();   // id -> { items, onChange, allowFree, onCreate }
 let panel = null;        // รายการลอย (ใช้ร่วมกันทุกช่อง มีได้ทีละอันเท่านั้น)
 let cur = null;          // { id, list, active }
 
@@ -67,8 +67,12 @@ function mark(text, terms){
 
 function paint(terms){
   const { hid } = els(cur.id);
-  panel.innerHTML = cur.list.length ? cur.list.map((it,i)=>`
-    <div data-i="${i}" class="cbx-item${i===cur.active?" active":""}${String(it.value)===String(hid.value)?" sel":""}">
+  panel.innerHTML = cur.list.length ? cur.list.map((it,i)=>it.__create
+    ? `<div data-i="${i}" class="cbx-item cbx-create${i===cur.active?" active":""}">
+         <div class="cbx-item-main">➕ เพิ่ม “${esc(it.label)}” เข้า Master Data</div>
+         <div class="cbx-item-sub">บันทึกไว้ใช้ครั้งต่อไป · แก้ชื่อ/รหัสภายหลังได้ที่หน้า Settings</div>
+       </div>`
+    : `<div data-i="${i}" class="cbx-item${i===cur.active?" active":""}${String(it.value)===String(hid.value)?" sel":""}">
       <div class="cbx-item-main">${mark(it.label, terms)}</div>
       ${it.sub?`<div class="cbx-item-sub">${mark(it.sub, terms)}</div>`:""}
     </div>`).join("")
@@ -81,7 +85,10 @@ function search(id, keepAll=false){
   const reg = REG.get(id); if(!reg) return;
   const raw = keepAll ? "" : txt.value.trim();
   const terms = raw ? raw.toLowerCase().split(/\s+/).filter(Boolean) : [];
-  const list = terms.length ? reg.items.filter(it=>terms.every(t=>textOf(it).includes(t))) : reg.items;
+  const list = (terms.length ? reg.items.filter(it=>terms.every(t=>textOf(it).includes(t))) : reg.items).slice();
+  // พิมพ์ค่าที่ยังไม่มีในลิสต์ -> เสนอให้เพิ่มเข้า master data ได้เลย ไม่ต้องออกไปหน้าอื่น
+  if(reg.onCreate && raw && !reg.items.some(it=>norm(it.label)===norm(raw)))
+    list.push({ __create:true, value:raw, label:raw });
   cur = { id, list, active: list.length ? 0 : -1 };
   ensurePanel();
   place();
@@ -89,15 +96,26 @@ function search(id, keepAll=false){
   els(id).box?.classList.add("open");
 }
 
-function choose(i){
+async function choose(i){
   if(!cur) return;
   const it = cur.list[i]; if(!it) return;
-  const { hid, txt } = els(cur.id);
-  const reg = REG.get(cur.id);
+  const id = cur.id;
+  const { hid, txt } = els(id);
+  const reg = REG.get(id);
+  close();
+  if(it.__create){
+    // ให้ผู้เรียกไปเพิ่มลง DB แล้วคืน item กลับมา · คืน null = เพิ่มไม่สำเร็จ ไม่ต้องเปลี่ยนค่า
+    const made = await reg.onCreate(it.label);
+    if(!made){ restore(id); return; }
+    reg.items = [...reg.items, made];
+    hid.value = made.value; txt.value = made.label;
+    syncClear(id);
+    reg.onChange?.(made.value, made);
+    return;
+  }
   hid.value = it.value;
   txt.value = it.label;
-  syncClear(cur.id);
-  close();
+  syncClear(id);
   reg?.onChange?.(it.value, it);
 }
 
@@ -112,7 +130,9 @@ function restore(id){
   const { hid, txt } = els(id);
   const reg = REG.get(id); if(!hid||!txt||!reg) return;
   const sel = reg.items.find(it=>String(it.value)===String(hid.value));
-  txt.value = sel ? sel.label : "";
+  if(sel){ txt.value = sel.label; }
+  else if(reg.allowFree){ hid.value = txt.value.trim(); }  // พิมพ์เองได้ ไม่ต้องมีในลิสต์
+  else { txt.value = ""; }
   syncClear(id);
 }
 
@@ -136,8 +156,9 @@ export function comboHTML(id, items, value="", placeholder="พิมพ์เ�
 }
 
 // ต่อสายหลังใส่ HTML ลง DOM แล้ว
-export function bindCombo(id, items, onChange){
-  REG.set(id, { items, onChange });
+// opts.allowFree = พิมพ์ค่าที่ไม่มีในลิสต์ได้ · opts.onCreate = async text => item|null (เพิ่มเข้า master)
+export function bindCombo(id, items, onChange, opts = {}){
+  REG.set(id, { items, onChange, allowFree: !!opts.allowFree, onCreate: opts.onCreate || null });
   const { txt, box } = els(id);
   if(!txt || !box) return;
 
@@ -179,7 +200,7 @@ export function bindCombo(id, items, onChange){
 // เปลี่ยนรายการตัวเลือก (ใช้ตอน cascade เช่น เลือก Division แล้ว Department ต้องเปลี่ยนตาม)
 export function setComboItems(id, items, value=""){
   const reg = REG.get(id);
-  REG.set(id, { items, onChange: reg?.onChange });
+  REG.set(id, { ...reg, items });
   const { hid } = els(id);
   if(hid) hid.value = items.some(it=>String(it.value)===String(value)) ? value : "";
   restore(id);

@@ -392,3 +392,5 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .cbx-item mark{background:#fef08a;color:inherit;border-radius:3px;padding:0 1px;}
 .cbx-item.active mark{background:#fde047;}
 .cbx-empty{padding:14px 12px;text-align:center;color:var(--muted);font-size:12.5px;}
+.cbx-item.cbx-create{border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;}
+.cbx-item.cbx-create .cbx-item-main{color:var(--blue);font-weight:600;}

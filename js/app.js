@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-config.js";
 import { logout } from "./auth.js";
-import { loadMasterData } from "./masterdata-admin.js";
+import { loadMasterData, masterDepartments, masterPositions } from "./masterdata-admin.js";
+import { comboHTML, bindCombo, toItems } from "./combobox.js";
 
 // ===== SHARED STATE =====
 export let currentUser = null;
@@ -865,8 +866,27 @@ export function renderMovements() {
   };
 }
 
+// เพิ่มตำแหน่งใหม่เข้า master_positions แล้วคืน item ให้ combobox เลือกต่อทันที
+// รหัสตั้งให้อัตโนมัติเพราะคอลัมน์ code เป็น unique not null — เปลี่ยนเป็นรหัสจริงได้ที่หน้า Settings
+async function addMasterPosition(name){
+  const clean = String(name||"").trim();
+  if(!clean) return null;
+  const code = `POS-${Date.now().toString(36).toUpperCase()}`;
+  const { error } = await supabase.from("master_positions").insert({ code, name: clean, sort_order: 999 });
+  if(error){
+    toast(error.message.includes("row-level security")
+      ? "ไม่มีสิทธิ์เพิ่มตำแหน่ง (เฉพาะ Admin)" : "เพิ่มตำแหน่งไม่สำเร็จ: "+error.message, "error");
+    return null;
+  }
+  masterPositions.push({ code, name: clean, sort_order: 999, is_active: true });
+  toast(`เพิ่มตำแหน่ง "${clean}" เข้า Master Data แล้ว (รหัส ${code}) — แก้รหัส/ชื่อไทยได้ที่หน้า Settings`, "success");
+  return { value: clean, label: clean };
+}
+
 function openMovModal(entry=null) {
   const isEdit = !!entry?.id;
+  // to_dept เก็บรวมเป็น "แผนก / ตำแหน่ง" มาแต่เดิม -> แยกกลับมาใส่ 2 ช่อง
+  const [toDept="", toPos=""] = String(entry?.to_dept||"").split(" / ");
   // รายชื่อสำหรับช่องค้นหา — เตรียมข้อความที่ใช้ค้นไว้ล่วงหน้า จะได้กรองเร็วแม้พนักงานหลายร้อยคน
   const empPick = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>{
     const nameTh=((e.firstname_th||"")+" "+(e.lastname_th||"")).trim();
@@ -901,7 +921,13 @@ function openMovModal(entry=null) {
           </div>
           <div class="form-group"><label class="form-label">วันที่มีผล</label><input id="mv_date" type="date" class="form-control" value="${esc(entry?.date||"")}"></div>
           <div class="form-group"><label class="form-label">แผนก/ตำแหน่งเดิม</label><input id="mv_from" class="form-control" value="${esc(entry?.from_dept||"")}"></div>
-          <div class="form-group"><label class="form-label">แผนก/ตำแหน่งใหม่</label><input id="mv_to" class="form-control" value="${esc(entry?.to_dept||"")}"></div>
+          <div class="form-group"><label class="form-label">แผนกใหม่</label>
+            ${comboHTML("mv_toDept", toItems(masterDepartments), toDept, "พิมพ์ค้นหาแผนก…")}
+          </div>
+          <div class="form-group"><label class="form-label">ตำแหน่งใหม่
+            ${userRole==="admin"?`<span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่มีในลิสต์ = พิมพ์แล้วกดเพิ่มได้เลย)</span>`:""}</label>
+            ${comboHTML("mv_toPos", toItems(masterPositions), toPos, "พิมพ์ค้นหาตำแหน่ง…")}
+          </div>
           <div class="form-group col-span-2"><label class="form-label">เหตุผล / หมายเหตุ</label><textarea id="mv_reason" class="form-control">${esc(entry?.reason||"")}</textarea></div>
           ${userRole==="hr"||userRole==="admin"?`
           <div class="form-group"><label class="form-label">เงินเดือน/อัตราใหม่ (บาท)</label><input id="mv_sal" type="number" class="form-control" value="${entry?.salary||""}"></div>
@@ -926,6 +952,14 @@ function openMovModal(entry=null) {
       </div>
     </div>
   </div>`;
+
+  // แผนก/ตำแหน่งใหม่ — เลือกจากลิสต์ได้ และพิมพ์เองก็ได้ (คอลัมน์นี้เป็นข้อความอิสระอยู่แล้ว)
+  bindCombo("mv_toDept", toItems(masterDepartments), null, { allowFree:true });
+  bindCombo("mv_toPos",  toItems(masterPositions),   null, {
+    allowFree: true,
+    // เฉพาะ admin เท่านั้นที่เขียน master data ได้ (RLS) — คนอื่นพิมพ์เองได้แต่ไม่ขึ้นปุ่มเพิ่ม
+    onCreate: userRole==="admin" ? addMasterPosition : null,
+  });
 
   // ===== ช่องค้นหาพนักงาน (พิมพ์แล้วเลือกจากรายการ) =====
   // เดิมเป็น <select> ยาวหลายร้อยรายการ ซึ่งพิมพ์ค้นหาไม่ได้จริง ต้องไล่คลิกทีละตัว
@@ -999,7 +1033,8 @@ function openMovModal(entry=null) {
 
     const data = {
       emp_code: empCode, name, type,
-      date: g("mv_date")||null, from_dept: g("mv_from"), to_dept: g("mv_to"),
+      date: g("mv_date")||null, from_dept: g("mv_from"),
+      to_dept: [g("mv_toDept"), g("mv_toPos")].filter(Boolean).join(" / "),
       reason: g("mv_reason"),
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
