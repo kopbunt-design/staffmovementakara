@@ -95,5 +95,18 @@ const MOV_TH = new Function(`return ${extractConst(APP,"MOV_TH")};`)();
 ["New Hire","Resignation","Termination","Retirement","Transfer","Promotion","Demotion","Secondment"]
   .forEach(t => eq(typeof MOV_TH[t], "string", `MOV_TH มีป้ายไทยของ ${t}`));
 
+// ---- แผนก/ตำแหน่งใหม่: รวมเป็นค่าเดียวลงคอลัมน์ to_dept ----
+const combineToDept = new Function(`${extractFn(APP,"combineToDept")}; return combineToDept;`)();
+const FROM = "Supply / Senior Purchasing Supervisor";
+eq(combineToDept("Mining","Mining Engineer",FROM), "Mining / Mining Engineer", "ย้ายทั้งแผนกและตำแหน่ง");
+eq(combineToDept("","Purchasing Manager",FROM),    "Supply / Purchasing Manager",
+   "ปรับแค่ตำแหน่ง -> เติมแผนกเดิมให้เอง");
+eq(combineToDept("Mining","",FROM),                "Mining", "ย้ายแผนกอย่างเดียว");
+eq(combineToDept("","",FROM),                      "",       "ไม่กรอกอะไรเลย -> ว่าง ไม่ไปหยิบแผนกเดิมมั่ว");
+eq(combineToDept("","Manager",""),                 "Manager","ไม่มีแผนกเดิม -> ใส่แค่ตำแหน่ง");
+eq(combineToDept("  Mining  ","  Engineer  ",FROM),"Mining / Engineer", "ตัดช่องว่างหัวท้าย");
+eq(combineToDept("","Manager","Supply"),           "Supply / Manager", "แผนกเดิมไม่มี ' / ' ก็ใช้ได้");
+eq(combineToDept(null,null,null),                  "",       "ค่า null -> ว่าง ไม่พัง");
+
 console.log(`\n${P} passed, ${F} failed`);
 if(F > 0) throw new Error(F + " test(s) failed");

@@ -866,6 +866,15 @@ export function renderMovements() {
   };
 }
 
+// รวม "แผนกใหม่ + ตำแหน่งใหม่" เป็นค่าเดียวสำหรับคอลัมน์ to_dept (รูปแบบเดิม "แผนก / ตำแหน่ง")
+// ปรับแค่ตำแหน่งโดยไม่ย้ายแผนก = เว้นช่องแผนกว่างได้ ระบบเติมแผนกเดิมให้เอง
+// (ถ้าไม่เติม จะได้ประวัติเป็นชื่อตำแหน่งลอย ๆ อ่านย้อนหลังไม่รู้ว่าอยู่แผนกไหน)
+export function combineToDept(toDept, toPos, fromDept){
+  const dept = String(toDept||"").trim() || (String(toPos||"").trim()
+    ? String(fromDept||"").split(" / ")[0].trim() : "");
+  return [dept, String(toPos||"").trim()].filter(Boolean).join(" / ");
+}
+
 // เพิ่มตำแหน่งใหม่เข้า master_positions แล้วคืน item ให้ combobox เลือกต่อทันที
 // รหัสตั้งให้อัตโนมัติเพราะคอลัมน์ code เป็น unique not null — เปลี่ยนเป็นรหัสจริงได้ที่หน้า Settings
 async function addMasterPosition(name){
@@ -921,7 +930,7 @@ function openMovModal(entry=null) {
           </div>
           <div class="form-group"><label class="form-label">วันที่มีผล</label><input id="mv_date" type="date" class="form-control" value="${esc(entry?.date||"")}"></div>
           <div class="form-group"><label class="form-label">แผนก/ตำแหน่งเดิม</label><input id="mv_from" class="form-control" value="${esc(entry?.from_dept||"")}"></div>
-          <div class="form-group"><label class="form-label">แผนกใหม่</label>
+          <div class="form-group"><label class="form-label">แผนกใหม่ <span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่ย้ายแผนก = เว้นว่าง)</span></label>
             ${comboHTML("mv_toDept", toItems(masterDepartments), toDept, "พิมพ์ค้นหาแผนก…")}
           </div>
           <div class="form-group"><label class="form-label">ตำแหน่งใหม่
@@ -1034,7 +1043,7 @@ function openMovModal(entry=null) {
     const data = {
       emp_code: empCode, name, type,
       date: g("mv_date")||null, from_dept: g("mv_from"),
-      to_dept: [g("mv_toDept"), g("mv_toPos")].filter(Boolean).join(" / "),
+      to_dept: combineToDept(g("mv_toDept"), g("mv_toPos"), g("mv_from")),
       reason: g("mv_reason"),
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
