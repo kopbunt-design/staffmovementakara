@@ -54,7 +54,10 @@ function buildData(periodYMs) {
     const hG={}; GRP.forEach(g=>{hG[g.key]=cnt(active,g.key);});
 
     const future=ym>curYM;
-    rows.push({ym,month:MONTHS[mi],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG,future});
+    // เก็บ "ตัวคน" ไว้ด้วย เพื่อให้ตารางแยกตามหน่วยงานใช้ชุดเดียวกันนี้
+    // (ห้ามไปเขียนตรรกะคัดคนใหม่ ไม่งั้นยอดจะเพี้ยนจากตารางหลัก)
+    rows.push({ym,month:MONTHS[mi],nT,nG,rT,vT,vG,iT,iG,bG,hT,hG,future,
+               _new:allNew,_vol:allVol,_inv:allInv,_act:active});
   }
 
   // เฉลี่ยถึงเดือนปัจจุบันเท่านั้น (ไม่รวมเดือนอนาคต)
@@ -68,6 +71,49 @@ function buildData(periodYMs) {
   const netBal=sN-sR;
   const avgTR=avg&&mCount?((sR/mCount/avg)*100).toFixed(2)+"%":"0.00%";
   return {rows,avg,mCount,sN,sR,sV,sI,netBal,avgTR,trTotal:pct(sR),trVol:pct(sV),trInvol:pct(sI)};
+}
+
+// ===== แยกตามหน่วยงาน (Division / Department / Section / Team) =====
+const ORG_LEVELS=[
+  {key:"division",  label:"Division"},
+  {key:"department",label:"Department"},
+  {key:"section",   label:"Section"},
+  {key:"team",      label:"Team"},
+];
+const UNSET="(ไม่ระบุ)";
+const orgOf=(e,field)=>String(e?.[field]??"").trim()||UNSET;
+
+// สรุปทั้งช่วงเวลาแยกตามหน่วยงาน — ใช้รายชื่อชุดเดียวกับตารางหลัก ยอดรวมจึงตรงกันเสมอ
+// headcount = เดือนล่าสุดที่มีข้อมูล · turnover = คนออกทั้งช่วง ÷ headcount เฉลี่ยของหน่วยงานนั้น
+function buildBreakdown(rows,field){
+  const dataRows=rows.filter(r=>!r.future);
+  if(!dataRows.length) return {units:[],lastYM:null,months:0};
+  const last=dataRows[dataRows.length-1];
+  const U=new Map();
+  const get=name=>{
+    if(!U.has(name)) U.set(name,{name,nT:0,vT:0,iT:0,hT:0,hcSum:0,
+      nG:blank(),vG:blank(),iG:blank(),hG:blank()});
+    return U.get(name);
+  };
+  function blank(){ const o={}; GRP.forEach(g=>o[g.key]=0); return o; }
+  const add=(list,unitKey,grpKey)=>{
+    for(const e of list){ const u=get(orgOf(e,field)); u[unitKey]++; const k=grp(e.job_level); if(k) u[grpKey][k]++; }
+  };
+  for(const r of dataRows){
+    add(r._new,"nT","nG"); add(r._vol,"vT","vG"); add(r._inv,"iT","iG");
+    // headcount เฉลี่ย: นับหัวทุกเดือนแล้วหารจำนวนเดือนทีหลัง
+    for(const e of r._act) get(orgOf(e,field)).hcSum++;
+  }
+  add(last._act,"hT","hG");   // headcount ณ สิ้นเดือนล่าสุด
+  const months=dataRows.length;
+  const units=[...U.values()].map(u=>{
+    const rT=u.vT+u.iT, avg=u.hcSum/months;
+    return {...u,rT,bT:u.nT-rT,avgHC:avg,
+            tr:avg?((rT/avg)*100).toFixed(2)+"%":"0.00%"};
+  });
+  // หน่วยงานที่ยังมีคนอยู่ขึ้นก่อน เรียงตามจำนวนคนมาก→น้อย · "(ไม่ระบุ)" ไว้ท้ายสุดเสมอ
+  units.sort((a,b)=>(a.name===UNSET)-(b.name===UNSET)||b.hT-a.hT||a.name.localeCompare(b.name,"th"));
+  return {units,lastYM:last.ym,lastMonth:last.month,months};
 }
 
 const v=x=>x===0?"0":x;
@@ -138,6 +184,7 @@ export function renderHeadcount() {
   let mode="calendar"; // "calendar" or "fy"
   let selNum=curY;
   let brkYM=null; // เดือนที่เลือกดูใน Turnover Rate Breakdown (null = เดือนล่าสุดที่มีข้อมูล)
+  let orgLevel="division"; // ระดับหน่วยงานที่เลือกดูในตาราง "แยกตามหน่วยงาน"
 
   function getOptions(){
     if(mode==="calendar"){
@@ -178,6 +225,8 @@ export function renderHeadcount() {
       {label:"Involuntary Termination",th:"ให้ออก",n:br.iT,ytd:ytdI,color:"#7c3aed"},
       {label:"Total Leavers",th:"รวม",n:br.rT,ytd:ytdR,color:"#dc2626",bold:true},
     ]:[];
+
+    const bd=buildBreakdown(rows,orgLevel);
 
     pg.innerHTML=`${CSS}<div class="hc-wrap">
     <div class="page-header" style="margin-bottom:20px;">
@@ -303,6 +352,58 @@ export function renderHeadcount() {
       </div>`:`<div style="padding:32px;text-align:center;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</div>`}
     </div>
 
+    <div class="hc-tbl-wrap" style="margin-top:20px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid #e2e8f0;">
+        <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a365d;">แยกตามหน่วยงาน</div>
+        <div class="hc-mode-sel">
+          ${ORG_LEVELS.map(l=>`<button class="hc-mode-btn ${orgLevel===l.key?"active":""}" onclick="window._hcOrg('${l.key}')">${l.label}</button>`).join("")}
+        </div>
+        <div style="margin-left:auto;font-size:11px;color:#94a3b8;">
+          เข้า/ออก = รวมทั้งช่วง (${bd.months} เดือน) · Headcount = สิ้นเดือน ${bd.lastMonth||"-"}
+        </div>
+      </div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
+      <table class="hc-tbl">
+        <thead>
+          <tr>
+            <th rowspan="2" class="cm" style="background:#1a365d;text-align:left;">${ORG_LEVELS.find(l=>l.key===orgLevel).label}</th>
+            <th colspan="4" class="sep">NEW EMPLOYEE</th>
+            <th colspan="2" class="sep">RESIGNED</th>
+            <th rowspan="2" class="sep">TOTAL<br>RESIGNED</th>
+            <th rowspan="2" class="sep">BALANCE<br>(IN - OUT)</th>
+            <th colspan="4" class="sep">HEADCOUNT (END OF MONTH)</th>
+            <th rowspan="2" class="sep">TURNOVER<br>RATE</th>
+          </tr>
+          <tr>
+            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
+            <th class="sep">Vol.</th><th>Invol.</th>
+            <th class="sep">Total</th>${g.map(x=>`<th>${x.label}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+        ${bd.units.length?bd.units.map(u=>`<tr>
+          <td class="cm" style="font-weight:600;${u.name===UNSET?"color:#94a3b8;font-style:italic;":""}">${esc(u.name)}</td>
+          <td class="sep ${u.nT?"hc-grn":""}">${v(u.nT)}</td>${g.map(x=>`<td>${v(u.nG[x.key])}</td>`).join("")}
+          <td class="sep">${v(u.vT)}</td><td>${v(u.iT)}</td>
+          <td class="sep ${u.rT?"hc-red":""}">${v(u.rT)}</td>
+          <td class="sep">${balC(u.bT)}</td>
+          <td class="sep hc-hc">${u.hT}</td>${g.map(x=>`<td class="hc-hc">${v(u.hG[x.key])}</td>`).join("")}
+          <td class="sep">${u.tr}</td>
+        </tr>`).join(""):`<tr><td colspan="13" style="padding:32px;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}
+        </tbody>
+        ${bd.units.length?`<tfoot><tr class="tot-row">
+          <td class="cm">TOTAL</td>
+          <td class="sep">${bd.units.reduce((s,u)=>s+u.nT,0)}</td>${g.map(x=>`<td>${bd.units.reduce((s,u)=>s+u.nG[x.key],0)}</td>`).join("")}
+          <td class="sep">${bd.units.reduce((s,u)=>s+u.vT,0)}</td><td>${bd.units.reduce((s,u)=>s+u.iT,0)}</td>
+          <td class="sep">${bd.units.reduce((s,u)=>s+u.rT,0)}</td>
+          <td class="sep">${(x=>x>0?`<span class="pos">+${x}</span>`:x<0?`<span class="neg">${x}</span>`:"0")(bd.units.reduce((s,u)=>s+u.bT,0))}</td>
+          <td class="sep">${bd.units.reduce((s,u)=>s+u.hT,0)}</td>${g.map(x=>`<td>${bd.units.reduce((s,u)=>s+u.hG[x.key],0)}</td>`).join("")}
+          <td class="sep">—</td>
+        </tr></tfoot>`:""}
+      </table>
+      </div>
+    </div>
+
     <div class="hc-bottom">
       <div class="hc-bcard" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
         <div style="width:64px;height:64px;border-radius:50%;background:#dbeafe;color:#2563eb;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">${ICON_HC}</div>
@@ -340,10 +441,56 @@ export function renderHeadcount() {
   window._hcMode=m=>{ mode=m; const opts=getOptions(); selNum=opts[0].val; render(); };
   window._hcNum=n=>{ selNum=n; brkYM=null; render(); };
   window._hcBrk=v=>{ brkYM=v; render(); };
-  window._exportHC=()=>exportExcel(mode,selNum,brkYM).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
+  window._hcOrg=k=>{ orgLevel=k; render(); };
+  window._exportHC=()=>exportExcel(mode,selNum,brkYM,orgLevel).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
 }
 
-async function exportExcel(mode,num,brkYM){
+// เขียนชีต "แยกตามหน่วยงาน" 1 ชีตต่อ 1 ระดับ (Division/Department/Section/Team)
+function addBreakdownSheet(wb,rows,level,periodStr){
+  const bd=buildBreakdown(rows,level.key);
+  const ws=wb.addWorksheet(`By ${level.label}`,{views:[{showGridLines:false,state:"frozen",ySplit:4}]});
+  const g=GRP;
+  ws.mergeCells(1,1,1,13);
+  const t=ws.getCell(1,1);
+  t.value=`HEADCOUNT BY ${level.label.toUpperCase()} — ${periodStr}`;
+  t.font={bold:true,size:13,color:{argb:"FF1A365D"}}; t.alignment={horizontal:"left"};
+  ws.mergeCells(2,1,2,13);
+  ws.getCell(2,1).value=`เข้า/ออก = รวมทั้งช่วง (${bd.months} เดือน) · Headcount = สิ้นเดือน ${bd.lastMonth||"-"}`;
+  ws.getCell(2,1).font={size:9,color:{argb:"FF94A3B8"}};
+
+  const head1=[level.label,"NEW EMPLOYEE","","","","RESIGNED","","TOTAL RESIGNED","BALANCE","HEADCOUNT (END OF MONTH)","","","","TURNOVER RATE"];
+  const head2=["","Total",...g.map(x=>x.label),"Vol.","Invol.","","",  "Total",...g.map(x=>x.label),""];
+  ws.addRow([]); ws.addRow(head1); ws.addRow(head2);
+  const r1=4,r2=5;
+  ws.mergeCells(r1,2,r1,5); ws.mergeCells(r1,6,r1,7);
+  ws.mergeCells(r1,8,r2,8); ws.mergeCells(r1,9,r2,9);
+  ws.mergeCells(r1,10,r1,13); ws.mergeCells(r1,14,r2,14); ws.mergeCells(r1,1,r2,1);
+  for(const rr of [r1,r2]) ws.getRow(rr).eachCell(c=>{
+    c.font={bold:true,size:9,color:{argb:"FFFFFFFF"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:rr===r1?"FF1A365D":"FF234170"}};
+    c.alignment={horizontal:"center",vertical:"middle",wrapText:true};
+  });
+
+  for(const u of bd.units){
+    const row=ws.addRow([u.name,u.nT,...g.map(x=>u.nG[x.key]),u.vT,u.iT,u.rT,u.bT,
+                         u.hT,...g.map(x=>u.hG[x.key]),u.tr]);
+    row.eachCell((c,i)=>{ c.alignment={horizontal:i===1?"left":"center"}; c.font={size:10}; });
+  }
+  const sum=fn=>bd.units.reduce((s,u)=>s+fn(u),0);
+  const tot=ws.addRow(["TOTAL",sum(u=>u.nT),...g.map(x=>sum(u=>u.nG[x.key])),
+                       sum(u=>u.vT),sum(u=>u.iT),sum(u=>u.rT),sum(u=>u.bT),
+                       sum(u=>u.hT),...g.map(x=>sum(u=>u.hG[x.key])),"—"]);
+  tot.eachCell((c,i)=>{
+    c.font={bold:true,size:10,color:{argb:"FFFFFFFF"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A365D"}};
+    c.alignment={horizontal:i===1?"left":"center"};
+  });
+  ws.getColumn(1).width=32;
+  for(let c=2;c<=14;c++) ws.getColumn(c).width=10;
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+}
+
+async function exportExcel(mode,num,brkYM,orgLevel){
   if(!window.ExcelJS){toast("กรุณารอโหลด library","error");return;}
   const periodYMs=buildPeriodMonths(mode,num);
   const d=buildData(periodYMs);
@@ -643,6 +790,10 @@ async function exportExcel(mode,num,brkYM){
   // --- Print setup ---
   ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,
     paperSize:9,margins:{left:.4,right:.4,top:.5,bottom:.5,header:.3,footer:.3}};
+
+  // --- ชีตแยกตามหน่วยงาน ครบทั้ง 4 ระดับ (ระดับที่เปิดดูอยู่ขึ้นก่อน) ---
+  const levels=[...ORG_LEVELS].sort((a,b)=>(b.key===orgLevel)-(a.key===orgLevel));
+  for(const lv of levels) addBreakdownSheet(wb,rows,lv,periodStr);
 
   // --- Generate & download ---
   const buf=await wb.xlsx.writeBuffer();
