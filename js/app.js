@@ -852,7 +852,16 @@ export function renderMovements() {
 
 function openMovModal(entry=null) {
   const isEdit = !!entry?.id;
-  const empOpts = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>`<option value="${esc(e.emp_code)}" data-name="${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}" data-dept="${esc(e.department||"")}" data-pos="${esc(e.position||"")}" data-sec="${esc(e.section||"")}">${esc(e.emp_code)} - ${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</option>`).join("");
+  // รายชื่อสำหรับช่องค้นหา — เตรียมข้อความที่ใช้ค้นไว้ล่วงหน้า จะได้กรองเร็วแม้พนักงานหลายร้อยคน
+  const empPick = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>{
+    const nameTh=((e.firstname_th||"")+" "+(e.lastname_th||"")).trim();
+    const nameEn=((e.firstname_en||"")+" "+(e.lastname_en||"")).trim();
+    return {
+      code:e.emp_code||"", name:nameTh||nameEn,
+      dept:e.department||"", pos:e.position||"", sec:e.section||"",
+      q:[e.emp_code,nameTh,nameEn,e.department,e.section,e.position].filter(Boolean).join(" ").toLowerCase(),
+    };
+  });
 
   document.getElementById("modalPortal").innerHTML = `<div class="modal-overlay" id="movModal">
     <div class="modal">
@@ -863,10 +872,12 @@ function openMovModal(entry=null) {
       <div class="modal-body">
         <div class="form-grid">
           <div class="form-group col-span-2">
-            <label class="form-label">เลือกพนักงาน</label>
-            <select class="form-control" onchange="if(this.value){document.getElementById('mv_code').value=this.value;const o=this.options[this.selectedIndex];document.getElementById('mv_name').value=o.dataset.name||'';const from=[o.dataset.dept,o.dataset.pos].filter(Boolean).join(' / ');document.getElementById('mv_from').value=from;}">
-              <option value="">-- เลือกจากรายชื่อพนักงาน --</option>${empOpts}
-            </select>
+            <label class="form-label">เลือกพนักงาน <span style="font-weight:400;color:var(--muted);">(พิมพ์รหัส ชื่อ หรือแผนก แล้วเลือกจากรายการ)</span></label>
+            <div style="position:relative;">
+              <input id="mv_search" class="form-control" autocomplete="off" placeholder="🔍 พิมพ์ค้นหา เช่น AKR23 หรือ สมชาย หรือ Mining"
+                     value="${esc(entry?.emp_code?`${entry.emp_code} - ${entry.name||""}`:"")}">
+              <div id="mv_sugg" style="display:none;position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:2px;background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;"></div>
+            </div>
           </div>
           <div class="form-group"><label class="form-label">รหัสพนักงาน</label><input id="mv_code" class="form-control" value="${esc(entry?.emp_code||"")}" placeholder="AKR001"></div>
           <div class="form-group"><label class="form-label">ชื่อพนักงาน *</label><input id="mv_name" class="form-control" value="${esc(entry?.name||"")}" required></div>
@@ -900,6 +911,61 @@ function openMovModal(entry=null) {
       </div>
     </div>
   </div>`;
+
+  // ===== ช่องค้นหาพนักงาน (พิมพ์แล้วเลือกจากรายการ) =====
+  // เดิมเป็น <select> ยาวหลายร้อยรายการ ซึ่งพิมพ์ค้นหาไม่ได้จริง ต้องไล่คลิกทีละตัว
+  (() => {
+    const box = document.getElementById("mv_search");
+    const sugg = document.getElementById("mv_sugg");
+    if(!box || !sugg) return;
+    const MAX = 50;               // แสดงมากกว่านี้ก็เลื่อนหาไม่ไหว ให้พิมพ์ให้แคบลงแทน
+    let list = [], active = -1;
+
+    const close = () => { sugg.style.display="none"; list=[]; active=-1; };
+    const pick = i => {
+      const e = list[i]; if(!e) return;
+      document.getElementById("mv_code").value = e.code;
+      document.getElementById("mv_name").value = e.name;
+      document.getElementById("mv_from").value = [e.dept,e.pos].filter(Boolean).join(" / ");
+      box.value = `${e.code} - ${e.name}`;
+      close();
+    };
+    const paint = () => {
+      sugg.innerHTML = list.map((e,i)=>`
+        <div data-i="${i}" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);${i===active?"background:var(--blue-light);":""}">
+          <b>${esc(e.code)}</b> ${esc(e.name)}
+          ${e.dept||e.pos?`<div style="font-size:11px;color:var(--muted);">${esc([e.dept,e.sec,e.pos].filter(Boolean).join(" · "))}</div>`:""}
+        </div>`).join("");
+      sugg.style.display = list.length ? "block" : "none";
+    };
+    const search = () => {
+      // ทุกคำต้องเจอ (AND) -> พิมพ์ "mining s2" หรือ "สมชาย ผลิต" ก็แคบลงได้
+      const terms = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      list = (terms.length ? empPick.filter(e=>terms.every(t=>e.q.includes(t))) : empPick).slice(0,MAX);
+      active = list.length ? 0 : -1;
+      paint();
+    };
+
+    box.addEventListener("input", search);
+    box.addEventListener("focus", search);
+    box.addEventListener("keydown", ev => {
+      if(ev.key==="ArrowDown"||ev.key==="ArrowUp"){
+        if(!list.length) return;
+        ev.preventDefault();
+        active = (active + (ev.key==="ArrowDown"?1:-1) + list.length) % list.length;
+        paint();
+        sugg.children[active]?.scrollIntoView({block:"nearest"});
+      } else if(ev.key==="Enter"){
+        if(active>=0){ ev.preventDefault(); pick(active); }
+      } else if(ev.key==="Escape"){ close(); }
+    });
+    // ใช้ mousedown ไม่ใช่ click — กัน blur ปิดรายการก่อนที่คลิกจะทำงาน
+    sugg.addEventListener("mousedown", ev => {
+      const el = ev.target.closest("[data-i]"); if(!el) return;
+      ev.preventDefault(); pick(Number(el.dataset.i));
+    });
+    box.addEventListener("blur", () => setTimeout(close, 120));
+  })();
 
   window._saveMov = async (existId) => {
     const g = id => document.getElementById(id)?.value?.trim()||"";
