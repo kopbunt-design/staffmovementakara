@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast, notify } from "./app.js";
+import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast, notify, keepFocus } from "./app.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
 import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES, PROVINCES } from "./masterdata.js";
 
@@ -48,7 +48,7 @@ export function renderEmployees() {
   <div class="search-bar">
     <div class="search-input-wrap">
       <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="search-input" style="padding-right:30px;" placeholder="ค้นหา ชื่อ / รหัส / ตำแหน่ง / แผนก / ระดับ / จังหวัด — พิมพ์หลายคำได้" value="${esc(empSearch)}" oninput="window._empSearch(this.value)" title="พิมพ์หลายคำคั่นด้วยเว้นวรรค ระบบจะหาแถวที่มีครบทุกคำ เช่น: mining s2">
+      <input id="empSearchBox" class="search-input" style="padding-right:30px;" placeholder="ค้นหา ชื่อ / รหัส / ตำแหน่ง / แผนก / ระดับ / จังหวัด — พิมพ์หลายคำได้" value="${esc(empSearch)}" oninput="window._empSearch(this.value)" title="พิมพ์หลายคำคั่นด้วยเว้นวรรค ระบบจะหาแถวที่มีครบทุกคำ เช่น: mining s2">
       ${empSearch?`<button onclick="window._empSearch('')" title="ล้างคำค้นหา" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:4px;">×</button>`:""}
     </div>
     <select class="filter-select" onchange="window._empDept(this.value)">
@@ -89,7 +89,7 @@ export function renderEmployees() {
     </table>
   </div></div></div>`;
 
-  window._empSearch = v => { empSearch=v; renderEmployees(); };
+  window._empSearch = v => { empSearch=v; keepFocus(renderEmployees); };
   window._empDept = v => { empDept=v; renderEmployees(); };
   window._empStatus = v => { empStatus=v; renderEmployees(); };
   window._openEmp = code => openEmpModal(code ? allEmployees.find(e=>e.emp_code===code) : null);

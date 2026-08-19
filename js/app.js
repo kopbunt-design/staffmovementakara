@@ -11,6 +11,21 @@ export let allPosQuota = [];   // Approved Headcount Plan (ตาราง posit
 
 // ===== UTILS =====
 export const esc = s => (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// หน้าเหล่านี้ render ใหม่ทั้งหน้าเวลาค้นหา ซึ่งทำลาย <input> เดิมทิ้ง โฟกัสเลยหลุดทุกตัวอักษร
+// (ต้องเอาเมาส์ไปคลิกช่องใหม่ก่อนพิมพ์ตัวถัดไป) — ห่อ render ด้วยตัวนี้เพื่อคืนโฟกัส+ตำแหน่งเคอร์เซอร์
+// ช่องที่จะให้คืนโฟกัสได้ ต้องมี id
+export function keepFocus(render){
+  const el = document.activeElement;
+  const id = el?.id, s = el?.selectionStart, e = el?.selectionEnd;
+  render();
+  if(!id) return;
+  const next = document.getElementById(id);
+  if(!next) return;
+  next.focus();
+  // ช่องบางชนิด (date/number) ไม่รองรับ setSelectionRange — โฟกัสอย่างเดียวก็พอ
+  if(s!=null && next.setSelectionRange) { try { next.setSelectionRange(s,e); } catch {} }
+}
 export const fmtDate = d => d ? String(d).substring(0,10) : "-";
 // เดือนของ movement: ใช้วันที่มีผล (date) ก่อน ถ้าไม่มีใช้วันที่บันทึก
 export const movYM = m => (m.date || m.created_at || "").substring(0,7);
@@ -803,7 +818,7 @@ export function renderMovements() {
   <div class="search-bar">
     <div class="search-input-wrap">
       <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="search-input" placeholder="ค้นหาชื่อ / รหัส / แผนก..." value="${esc(movFilter)}" oninput="window._movSearch(this.value)">
+      <input id="movSearchBox" class="search-input" placeholder="ค้นหาชื่อ / รหัส / แผนก..." value="${esc(movFilter)}" oninput="window._movSearch(this.value)">
     </div>
     <select class="filter-select" onchange="window._movType(this.value)">
       <option value="">ทุกประเภท</option>
@@ -834,7 +849,7 @@ export function renderMovements() {
     </table>
   </div></div></div>`;
 
-  window._movSearch = v => { movFilter=v; renderMovements(); };
+  window._movSearch = v => { movFilter=v; keepFocus(renderMovements); };
   window._movType = v => { movFilterType=v; renderMovements(); };
   window._movMonth = v => { movFilterMonth=v; renderMovements(); };
   window._openMovModal = () => openMovModal(null);
