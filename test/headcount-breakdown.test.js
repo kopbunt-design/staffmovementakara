@@ -41,10 +41,12 @@ const M = new Function(`
   const orgOf = ${extractConst(HC,"orgOf")};
   ${extractFn(HC,"isForeign")}
   ${extractFn(HC,"buildBreakdown")}
+  const BRK_METRICS = ${extractConst(HC,"BRK_METRICS")};
+  ${extractFn(HC,"buildMonthlyMatrix")}
   const lastDayOfMonth = ${extractConst(APP,"lastDayOfMonth")};
   ${extractFn(APP,"isActiveAtMonthEnd")}
   const sepYM = ${extractConst(APP,"sepYM")};
-  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM, isForeign };
+  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM, isForeign, buildMonthlyMatrix, BRK_METRICS };
 `)();
 
 // ---------- ระดับหน่วยงานครบ 4 ระดับ ----------
@@ -215,6 +217,72 @@ eq(/function\s+(lastWorkYM|sepYM|isActiveAtMonthEnd|hcAtMonthEnd)\s*\(/.test(HC)
    "js/headcount.js ต้องไม่นิยามกฎวันที่เอง ให้ import จาก app.js เท่านั้น");
 eq(HC.includes("buildBreakdown(rows,orgLevel)"), true,
    "หน้าเว็บเรียก buildBreakdown ด้วย rows ชุดเดียวกับตารางหลัก");
+
+// ---------- แยกรายเดือน (แถว = หน่วยงาน, คอลัมน์ = เดือน) ----------
+eq(M.BRK_METRICS.map(m=>m.key), ["hc","new","out","for"], "มีตัวเลขให้ดู 4 แบบ");
+eq(M.BRK_METRICS.filter(m=>m.flow).map(m=>m.key), ["new","out"],
+   "เฉพาะเข้า/ออกที่เป็น flow (บวกสะสมได้) · headcount กับต่างชาติเป็น stock");
+
+{
+  const M1=e("M1","Mining","O1"), M2=e("M2","Mining","O1"), O1=e("O1","Ops","O1","Lao");
+  const rows=[
+    mkRow("2026-01","January", {n:[M1],     a:[M1,O1]}),
+    mkRow("2026-02","February",{n:[M2],     a:[M1,M2,O1]}),
+    mkRow("2026-03","March",   {v:[M2],     a:[M1,O1]}),
+    {...mkRow("2026-04","April",{n:[M1,M2], a:[M1,M2,O1]}), future:true},
+  ];
+
+  // headcount = stock -> ท้ายแถวต้องเป็นค่าเดือนล่าสุด ไม่ใช่ผลบวก
+  const hc=M.buildMonthlyMatrix(rows,"division","hc");
+  eq(hc.cols.length, 4, "คอลัมน์ครบทุกเดือนของช่วง รวมเดือนอนาคต");
+  eq(hc.cols[3].future, true, "เดือนอนาคตติดธงไว้ให้แสดงเป็น —");
+  eq(hc.lastYM, "2026-03", "เดือนล่าสุดที่มีข้อมูล");
+  const mining=hc.units.find(u=>u.name==="Mining");
+  eq([mining.by["2026-01"],mining.by["2026-02"],mining.by["2026-03"]], [1,2,1], "headcount Mining รายเดือน");
+  eq(mining.by["2026-04"], undefined, "เดือนอนาคตไม่ถูกนับ");
+  eq(mining.end, 1, "ท้ายแถว = ค่าเดือนล่าสุด (1) ไม่ใช่ 1+2+1");
+  eq(hc.totals["2026-02"], 3, "TOTAL รายเดือนถูกต้อง");
+  eq(hc.grand, 2, "TOTAL ท้ายแถว = headcount เดือนล่าสุด (Mining 1 + Ops 1)");
+
+  // เข้าใหม่ = flow -> ท้ายแถวต้องเป็นผลบวก
+  const nw=M.buildMonthlyMatrix(rows,"division","new");
+  eq(nw.units.find(u=>u.name==="Mining").end, 2, "เข้าใหม่รวมทั้งช่วง = 2");
+  eq(nw.grand, 2, "TOTAL เข้าใหม่ = 2 (ไม่นับเดือนอนาคต)");
+
+  // ออก = ลาออก + ให้ออก รวมกัน
+  const out=M.buildMonthlyMatrix(rows,"division","out");
+  eq(out.units.find(u=>u.name==="Mining").by["2026-03"], 1, "เดือน มี.ค. ออก 1 คน");
+  eq(out.grand, 1, "ออกรวมทั้งช่วง = 1");
+
+  // ต่างชาติ = stock ของคนต่างชาติ
+  const fr=M.buildMonthlyMatrix(rows,"division","for");
+  eq(fr.units.map(u=>u.name), ["Ops"], "มีแต่ Ops ที่มีต่างชาติ");
+  eq(fr.grand, 1, "ต่างชาติล่าสุด 1 คน");
+}
+{
+  // ยอดรวมรายเดือนของ headcount ต้องตรงกับ hT ของตารางหลักเดือนนั้น
+  const A=e("A","Mining","O1"), B=e("B","Ops","O1"), C=e("C","","O1");
+  const rows=[
+    mkRow("2026-01","January", {a:[A,B,C]}),
+    mkRow("2026-02","February",{a:[A,C]}),
+  ];
+  const mx=M.buildMonthlyMatrix(rows,"division","hc");
+  for(const r of rows)
+    eq(mx.totals[r.ym], r.hT, `รวมรายเดือน ${r.ym} ตรงกับ headcount ตารางหลัก`);
+}
+{
+  // ไม่มีข้อมูลเลย ต้องไม่พัง
+  const mx=M.buildMonthlyMatrix([],"division","hc");
+  eq([mx.units.length,mx.grand,mx.lastYM], [0,0,null], "ไม่มีข้อมูล -> ว่าง ไม่ error");
+  const only=M.buildMonthlyMatrix([{...mkRow("2026-01","January",{a:[e("A","Mining","O1")]}),future:true}],"division","hc");
+  eq([only.units.length,only.grand], [0,0], "มีแต่เดือนอนาคต -> ว่าง");
+}
+{
+  // (ไม่ระบุ) ต้องอยู่ท้ายเสมอ เหมือนมุมมองรวม
+  const rows=[mkRow("2026-01","January",{a:[e("A","","O1"),e("B","","O1"),e("C","Mining","O1")]})];
+  const mx=M.buildMonthlyMatrix(rows,"division","hc");
+  eq(mx.units[mx.units.length-1].name, M.UNSET, "(ไม่ระบุ) อยู่แถวสุดท้าย แม้จะมีคนมากกว่า");
+}
 
 console.log(`\n${P} passed, ${F} failed`);
 if (F > 0) throw new Error(F + " test(s) failed");

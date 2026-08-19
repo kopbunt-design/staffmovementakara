@@ -130,6 +130,39 @@ function buildBreakdown(rows,field){
   return {units,lastYM:last.ym,lastMonth:last.month,months};
 }
 
+// ===== แยกตามหน่วยงาน "รายเดือน" (แถว = หน่วยงาน, คอลัมน์ = เดือน) =====
+// ตัวเลขที่ดูได้ · flow = ยอดสะสมได้ (รวมท้ายแถวมีความหมาย) · stock = นับ ณ สิ้นเดือน (รวมไม่ได้)
+const BRK_METRICS=[
+  {key:"hc",  label:"Headcount (สิ้นเดือน)",   flow:false, pick:r=>r._act},
+  {key:"new", label:"เข้าใหม่",                flow:true,  pick:r=>r._new},
+  {key:"out", label:"ออก (ลาออก+ให้ออก)",      flow:true,  pick:r=>[...r._vol,...r._inv]},
+  {key:"for", label:"ต่างชาติ (สิ้นเดือน)",     flow:false, pick:r=>r._act.filter(isForeign)},
+];
+
+function buildMonthlyMatrix(rows,field,metricKey){
+  const m=BRK_METRICS.find(x=>x.key===metricKey)||BRK_METRICS[0];
+  const cols=rows.map(r=>({ym:r.ym,month:r.month,future:r.future}));
+  const cells=new Map(); // ชื่อหน่วยงาน -> { ym: จำนวน }
+  for(const r of rows){
+    if(r.future) continue;
+    for(const e of m.pick(r)){
+      const n=orgOf(e,field);
+      const row=cells.get(n)||{}; row[r.ym]=(row[r.ym]||0)+1; cells.set(n,row);
+    }
+  }
+  const dataYMs=cols.filter(c=>!c.future).map(c=>c.ym);
+  const lastYM=dataYMs[dataYMs.length-1]||null;
+  const units=[...cells.entries()].map(([name,by])=>{
+    // flow = รวมทั้งช่วง · stock = ค่าล่าสุด (บวกกันไม่ได้ เพราะเป็นการนับหัวซ้ำ)
+    const end=m.flow?dataYMs.reduce((s,ym)=>s+(by[ym]||0),0):(lastYM?(by[lastYM]||0):0);
+    return {name,by,end};
+  });
+  units.sort((a,b)=>(a.name===UNSET)-(b.name===UNSET)||b.end-a.end||a.name.localeCompare(b.name,"th"));
+  const totals={}; for(const c of cols) if(!c.future) totals[c.ym]=units.reduce((s,u)=>s+(u.by[c.ym]||0),0);
+  const grand=m.flow?dataYMs.reduce((s,ym)=>s+totals[ym],0):(lastYM?totals[lastYM]:0);
+  return {metric:m,cols,units,totals,grand,lastYM};
+}
+
 const v=x=>x===0?"0":x;
 const balC=x=>{if(x>0)return`<span style="color:#0D7C4B;font-weight:600;">+${x}</span>`;if(x<0)return`<span style="color:#C0392B;font-weight:600;">${x}</span>`;return"0";};
 
@@ -199,6 +232,8 @@ export function renderHeadcount() {
   let selNum=curY;
   let brkYM=null; // เดือนที่เลือกดูใน Turnover Rate Breakdown (null = เดือนล่าสุดที่มีข้อมูล)
   let orgLevel="division"; // ระดับหน่วยงานที่เลือกดูในตาราง "แยกตามหน่วยงาน"
+  let brkView="total";     // "total" = รวมทั้งช่วง · "month" = แยกรายเดือน
+  let brkMetric="hc";      // ตัวเลขที่ดูในมุมมองรายเดือน
 
   function getOptions(){
     if(mode==="calendar"){
@@ -241,6 +276,7 @@ export function renderHeadcount() {
     ]:[];
 
     const bd=buildBreakdown(rows,orgLevel);
+    const mx=brkView==="month"?buildMonthlyMatrix(rows,orgLevel,brkMetric):null;
 
     pg.innerHTML=`${CSS}<div class="hc-wrap">
     <div class="page-header" style="margin-bottom:20px;">
@@ -373,10 +409,42 @@ export function renderHeadcount() {
         <div class="hc-mode-sel">
           ${ORG_LEVELS.map(l=>`<button class="hc-mode-btn ${orgLevel===l.key?"active":""}" onclick="window._hcOrg('${l.key}')">${l.label}</button>`).join("")}
         </div>
+        <div class="hc-mode-sel">
+          <button class="hc-mode-btn ${brkView==="total"?"active":""}" onclick="window._hcBrkView('total')">รวมทั้งช่วง</button>
+          <button class="hc-mode-btn ${brkView==="month"?"active":""}" onclick="window._hcBrkView('month')">รายเดือน</button>
+        </div>
+        ${brkView==="month"?`<select class="filter-select" style="font-size:12px;padding:5px 10px;min-width:180px;" onchange="window._hcBrkMetric(this.value)">
+          ${BRK_METRICS.map(m=>`<option value="${m.key}" ${m.key===brkMetric?"selected":""}>${m.label}</option>`).join("")}
+        </select>`:""}
         <div style="margin-left:auto;font-size:11px;color:#94a3b8;">
-          เข้า/ออก = รวมทั้งช่วง (${bd.months} เดือน) · Headcount = สิ้นเดือน ${bd.lastMonth||"-"}
+          ${brkView==="month"
+            ? (mx.metric.flow?"รวม = ยอดสะสมทั้งช่วง":"ล่าสุด = ค่า ณ สิ้นเดือนล่าสุด (นับหัวคน บวกข้ามเดือนไม่ได้)")
+            : `เข้า/ออก = รวมทั้งช่วง (${bd.months} เดือน) · Headcount = สิ้นเดือน ${bd.lastMonth||"-"}`}
         </div>
       </div>
+      ${brkView==="month"?`
+      <div style="overflow-x:auto;max-height:460px;overflow-y:auto;">
+      <table class="hc-tbl">
+        <thead><tr>
+          <th class="cm" style="background:#1a365d;text-align:left;">${ORG_LEVELS.find(l=>l.key===orgLevel).label}</th>
+          ${mx.cols.map(c=>`<th${c.future?' style="color:#94a3b8;"':""}>${c.month.substring(0,3)}</th>`).join("")}
+          <th class="sep">${mx.metric.flow?"รวม":"ล่าสุด"}</th>
+        </tr></thead>
+        <tbody>
+        ${mx.units.length?mx.units.map(u=>`<tr>
+          <td class="cm" style="font-weight:600;${u.name===UNSET?"color:#94a3b8;font-style:italic;":""}">${esc(u.name)}</td>
+          ${mx.cols.map(c=>c.future?`<td style="color:#e2e8f0;">—</td>`
+            :`<td${u.by[c.ym]?"":' class="text-muted" style="color:#cbd5e1;"'}>${u.by[c.ym]||0}</td>`).join("")}
+          <td class="sep hc-hc">${u.end}</td>
+        </tr>`).join(""):`<tr><td colspan="${mx.cols.length+2}" style="padding:32px;color:#cbd5e1;font-size:13px;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}
+        </tbody>
+        ${mx.units.length?`<tfoot><tr class="tot-row">
+          <td class="cm">TOTAL</td>
+          ${mx.cols.map(c=>c.future?`<td>—</td>`:`<td>${mx.totals[c.ym]}</td>`).join("")}
+          <td class="sep">${mx.grand}</td>
+        </tr></tfoot>`:""}
+      </table>
+      </div>`:`
       <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
       <table class="hc-tbl">
         <thead>
@@ -418,7 +486,7 @@ export function renderHeadcount() {
           <td class="sep">—</td>
         </tr></tfoot>`:""}
       </table>
-      </div>
+      </div>`}
     </div>
 
     <div class="hc-bottom">
@@ -459,6 +527,8 @@ export function renderHeadcount() {
   window._hcNum=n=>{ selNum=n; brkYM=null; render(); };
   window._hcBrk=v=>{ brkYM=v; render(); };
   window._hcOrg=k=>{ orgLevel=k; render(); };
+  window._hcBrkView=v=>{ brkView=v; render(); };
+  window._hcBrkMetric=k=>{ brkMetric=k; render(); };
   window._exportHC=()=>exportExcel(mode,selNum,brkYM,orgLevel).catch(e=>{console.error(e);toast("Export ผิดพลาด: "+e.message,"error");});
 }
 
@@ -504,6 +574,43 @@ function addBreakdownSheet(wb,rows,level,periodStr){
   });
   ws.getColumn(1).width=32;
   for(let c=2;c<=15;c++) ws.getColumn(c).width=10;
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+}
+
+// ชีตรายเดือน: แถว = หน่วยงาน · คอลัมน์ = เดือน (1 ชีตต่อ 1 ตัวเลข)
+function addMonthlySheet(wb,rows,level,metricKey,periodStr){
+  const mx=buildMonthlyMatrix(rows,level.key,metricKey);
+  const short=({hc:"HC",new:"New",out:"Out",for:"Foreign"})[metricKey]||metricKey;
+  const ws=wb.addWorksheet(`${short} by ${level.label}`.substring(0,31),
+    {views:[{showGridLines:false,state:"frozen",xSplit:1,ySplit:4}]});
+  const nCols=mx.cols.length+2;
+  ws.mergeCells(1,1,1,nCols);
+  const t=ws.getCell(1,1);
+  t.value=`${mx.metric.label} — แยกตาม ${level.label} รายเดือน · ${periodStr}`;
+  t.font={bold:true,size:13,color:{argb:"FF1A365D"}};
+  ws.mergeCells(2,1,2,nCols);
+  ws.getCell(2,1).value=mx.metric.flow?"รวม = ยอดสะสมทั้งช่วง"
+    :"ล่าสุด = ค่า ณ สิ้นเดือนล่าสุด (นับหัวคน บวกข้ามเดือนไม่ได้)";
+  ws.getCell(2,1).font={size:9,color:{argb:"FF94A3B8"}};
+  ws.addRow([]);
+  const hdr=ws.addRow([level.label,...mx.cols.map(c=>c.month.substring(0,3)),mx.metric.flow?"รวม":"ล่าสุด"]);
+  hdr.eachCell(c=>{
+    c.font={bold:true,size:9,color:{argb:"FFFFFFFF"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A365D"}};
+    c.alignment={horizontal:"center",vertical:"middle"};
+  });
+  for(const u of mx.units){
+    const row=ws.addRow([u.name,...mx.cols.map(c=>c.future?"—":(u.by[c.ym]||0)),u.end]);
+    row.eachCell((c,i)=>{ c.alignment={horizontal:i===1?"left":"center"}; c.font={size:10}; });
+  }
+  const tot=ws.addRow(["TOTAL",...mx.cols.map(c=>c.future?"—":mx.totals[c.ym]),mx.grand]);
+  tot.eachCell((c,i)=>{
+    c.font={bold:true,size:10,color:{argb:"FFFFFFFF"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A365D"}};
+    c.alignment={horizontal:i===1?"left":"center"};
+  });
+  ws.getColumn(1).width=32;
+  for(let c=2;c<=nCols;c++) ws.getColumn(c).width=8;
   ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
 }
 
@@ -814,6 +921,9 @@ async function exportExcel(mode,num,brkYM,orgLevel){
   // --- ชีตแยกตามหน่วยงาน ครบทั้ง 4 ระดับ (ระดับที่เปิดดูอยู่ขึ้นก่อน) ---
   const levels=[...ORG_LEVELS].sort((a,b)=>(b.key===orgLevel)-(a.key===orgLevel));
   for(const lv of levels) addBreakdownSheet(wb,rows,lv,periodStr);
+  // รายเดือน: ทำเฉพาะระดับที่เปิดดูอยู่ ครบทุกตัวเลข (ทำครบทุกระดับจะได้ 20 ชีต เยอะเกินใช้งาน)
+  const curLv=ORG_LEVELS.find(l=>l.key===orgLevel)||ORG_LEVELS[0];
+  for(const m of BRK_METRICS) addMonthlySheet(wb,rows,curLv,m.key,periodStr);
 
   // --- Generate & download ---
   const buf=await wb.xlsx.writeBuffer();
