@@ -2,6 +2,7 @@ import { supabase } from "./supabase-config.js";
 import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast, notify, keepFocus } from "./app.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
 import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES, PROVINCES } from "./masterdata.js";
+import { comboHTML, bindCombo, setComboItems, toItems } from "./combobox.js";
 
 let empSearch="", empDept="", empStatus="Active";
 
@@ -128,28 +129,20 @@ function openEmpModal(emp=null) {
           <div class="form-group"><label class="form-label">เบอร์โทรศัพท์</label><input id="ef_phone" class="form-control" value="${v("phone")}"></div>
 
           <div class="form-group"><label class="form-label">Division</label>
-            <select id="ef_div" class="form-control" onchange="window._onDivChange(this)">
-              ${selOpts(masterDivisions, emp?.division||"")}
-            </select>
+            ${comboHTML("ef_div", toItems(masterDivisions), emp?.division||"", "พิมพ์ค้นหา Division…")}
           </div>
           <div class="form-group"><label class="form-label">Department</label>
-            <select id="ef_dept" class="form-control" onchange="window._onDeptChange(this)">
-              ${selOpts(depts, emp?.department||"")}
-            </select>
+            ${comboHTML("ef_dept", toItems(depts), emp?.department||"", "พิมพ์ค้นหา Department…")}
           </div>
           <div class="form-group"><label class="form-label">Section</label>
-            <select id="ef_sect" class="form-control" onchange="window._onSectChange(this)">
-              ${selOpts(sects, emp?.section||"")}
-            </select>
+            ${comboHTML("ef_sect", toItems(sects), emp?.section||"", "พิมพ์ค้นหา Section…")}
           </div>
           <div class="form-group"><label class="form-label">Team</label>
-            <select id="ef_team" class="form-control">
-              ${selOpts(teams, emp?.team||"")}
-            </select>
+            ${comboHTML("ef_team", toItems(teams), emp?.team||"", "พิมพ์ค้นหา Team…")}
           </div>
 
           <div class="form-group col-span-2"><label class="form-label">Position</label>
-            <select id="ef_pos" class="form-control">${selOpts(masterPositions, emp?.position||"")}</select>
+            ${comboHTML("ef_pos", toItems(masterPositions), emp?.position||"", "พิมพ์ค้นหาตำแหน่ง…")}
           </div>
           <div class="form-group"><label class="form-label">Job Level</label>
             <select id="ef_jl" class="form-control">${selOpts(masterJobLevels, emp?.job_level||"")}</select>
@@ -180,27 +173,24 @@ function openEmpModal(emp=null) {
   </div>`;
 
   // Cascade handlers
-  window._onDivChange = sel => {
-    const divName = sel.value;
+  // ต่อสาย combobox — เลือกระดับบนแล้วระดับล่างต้องแคบตามทันที
+  bindCombo("ef_div", toItems(masterDivisions), divName => {
     const div = masterDivisions.find(d=>d.name===divName);
-    const depts = div ? getDeptsByDiv(div.id) : masterDepartments;
-    document.getElementById("ef_dept").innerHTML = selOpts(depts,"","-- เลือก Department --");
-    document.getElementById("ef_sect").innerHTML = `<option value="">-- เลือก Department ก่อน --</option>`;
-    document.getElementById("ef_team").innerHTML = `<option value="">-- เลือก Section ก่อน --</option>`;
-  };
-  window._onDeptChange = sel => {
-    const deptName = sel.value;
+    setComboItems("ef_dept", toItems(div ? getDeptsByDiv(div.id) : masterDepartments));
+    setComboItems("ef_sect", toItems(masterSections));
+    setComboItems("ef_team", toItems(masterTeams));
+  });
+  bindCombo("ef_dept", toItems(depts), deptName => {
     const dept = masterDepartments.find(d=>d.name===deptName);
-    const sects = dept ? getSectsByDept(dept.id) : masterSections;
-    document.getElementById("ef_sect").innerHTML = selOpts(sects,"","-- เลือก Section --");
-    document.getElementById("ef_team").innerHTML = `<option value="">-- เลือก Section ก่อน --</option>`;
-  };
-  window._onSectChange = sel => {
-    const sectName = sel.value;
+    setComboItems("ef_sect", toItems(dept ? getSectsByDept(dept.id) : masterSections));
+    setComboItems("ef_team", toItems(masterTeams));
+  });
+  bindCombo("ef_sect", toItems(sects), sectName => {
     const sect = masterSections.find(s=>s.name===sectName);
-    const teams = sect ? getTeamsBySect(sect.id) : masterTeams;
-    document.getElementById("ef_team").innerHTML = selOpts(teams,"","-- เลือก Team --");
-  };
+    setComboItems("ef_team", toItems(sect ? getTeamsBySect(sect.id) : masterTeams));
+  });
+  bindCombo("ef_team", toItems(teams));
+  bindCombo("ef_pos",  toItems(masterPositions));
 
   window._saveEmp = async (existCode) => {
     const g = id => document.getElementById(id)?.value?.trim()||"";
