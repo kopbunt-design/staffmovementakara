@@ -4,7 +4,7 @@
 // เรต: ใช้ครบ 3 ตระกูลกะ (เช้า/บ่าย/ดึก) = 1,800/เดือน, 2 ตระกูล = 1,200, ≤1 = 0
 //      ยกเว้นกะที่ตั้ง solo_rate ไว้ (เช่น N03) ทำกะเดียวทั้งเดือนก็ยังได้ — ตั้งค่าที่ master_shift_codes
 // จ่ายแบบ pro-rate รายวัน: daily_rate = monthly_rate / 30 คงที่ทุกเดือน (ไม่ใช่วันจริงในเดือน)
-//      แล้วบวกทุกวันที่ "จ่าย" (payable) โดยยอดรวมทั้งเดือนต้องไม่เกิน monthly_rate
+//      แต่ถ้าทำครบทุกวันของเดือน ได้เต็ม monthly_rate เสมอ — ก.พ. 28 วันทำครบ ก็ได้เท่า ก.ค. 31 วันทำครบ
 // ตัดวันนอกช่วงการจ้าง (ก่อน join_date / ตั้งแต่ end_date) ออกก่อนคำนวณเสมอ
 // เกณฑ์เพิ่ม: จ่ายเฉพาะพนักงานระดับ O (O1/O2/O3) — เช็คจาก job_level ในตาราง employees
 // กติกาทั้งหมดนี้ผู้ใช้ยืนยัน 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
@@ -404,14 +404,18 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       && !(isProc && d.code === PROCESS_NO_PAY_CODE);
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
-    // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน) แต่รวมทั้งเดือนต้องไม่เกินอัตราเดือน
-    // ผู้ใช้ยืนยันกติกานี้ 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
+    // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน)
+    // แต่ "ทำครบทุกวันของเดือน" ได้เต็มอัตราเสมอ ไม่ว่าเดือนนั้นจะมีกี่วัน
+    // -> ก.พ. 28 วันทำครบ ก็ได้ 1,800 เท่ากับ ก.ค. 31 วันทำครบ (ผู้ใช้ยืนยัน 2026-08-18)
+    // เทียบ "ครบ" กับจำนวนวันของเดือนจริง ไม่ใช่ช่วงการจ้าง — คนเข้าใหม่กลางเดือนจึงไม่เข้าข่าย
+    // (เคสจริง AKR26071372 เข้า 13 ก.ค. ทำครบ 19 วัน เฉลยให้ 60x19 = 1,140 ไม่ใช่เต็ม)
     const payDays = days.filter(earns).length;
+    const wholeMonth = payDays > 0 && payDays >= daysInMonth(g.y, g.m);
     // อยู่กะดึกเกิน 15 วัน = จ่ายเต็มอัตราไปเลย ไม่ pro-rate
     const dailyRate = !payDays ? 0
-      : shiftOnlyFull ? monthlyRate / payDays
+      : (shiftOnlyFull || wholeMonth) ? monthlyRate / payDays
       : Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays);
-    const capped = !shiftOnlyFull && payDays > DAILY_DIVISOR && monthlyRate > 0;
+    const capped = wholeMonth && payDays > DAILY_DIVISOR && monthlyRate > 0;
 
     // ถ้าไฟล์มีคอลัมน์ Shift_Allowance มาด้วย = "เฉลย" ที่คิดมือไว้แล้ว -> เก็บไว้เทียบ
     let total = 0, noPayDays = 0, checkDays = 0;
@@ -440,6 +444,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
+      wholeMonth,
       clippedDays: outOfPeriod.length, sickDays, maxSickRun, unpaidSickDays,
       suspendDays, workedDays, noWorkedDay,
       shiftOnly: payShiftDaysOnly, shiftOnlyFull, isProcess: isProc, approvedNoWork: approved,

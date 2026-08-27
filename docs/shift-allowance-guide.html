@@ -257,10 +257,12 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
       <div class="step-body">
         <h3>เฉลี่ยเป็นรายวัน แล้วคูณจำนวนวันที่จ่าย</h3>
         <div class="formula">
-          อัตรารายวัน = <b>เรตต่อเดือน ÷ 30</b> คงที่ทุกเดือน<br>
-          ยอดของเดือน = อัตรารายวัน × จำนวนวันที่จ่าย <b>แต่ไม่เกินเรตต่อเดือน</b>
+          <b>ทำครบทุกวันของเดือน</b> → ได้ <b>เต็มเรตต่อเดือน</b> เสมอ ไม่ว่าเดือนนั้นจะมีกี่วัน<br>
+          <b>ทำไม่ครบ</b> → อัตรารายวัน = เรตต่อเดือน ÷ 30 คงที่ แล้วคูณจำนวนวันที่จ่าย
         </div>
-        <p><span class="pill warn">จำให้แม่น</span> หารด้วย <b>30 เสมอ</b> ไม่ใช่จำนวนวันจริงของเดือนนั้น ผลที่ตามมาคือ เดือน 31 วันทำครบจะได้เต็ม 1,800 (เพราะติดเพดาน) แต่เดือนกุมภาพันธ์ 28 วันทำครบจะได้ <span class="mono">60 × 28 = 1,680</span> ไม่ถึงเต็ม — อันนี้ถูกต้องแล้ว ไม่ใช่คิดผิด</p>
+        <p><span class="pill warn">จำให้แม่น</span> ทำครบทั้งเดือนได้เต็มเสมอ — <b>เดือนกุมภาพันธ์ 28 วันทำครบ ก็ได้ 1,800 เท่ากับเดือน 31 วันทำครบ</b> เดือนสั้นไม่ทำให้เสียเปรียบ</p>
+        <p>ส่วนคนที่ทำไม่ครบเดือน ใช้ <b>÷ 30 คงที่</b> ไม่ใช่จำนวนวันจริงของเดือน เช่น ก.พ. ขาด 1 วัน = <span class="mono">60 × 27 = 1,620</span></p>
+        <p><span class="pill warn">ระวัง</span> “ครบทั้งเดือน” นับจาก<b>วันของเดือนจริง</b> ไม่ใช่ช่วงที่จ้าง คนเข้าใหม่กลางเดือนถึงจะมาครบทุกวันที่จ้าง ก็ยังไม่นับว่าครบเดือน ต้องคิด 60 × วันที่จ่าย</p>
       </div>
     </div>
 
@@ -425,11 +427,11 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
       <div class="ex-h"><h3>ข · เดือนสั้น ทำครบเหมือนกัน</h3><span class="who">O2 · กุมภาพันธ์ 28 วัน</span></div>
       <div class="ex-b">
         <div class="line"><span>เรตต่อเดือน</span><span class="v">1,800</span></div>
-        <div class="line"><span>อัตรารายวัน</span><span class="v">1,800 ÷ 30 = 60</span></div>
+        <div class="line"><span>วันในเดือน</span><span class="v">28 วัน</span></div>
         <div class="line"><span>วันที่จ่าย</span><span class="v">28 วัน</span></div>
-        <div class="line"><span>คำนวณ</span><span class="v">60 × 28 = 1,680</span></div>
-        <div class="line"><span>ไม่ถึงเพดาน</span><span class="v">ไม่ต้องตัด</span></div>
-        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,680</span></div>
+        <div class="line"><span>ทำครบทั้งเดือน</span><span class="v">→ ได้เต็ม</span></div>
+        <div class="line"><span>ถ้าขาด 1 วัน</span><span class="v">60 × 27 = 1,620</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,800</span></div>
       </div>
     </div>
 
@@ -507,8 +509,8 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
   </div>
   <div class="card card-pad" style="gap:18px;">
     <div>
-      <h3>“ทำไมเดือนกุมภาฯ ทำครบยังได้ไม่ถึง 1,800”</h3>
-      <p style="color:var(--ink-2);">ถูกแล้ว เพราะอัตรารายวันหารด้วย 30 คงที่ ไม่ได้หารด้วยวันจริงของเดือน เดือนที่สั้นกว่า 30 วันจึงไปไม่ถึงเพดาน</p>
+      <h3>“เดือนกุมภาฯ สั้นกว่าเพื่อน จะเสียเปรียบไหม”</h3>
+      <p style="color:var(--ink-2);">ไม่เสียเปรียบ ทำครบทั้งเดือนได้เต็ม 1,800 เท่ากันทุกเดือน · จะคิดรายวัน (÷ 30) ก็ต่อเมื่อทำไม่ครบเดือนเท่านั้น</p>
     </div>
     <div style="border-top:1px solid var(--line-2); padding-top:16px;">
       <h3>“คนนี้เป็นระดับ O มาครบทุกวัน ทำไมได้ ฿0”</h3>
