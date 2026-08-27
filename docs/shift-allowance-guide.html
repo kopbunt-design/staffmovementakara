@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>คู่มือคิดค่ากะ · Akara HR</title>
+<style>*{margin:0;padding:0;}</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#EEF1F6; --card:#FFFFFF; --card-2:#F7F9FC;
+  --ink:#131A26; --ink-2:#3E4A5C; --ink-3:#6B778A;
+  --line:#D8DEE8; --line-2:#E8ECF3;
+  --navy:#1A365D; --navy-soft:#E3E9F2;
+  --gold:#9A6410; --gold-soft:#FBF0DC; --gold-line:#E3C68A;
+  --pay:#0C6E45; --pay-soft:#E1F2EA;
+  --no:#A4271D; --no-soft:#FAE6E4;
+  --shadow:0 1px 2px rgba(19,26,38,.05), 0 8px 24px -12px rgba(19,26,38,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0C111A; --card:#151D2A; --card-2:#1B2432;
+    --ink:#E7ECF4; --ink-2:#AEBACC; --ink-3:#7E8CA2;
+    --line:#2A3547; --line-2:#222C3C;
+    --navy:#9CC0F0; --navy-soft:#1B2941;
+    --gold:#E3AC52; --gold-soft:#2C2313; --gold-line:#5B4620;
+    --pay:#5BC896; --pay-soft:#12271F;
+    --no:#F2867A; --no-soft:#2B1917;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0C111A; --card:#151D2A; --card-2:#1B2432;
+  --ink:#E7ECF4; --ink-2:#AEBACC; --ink-3:#7E8CA2;
+  --line:#2A3547; --line-2:#222C3C;
+  --navy:#9CC0F0; --navy-soft:#1B2941;
+  --gold:#E3AC52; --gold-soft:#2C2313; --gold-line:#5B4620;
+  --pay:#5BC896; --pay-soft:#12271F;
+  --no:#F2867A; --no-soft:#2B1917;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Thai","Sarabun",system-ui,sans-serif;
+  font-size:16px; line-height:1.72; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:960px; margin:0 auto; padding:40px 22px 80px;}
+
+h1,h2,h3{font-family:"Chakra Petch","IBM Plex Sans Thai",system-ui,sans-serif; text-wrap:balance; margin:0;}
+h1{font-size:clamp(30px,5vw,44px); font-weight:700; line-height:1.15; letter-spacing:-.01em;}
+h2{font-size:22px; font-weight:600; line-height:1.3;}
+h3{font-size:16px; font-weight:600;}
+p{margin:0;}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+
+.eyebrow{
+  font-family:"Chakra Petch",sans-serif; font-size:11.5px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+}
+
+/* ---------- header ---------- */
+header{border-bottom:2px solid var(--ink); padding-bottom:24px; margin-bottom:14px;
+  display:flex; flex-direction:column; gap:12px;}
+.lede{font-size:17px; color:var(--ink-2); max-width:62ch;}
+.meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px;}
+.tag{font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--ink-2);}
+
+/* ---------- generic blocks ---------- */
+section{margin-top:52px; display:flex; flex-direction:column; gap:18px;}
+.sec-head{display:flex; flex-direction:column; gap:5px;}
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); overflow:hidden;}
+.card-pad{padding:20px 22px; display:flex; flex-direction:column; gap:12px;}
+
+.note{background:var(--gold-soft); border:1px solid var(--gold-line); border-radius:10px;
+  padding:14px 16px; font-size:14.5px; color:var(--ink-2); display:flex; flex-direction:column; gap:6px;}
+.note strong{color:var(--ink);}
+
+/* ---------- steps ---------- */
+.steps{display:flex; flex-direction:column; gap:0;}
+.step{display:grid; grid-template-columns:56px 1fr; gap:20px; padding:24px 0;
+  border-top:1px solid var(--line);}
+.step:first-child{border-top:none; padding-top:6px;}
+.step-n{font-family:"Chakra Petch",sans-serif; font-size:30px; font-weight:700;
+  color:var(--gold); line-height:1; padding-top:3px;}
+.step-body{display:flex; flex-direction:column; gap:12px; min-width:0;}
+.step-body p{color:var(--ink-2);}
+.formula{background:var(--card); border:1px solid var(--line); border-left:3px solid var(--navy);
+  border-radius:0 8px 8px 0; padding:12px 16px; font-size:14.5px; color:var(--ink);}
+.formula b{color:var(--navy);}
+
+/* ---------- tables ---------- */
+.scroll{overflow-x:auto;}
+table{width:100%; border-collapse:collapse; font-size:14.5px; min-width:440px;}
+th,td{padding:10px 14px; text-align:left; border-bottom:1px solid var(--line-2); vertical-align:top;}
+thead th{background:var(--navy-soft); color:var(--navy); font-weight:600; font-size:12.5px;
+  letter-spacing:.04em; text-transform:uppercase; border-bottom:1px solid var(--line);}
+tbody tr:last-child td{border-bottom:none;}
+td.num,th.num{text-align:right; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+
+.pill{display:inline-block; font-size:12px; font-weight:600; padding:2px 9px; border-radius:6px;
+  white-space:nowrap;}
+.pill.yes{background:var(--pay-soft); color:var(--pay);}
+.pill.no{background:var(--no-soft); color:var(--no);}
+.pill.warn{background:var(--gold-soft); color:var(--gold);}
+.codes{font-family:"IBM Plex Mono",monospace; font-size:13.5px; color:var(--ink-2); letter-spacing:.02em;}
+
+/* ---------- priority ladder ---------- */
+.ladder{display:flex; flex-direction:column; gap:0;}
+.rung{display:grid; grid-template-columns:26px 1fr auto; gap:14px; align-items:baseline;
+  padding:11px 0; border-bottom:1px dashed var(--line);}
+.rung:last-child{border-bottom:none;}
+.rung-n{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--ink-3);}
+.rung-t{font-size:14.5px;}
+.rung-t small{display:block; color:var(--ink-3); font-size:12.5px; line-height:1.5;}
+
+/* ---------- exception cards ---------- */
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px;}
+.exc{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px;
+  display:flex; flex-direction:column; gap:9px; box-shadow:var(--shadow);}
+.exc-code{font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:600; color:var(--gold);
+  letter-spacing:.03em;}
+.exc h3{font-size:15.5px;}
+.exc p{font-size:14px; color:var(--ink-2);}
+.exc .out{font-size:14px; padding-top:9px; border-top:1px solid var(--line-2); color:var(--ink);}
+
+/* ---------- worked examples ---------- */
+.ex{border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card);
+  box-shadow:var(--shadow);}
+.ex-h{padding:13px 18px; background:var(--card-2); border-bottom:1px solid var(--line);
+  display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;}
+.ex-h h3{font-size:15px;}
+.ex-h .who{font-size:13px; color:var(--ink-3);}
+.ex-b{padding:16px 18px; display:flex; flex-direction:column; gap:9px;}
+.line{display:flex; justify-content:space-between; gap:16px; font-size:14.5px; color:var(--ink-2);
+  padding-bottom:8px; border-bottom:1px dotted var(--line);}
+.line:last-of-type{border-bottom:none; padding-bottom:0;}
+.line .v{font-family:"IBM Plex Mono",monospace; color:var(--ink); white-space:nowrap;}
+.total{display:flex; justify-content:space-between; align-items:baseline; gap:16px;
+  margin-top:4px; padding-top:12px; border-top:2px solid var(--ink);}
+.total .lbl{font-family:"Chakra Petch",sans-serif; font-weight:600; font-size:14px;}
+.total .amt{font-family:"Chakra Petch",sans-serif; font-size:26px; font-weight:700;
+  font-variant-numeric:tabular-nums;}
+.total .amt.zero{color:var(--no);}
+.total .amt.paid{color:var(--pay);}
+
+/* ---------- checklist ---------- */
+ol.chk{list-style:none; margin:0; padding:0; counter-reset:c;
+  display:flex; flex-direction:column; gap:2px;}
+ol.chk li{counter-increment:c; display:grid; grid-template-columns:30px 1fr; gap:12px;
+  padding:11px 0; border-bottom:1px solid var(--line-2); font-size:14.5px; color:var(--ink-2);}
+ol.chk li:last-child{border-bottom:none;}
+ol.chk li::before{content:counter(c,decimal-leading-zero);
+  font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--gold); padding-top:3px;}
+ol.chk li b{color:var(--ink);}
+
+footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
+  font-size:13px; color:var(--ink-3); display:flex; flex-direction:column; gap:6px;}
+
+@media (max-width:560px){
+  .step{grid-template-columns:38px 1fr; gap:14px;}
+  .step-n{font-size:24px;}
+}
+</style>
+
+
+<a href="/" class="back-link">← กลับไปหน้าระบบ</a>
+<style>
+.back-link{position:fixed;top:14px;left:14px;z-index:50;display:inline-block;
+  font-family:"IBM Plex Sans Thai",system-ui,sans-serif;font-size:13px;text-decoration:none;
+  padding:7px 13px;border-radius:999px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink-2);box-shadow:var(--shadow);}
+.back-link:hover{color:var(--ink);border-color:var(--ink-3);}
+.back-link:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+@media print{.back-link{display:none;}}
+@media (max-width:700px){.back-link{position:static;margin:14px 0 0 22px;}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Akara Resources · HR</div>
+  <h1>คู่มือคิดค่ากะ</h1>
+  <p class="lede">เอกสารนี้ใช้สอนวิธีคิดค่ากะทีละขั้น และใช้เปิดตรวจงานตอนคิดจริงได้ ทุกกติกาในนี้ยืนยันแล้วจากการเทียบกับยอดที่คิดมือของเดือนกรกฎาคม 2026 จนตรงทุกบาท</p>
+  <div class="meta">
+    <span class="tag">อัปเดต 18 ส.ค. 2026</span>
+    <span class="tag">ใช้กับทุกเดือน</span>
+    <span class="tag">ระบบคิดให้อัตโนมัติที่หน้า “คำนวณค่ากะ”</span>
+  </div>
+</header>
+
+<div class="note" style="margin-top:26px;">
+  <p><strong>อ่านตรงนี้ก่อน</strong> — ค่ากะจ่ายเพื่อชดเชย <strong>การหมุนเวียนกะ</strong> ไม่ใช่จ่ายเพราะทำงานเป็นกะ</p>
+  <p>เพราะฉะนั้นคนที่เข้ากะเดิมกะเดียวทั้งเดือน ต่อให้มาครบทุกวัน ก็ไม่ได้ค่ากะ (ยกเว้นกะที่ระบุไว้เป็นพิเศษ) ถ้าจำหลักข้อนี้ได้ กติกาที่เหลือจะเข้าใจง่ายขึ้นมาก</p>
+</div>
+
+<!-- ============ 4 ขั้น ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">วิธีคิด</div>
+    <h2>คิดตามลำดับ 4 ขั้น</h2>
+    <p style="color:var(--ink-2);">ลำดับสำคัญ — ข้ามขั้นแล้วตัวเลขจะเพี้ยน โดยเฉพาะขั้นที่ 2 ที่ต้องตัดวันทิ้งก่อนนับตระกูลกะ</p>
+  </div>
+
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-n">1</div>
+      <div class="step-body">
+        <h3>ดูก่อนว่าคนนี้มีสิทธิ์ไหม</h3>
+        <p>ค่ากะจ่ายเฉพาะพนักงาน <b>ระดับ O</b> คือ O1 · O2 · O3 เท่านั้น ระดับอื่นได้ ฿0</p>
+        <p>ข้อยกเว้นเดียวคือคนที่ HR ติ๊กช่อง <b>“ได้รับค่ากะ (กำหนดเอง)”</b> ไว้ในข้อมูลพนักงาน ใช้กับคนที่เคยเป็นระดับ O แล้วปรับระดับแต่ยังให้ค่ากะต่อ ในตารางผลลัพธ์จะขึ้นป้าย <span class="pill warn">พิเศษ</span></p>
+        <div class="formula">ไม่ใช่ระดับ O และไม่ได้ติ๊กพิเศษ → <b>จบตรงนี้ ได้ ฿0</b> ไม่ต้องคิดต่อ</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">2</div>
+      <div class="step-body">
+        <h3>คัดวันที่ “นับได้” ออกมาก่อน</h3>
+        <p>ตัดสองอย่างนี้ทิ้งก่อนเสมอ แล้วค่อยเอาวันที่เหลือไปคิดต่อ</p>
+        <div class="formula"><b>ก.</b> ตัดวันนอกช่วงการจ้าง — นับเฉพาะวันที่ <span class="mono">วันเริ่มงาน ≤ วันนั้น &lt; วันพ้นสภาพ</span></div>
+        <div class="formula"><b>ข.</b> ตัดวันที่ไม่จ่าย — ดูตารางสถานะรายวันด้านล่าง</div>
+        <p><span class="pill warn">ระวัง</span> ไฟล์ลงเวลามักมีแถวยาวถึงสิ้นเดือนแม้คนออกไปกลางเดือนแล้ว ถ้าไม่ตัดจะจ่ายเกิน และวันพ้นสภาพคือ <b>วันแรกที่ไม่ได้ทำงานแล้ว</b> ไม่ใช่วันทำงานวันสุดท้าย</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">3</div>
+      <div class="step-body">
+        <h3>นับว่าหมุนกี่ตระกูลกะ แล้วได้เรตเท่าไร</h3>
+        <p>นับเฉพาะ <b>วันที่จ่ายได้</b> จากขั้นที่ 2 เท่านั้น ว่าแตะกี่ตระกูล (เช้า / บ่าย / ดึก)</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>หมุนกี่ตระกูล</th><th class="num">เรตต่อเดือน</th><th>หมายความว่า</th></tr></thead>
+            <tbody>
+              <tr><td>ครบ 3 ตระกูล</td><td class="num"><b>1,800</b></td><td>หมุนครบทั้งเช้า บ่าย ดึก</td></tr>
+              <tr><td>2 ตระกูล</td><td class="num"><b>1,200</b></td><td>หมุนสองแบบ</td></tr>
+              <tr><td>1 ตระกูล หรือไม่มีเลย</td><td class="num"><b>0</b></td><td>ไม่ได้หมุนกะ → ไม่มีค่ากะ</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">4</div>
+      <div class="step-body">
+        <h3>เฉลี่ยเป็นรายวัน แล้วคูณจำนวนวันที่จ่าย</h3>
+        <div class="formula">
+          อัตรารายวัน = <b>เรตต่อเดือน ÷ 30</b> คงที่ทุกเดือน<br>
+          ยอดของเดือน = อัตรารายวัน × จำนวนวันที่จ่าย <b>แต่ไม่เกินเรตต่อเดือน</b>
+        </div>
+        <p><span class="pill warn">จำให้แม่น</span> หารด้วย <b>30 เสมอ</b> ไม่ใช่จำนวนวันจริงของเดือนนั้น ผลที่ตามมาคือ เดือน 31 วันทำครบจะได้เต็ม 1,800 (เพราะติดเพดาน) แต่เดือนกุมภาพันธ์ 28 วันทำครบจะได้ <span class="mono">60 × 28 = 1,680</span> ไม่ถึงเต็ม — อันนี้ถูกต้องแล้ว ไม่ใช่คิดผิด</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ วันไหนจ่าย ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">ขั้นที่ 2 · รายละเอียด</div>
+    <h2>วันไหนจ่าย วันไหนไม่จ่าย</h2>
+  </div>
+
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>สถานะของวัน</th><th style="width:110px;">นับเป็นวันจ่าย</th><th>ดูจากอะไร</th></tr></thead>
+      <tbody>
+        <tr><td>ทำงาน</td><td><span class="pill yes">จ่าย</span></td><td>มีเวลาเข้างาน</td></tr>
+        <tr><td>วันหยุดประจำสัปดาห์</td><td><span class="pill yes">จ่าย</span></td><td><span class="codes">Day_Type = H</span></td></tr>
+        <tr><td>วันหยุดนักขัตฤกษ์</td><td><span class="pill yes">จ่าย</span></td><td><span class="codes">Day_Type = HD</span></td></tr>
+        <tr><td>ลาแบบได้เงิน</td><td><span class="pill yes">จ่าย</span></td><td>ช่องลาที่ไม่หักเงิน</td></tr>
+        <tr><td>ถูกพักงาน</td><td><span class="pill no">ไม่จ่าย</span></td><td>หมายเหตุมีคำว่า “พักงาน”</td></tr>
+        <tr><td>ขาดงาน / ถูกหักวัน</td><td><span class="pill no">ไม่จ่าย</span></td><td>ช่องหักวัน</td></tr>
+        <tr><td>ลาไม่รับค่าจ้าง</td><td><span class="pill no">ไม่จ่าย</span></td><td>ช่องลาที่หักเงิน</td></tr>
+        <tr><td>ข้อมูลไม่ครบ ตัดสินไม่ได้</td><td><span class="pill no">ไม่จ่าย</span></td><td>ไม่มีทั้งเวลาเข้างาน วันหยุด และข้อมูลลา</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card card-pad">
+    <h3>ลำดับการตัดสิน — ต้องไล่จากบนลงล่าง เจอข้อไหนก่อนจบที่ข้อนั้น</h3>
+    <div class="ladder">
+      <div class="rung"><span class="rung-n">01</span>
+        <span class="rung-t">หมายเหตุบอกว่า <b>พักงาน</b><small>มาก่อนทุกอย่าง ต่อให้มีเวลาเข้างานติดมาก็ไม่จ่าย</small></span>
+        <span class="pill no">ไม่จ่าย</span></div>
+      <div class="rung"><span class="rung-n">02</span>
+        <span class="rung-t">หมายเหตุบอกว่า <b>ไม่จ่ายเงิน / ไม่รับค่าจ้าง / หักเงิน</b><small>ชนะช่องประเภทการลา — เช่น “ลาป่วยไม่จ่ายเงินหักเงิน” แม้ติดช่องลาได้เงินไว้ ก็ไม่จ่าย</small></span>
+        <span class="pill no">ไม่จ่าย</span></div>
+      <div class="rung"><span class="rung-n">03</span>
+        <span class="rung-t">ขาดงาน หรือถูกหักวัน</span><span class="pill no">ไม่จ่าย</span></div>
+      <div class="rung"><span class="rung-n">04</span>
+        <span class="rung-t">ลาแบบหักเงิน</span><span class="pill no">ไม่จ่าย</span></div>
+      <div class="rung"><span class="rung-n">05</span>
+        <span class="rung-t">วันหยุดประจำสัปดาห์ / วันหยุดนักขัตฤกษ์</span><span class="pill yes">จ่าย</span></div>
+      <div class="rung"><span class="rung-n">06</span>
+        <span class="rung-t">ลาแบบได้เงิน</span><span class="pill yes">จ่าย</span></div>
+      <div class="rung"><span class="rung-n">07</span>
+        <span class="rung-t">มีเวลาเข้างาน</span><span class="pill yes">จ่าย</span></div>
+      <div class="rung"><span class="rung-n">08</span>
+        <span class="rung-t">ไม่เข้าข้อไหนเลย<small>ข้อมูลไม่พอตัดสิน ระบบไม่เดาให้ ต้องไปตรวจเอกสารเอง</small></span>
+        <span class="pill no">ไม่จ่าย</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ตระกูลกะ ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">ขั้นที่ 3 · รายละเอียด</div>
+    <h2>รหัสกะไหนอยู่ตระกูลไหน</h2>
+  </div>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th style="width:110px;">ตระกูล</th><th>รหัสกะ</th><th>หมายเหตุ</th></tr></thead>
+      <tbody>
+        <tr><td><b>เช้า</b></td><td class="codes">D01 · D02 · D03 · NOR · F03 · F04</td><td><span class="mono">NOR</span> คือเวลาทำงานปกติ ไม่ใช่กะ แต่ถูกนับอยู่ในตระกูลเช้า</td></tr>
+        <tr><td><b>บ่าย</b></td><td class="codes">A01 · A02 · A03</td><td>—</td></tr>
+        <tr><td><b>ดึก</b></td><td class="codes">N01 · N02 · N03 · N05 · N07</td><td><span class="mono">N03</span> มีกติกาพิเศษ ดูหัวข้อถัดไป</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">
+    <p><strong>เจอรหัสกะที่ไม่อยู่ในตารางนี้ ให้หยุดแล้วแจ้งก่อน</strong></p>
+    <p>รหัสที่ระบบไม่รู้จักจะไม่ถูกนับเป็นตระกูลไหนเลย ทำให้คนที่หมุนครบ 3 ตระกูลถูกนับเหลือ 2 และยอดหายไป 600 บาทต่อคนโดยไม่มีใครรู้ ระบบจะขึ้นแถบแดงเตือนให้ และ Admin เพิ่มรหัสใหม่ได้จากหน้าเว็บทันที</p>
+  </div>
+</section>
+
+<!-- ============ เคสพิเศษ ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">ข้อยกเว้น</div>
+    <h2>เจ็ดเคสพิเศษที่ต้องจำ</h2>
+    <p style="color:var(--ink-2);">ทุกเคสนี้เกิดจากการเทียบกับยอดที่คิดมือจริง ไม่ใช่กติกาที่แต่งขึ้นเอง</p>
+  </div>
+
+  <div class="grid">
+    <div class="exc">
+      <div class="exc-code">N03 · กะเดี่ยว</div>
+      <h3>ทำ N03 กะเดียวทั้งเดือน ยังได้เงิน</h3>
+      <p>ปกติกะเดียว = 0 แต่ <span class="mono">N03</span> เป็นข้อยกเว้น มีผลเมื่อทั้งเดือนใช้ <span class="mono">N03</span> รหัสเดียวล้วน</p>
+      <div class="out">ได้ <b>1,200</b> ต่อเดือน</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">NOR + N03</div>
+      <h3>สลับเวลาปกติกับกะดึก จ่ายเฉพาะวันที่เข้ากะ</h3>
+      <p>เรตยังเป็น 1,200 (นับได้ 2 ตระกูล) แต่จ่ายเฉพาะวันที่เข้า <span class="mono">N03</span> จริง วัน <span class="mono">NOR</span> ไม่จ่าย เพราะเป็นเวลางานปกติ</p>
+      <div class="out">ใช้เฉพาะคู่นี้ล้วน ถ้ามีกะที่สามด้วยให้กลับไปคิดแบบปกติ</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">NOR + N03 · เกิน 15 วัน</div>
+      <h3>อยู่กะดึกเกินครึ่งเดือน จ่ายเต็มไปเลย</h3>
+      <p>นับวัน <span class="mono">N03</span> รวมกับวันหยุดและวันลาที่จ่ายได้ ถ้า <b>เกิน 15 วัน</b> ถือว่าอยู่กะดึกทั้งเดือน</p>
+      <div class="out">ได้ <b>1,200</b> เต็ม ไม่ต้องเฉลี่ยรายวัน · 15 วันพอดียังไม่เข้าเกณฑ์</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">NOR + F01</div>
+      <h3>เดือนที่ใช้แค่สองรหัสนี้ ไม่คิดค่ากะ</h3>
+      <p>ทั้งเดือนมีแค่ <span class="mono">NOR</span> กับ <span class="mono">F01</span> ไม่ว่าจะกี่วันก็ตาม</p>
+      <div class="out">ได้ <b>฿0</b></div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">สาย Process</div>
+      <h3>Process เข้า N03 ไม่จ่ายวันนั้น</h3>
+      <p>วันที่เข้ากะอื่นยังจ่ายตามปกติ และ <b>เรตต่อเดือนไม่เปลี่ยน</b> ยังนับตระกูลตามที่หมุนจริง</p>
+      <div class="out">ตัดเฉพาะวัน <span class="mono">N03</span> ออกจากจำนวนวันที่จ่าย</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">ลาป่วย ≥ 3 วันติด</div>
+      <h3>ลาป่วยยาว ไม่จ่ายวันลาในช่วงนั้น</h3>
+      <p>จ่ายเฉพาะวันที่ไม่ได้ลา · <b>วันหยุดประจำสัปดาห์ที่คั่นกลางไม่ตัดช่วง</b> ป่วย-ป่วย-หยุด-ป่วย นับเป็นติดกัน 4 วัน แต่ตัววันหยุดเองยังจ่าย</p>
+      <div class="out">ลาไม่ถึง 3 วันติด จ่ายตามปกติ · HR กดอนุมัติจ่ายเป็นรายคนได้</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">ไม่มีวันทำงานเลย</div>
+      <h3>ทั้งเดือนไม่ได้มาทำงานสักวัน</h3>
+      <p>เช่นลาป่วยยาวทั้งเดือน ระบบตั้งไว้ที่ ฿0 ก่อน ไม่ตัดสินแทน</p>
+      <div class="out">ถ้าควรจ่าย ให้ HR <b>กดอนุมัติเป็นรายคน</b> แล้วยอดจะคิดใหม่ทันที</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ตัวอย่าง ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">ลองคิดตาม</div>
+    <h2>ตัวอย่างคิดจริง 6 เคส</h2>
+    <p style="color:var(--ink-2);">ให้ลูกน้องปิดคำตอบแล้วลองคิดเองก่อน แล้วค่อยเทียบ</p>
+  </div>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));">
+
+    <div class="ex">
+      <div class="ex-h"><h3>ก · หมุนครบ ทำครบเดือน</h3><span class="who">O2 · กรกฎาคม 31 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>ตระกูลที่หมุน</span><span class="v">เช้า+บ่าย+ดึก = 3</span></div>
+        <div class="line"><span>เรตต่อเดือน</span><span class="v">1,800</span></div>
+        <div class="line"><span>อัตรารายวัน</span><span class="v">1,800 ÷ 30 = 60</span></div>
+        <div class="line"><span>วันที่จ่าย</span><span class="v">31 วัน</span></div>
+        <div class="line"><span>คำนวณ</span><span class="v">60 × 31 = 1,860</span></div>
+        <div class="line"><span>ติดเพดาน</span><span class="v">→ 1,800</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,800</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>ข · เดือนสั้น ทำครบเหมือนกัน</h3><span class="who">O2 · กุมภาพันธ์ 28 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>เรตต่อเดือน</span><span class="v">1,800</span></div>
+        <div class="line"><span>อัตรารายวัน</span><span class="v">1,800 ÷ 30 = 60</span></div>
+        <div class="line"><span>วันที่จ่าย</span><span class="v">28 วัน</span></div>
+        <div class="line"><span>คำนวณ</span><span class="v">60 × 28 = 1,680</span></div>
+        <div class="line"><span>ไม่ถึงเพดาน</span><span class="v">ไม่ต้องตัด</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,680</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>ค · เข้าใหม่กลางเดือน</h3><span class="who">O1 · เริ่มงาน 13 ก.ค.</span></div>
+      <div class="ex-b">
+        <div class="line"><span>ตัดวันก่อนเริ่มงาน</span><span class="v">1–12 ก.ค. ทิ้ง</span></div>
+        <div class="line"><span>เหลือวันที่จ่าย</span><span class="v">13–31 = 19 วัน</span></div>
+        <div class="line"><span>เรต / อัตรารายวัน</span><span class="v">1,800 → 60</span></div>
+        <div class="line"><span>คำนวณ</span><span class="v">60 × 19 = 1,140</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,140</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>ง · NOR สลับ N03 ไม่เกิน 15 วัน</h3><span class="who">O1 · N03 10 วัน · NOR 21 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>ตระกูลที่หมุน</span><span class="v">เช้า+ดึก = 2</span></div>
+        <div class="line"><span>เรต / อัตรารายวัน</span><span class="v">1,200 → 40</span></div>
+        <div class="line"><span>N03 + วันหยุดที่จ่ายได้</span><span class="v">10 วัน (ไม่เกิน 15)</span></div>
+        <div class="line"><span>จ่ายเฉพาะวัน N03</span><span class="v">40 × 10 = 400</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">400</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>จ · N03 เกิน 15 วัน</h3><span class="who">O1 · N03 20 วัน · NOR 11 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>เรตต่อเดือน</span><span class="v">1,200</span></div>
+        <div class="line"><span>N03 + วันหยุดที่จ่ายได้</span><span class="v">20 วัน (เกิน 15)</span></div>
+        <div class="line"><span>เข้าเกณฑ์จ่ายเต็ม</span><span class="v">ไม่ต้องเฉลี่ย</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">1,200</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>ฉ · กะเช้าอย่างเดียวทั้งเดือน</h3><span class="who">O3 · มาครบ 31 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>ตระกูลที่หมุน</span><span class="v">เช้า = 1</span></div>
+        <div class="line"><span>เข้าเกณฑ์กะเดี่ยวไหม</span><span class="v">ไม่ (ไม่ใช่ N03)</span></div>
+        <div class="line"><span>เรตต่อเดือน</span><span class="v">0</span></div>
+        <div class="line"><span>มาครบทุกวันก็ไม่ช่วย</span><span class="v">0 × 31 = 0</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt zero">0</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ เช็กลิสต์ ============ -->
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">ก่อนกดบันทึก</div>
+    <h2>เช็กลิสต์ตรวจงาน</h2>
+    <p style="color:var(--ink-2);">ทำตามลำดับนี้ทุกครั้งที่คำนวณเดือนใหม่</p>
+  </div>
+  <div class="card card-pad">
+    <ol class="chk">
+      <li><b>แถบแดง “รหัสกะที่ไม่รู้จัก”</b> — ถ้าขึ้น ต้องเคลียร์ก่อน ไม่งั้นยอดต่ำกว่าความจริง</li>
+      <li><b>แถบ “ตัดวันนอกช่วงการจ้าง”</b> — เปิดดูรายชื่อ แล้วตรวจว่าวันเริ่มงาน/วันพ้นสภาพในระบบถูกต้องจริง ยอดขึ้นกับตรงนี้โดยตรง</li>
+      <li><b>แถบ “ข้อความในช่องหมายเหตุ”</b> — ไล่ดูว่าระบบตีความถูก มีอันไหนไม่ควรถูกนับไหม หรือมีคำอื่นที่ควรนับแต่ตกหล่น</li>
+      <li><b>แถบ “ลาป่วยติดต่อกัน”</b> — ดูว่าควรอนุมัติจ่ายให้ใครบ้าง (ผ่าตัด อุบัติเหตุ) แล้วกดอนุมัติเป็นรายคน</li>
+      <li><b>แถบ “ไม่มีวันทำงานเลย”</b> — ตัดสินทีละคนว่าจะจ่ายหรือไม่</li>
+      <li><b>คนที่ไม่พบใน DB</b> — รหัสพนักงานไม่ตรง หรือยังไม่ได้เพิ่มเข้าระบบ คนกลุ่มนี้ได้ ฿0 แน่นอน ต้องแก้ก่อน</li>
+      <li><b>เทียบกับไฟล์เฉลย</b> — ถ้ามีไฟล์ที่คิดมือไว้ กดปุ่มเทียบ ระบบจะชี้ให้ว่ารายการไหนไม่ตรงและน่าจะเพราะอะไร</li>
+      <li><b>อนุมัติแล้วต้องกดบันทึกในรอบเดียวกัน</b> — การอนุมัติยังไม่ถูกเก็บถาวร ถ้าอัปโหลดไฟล์ใหม่จะรีเซ็ต</li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">คำถามที่ถูกถามบ่อย</div>
+    <h2>สามข้อที่มักเข้าใจผิด</h2>
+  </div>
+  <div class="card card-pad" style="gap:18px;">
+    <div>
+      <h3>“ทำไมเดือนกุมภาฯ ทำครบยังได้ไม่ถึง 1,800”</h3>
+      <p style="color:var(--ink-2);">ถูกแล้ว เพราะอัตรารายวันหารด้วย 30 คงที่ ไม่ได้หารด้วยวันจริงของเดือน เดือนที่สั้นกว่า 30 วันจึงไปไม่ถึงเพดาน</p>
+    </div>
+    <div style="border-top:1px solid var(--line-2); padding-top:16px;">
+      <h3>“คนนี้เป็นระดับ O มาครบทุกวัน ทำไมได้ ฿0”</h3>
+      <p style="color:var(--ink-2);">ให้ดูคอลัมน์ตระกูลกะก่อน ถ้าขึ้นว่า 1 ตระกูล แปลว่าไม่ได้หมุนกะเลย จึงไม่มีค่ากะ — เป็นไปตามกติกา ไม่ใช่ระบบคำนวณผิด</p>
+    </div>
+    <div style="border-top:1px solid var(--line-2); padding-top:16px;">
+      <h3>“หมายเหตุเขียนว่าลาป่วย ทำไมไม่จ่าย”</h3>
+      <p style="color:var(--ink-2);">อ่านข้อความให้จบ ถ้ามีคำว่า “ไม่จ่ายเงิน” หรือ “หักเงิน” ต่อท้าย แปลว่าเป็นลาป่วยแบบไม่ได้เงิน หมายเหตุชนะช่องประเภทการลาเสมอ</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>กติกาทั้งหมดในเอกสารนี้ตรงกับที่ระบบคำนวณจริง และมีชุดทดสอบ 199 กรณีคุมไว้ไม่ให้เพี้ยน</p>
+  <p>ถ้าเจอเคสที่ไม่เข้าข้อไหนในนี้ ให้บันทึกไว้แล้วแจ้ง อย่าเดาเอง — ทุกกติกาในนี้มาจากการเทียบยอดจริง</p>
+</footer>
+
+</div>
+
+</body>
+</html>

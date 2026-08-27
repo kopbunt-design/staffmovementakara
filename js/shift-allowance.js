@@ -514,6 +514,9 @@ export function renderShiftAllowance() {
     <div class="header-actions">
       <button class="btn ${''}" id="saTabCalc" onclick="window._saTab('calc')">คำนวณใหม่</button>
       <button class="btn" id="saTabHist" onclick="window._saTab('hist')">ประวัติที่บันทึก</button>
+      <!-- คู่มือเป็นไฟล์นิ่งใน /docs — เปิดแท็บใหม่เพื่อให้เปิดคู่กับหน้าคำนวณได้ -->
+      <a class="btn btn-secondary" href="docs/shift-allowance-guide.html" target="_blank" rel="noopener"
+         title="วิธีคิดค่ากะทีละขั้น เคสพิเศษ ตัวอย่าง และเช็กลิสต์ตรวจงาน">📖 คู่มือคิดค่ากะ</a>
     </div>
   </div>
 
