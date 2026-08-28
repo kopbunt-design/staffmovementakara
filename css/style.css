@@ -8,7 +8,7 @@
   --navy:#0F1C4D; --navy2:#162461;
   --bg:#F1F4F9; --card:#FFFFFF; --border:#E2E8F0; --border2:#CBD5E1;
   --text:#1E293B; --muted:#64748B; --muted2:#94A3B8;
-  --sidebar-w:220px;
+  --sidebar-w:232px;
   --radius:10px; --radius-sm:7px;
   /* Premium Executive Dashboard tokens */
   --exec-navy:#0F1C4D; --exec-navy-2:#1B2C63; --exec-navy-soft:#EEF1F8;
@@ -51,17 +51,19 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 /* ===== APP SHELL ===== */
 .app-shell{display:flex;height:100vh;overflow:hidden;}
 
-/* ===== SIDEBAR ===== */
-.sidebar{width:var(--sidebar-w);background:var(--navy);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
-.sidebar-header{padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,0.07);}
-.sidebar-logo{height:32px;display:block;filter:brightness(0) invert(1);}
-.sidebar-product{font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);letter-spacing:1.5px;text-transform:uppercase;margin-top:8px;}
+/* ===== SIDEBAR — โทนสว่างโมเดิร์น (ดีไซน์ v4 จาก Figma 2026-08-29) =====
+   พื้นขาวนวลไม่จ้า ตัวหนังสือ slate ไม่ดำสนิท โลโก้สีจริงไม่ invert
+   หัวกลุ่มมีไอคอน รายการลูกเยื้อง active เป็น pill ฟ้าอ่อน */
+.sidebar{width:var(--sidebar-w);background:#FAFBFD;border-right:1px solid #E7ECF4;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+.sidebar-header{padding:20px 16px 14px;border-bottom:1px solid #EEF1F6;}
+.sidebar-logo{height:30px;display:block;}
+.sidebar-product{font-size:10px;font-weight:700;color:#8A94A8;letter-spacing:2px;text-transform:uppercase;margin-top:8px;}
 .sidebar-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 /* ===== NOTIFICATION BELL ===== */
 .notif-wrap{position:relative;}
-.notif-bell{position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:none;border-radius:8px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);cursor:pointer;transition:all 0.15s;}
-.notif-bell:hover{background:rgba(255,255,255,0.13);color:#fff;}
-.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:9px;border:2px solid var(--navy);}
+.notif-bell{position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:none;border-radius:8px;background:#EEF3FB;color:#55607A;cursor:pointer;transition:all 0.15s;}
+.notif-bell:hover{background:#DCE7F8;color:var(--blue);}
+.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:9px;border:2px solid #FAFBFD;}
 .notif-panel{position:fixed;top:52px;left:14px;width:308px;max-height:70vh;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);z-index:9998;display:flex;flex-direction:column;overflow:hidden;animation:toast-in 0.18s ease;}
 .notif-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text);}
 .notif-clear{border:none;background:none;color:var(--blue);font-size:11px;font-weight:600;cursor:pointer;}
@@ -80,23 +82,29 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .notif-title{font-size:12.5px;font-weight:600;color:var(--text);}
 .notif-detail{font-size:11.5px;color:var(--muted);margin-top:1px;word-break:break-word;}
 .notif-time{font-size:10.5px;color:var(--muted2);margin-top:3px;}
-.sidebar-nav{padding:12px 8px;flex:1;}
-.nav-section{font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);letter-spacing:1.2px;text-transform:uppercase;padding:12px 8px 4px;}
-.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:rgba(255,255,255,0.55);cursor:pointer;transition:all 0.15s;margin-bottom:2px;font-size:13px;font-weight:500;border:none;background:none;width:100%;text-align:left;}
-.nav-item:hover{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.85);}
-.nav-item.active{background:rgba(43,90,199,0.6);color:#fff;}
-.nav-item svg{flex-shrink:0;opacity:0.8;}
+.sidebar-nav{padding:12px 10px;flex:1;}
+.nav-section{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:#55607A;padding:14px 10px 5px;}
+.nav-section svg{flex-shrink:0;opacity:0.85;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;color:#3A4454;cursor:pointer;transition:all 0.15s;margin-bottom:2px;font-size:13px;font-weight:500;border:none;background:none;width:100%;text-align:left;}
+.nav-item:hover{background:#F1F4F9;color:#1E2430;}
+.nav-item.active{background:#E8F0FD;color:var(--blue);font-weight:600;}
+.nav-item svg{flex-shrink:0;opacity:0.75;}
 .nav-item.active svg{opacity:1;}
-.nav-count{margin-left:auto;font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);}
+.nav-sub{padding-left:35px;font-size:12.5px;}
+.nav-count{margin-left:auto;font-size:10px;font-weight:700;color:#98A2B6;}
 .nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;}
-.sidebar-footer{border-top:1px solid rgba(255,255,255,0.07);padding:12px 12px;}
+.sidebar-footer{border-top:1px solid #EEF1F6;padding:12px 12px;}
 .sidebar-user{display:flex;align-items:center;gap:10px;}
 .user-avatar{width:30px;height:30px;border-radius:50%;background:var(--gold);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .user-info{flex:1;min-width:0;}
-.user-name{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.user-role{font-size:10px;color:rgba(255,255,255,0.4);}
-.logout-btn{background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.3);padding:4px;border-radius:5px;transition:all 0.2s;}
-.logout-btn:hover{color:#fff;background:rgba(255,255,255,0.08);}
+.user-name{font-size:12px;font-weight:600;color:#1E2430;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-role{font-size:10px;color:#8A94A8;}
+.logout-btn{background:none;border:none;cursor:pointer;color:#98A2B6;padding:4px;border-radius:5px;transition:all 0.2s;}
+.logout-btn:hover{color:var(--red);background:var(--red-light);}
+/* สลับภาษา ไทย/EN — ตอนนี้แปลเฉพาะเปลือกแอป (เมนู/หัวกลุ่ม) เนื้อหาในหน้ายังเป็นไทย */
+.lang-toggle{display:flex;background:#EDF0F6;border-radius:8px;padding:3px;margin-bottom:10px;}
+.lang-btn{flex:1;border:none;background:none;font-family:inherit;font-size:11px;font-weight:700;padding:5px 0;border-radius:6px;color:#8A94A8;cursor:pointer;transition:all 0.15s;}
+.lang-btn.active{background:#fff;color:var(--blue);box-shadow:0 1px 2px rgba(15,28,77,0.14);}
 
 /* ===== MAIN CONTENT ===== */
 .main-content{flex:1;overflow-y:auto;min-width:0;}

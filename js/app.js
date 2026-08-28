@@ -282,6 +282,34 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
   el.addEventListener("click", () => navigate(el.dataset.page))
 );
 
+// ===== สลับภาษา ไทย/EN =====
+// ตอนนี้แปลเฉพาะเปลือกแอป (ป้ายเมนู/หัวกลุ่มที่ติด data-i18n) — เนื้อหาในหน้ายังเป็นไทย
+// ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
+const I18N = {
+  th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน",
+        "grp.records":"ทะเบียนพนักงาน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
+  en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.payrollexp":"Payroll Expense",
+        "grp.records":"Employee Records", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.plan":"Headcount Planning", "grp.system":"System" },
+};
+export let appLang = localStorage.getItem("app_lang") || "th";
+function applyLang(lang) {
+  if (!I18N[lang]) lang = "th";
+  appLang = lang;
+  try { localStorage.setItem("app_lang", lang); } catch {}
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const v = I18N[lang][el.dataset.i18n];
+    if (v) el.textContent = v;
+  });
+  document.querySelectorAll("#langToggle .lang-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.lang === lang));
+  document.documentElement.lang = lang;
+}
+document.querySelectorAll("#langToggle .lang-btn").forEach(b =>
+  b.addEventListener("click", () => applyLang(b.dataset.lang)));
+applyLang(appLang);
+
 // ===== DATA LOADING =====
 async function loadMovements() {
   const { data } = await supabase.from("movements").select("*").order("created_at", {ascending:false});
