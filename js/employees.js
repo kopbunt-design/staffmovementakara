@@ -6,6 +6,52 @@ import { comboHTML, bindCombo, setComboItems, toItems } from "./combobox.js";
 
 let empSearch="", empDept="", empStatus="Active";
 
+// ===== สายบังคับบัญชา =====
+// ลำดับศักดิ์ของระดับงาน — HR ยืนยัน 2026-08-29 · O ต่ำสุด → S → M สูงสุด · เลขมากกว่า = สูงกว่า
+// ⚠️ ห้ามใช้ masterJobLevels.sort_order แทน — อันนั้นเรียงตามตัวอักษร (M1→M4→O1→O3→S1→S3)
+//    ไม่ใช่ลำดับศักดิ์ ถ้าเอาไปเทียบจะได้ผลผิด
+const LEVEL_RANK = { O1:1,O2:2,O3:3, S1:4,S2:5,S3:6, M1:7,M2:8,M3:9,M4:10 };
+const rankOf = lv => LEVEL_RANK[String(lv||"").toUpperCase().trim()] ?? null;
+
+// รายชื่อให้เลือกเป็นหัวหน้า — ตัดตัวเองออก (กันเป็นหัวหน้าตัวเอง) และเอาเฉพาะคนที่ยังทำงานอยู่
+const mgrItems = (selfCode) => allEmployees
+  .filter(e => e.emp_code && e.emp_code !== selfCode && (!e.status || e.status === "Active"))
+  .map(e => ({
+    value: e.emp_code,
+    label: `${e.emp_code} — ${[e.firstname_th, e.lastname_th].filter(Boolean).join(" ")}`,
+    sub: [e.position, e.job_level, e.department].filter(Boolean).join(" · "),
+  }));
+
+// ไล่สายขึ้นไปหาว่าการตั้งหัวหน้าคนนี้จะทำให้วนเป็นวงกลมไหม (ก→ข→ก)
+// DB มี trigger กันอีกชั้น แต่ตรวจฝั่งเว็บก่อนเพื่อบอกผู้ใช้ทันทีก่อนกดบันทึก
+function makesCycle(selfCode, mgrCode) {
+  const by = Object.fromEntries(allEmployees.map(e => [e.emp_code, e]));
+  let cur = mgrCode, hops = 0;
+  while (cur && hops < 50) {
+    if (cur === selfCode) return true;
+    cur = by[cur]?.manager_code;
+    hops++;
+  }
+  return false;
+}
+
+// ตรวจความสมเหตุสมผลของหัวหน้าที่เลือก — คืนข้อความเตือน (null = ผ่าน)
+// "บล็อก" = บันทึกไม่ได้ · "เตือน" = บันทึกได้แต่ขึ้นข้อความให้ดูอีกที
+function checkManager(selfCode, mgrCode, selfLevel, selfDiv) {
+  if (!mgrCode) return null;
+  if (mgrCode === selfCode) return { block:true, msg:"เป็นหัวหน้าตัวเองไม่ได้" };
+  if (makesCycle(selfCode, mgrCode))
+    return { block:true, msg:"สายบังคับบัญชาวนเป็นวงกลม — คนนี้อยู่ใต้บังคับบัญชาของพนักงานคนนี้อยู่แล้ว" };
+  const m = allEmployees.find(e => e.emp_code === mgrCode);
+  if (!m) return { block:true, msg:"ไม่พบพนักงานรหัสนี้ในระบบ" };
+  const rm = rankOf(m.job_level), rs = rankOf(selfLevel);
+  if (rm != null && rs != null && rm < rs)
+    return { block:false, msg:`หัวหน้าระดับ ${m.job_level} ต่ำกว่าลูกน้องระดับ ${selfLevel} — ตรวจอีกทีว่าถูกต้อง` };
+  if (selfDiv && m.division && m.division !== selfDiv)
+    return { block:false, msg:`หัวหน้าอยู่คนละ Division (${m.division}) — ถ้าเป็นสาย matrix ควรใส่ช่องเส้นประแทน` };
+  return null;
+}
+
 const selOpts = (opts, val="", ph="-- เลือก --", useId=false) =>
   `<option value="">${ph}</option>` + opts.map(o => {
     const v = useId ? o.id : (typeof o==="string"?o:o.name);
@@ -147,6 +193,15 @@ function openEmpModal(emp=null) {
           <div class="form-group"><label class="form-label">Job Level</label>
             <select id="ef_jl" class="form-control">${selOpts(masterJobLevels, emp?.job_level||"")}</select>
           </div>
+          <div class="form-group col-span-2"><label class="form-label">หัวหน้าโดยตรง
+            <span style="font-weight:400;color:var(--muted);font-size:11px;">— คนที่ประเมินผลงาน/เซ็นใบลา (เส้นทึบในผังองค์กร)</span></label>
+            ${comboHTML("ef_mgr", mgrItems(emp?.emp_code), emp?.manager_code||"", "พิมพ์รหัสหรือชื่อหัวหน้า…")}
+            <div id="ef_mgrWarn" class="mgr-warn" style="display:none;"></div>
+          </div>
+          <div class="form-group col-span-2"><label class="form-label">สายงานตามหน้าที่ (matrix)
+            <span style="font-weight:400;color:var(--muted);font-size:11px;">— ไม่บังคับ · เช่นสาย OH&amp;S ที่ต้องรายงานด้วยแต่ไม่ใช่หัวหน้าจริง (เส้นประ)</span></label>
+            ${comboHTML("ef_dmgr", mgrItems(emp?.emp_code), emp?.dotted_manager_code||"", "เว้นว่างได้ถ้าไม่มี…")}
+          </div>
           <div class="form-group"><label class="form-label">Site</label>
             <select id="ef_site" class="form-control">${selStr(SITES,emp?.site||"")}</select>
           </div>
@@ -192,11 +247,29 @@ function openEmpModal(emp=null) {
   bindCombo("ef_team", toItems(teams));
   bindCombo("ef_pos",  toItems(masterPositions));
 
+  // หัวหน้า — เตือนทันทีที่เลือก ไม่ต้องรอกดบันทึก
+  const selfCode = emp?.emp_code || "";
+  const warnEl = () => document.getElementById("ef_mgrWarn");
+  const showWarn = code => {
+    const el = warnEl(); if(!el) return;
+    const r = checkManager(selfCode, code,
+      document.getElementById("ef_jl")?.value, document.getElementById("ef_div")?.value);
+    el.style.display = r ? "block" : "none";
+    el.className = "mgr-warn" + (r?.block ? " block" : "");
+    el.textContent = r ? (r.block ? "✕ " : "⚠ ") + r.msg : "";
+  };
+  bindCombo("ef_mgr",  mgrItems(selfCode), showWarn);
+  bindCombo("ef_dmgr", mgrItems(selfCode));
+  showWarn(emp?.manager_code || "");
+
   window._saveEmp = async (existCode) => {
     const g = id => document.getElementById(id)?.value?.trim()||"";
     const code = g("ef_code");
     if(!code){ toast("กรุณากรอกรหัสพนักงาน","error"); return; }
     if(!g("ef_fnTH")){ toast("กรุณากรอกชื่อภาษาไทย","error"); return; }
+    // ตรวจหัวหน้าก่อนบันทึก — DB มี constraint/trigger กันอีกชั้น แต่บอกด้วยข้อความที่อ่านรู้เรื่องกว่า
+    const mgrChk = checkManager(code, g("ef_mgr"), g("ef_jl"), g("ef_div"));
+    if(mgrChk?.block){ toast(mgrChk.msg, "error"); return; }
     const data = {
       emp_code:code, status:g("ef_status")||"Active",
       firstname_th:g("ef_fnTH"), lastname_th:g("ef_lnTH"),
@@ -206,6 +279,7 @@ function openEmpModal(emp=null) {
       division:g("ef_div"), department:g("ef_dept"),
       section:g("ef_sect"), team:g("ef_team"),
       position:g("ef_pos"), job_level:g("ef_jl"),
+      manager_code:g("ef_mgr")||null, dotted_manager_code:g("ef_dmgr")||null,
       site:g("ef_site"), province:g("ef_prov"), contract_type:g("ef_ct"),
       join_date:g("ef_join")||null, effective_date:g("ef_eff")||null, end_date:g("ef_end")||null,
       salary:Number(document.getElementById("ef_sal")?.value)||null,

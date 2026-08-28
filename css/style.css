@@ -523,3 +523,9 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .perm-table tr.perm-group:hover td{background:var(--exec-navy-soft);}
 .perm-group b{font-size:11.5px;letter-spacing:.03em;color:var(--exec-navy);}
 .perm-group span{font-size:11px;color:var(--muted);margin-left:8px;}
+
+/* ===== เตือนเรื่องหัวหน้าโดยตรง (ฟอร์มพนักงาน) =====
+   เหลือง = บันทึกได้แต่ควรดูอีกที · แดง = บันทึกไม่ได้ */
+.mgr-warn{margin-top:6px;padding:7px 10px;border-radius:7px;font-size:11.5px;line-height:1.45;
+  background:var(--gold-light);color:#8A6D12;border-left:3px solid var(--gold);}
+.mgr-warn.block{background:var(--red-light);color:var(--red);border-left-color:var(--red);}
