@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, esc, toast, userRole, navigate } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, esc, toast, can, navigate } from "./app.js";
 import { PROVINCES } from "./masterdata.js";
 
 const MO=["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -212,7 +212,7 @@ export async function renderWorkforceOverview(){
 
     const ca=(c,p)=>{const d=c-p;return d>0?`<span style="color:#16a34a;">&#9650; +${d}</span>`:d<0?`<span style="color:#dc2626;">&#9660; ${d}</span>`:`<span style="color:#94a3b8;">— 0</span>`;};
     const cp=(c,p)=>{if(p===0)return"—";const v=((c-p)/p*100).toFixed(2);return `${v>=0?"+":""}${v}%`;};
-    const canEdit=userRole==="hr"||userRole==="admin";
+    const canEdit=can("data.employee.write");
     const opts=monthOpts();
 
     pg.innerHTML=`${CSS}<div class="wf-wrap">

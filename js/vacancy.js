@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, esc, toast, userRole, notify } from "./app.js";
+import { allEmployees, esc, toast, can, notify } from "./app.js";
 
 function getFY(ym){const[y,m]=ym.split("-").map(Number);return m>=7?y+1:y;}
 
@@ -53,7 +53,7 @@ const CSS=`<style>
 
 export async function renderVacancy(){
   const pg=document.getElementById("pageVacancy");
-  const canEdit=userRole==="hr"||userRole==="admin";
+  const canEdit=can("data.quota.write");
 
   await loadPosQuota();
   const active=allEmployees.filter(e=>e.status==="Active"||!e.status);

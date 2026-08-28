@@ -1,11 +1,13 @@
 import { supabase } from "./supabase-config.js";
-import { currentUser, userRole, esc, toast } from "./app.js";
+import { currentUser, can, esc, toast } from "./app.js";
 
 let unsubUsers = null;
+// รายชื่อ role ดึงจากตาราง app_roles ไม่ hardcode — ไม่งั้น role ที่แอดมินสร้างเองจะเลือกไม่ได้
+let appRoles = [];
 
 export async function renderUsers() {
   const pg = document.getElementById("pageUsers");
-  if (userRole !== "admin") {
+  if (!can("page.users")) {
     pg.innerHTML = `<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ Admin เท่านั้นที่จัดการผู้ใช้/สิทธิ์ได้</div></div>`;
     return;
   }
@@ -21,21 +23,25 @@ export async function renderUsers() {
     </table>
   </div></div></div>`;
 
+  // ถ้ายังไม่ได้ติดตั้งตารางสิทธิ์ ให้ถอยไปใช้ 3 role เดิม
+  const { data: rolesData } = await supabase.from("app_roles").select("key,label").order("sort_order");
+  appRoles = rolesData?.length ? rolesData
+           : [{key:"user",label:"User"},{key:"hr",label:"HR"},{key:"admin",label:"Admin"}];
+  const roleLabel = k => appRoles.find(r => r.key === k)?.label || k || "User";
+
   const renderList = (users) => {
     document.getElementById("usersCount").textContent = `${users.length} ผู้ใช้`;
     const roleColors={admin:["var(--purple)","var(--purple-light)"],hr:["var(--green)","var(--green-light)"],user:["var(--muted)","#f1f5f9"]};
     document.getElementById("usersBody").innerHTML = users.map(u => {
-      const [rc,rbg]=roleColors[u.role||"user"]||roleColors.user;
+      const [rc,rbg]=roleColors[u.role]||["var(--blue)","var(--blue-light)"];
       const isSelf = u.user_id===currentUser?.id;
       return `<tr>
         <td style="font-weight:600;">${esc(u.name||"ไม่ระบุ")}</td>
         <td class="text-muted">${esc(u.email||"")}</td>
         <td><select class="filter-select" style="font-size:12px;padding:5px 8px;" onchange="window._changeRole('${u.user_id}',this.value)" ${isSelf?"disabled":""}>
-          <option value="user" ${u.role==="user"?"selected":""}>User</option>
-          <option value="hr" ${u.role==="hr"?"selected":""}>HR</option>
-          <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option>
+          ${appRoles.map(r=>`<option value="${esc(r.key)}" ${u.role===r.key?"selected":""}>${esc(r.label)}</option>`).join("")}
         </select></td>
-        <td><span class="badge" style="color:${rc};background:${rbg};">${{admin:"Admin",hr:"HR",user:"User"}[u.role||"user"]}</span></td>
+        <td><span class="badge" style="color:${rc};background:${rbg};">${esc(roleLabel(u.role))}</span></td>
         <td>${!isSelf?`<button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._removeUser('${u.user_id}','${esc(u.name||u.email||"")}')">ลบ</button>`:""}</td>
       </tr>`;
     }).join("")||`<tr><td colspan="5" class="text-center text-muted" style="padding:32px;">ยังไม่มีผู้ใช้</td></tr>`;

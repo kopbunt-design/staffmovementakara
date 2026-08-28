@@ -8,7 +8,7 @@
 // ตัดวันนอกช่วงการจ้าง (ก่อน join_date / ตั้งแต่ end_date) ออกก่อนคำนวณเสมอ
 // เกณฑ์เพิ่ม: จ่ายเฉพาะพนักงานระดับ O (O1/O2/O3) — เช็คจาก job_level ในตาราง employees
 // กติกาทั้งหมดนี้ผู้ใช้ยืนยัน 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
-import { esc, toast, userRole, allEmployees, currentUser } from "./app.js";
+import { esc, toast, can, allEmployees, currentUser } from "./app.js";
 import { supabase } from "./supabase-config.js";
 
 // shift code (upper-case) -> ตระกูลกะ
@@ -509,7 +509,7 @@ async function ensureShiftCodes() {
 
 export function renderShiftAllowance() {
   const pg = document.getElementById("pageShiftallow");
-  if (userRole !== "hr" && userRole !== "admin") {
+  if (!can("page.shiftallow")) {
     pg.innerHTML = `<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ HR และ Admin</div></div>`;
     return;
   }
@@ -651,7 +651,7 @@ export function renderShiftAllowance() {
       .insert({ code, family: sel.value, note: "เพิ่มจากหน้าคำนวณค่ากะ" });
     if (error) {
       toast(error.message.includes("row-level security")
-        ? "ไม่มีสิทธิ์เพิ่มรหัสกะ (เฉพาะ HR/Admin)"
+        ? "ไม่มีสิทธิ์เพิ่มรหัสกะ (ต้องมีสิทธิ์แก้ข้อมูลหลัก)"
         : "เพิ่มไม่สำเร็จ: " + error.message, "error");
       return;
     }

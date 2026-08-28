@@ -394,3 +394,105 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .cbx-empty{padding:14px 12px;text-align:center;color:var(--muted);font-size:12.5px;}
 .cbx-item.cbx-create{border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;}
 .cbx-item.cbx-create .cbx-item-main{color:var(--blue);font-weight:600;}
+
+/* ===== Payroll Expense Report (js/payroll-summary.js) ===== */
+.pl-conf{display:flex;align-items:center;gap:9px;background:var(--exec-navy-soft);
+  border:1px solid #D6DDF0;border-left:3px solid var(--exec-navy);border-radius:var(--radius-sm);
+  padding:10px 14px;font-size:12.5px;color:var(--exec-ink);}
+.pl-conf svg{color:var(--exec-navy);flex:none;}
+.pl-conf b{font-weight:700;}
+
+.pl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.pl-kpi{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--exec-navy);
+  border-radius:var(--radius);padding:16px 18px 14px;box-shadow:var(--shadow-card);}
+.pl-kpi.accent{border-top-color:var(--exec-gold);background:linear-gradient(180deg,#FEFCF5 0%,#fff 44%);}
+.pl-kpi-label{font-size:10.5px;font-weight:700;color:var(--exec-muted);text-transform:uppercase;letter-spacing:.09em;}
+.pl-kpi-value{font-size:27px;font-weight:800;letter-spacing:-.8px;line-height:1.08;margin:7px 0 1px;
+  font-variant-numeric:tabular-nums;color:var(--exec-ink);}
+.pl-kpi.accent .pl-kpi-value{color:#8A6D12;}
+.pl-kpi-unit{font-size:10.5px;color:var(--muted2);letter-spacing:.06em;margin-bottom:9px;}
+.pl-delta{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;
+  padding-top:8px;border-top:1px solid var(--exec-line);}
+.pl-delta span{font-weight:500;color:var(--muted);}
+.pl-delta.up{color:var(--exec-neg);}      /* ค่าใช้จ่ายเพิ่ม = แดง */
+.pl-delta.down{color:var(--exec-pos);}
+.pl-delta.muted{color:var(--muted2);font-weight:600;}
+
+.pl-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+@media (max-width:1080px){.pl-grid2{grid-template-columns:1fr;}.pl-kpis{grid-template-columns:repeat(2,1fr);}}
+
+/* แท่งแนวนอน — ชุดข้อมูลเดียว สีเดียว ความยาวคือค่าที่สื่อ */
+.pl-bars{display:flex;flex-direction:column;gap:7px;}
+.pl-bar{display:grid;grid-template-columns:132px 1fr 62px 44px;align-items:center;gap:10px;
+  font-size:12px;padding:2px 0;cursor:default;}
+.pl-bar:hover .pl-bar-fill{background:var(--exec-navy-2);}
+.pl-bar-label{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-bar-track{background:#EDF0F6;border-radius:3px;height:14px;overflow:hidden;}
+.pl-bar-fill{height:100%;background:var(--exec-navy);border-radius:0 4px 4px 0;
+  min-width:2px;transition:background .15s;}
+.pl-bar-val{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:var(--exec-ink);}
+.pl-bar-share{text-align:right;font-size:11px;color:var(--muted2);font-variant-numeric:tabular-nums;}
+
+/* แนวโน้มรายเดือน — เส้นชุดเดียว (แกน y ไม่เริ่มจากศูนย์ ดูหมายเหตุใต้กราฟ) */
+.pl-line{position:relative;height:150px;margin:4px 6px 0;}
+.pl-line svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+.pl-line polyline{fill:none;stroke:var(--exec-navy);stroke-width:2;
+  stroke-linejoin:round;stroke-linecap:round;}
+.pl-pt{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;
+  background:var(--exec-navy);box-shadow:0 0 0 2px #fff;cursor:default;}
+.pl-pt.on{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;background:var(--exec-gold);
+  box-shadow:0 0 0 2.5px #fff;}
+.pl-pt:hover{box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(15,28,77,.16);}
+.pl-ptlab{position:absolute;transform:translate(-50%,-100%);margin-top:-11px;
+  font-size:11px;font-weight:700;color:var(--exec-ink);font-variant-numeric:tabular-nums;
+  white-space:nowrap;pointer-events:none;}
+.pl-ptlab.on{color:#8A6D12;}
+.pl-ptlab.lead{transform:translate(0,-100%);}
+.pl-ptlab.trail{transform:translate(-100%,-100%);}
+.pl-xaxis{position:relative;height:16px;margin:9px 6px 0;border-top:1px solid var(--exec-line);}
+.pl-xlab{position:absolute;transform:translateX(-50%);top:5px;font-size:10.5px;color:var(--muted2);
+  white-space:nowrap;}
+.pl-xlab.lead{transform:translateX(0);}
+.pl-xlab.trail{transform:translateX(-100%);}
+.pl-scale{margin:6px 6px 0;font-size:10.5px;color:var(--muted2);}
+
+.pl-table td.num,.pl-table th.num{text-align:right;font-variant-numeric:tabular-nums;}
+.pl-table td.strong{font-weight:700;}
+.pl-table tr.pl-grp{cursor:pointer;}
+.pl-table tr.pl-grp td{background:#FAFBFD;border-bottom:1px solid var(--border2);}
+.pl-table tr.pl-grp:hover td{background:var(--exec-navy-soft);}
+.pl-caret{display:inline-block;width:11px;color:var(--muted2);font-size:10px;}
+.pl-table td.pl-sub{padding-left:34px;color:var(--muted);}
+.pl-table tr.pl-total td{background:var(--exec-navy);color:#fff;font-weight:700;border-bottom:none;}
+.pl-table tr.pl-total:hover td{background:var(--exec-navy);}
+
+/* ===== ตารางสิทธิ์ (js/permissions-admin.js) ===== */
+.perm-table{font-size:12.5px;}
+.perm-table th{vertical-align:bottom;}
+.perm-table td{vertical-align:middle;}
+.perm-table tbody tr:hover td{background:var(--blue-light);}
+
+.perm-role{text-align:center !important;min-width:104px;}
+.perm-role>div:first-child{font-size:12.5px;font-weight:700;}
+.perm-rolekey{font-size:10px;font-weight:400;opacity:.62;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+.perm-sys{font-size:9.5px;font-weight:600;opacity:.55;letter-spacing:.06em;text-transform:uppercase;margin-top:3px;}
+.perm-edit{margin-top:3px;background:none;border:none;cursor:pointer;color:#fff;opacity:.72;
+  font-size:10.5px;text-decoration:underline;font-family:inherit;padding:0;}
+.perm-edit:hover{opacity:1;}
+
+.perm-name{line-height:1.35;}
+.perm-name>div:first-child{font-weight:600;}
+.perm-desc{font-size:11px;color:var(--muted);margin-top:1px;}
+.perm-key{font-size:10px;color:var(--muted2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:2px;}
+
+.perm-cell{text-align:center;}
+.perm-cell input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--blue);margin:0;}
+/* คอลัมน์ Admin ใช้เครื่องหมายถูกแทน checkbox — ดูออกทันทีว่าอนุญาตและแก้ไม่ได้ */
+.perm-locked{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  border-radius:5px;background:var(--exec-navy-soft);color:var(--exec-navy);cursor:not-allowed;}
+
+.perm-table tr.perm-group td{background:var(--exec-navy-soft);border-top:1px solid var(--border2);
+  border-bottom:1px solid var(--border2);padding:7px 14px;}
+.perm-table tr.perm-group:hover td{background:var(--exec-navy-soft);}
+.perm-group b{font-size:11.5px;letter-spacing:.03em;color:var(--exec-navy);}
+.perm-group span{font-size:11px;color:var(--muted);margin-left:8px;}

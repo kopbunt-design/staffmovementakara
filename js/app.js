@@ -10,6 +10,41 @@ export let allMovements = [];
 export let allEmployees = [];
 export let allPosQuota = [];   // Approved Headcount Plan (ตาราง position_quota) — ว่างได้ถ้ายังไม่ตั้งแผน
 
+// ===== สิทธิ์ (RBAC) =====
+// รายการสิทธิ์ของผู้ใช้คนนี้ ดึงจาก RPC my_permissions() ตอน login
+// อย่าเช็ค userRole ตรง ๆ ในโค้ดใหม่ — ใช้ can() แทน ไม่งั้น role ที่แอดมินสร้างเองจะใช้ไม่ได้
+export let myPerms = new Set();
+export const can = key => myPerms.has(key);
+
+// ใช้เมื่อ RPC ล้มเหลว (ยังไม่ได้รัน sql/schema_rbac.sql หรือเน็ตหลุด)
+// ค่าตรงกับที่ seed ไว้ในไฟล์ SQL — แอปจะทำงานเหมือนเดิมทุกประการ
+const LEGACY_PERMS = {
+  admin: "*",
+  hr: ["page.dashboard","page.employees","page.movements","page.vacancy","page.workforce",
+       "page.headcount","page.movreport","page.analytics","page.payroll","page.payrollexp",
+       "page.shiftallow",
+       "data.employee.read","data.employee.write","data.movement.read","data.movement.create",
+       "data.movement.manage_any","data.quota.write","data.masterdata.write",
+       "data.shiftallow.write","data.payroll.read","data.payroll.write","field.salary.read"],
+  user: ["page.dashboard","page.employees","page.movements","page.vacancy","page.workforce",
+         "page.headcount","page.movreport","page.analytics",
+         "data.employee.read","data.movement.read","data.movement.create"],
+};
+const ALL_PERMS = [...new Set([...LEGACY_PERMS.hr, ...LEGACY_PERMS.user,
+  "page.users","page.settings","data.roles.manage"])];
+
+async function loadMyPermissions() {
+  const { data, error } = await supabase.rpc("my_permissions");
+  if (!error && Array.isArray(data) && data.length) {
+    myPerms = new Set(data);
+    return;
+  }
+  // ไม่มีตารางสิทธิ์ / เรียกไม่ได้ -> ถอยไปใช้กติกาเดิม แอปจะไม่พังและสิทธิ์ไม่หลุด
+  if (error) console.warn("[perm] ใช้สิทธิ์สำรองตามกติกาเดิม:", error.message);
+  const legacy = LEGACY_PERMS[userRole];
+  myPerms = new Set(legacy === "*" ? ALL_PERMS : (legacy || LEGACY_PERMS.user));
+}
+
 // ===== UTILS =====
 export const esc = s => (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -189,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","shiftallow","users","settings"];
+const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","shiftallow","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -201,7 +236,33 @@ export function navigate(page) {
   renderPage(page);
 }
 
+// ซ่อน/แสดงเมนูตามสิทธิ์ · หัวข้อกลุ่มจะซ่อนเองถ้าไม่เหลือเมนูในกลุ่ม
+function applyNavPermissions() {
+  document.querySelectorAll(".nav-item[data-page]").forEach(el => {
+    el.style.display = can("page." + el.dataset.page) ? "flex" : "none";
+  });
+  // หัวข้อกลุ่ม (.nav-section) คุมเมนูที่อยู่ถัดจากมันจนถึงหัวข้อถัดไป
+  document.querySelectorAll(".sidebar-nav .nav-section").forEach(sec => {
+    let n = sec.nextElementSibling, visible = false;
+    while (n && !n.classList.contains("nav-section")) {
+      if (n.classList.contains("nav-item") && n.style.display !== "none") visible = true;
+      n = n.nextElementSibling;
+    }
+    sec.style.display = visible ? "" : "none";
+  });
+}
+
+function denyPage(page, label) {
+  const el = document.getElementById(`page${page[0].toUpperCase()+page.slice(1)}`);
+  if (el) el.innerHTML = `<div class="empty-state" style="padding-top:80px;">
+    <div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div>
+    <div class="empty-sub">บัญชีของคุณไม่ได้รับสิทธิ์เปิดหน้า “${esc(label||page)}”<br>
+      ติดต่อผู้ดูแลระบบถ้าคิดว่าควรเข้าได้</div></div>`;
+}
+
 async function renderPage(page) {
+  // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
+  if (!can("page." + page)) { denyPage(page); return; }
   if(page==="dashboard") renderDashboard();
   else if(page==="employees") (await import("./employees.js")).renderEmployees();
   else if(page==="movements") renderMovements();
@@ -211,6 +272,7 @@ async function renderPage(page) {
   else if(page==="vacancy") (await import("./vacancy.js")).renderVacancy();
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
+  else if(page==="payrollexp") (await import("./payroll-summary.js")).renderPayrollExpense();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="users") (await import("./users.js")).renderUsers();
   else if(page==="settings") (await import("./masterdata-admin.js")).renderSettings();
@@ -382,17 +444,20 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
     userRole = assignedRole;
   }
 
+  await loadMyPermissions();
+
+  // ชื่อ role ที่แสดง — ดึงจากตาราง app_roles เพื่อให้ role ที่แอดมินสร้างเองมีชื่อไทยด้วย
+  let roleLabel = {admin:"Admin",hr:"HR",user:"User"}[userRole] || userRole || "User";
+  const { data: roleRow } = await supabase.from("app_roles").select("label").eq("key", userRole).maybeSingle();
+  if (roleRow?.label) roleLabel = roleRow.label;
+
   // update sidebar
   document.getElementById("sidebarName").textContent = name;
-  document.getElementById("sidebarRole").textContent = {admin:"Admin",hr:"HR",user:"User"}[userRole]||"User";
+  document.getElementById("sidebarRole").textContent = roleLabel;
   document.getElementById("sidebarAvatar").textContent = initials(name);
   document.getElementById("sidebarAvatar").style.background = avatarColor(name);
 
-  if (userRole === "admin") {
-    document.getElementById("adminNavSection").style.display = "block";
-    document.getElementById("usersNavItem").style.display = "flex";
-    document.getElementById("settingsNavItem").style.display = "flex";
-  }
+  applyNavPermissions();
 
   await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications(), loadPosQuota()]);
   startRealtime();
@@ -809,7 +874,7 @@ export function renderMovements() {
   <div class="page-header">
     <div><div class="page-heading">Staff Movement</div><div class="page-sub">${filtered.length} รายการ</div></div>
     <div class="header-actions">
-      ${(userRole==="hr"||userRole==="admin")?`
+      ${can("data.employee.write")?`
       <input type="file" id="movFile" accept=".xlsx,.xls" style="display:none;" onchange="window._movImport(this)">
       <button class="btn btn-secondary" onclick="window._movTemplate()">📄 Template</button>
       <button class="btn btn-secondary" onclick="document.getElementById('movFile').click()">📥 Import Excel</button>`:""}
@@ -845,7 +910,7 @@ export function renderMovements() {
         <td class="text-muted" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(m.reason||"-")}</td>
         <td class="text-muted">${esc(m.recorded_by||"-")}</td>
         <td class="text-muted">${fmtDate(m.created_at)}</td>
-        <td style="white-space:nowrap;">${(m.created_by===currentUser?.id||userRole==="admin")?`<button class="btn btn-secondary btn-sm" onclick="window._editMov('${m.id}')">แก้ไข</button> <button class="btn btn-danger btn-sm" onclick="window._delMovRow('${m.id}')">ลบ</button>`:""}</td>
+        <td style="white-space:nowrap;">${(m.created_by===currentUser?.id||can("data.movement.manage_any"))?`<button class="btn btn-secondary btn-sm" onclick="window._editMov('${m.id}')">แก้ไข</button> <button class="btn btn-danger btn-sm" onclick="window._delMovRow('${m.id}')">ลบ</button>`:""}</td>
       </tr>`).join("")}</tbody>
     </table>
   </div></div></div>`;
@@ -934,13 +999,14 @@ function openMovModal(entry=null) {
             ${comboHTML("mv_toDept", toItems(masterDepartments), toDept, "พิมพ์ค้นหาแผนก…")}
           </div>
           <div class="form-group"><label class="form-label">ตำแหน่งใหม่
-            ${userRole==="admin"?`<span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่มีในลิสต์ = พิมพ์แล้วกดเพิ่มได้เลย)</span>`:""}</label>
+            ${can("data.masterdata.write")?`<span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่มีในลิสต์ = พิมพ์แล้วกดเพิ่มได้เลย)</span>`:""}</label>
             ${comboHTML("mv_toPos", toItems(masterPositions), toPos, "พิมพ์ค้นหาตำแหน่ง…")}
           </div>
           <div class="form-group col-span-2"><label class="form-label">เหตุผล / หมายเหตุ</label><textarea id="mv_reason" class="form-control">${esc(entry?.reason||"")}</textarea></div>
-          ${userRole==="hr"||userRole==="admin"?`
+          ${can("field.salary.read")?`
           <div class="form-group"><label class="form-label">เงินเดือน/อัตราใหม่ (บาท)</label><input id="mv_sal" type="number" class="form-control" value="${entry?.salary||""}"></div>
-          <div class="form-group"><label class="form-label">Cost Center</label><input id="mv_cc" class="form-control" value="${esc(entry?.cost_center||"")}"></div>
+          <div class="form-group"><label class="form-label">Cost Center</label><input id="mv_cc" class="form-control" value="${esc(entry?.cost_center||"")}"></div>`:""}
+          ${can("data.movement.create")?`
           <div class="form-group col-span-2">
             <label class="form-label">เอกสารแนบ <span style="font-weight:400;color:var(--muted);">(เช่น ใบลาออก หนังสืออนุมัติ — PDF/รูป/Word ไม่เกิน 10 MB)</span></label>
             ${entry?.attachment_path?`<div id="mv_curDoc" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--blue-light);border-radius:var(--radius-sm);margin-bottom:8px;font-size:12.5px;">
@@ -955,7 +1021,7 @@ function openMovModal(entry=null) {
         </div>
       </div>
       <div class="modal-footer">
-        ${isEdit&&(entry?.created_by===currentUser?.id||userRole==="admin")?`<button class="btn btn-danger" onclick="window._delMov('${entry.id}')">ลบ</button>`:""}
+        ${isEdit&&(entry?.created_by===currentUser?.id||can("data.movement.manage_any"))?`<button class="btn btn-danger" onclick="window._delMov('${entry.id}')">ลบ</button>`:""}
         <button class="btn btn-secondary" onclick="document.getElementById('movModal').remove()">ยกเลิก</button>
         <button class="btn btn-primary" onclick="window._saveMov('${entry?.id||""}')">บันทึก</button>
       </div>
@@ -967,7 +1033,7 @@ function openMovModal(entry=null) {
   bindCombo("mv_toPos",  toItems(masterPositions),   null, {
     allowFree: true,
     // เฉพาะ admin เท่านั้นที่เขียน master data ได้ (RLS) — คนอื่นพิมพ์เองได้แต่ไม่ขึ้นปุ่มเพิ่ม
-    onCreate: userRole==="admin" ? addMasterPosition : null,
+    onCreate: can("data.masterdata.write") ? addMasterPosition : null,
   });
 
   // ===== ช่องค้นหาพนักงาน (พิมพ์แล้วเลือกจากรายการ) =====
@@ -1047,11 +1113,11 @@ function openMovModal(entry=null) {
       reason: g("mv_reason"),
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
-      ...(userRole==="hr"||userRole==="admin" ? { salary: Number(document.getElementById("mv_sal")?.value)||null, cost_center: g("mv_cc") } : {})
+      ...(can("field.salary.read") ? { salary: Number(document.getElementById("mv_sal")?.value)||null, cost_center: g("mv_cc") } : {})
     };
 
     // อัปโหลดเอกสารแนบ (ถ้าเลือกไฟล์ใหม่) — ทำก่อนบันทึก เพื่อไม่ให้มีรายการที่อ้างไฟล์ที่อัปโหลดไม่สำเร็จ
-    if(userRole==="hr"||userRole==="admin"){
+    if(can("data.movement.create")){
       const fileEl = document.getElementById("mv_file");
       const file = fileEl?.files?.[0];
       if(file){
@@ -1219,7 +1285,7 @@ function renderAnalytics() {
 
 // ===== PAYROLL =====
 function renderPayroll() {
-  if(userRole!=="hr"&&userRole!=="admin"){
+  if(!can("page.payroll")){
     document.getElementById("pagePayroll").innerHTML=`<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ HR และ Admin</div></div>`;
     return;
   }

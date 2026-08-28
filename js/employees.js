@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, userRole, esc, fmtDate, avatarColor, initials, toast, notify, keepFocus } from "./app.js";
+import { allEmployees, can, esc, fmtDate, avatarColor, initials, toast, notify, keepFocus } from "./app.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels, getDeptsByDiv, getSectsByDept, getTeamsBySect } from "./masterdata-admin.js";
 import { SITES, CONTRACT_TYPES, NATIONALITIES, GENDERS, EMP_STATUSES, PROVINCES } from "./masterdata.js";
 import { comboHTML, bindCombo, setComboItems, toItems } from "./combobox.js";
@@ -31,7 +31,7 @@ export function renderEmployees() {
     }
     return true;
   });
-  const canWrite = userRole==="hr"||userRole==="admin";
+  const canWrite = can("data.employee.write");
   const activeCount = allEmployees.filter(e=>e.status==="Active"||!e.status).length;
 
   pg.innerHTML = `
@@ -159,9 +159,9 @@ function openEmpModal(emp=null) {
           <div class="form-group"><label class="form-label">วันเริ่มงาน *</label><input id="ef_join" type="date" class="form-control" value="${v("join_date")}"></div>
           <div class="form-group"><label class="form-label">Effective Date</label><input id="ef_eff" type="date" class="form-control" value="${v("effective_date")}"></div>
           <div class="form-group"><label class="form-label">วันสิ้นสุดสัญญา</label><input id="ef_end" type="date" class="form-control" value="${v("end_date")}"></div>
-          ${userRole==="hr"||userRole==="admin"?`<div class="form-group"><label class="form-label">เงินเดือน (บาท)</label><input id="ef_sal" type="number" class="form-control" value="${emp?.salary||""}"></div>`:`<div></div>`}
+          ${can("field.salary.read")?`<div class="form-group"><label class="form-label">เงินเดือน (บาท)</label><input id="ef_sal" type="number" class="form-control" value="${emp?.salary||""}"></div>`:`<div></div>`}
           <div class="form-group col-span-2"><label class="form-label">Remark</label><textarea id="ef_remark" class="form-control">${v("remark")}</textarea></div>
-          ${userRole==="hr"||userRole==="admin"?`<div class="form-group col-span-2"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;"><input id="ef_shiftallow" type="checkbox" ${emp?.shift_allowance_override?"checked":""} style="width:auto;margin:0;"> ได้รับค่ากะ (กำหนดเอง)</label><div style="font-size:11px;color:var(--muted);margin-top:2px;">ติ๊กเมื่อพนักงานระดับไม่ใช่ O แต่ HR ให้ได้ค่ากะ (เช่น ปรับ O→S แล้วยังได้ต่อ) — ปกติระดับ O ได้อยู่แล้วไม่ต้องติ๊ก</div></div>`:""}
+          ${can("data.employee.write")?`<div class="form-group col-span-2"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;"><input id="ef_shiftallow" type="checkbox" ${emp?.shift_allowance_override?"checked":""} style="width:auto;margin:0;"> ได้รับค่ากะ (กำหนดเอง)</label><div style="font-size:11px;color:var(--muted);margin-top:2px;">ติ๊กเมื่อพนักงานระดับไม่ใช่ O แต่ HR ให้ได้ค่ากะ (เช่น ปรับ O→S แล้วยังได้ต่อ) — ปกติระดับ O ได้อยู่แล้วไม่ต้องติ๊ก</div></div>`:""}
         </div>
       </div>
       <div class="modal-footer">

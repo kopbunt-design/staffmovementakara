@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
-import { userRole, esc, toast, notify } from "./app.js";
+import { can, esc, toast, notify } from "./app.js";
+import { loadRbac, permissionsCardHTML, wirePermissions } from "./permissions-admin.js";
 
 // ===== CACHED MASTER DATA =====
 export let masterDivisions = [];
@@ -38,19 +39,26 @@ export function getTeamsBySect(sectId) {
 }
 
 // ===== SETTINGS PAGE =====
-export function renderSettings() {
-  if (userRole !== "admin") {
+export async function renderSettings() {
+  if (!can("page.settings")) {
     document.getElementById("pageSettings").innerHTML = `<div class="empty-state" style="padding-top:80px;"><div class="empty-title">ไม่มีสิทธิ์เข้าถึง</div><div class="empty-sub">เฉพาะ Admin เท่านั้น</div></div>`;
     return;
   }
 
   const pg = document.getElementById("pageSettings");
+
+  // ตารางสิทธิ์อาจยังไม่ได้ติดตั้ง — โหลดไม่ได้ก็ให้หน้าที่เหลือใช้งานต่อได้
+  try { await loadRbac(); }
+  catch (e) { console.warn("[perm] โหลดตารางสิทธิ์ไม่ได้:", e.message); }
+
   pg.innerHTML = `
   <div class="page-header">
-    <div><div class="page-heading">Settings</div><div class="page-sub">จัดการโครงสร้างองค์กรและ Master Data</div></div>
+    <div><div class="page-heading">Settings</div><div class="page-sub">จัดการสิทธิ์ โครงสร้างองค์กร และ Master Data</div></div>
   </div>
 
   <div class="section mt-4 pb-4" style="display:flex;flex-direction:column;gap:16px;">
+
+    ${permissionsCardHTML()}
 
     <!-- Division -->
     <div class="card card-body">
@@ -168,6 +176,8 @@ export function renderSettings() {
 }
 
 function bindMasterEvents() {
+  wirePermissions(() => renderSettings());
+
   window._openMasterModal = (table) => openMasterModal(table, null);
   window._editMaster = (table, id) => {
     const items = {

@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v= คือเลขเวอร์ชันสำหรับล้าง cache — เบราว์เซอร์ (โดยเฉพาะ Safari) จำ CSS เดิมไว้แม้กด hard refresh
      ถ้าแก้ style.css แล้วหน้าเว็บยังหน้าตาเดิม ให้บวกเลขนี้ขึ้น 1 -->
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 
@@ -100,6 +100,10 @@
         <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>Payroll Report</span>
       </a>
+      <a class="nav-item" data-page="payrollexp">
+        <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span>ค่าใช้จ่ายเงินเดือน</span>
+      </a>
       <a class="nav-item" data-page="shiftallow">
         <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         <span>คำนวณค่ากะ</span>
@@ -139,6 +143,7 @@
     <div id="pageVacancy"   class="page"></div>
     <div id="pageAnalytics" class="page"></div>
     <div id="pagePayroll"   class="page"></div>
+    <div id="pagePayrollexp" class="page"></div>
     <div id="pageShiftallow" class="page"></div>
     <div id="pageUsers"     class="page"></div>
     <div id="pageSettings"  class="page"></div>
