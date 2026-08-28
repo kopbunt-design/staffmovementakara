@@ -1013,7 +1013,7 @@ function openMovModal(entry=null) {
             <div style="position:relative;">
               <input id="mv_search" class="form-control" autocomplete="off" placeholder="🔍 พิมพ์ค้นหา เช่น AKR23 หรือ สมชาย หรือ Mining"
                      value="${esc(entry?.emp_code?`${entry.emp_code} - ${entry.name||""}`:"")}">
-              <div id="mv_sugg" style="display:none;position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:2px;background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;"></div>
+              <div id="mv_sugg" class="emp-sugg" style="display:none;"></div>
             </div>
           </div>
           <div class="form-group"><label class="form-label">รหัสพนักงาน</label><input id="mv_code" class="form-control" value="${esc(entry?.emp_code||"")}" placeholder="AKR001"></div>
@@ -1082,17 +1082,32 @@ function openMovModal(entry=null) {
       box.value = `${e.code} - ${e.name}`;
       close();
     };
+    // ไฮไลต์ตัวอักษรที่ตรงกับที่พิมพ์ ให้เห็นว่าแมตช์ตรงไหน
+    const hl = (text, terms) => {
+      let out = esc(text);
+      for(const t of terms){
+        if(!t) continue;
+        const re = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})`, "ig");
+        out = out.replace(re, "<mark>$1</mark>");
+      }
+      return out;
+    };
+    let terms = [];
     const paint = () => {
-      sugg.innerHTML = list.map((e,i)=>`
-        <div data-i="${i}" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);${i===active?"background:var(--blue-light);":""}">
-          <b>${esc(e.code)}</b> ${esc(e.name)}
-          ${e.dept||e.pos?`<div style="font-size:11px;color:var(--muted);">${esc([e.dept,e.sec,e.pos].filter(Boolean).join(" · "))}</div>`:""}
-        </div>`).join("");
-      sugg.style.display = list.length ? "block" : "none";
+      sugg.innerHTML = list.length ? list.map((e,i)=>`
+        <div data-i="${i}" class="emp-row${i===active?" active":""}">
+          <div class="emp-line">
+            <span class="emp-code">${hl(e.code, terms)}</span>
+            <span class="emp-name">${hl(e.name, terms)}</span>
+          </div>
+          ${e.dept||e.pos?`<div class="emp-meta">${hl([e.dept,e.sec,e.pos].filter(Boolean).join(" · "), terms)}</div>`:""}
+        </div>`).join("")
+        : `<div class="emp-empty">ไม่พบพนักงานที่ตรงกับ “${esc(box.value.trim())}”</div>`;
+      sugg.style.display = "block";
     };
     const search = () => {
       // ทุกคำต้องเจอ (AND) -> พิมพ์ "mining s2" หรือ "สมชาย ผลิต" ก็แคบลงได้
-      const terms = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      terms = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       list = (terms.length ? empPick.filter(e=>terms.every(t=>e.q.includes(t))) : empPick).slice(0,MAX);
       active = list.length ? 0 : -1;
       paint();

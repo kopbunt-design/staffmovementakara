@@ -401,6 +401,25 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .cbx-item.active mark{background:#fde047;}
 .cbx-empty{padding:14px 12px;text-align:center;color:var(--muted);font-size:12.5px;}
 .cbx-item.cbx-create{border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;}
+
+/* ===== รายการค้นหาพนักงาน (ฟอร์ม Staff Movement) =====
+   รหัสพนักงานเป็นสีน้ำเงินตัวหนา ชื่ออยู่ข้าง ๆ — ให้กวาดตาหารหัสได้เร็ว
+   ใช้ tabular-nums เพื่อให้ตัวเลขรหัสตรงคอลัมน์กันทุกแถว */
+.emp-sugg{position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:4px;
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-sm);
+  box-shadow:0 10px 24px rgba(15,28,77,.14);max-height:280px;overflow-y:auto;padding:4px;}
+.emp-row{padding:8px 10px;border-radius:7px;cursor:pointer;}
+.emp-row+.emp-row{margin-top:1px;}
+.emp-row:hover{background:var(--bg);}
+.emp-row.active{background:var(--blue-light);}
+.emp-line{display:flex;align-items:baseline;gap:12px;}
+.emp-code{flex-shrink:0;font-size:13px;font-weight:700;color:var(--blue);
+  font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+.emp-name{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.emp-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.emp-sugg mark{background:#fef08a;color:inherit;border-radius:3px;padding:0 1px;}
+.emp-row.active mark{background:#fde047;}
+.emp-empty{padding:16px 12px;text-align:center;color:var(--muted);font-size:12.5px;}
 .cbx-item.cbx-create .cbx-item-main{color:var(--blue);font-weight:600;}
 
 /* ===== Payroll Expense Report (js/payroll-summary.js) ===== */
