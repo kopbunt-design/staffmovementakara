@@ -50,9 +50,6 @@ create index if not exists cw_active_idx on contract_workers (is_active, worker_
 alter table contract_workers add column if not exists bank_name    text;
 alter table contract_workers add column if not exists bank_account text;
 
--- เก็บสำเนาบัญชีไว้ในงวดด้วย — คนอาจเปลี่ยนบัญชีทีหลัง แต่งวดเก่าต้องรู้ว่าโอนเข้าบัญชีไหน
-alter table contract_pay_item add column if not exists bank_name    text;
-alter table contract_pay_item add column if not exists bank_account text;
 
 
 -- ---------------------------------------------------------- 2. งวดจ่าย
@@ -93,6 +90,11 @@ create table if not exists contract_pay_item (
   unique (run_id, worker_id)
 );
 create index if not exists cpi_run_idx on contract_pay_item (run_id);
+
+-- เก็บสำเนาบัญชีไว้ในงวดด้วย — คนอาจเปลี่ยนบัญชีทีหลัง แต่งวดเก่าต้องรู้ว่าโอนเข้าบัญชีไหน
+-- (ต้องอยู่หลัง create table เสมอ ไม่งั้น alter จะหาตารางไม่เจอ)
+alter table contract_pay_item add column if not exists bank_name    text;
+alter table contract_pay_item add column if not exists bank_account text;
 
 
 -- --------------------------------------- 4. รายการครั้งเดียว (เพิ่ม/หัก)
