@@ -33,6 +33,9 @@ create table if not exists contract_workers (
   --    แต่ Supply หักลูกจ้างชั่วคราว — สองแผนกขัดกัน จึงต้องกำหนดรายคน
   wht_percent   numeric not null default 3,
   wht_apply     boolean not null default true,
+  -- บัญชีธนาคาร — ใช้ออกไฟล์โอนเงิน ถ้าไม่กรอกจะโอนให้ไม่ได้
+  bank_name     text,
+  bank_account  text,
   start_date    date,
   end_date      date,                              -- วันสิ้นสุดสัญญา (ว่าง = ยังไม่กำหนด)
   is_active     boolean not null default true,
@@ -42,6 +45,14 @@ create table if not exists contract_workers (
   created_by    uuid
 );
 create index if not exists cw_active_idx on contract_workers (is_active, worker_type);
+
+-- เผื่อเคยรัน schema เวอร์ชันก่อนหน้าไปแล้ว (create table if not exists จะข้ามคอลัมน์ใหม่)
+alter table contract_workers add column if not exists bank_name    text;
+alter table contract_workers add column if not exists bank_account text;
+
+-- เก็บสำเนาบัญชีไว้ในงวดด้วย — คนอาจเปลี่ยนบัญชีทีหลัง แต่งวดเก่าต้องรู้ว่าโอนเข้าบัญชีไหน
+alter table contract_pay_item add column if not exists bank_name    text;
+alter table contract_pay_item add column if not exists bank_account text;
 
 
 -- ---------------------------------------------------------- 2. งวดจ่าย

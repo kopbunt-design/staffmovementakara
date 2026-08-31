@@ -198,6 +198,17 @@ function runDetailHTML() {
     </div></div>
   </div>
 
+  ${(curRun.status==="approved"||curRun.status==="locked")&&items.length?`
+  <div class="section" style="padding-bottom:0;">
+    <div class="cp-docs">
+      <span class="cp-docs-t">เอกสารของงวดนี้</span>
+      <button class="btn btn-secondary btn-sm" onclick="window._docSlip()">🧾 สลิปรายคน</button>
+      <button class="btn btn-secondary btn-sm" onclick="window._docBank()">🏦 ไฟล์โอนธนาคาร</button>
+      <button class="btn btn-secondary btn-sm" onclick="window._doc50()">📄 50 ทวิ</button>
+      <button class="btn btn-secondary btn-sm" onclick="window._docPnd()">📋 ภ.ง.ด.3</button>
+    </div>
+  </div>`:""}
+
   <div class="section cp-sum">
     ${[["จำนวนคน",t.count,"คน"],["ยอดจ้างรวม",money(t.base),"บาท"],
        ["ได้เพิ่ม",money(t.extra),"บาท"],["รายการหัก",money(t.deduct),"บาท"],
@@ -283,6 +294,19 @@ function wire() {
     } catch(e){ toast("ไม่สำเร็จ: "+e.message,"error"); }
   };
 
+  // เอกสาร — โหลดตอนกด ไม่ถ่วงหน้าแรก
+  const docs = async () => await import("./contract-docs.js");
+  // ผูก tax_id/bank เข้ากับ item ตอนออกเอกสาร (item เก็บสำเนาตัวเลข ส่วนเลขภาษีอยู่ที่ทะเบียนคน)
+  const enrich = () => items.map(it => {
+    const w = workers.find(x => x.id === it.worker_id) || {};
+    return { ...it, tax_id: it.tax_id ?? w.tax_id,
+             bank_name: it.bank_name ?? w.bank_name, bank_account: it.bank_account ?? w.bank_account };
+  });
+  window._docSlip = async () => (await docs()).payslips(curRun, enrich());
+  window._doc50   = async () => (await docs()).wht50(curRun, enrich());
+  window._docBank = async () => (await docs()).bankFile(curRun, enrich());
+  window._docPnd  = async () => (await docs()).pnd3(curRun, enrich());
+
   window._cwNew  = () => workerForm(null);
   window._cwEdit = id => workerForm(workers.find(w=>w.id===id));
   window._cpAdj  = wid => adjustForm(wid);
@@ -303,6 +327,7 @@ async function calculateRun() {
     run_id: curRun.id, worker_id: w.id,
     worker_code: w.worker_code, name_th: w.name_th, worker_type: w.worker_type,
     department: w.department, cost_code: w.cost_code,
+    bank_name: w.bank_name, bank_account: w.bank_account,
     ...calcItem(w, byWorker[w.id] || []),
   }));
 
@@ -344,6 +369,10 @@ function workerForm(w) {
         <input id="cw_cc" class="form-control" value="${esc(w?.cost_code||"")}"></div>
       <div class="form-group"><label class="form-label">ค่าจ้างเหมา/เดือน (บาท) *</label>
         <input id="cw_rate" type="number" step="0.01" class="form-control" value="${w?.monthly_rate??""}"></div>
+      <div class="form-group"><label class="form-label">ธนาคาร</label>
+        <input id="cw_bank" class="form-control" value="${esc(w?.bank_name||"")}" placeholder="เช่น กสิกรไทย"></div>
+      <div class="form-group"><label class="form-label">เลขที่บัญชี</label>
+        <input id="cw_acct" class="form-control" value="${esc(w?.bank_account||"")}" placeholder="ไว้ออกไฟล์โอนเงิน"></div>
       <div class="form-group"><label class="form-label">วันเริ่มสัญญา</label>
         <input id="cw_start" type="date" class="form-control" value="${w?.start_date||""}"></div>
       <div class="form-group"><label class="form-label">วันสิ้นสุดสัญญา</label>
@@ -381,6 +410,7 @@ function workerForm(w) {
       worker_code:code, name_th:th, name_en:g("cw_en")||null,
       worker_type:g("cw_type"), tax_id:g("cw_tax")||null, phone:g("cw_phone")||null,
       division:g("cw_div")||null, department:g("cw_dept")||null, cost_code:g("cw_cc")||null,
+      bank_name:g("cw_bank")||null, bank_account:g("cw_acct")||null,
       monthly_rate:Number(g("cw_rate"))||0,
       wht_apply:document.getElementById("cw_wht").checked,
       wht_percent:Number(g("cw_pct"))||0,

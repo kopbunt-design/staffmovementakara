@@ -641,3 +641,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .adj-del{border:none;background:none;color:var(--muted2);cursor:pointer;font-size:13px;padding:2px 4px;}
 .adj-del:hover{color:var(--red);}
 .adj-new{display:flex;gap:8px;align-items:center;}
+.cp-docs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;}
+.cp-docs-t{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.4px;margin-right:4px;}
