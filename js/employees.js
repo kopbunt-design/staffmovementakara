@@ -52,6 +52,83 @@ function checkManager(selfCode, mgrCode, selfLevel, selfDiv) {
   return null;
 }
 
+// ===== คอลัมน์ตารางพนักงาน =====
+// 12 คอลัมน์ล้นจอแน่ ๆ จึงให้เลือกเปิด/ปิดได้ + ตรึงรหัส/ชื่อไว้ซ้าย (CSS .col-pin)
+// เลื่อนไปขวาไกลแค่ไหนก็ยังเห็นว่าแถวนั้นเป็นของใคร
+// ⚠️ Export ออกครบทุกคอลัมน์เสมอ ไม่ขึ้นกับที่เลือกดูบนจอ (ดู exportEmployees)
+const COL_KEY = "emp_cols";
+const DEFAULT_OFF = ["section", "team"];   // ข้อมูลที่มักดูเป็นราย ๆ มากกว่าดูทั้งตาราง
+
+const statusBadge = e => {
+  const sc={Active:"var(--green)",Resigned:"var(--red)",Terminated:"var(--red)",Retired:"var(--muted)",Transferred:"var(--blue)"}[e.status||"Active"]||"var(--green)";
+  const sbg={Active:"var(--green-light)",Resigned:"var(--red-light)",Terminated:"var(--red-light)",Retired:"#f1f5f9",Transferred:"var(--blue-light)"}[e.status||"Active"]||"var(--green-light)";
+  return `<span class="badge" style="color:${sc};background:${sbg};">${esc(e.status||"Active")}</span>`;
+};
+const nameCell = e => {
+  const av = avatarColor(e.firstname_th||e.emp_code||"");
+  return `<div style="display:flex;align-items:center;gap:8px;">
+    <div style="width:28px;height:28px;border-radius:8px;background:${av}18;color:${av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${initials((e.firstname_th||"")+" "+(e.lastname_th||""))}</div>
+    <div><div style="font-weight:600;white-space:nowrap;">${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</div>
+    <div class="text-sm text-muted" style="white-space:nowrap;">${esc((e.firstname_en||"")+" "+(e.lastname_en||""))}</div></div>
+  </div>`;
+};
+// หัวหน้าโดยตรง — แปลง emp_code เป็นชื่อ ถ้าหาไม่เจอให้โชว์รหัสไว้ก่อน จะได้รู้ว่าข้อมูลเพี้ยน
+const mgrCell = e => {
+  if(!e.manager_code) return `<span class="text-muted">—</span>`;
+  const m = allEmployees.find(x => x.emp_code === e.manager_code);
+  if(!m) return `<span class="badge" style="color:var(--red);background:var(--red-light);" title="ไม่พบพนักงานรหัสนี้">${esc(e.manager_code)} ?</span>`;
+  return `<div style="line-height:1.3;white-space:nowrap;">
+    <div>${esc([m.firstname_th,m.lastname_th].filter(Boolean).join(" "))}</div>
+    <div class="text-sm text-muted">${esc(m.job_level||"")}</div></div>`;
+};
+const txt = v => `<span class="text-muted">${esc(v||"-")}</span>`;
+
+const COLS = [
+  { key:"code",    label:"รหัส",          cls:"col-pin col-pin-1", cell:e=>`<b style="color:var(--blue);font-size:12px;">${esc(e.emp_code||"-")}</b>` },
+  { key:"name",    label:"ชื่อ-นามสกุล",   cls:"col-pin col-pin-2", cell:nameCell },
+  { key:"division",label:"Division",       cell:e=>txt(e.division) },
+  { key:"department",label:"Department",   cell:e=>txt(e.department) },
+  { key:"section", label:"Section",        cell:e=>txt(e.section) },
+  { key:"team",    label:"Team",           cell:e=>txt(e.team) },
+  { key:"position",label:"Position",       cell:e=>txt(e.position) },
+  { key:"level",   label:"Job Level",      cell:e=>`<span class="badge badge-gray">${esc(e.job_level||"-")}</span>` },
+  { key:"manager", label:"หัวหน้าโดยตรง",  cell:mgrCell },
+  { key:"contract",label:"ประเภทสัญญา",    cell:e=>txt(e.contract_type) },
+  { key:"join",    label:"วันเริ่มงาน",     cell:e=>`<span class="text-muted">${fmtDate(e.join_date)}</span>` },
+  { key:"status",  label:"สถานะ",          cell:statusBadge },
+];
+
+let colsOn = null;
+function loadCols(){
+  if(colsOn) return colsOn;
+  try { colsOn = new Set(JSON.parse(localStorage.getItem(COL_KEY))); }
+  catch { colsOn = null; }
+  // รหัส/ชื่อ ปิดไม่ได้ ไม่งั้นแถวจะไม่รู้ว่าเป็นของใคร
+  if(!colsOn?.size) colsOn = new Set(COLS.filter(c=>!DEFAULT_OFF.includes(c.key)).map(c=>c.key));
+  colsOn.add("code"); colsOn.add("name");
+  return colsOn;
+}
+const isColOn = k => loadCols().has(k);
+
+function colPickerHTML(){
+  const on = loadCols();
+  return `<div class="section" style="padding-top:10px;padding-bottom:0;">
+    <details class="col-picker">
+      <summary>คอลัมน์ที่แสดง <span class="col-count">${on.size}/${COLS.length}</span></summary>
+      <div class="col-list">
+        ${COLS.map(c=>{
+          const locked = c.key==="code"||c.key==="name";
+          return `<label class="col-opt${locked?" locked":""}">
+            <input type="checkbox" ${on.has(c.key)?"checked":""} ${locked?"disabled":""}
+                   onchange="window._toggleCol('${c.key}',this.checked)">
+            <span>${esc(c.label)}</span>${locked?`<em>ตรึงไว้</em>`:""}</label>`;
+        }).join("")}
+      </div>
+      <div class="col-hint">Export ออกครบทุกคอลัมน์เสมอ ไม่ขึ้นกับที่เลือกดูตรงนี้</div>
+    </details>
+  </div>`;
+}
+
 const selOpts = (opts, val="", ph="-- เลือก --", useId=false) =>
   `<option value="">${ph}</option>` + opts.map(o => {
     const v = useId ? o.id : (typeof o==="string"?o:o.name);
@@ -107,34 +184,29 @@ export function renderEmployees() {
       ${EMP_STATUSES.map(s=>`<option value="${s}" ${s===empStatus?"selected":""}>${s}</option>`).join("")}
     </select>
   </div>
+  ${colPickerHTML()}
   <div class="section mt-4 pb-4"><div class="card"><div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>Division</th><th>Department</th><th>Position</th><th>Job Level</th><th>ประเภทสัญญา</th><th>วันเริ่มงาน</th><th>สถานะ</th>${canWrite?"<th></th>":""}</tr></thead>
-      <tbody>${filtered.length===0?`<tr><td colspan="${canWrite?10:9}" class="text-center text-muted" style="padding:48px;">ไม่พบพนักงาน${empSearch||empDept||empStatus?" ที่ตรงกับเงื่อนไข":""}</td></tr>`:
-      filtered.map(e=>{
-        const sc={Active:"var(--green)",Resigned:"var(--red)",Terminated:"var(--red)",Retired:"var(--muted)",Transferred:"var(--blue)"}[e.status||"Active"]||"var(--green)";
-        const sbg={Active:"var(--green-light)",Resigned:"var(--red-light)",Terminated:"var(--red-light)",Retired:"#f1f5f9",Transferred:"var(--blue-light)"}[e.status||"Active"]||"var(--green-light)";
-        const av=avatarColor(e.firstname_th||e.emp_code||"");
-        const divName = masterDivisions.find(d=>d.name===e.division)?.name || e.division || "-";
-        return `<tr>
-          <td><b style="color:var(--blue);font-size:12px;">${esc(e.emp_code||"-")}</b></td>
-          <td><div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:28px;height:28px;border-radius:8px;background:${av}18;color:${av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${initials((e.firstname_th||"")+" "+(e.lastname_th||""))}</div>
-            <div><div style="font-weight:600;">${esc((e.firstname_th||"")+" "+(e.lastname_th||""))}</div>
-            <div class="text-sm text-muted">${esc((e.firstname_en||"")+" "+(e.lastname_en||""))}</div></div>
-          </div></td>
-          <td class="text-muted">${esc(divName)}</td>
-          <td class="text-muted">${esc(e.department||"-")}</td>
-          <td class="text-muted">${esc(e.position||"-")}</td>
-          <td><span class="badge badge-gray">${esc(e.job_level||"-")}</span></td>
-          <td class="text-muted">${esc(e.contract_type||"-")}</td>
-          <td class="text-muted">${fmtDate(e.join_date)}</td>
-          <td><span class="badge" style="color:${sc};background:${sbg};">${esc(e.status||"Active")}</span></td>
+    <table class="data-table emp-table">
+      <thead><tr>
+        ${COLS.filter(c=>isColOn(c.key)).map(c=>`<th class="${c.cls||""}">${esc(c.label)}</th>`).join("")}
+        ${canWrite?"<th></th>":""}
+      </tr></thead>
+      <tbody>${filtered.length===0?`<tr><td colspan="${COLS.filter(c=>isColOn(c.key)).length+(canWrite?1:0)}" class="text-center text-muted" style="padding:48px;">ไม่พบพนักงาน${empSearch||empDept||empStatus?" ที่ตรงกับเงื่อนไข":""}</td></tr>`:
+      filtered.map(e=>`<tr>
+          ${COLS.filter(c=>isColOn(c.key)).map(c=>`<td class="${c.cls||""}">${c.cell(e)}</td>`).join("")}
           ${canWrite?`<td><button class="btn btn-secondary btn-sm" onclick="window._openEmp('${e.emp_code}')">แก้ไข</button></td>`:""}
-        </tr>`;
-      }).join("")}</tbody>
+        </tr>`).join("")}</tbody>
     </table>
   </div></div></div>`;
+
+  window._toggleCol = (key, on) => {
+    const s = loadCols();
+    on ? s.add(key) : s.delete(key);
+    try { localStorage.setItem(COL_KEY, JSON.stringify([...s])); } catch {}
+    renderEmployees();
+    // เปิด details ค้างไว้ ไม่งั้นติ๊กทีเดียวแล้วหุบ ต้องกดเปิดใหม่ทุกครั้ง
+    document.querySelector(".col-picker")?.setAttribute("open", "");
+  };
 
   window._empSearch = v => { empSearch=v; keepFocus(renderEmployees); };
   window._empDept = v => { empDept=v; renderEmployees(); };
@@ -445,8 +517,14 @@ async function handleImport(inputEl) {
 
 function handleExport() {
   if(!window.XLSX){ toast("กรุณารอโหลด library","error"); return; }
-  const h=["Employee Code","First Name TH","Last Name TH","First Name EN","Last Name EN","Gender","Nationality","DOB","Phone","Division","Department","Section","Team","Position","Job Level","Site","Province","Contract Type","Join Date","Effective Date","End Date","Salary","Status","Remark"];
-  const rows=allEmployees.map(e=>[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,e.gender,e.nationality,e.dob,e.phone,e.division,e.department,e.section,e.team,e.position,e.job_level,e.site,e.province,e.contract_type,e.join_date,e.effective_date,e.end_date,e.salary,e.status,e.remark]);
+  // ออกครบทุกคอลัมน์เสมอ ไม่ขึ้นกับคอลัมน์ที่เลือกแสดงบนจอ
+  // หัวหน้าออกเป็นรหัส (นำกลับเข้า import ได้) + ชื่อ (ไว้ให้คนอ่าน)
+  const mgrName = code => {
+    const m = allEmployees.find(x => x.emp_code === code);
+    return m ? [m.firstname_th, m.lastname_th].filter(Boolean).join(" ") : "";
+  };
+  const h=["Employee Code","First Name TH","Last Name TH","First Name EN","Last Name EN","Gender","Nationality","DOB","Phone","Division","Department","Section","Team","Position","Job Level","Manager Code","Manager Name","Dotted Manager Code","Site","Province","Contract Type","Join Date","Effective Date","End Date","Salary","Status","Remark"];
+  const rows=allEmployees.map(e=>[e.emp_code,e.firstname_th,e.lastname_th,e.firstname_en,e.lastname_en,e.gender,e.nationality,e.dob,e.phone,e.division,e.department,e.section,e.team,e.position,e.job_level,e.manager_code,mgrName(e.manager_code),e.dotted_manager_code,e.site,e.province,e.contract_type,e.join_date,e.effective_date,e.end_date,e.salary,e.status,e.remark]);
   const ws=window.XLSX.utils.aoa_to_sheet([h,...rows]); ws["!cols"]=h.map(()=>({wch:16}));
   const wb=window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb,ws,"Employees");
   window.XLSX.writeFile(wb,`employees_${new Date().toISOString().slice(0,10)}.xlsx`);
