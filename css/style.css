@@ -594,3 +594,50 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .rl-msg{font-size:11.5px;margin-top:2px;}
 .rl-row.bad .rl-msg{color:var(--red);}
 .rl-row.warn .rl-msg{color:var(--gold-dark);}
+
+/* ===== ค่าจ้างเหมา (js/contract-payroll.js) ===== */
+.cp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);}
+.cp-tab{border:none;background:none;font-family:inherit;font-size:13px;font-weight:600;
+  color:var(--muted);padding:9px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.cp-tab:hover{color:var(--text);}
+.cp-tab.on{color:var(--blue);border-bottom-color:var(--blue);}
+
+.cp-runhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.cp-back{border:none;background:none;font-family:inherit;font-size:12px;color:var(--blue);
+  cursor:pointer;padding:0;margin-bottom:8px;}
+.cp-back:hover{text-decoration:underline;}
+.cp-period{font-size:19px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:10px;}
+/* แถบสถานะงวด — ให้เห็นว่าอยู่ขั้นไหนและเหลืออีกกี่ขั้น */
+.cp-flow{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;}
+.cp-step{color:var(--muted2);}
+.cp-step.done{color:var(--green);}
+.cp-step.on{color:var(--blue);font-weight:700;}
+.cp-sep{color:var(--border2);font-size:10px;}
+.cp-actions{display:flex;align-items:center;gap:12px;}
+.cp-locked{font-size:12px;color:var(--green);font-weight:600;}
+
+.cp-sum{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
+.cp-stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;}
+.cp-stat span{display:block;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.4px;}
+.cp-stat b{display:block;font-size:18px;font-weight:800;margin-top:4px;line-height:1.1;
+  font-variant-numeric:tabular-nums;color:var(--text);}
+.cp-stat em{font-style:normal;font-size:10px;color:var(--muted2);}
+.cp-stat.net{border-color:var(--green);background:var(--green-light);}
+.cp-stat.net b{color:var(--green);}
+@media (max-width:1200px){.cp-sum{grid-template-columns:repeat(3,1fr);}}
+
+.adj-list{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:14px;}
+.adj-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:12.5px;}
+.adj-row:last-child{border-bottom:none;}
+.adj-kind{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;white-space:nowrap;}
+.adj-kind.earning{color:var(--green);background:var(--green-light);}
+.adj-kind.deduction{color:var(--red);background:var(--red-light);}
+.adj-label{flex:1;}
+.adj-tax{font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;}
+.adj-amt{font-weight:700;font-variant-numeric:tabular-nums;}
+.adj-del{border:none;background:none;color:var(--muted2);cursor:pointer;font-size:13px;padding:2px 4px;}
+.adj-del:hover{color:var(--red);}
+.adj-new{display:flex;gap:8px;align-items:center;}
