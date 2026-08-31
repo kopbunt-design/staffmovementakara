@@ -320,7 +320,7 @@ async function loadMovements() {
   document.getElementById("movNavBadge").style.display = newToday?"inline":"none";
 }
 
-async function loadEmployees() {
+export async function loadEmployees() {
   const { data } = await supabase.from("employees").select("*").order("emp_code");
   allEmployees = data || [];
   // ตัวเลขข้างเมนู Employees = นับตาม "สถานะ Active ปัจจุบัน" ซึ่งคนละนิยามกับ Headcount บน Dashboard

@@ -563,3 +563,34 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .col-opt.locked{color:var(--muted2);cursor:default;}
 .col-opt em{font-style:normal;font-size:10px;color:var(--muted2);}
 .col-hint{margin-top:9px;font-size:11px;color:var(--muted);}
+
+/* ===== นำเข้าสายบังคับบัญชา (js/reporting-import.js) ===== */
+.rl-steps{display:flex;flex-direction:column;gap:20px;}
+.rl-step{display:flex;gap:14px;align-items:flex-start;}
+.rl-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;
+  font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.rl-h{font-size:14px;font-weight:700;color:var(--text);}
+.rl-d{font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:2px;}
+
+.rl-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
+.rl-stat{border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px;text-align:center;}
+.rl-stat b{display:block;font-size:26px;font-weight:800;color:var(--muted2);line-height:1.1;}
+.rl-stat span{font-size:11.5px;color:var(--muted);}
+.rl-stat.ok b{color:var(--green);} .rl-stat.bad b{color:var(--red);} .rl-stat.warn b{color:var(--gold-dark);}
+
+.rl-note{font-size:12.5px;color:var(--muted);background:var(--bg);border-radius:var(--radius-sm);
+  padding:10px 13px;margin-bottom:14px;}
+.rl-note.bad{background:var(--red-light);color:var(--red);}
+.rl-sec{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.5px;margin:14px 0 7px;}
+.rl-list{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);}
+.rl-row{display:flex;gap:12px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12.5px;}
+.rl-row:last-child{border-bottom:none;}
+.rl-row.bad{background:var(--red-light);}
+.rl-row.warn{background:var(--gold-light);}
+.rl-line{flex-shrink:0;width:52px;color:var(--muted2);font-size:11px;font-variant-numeric:tabular-nums;}
+.rl-who{color:var(--text);}
+.rl-arrow{color:var(--muted2);margin:0 4px;}
+.rl-msg{font-size:11.5px;margin-top:2px;}
+.rl-row.bad .rl-msg{color:var(--red);}
+.rl-row.warn .rl-msg{color:var(--gold-dark);}

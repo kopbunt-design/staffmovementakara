@@ -165,6 +165,7 @@ export function renderEmployees() {
       <button class="btn btn-secondary btn-sm" onclick="window._empTemplate()">📋 Template</button>
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('empFile').click()">📥 Import Excel</button>
       <button class="btn btn-secondary btn-sm" onclick="window._empExport()">📤 Export</button>
+      <button class="btn btn-secondary btn-sm" onclick="window._rlOpen()">🔗 สายบังคับบัญชา</button>
       <button class="btn btn-primary" onclick="window._openEmp(null)">+ เพิ่มพนักงาน</button>
       <input type="file" id="empFile" accept=".xlsx,.xls" style="display:none;" onchange="window._empImport(this)">
     </div>`:""}
@@ -215,6 +216,8 @@ export function renderEmployees() {
   window._empTemplate = downloadTemplate;
   window._empImport = handleImport;
   window._empExport = handleExport;
+  // โหลดตอนกดเท่านั้น — คนส่วนใหญ่ไม่ได้ใช้ทุกวัน ไม่ต้องถ่วงหน้าแรก
+  window._rlOpen = async () => (await import("./reporting-import.js")).openDialog();
 }
 
 function openEmpModal(emp=null) {
