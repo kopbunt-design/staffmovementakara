@@ -25,6 +25,9 @@ create table if not exists uniform_item (
 );
 create index if not exists uni_item_type_idx on uniform_item (item_type, size);
 
+-- ลำดับการแสดงผล — ⚠️ เรียงตามชื่อไซส์ไม่ได้ "10XL" จะมาก่อน "2XL" เพราะเทียบทีละตัวอักษร
+alter table uniform_item add column if not exists sort_order int not null default 100;
+
 
 -- --------------------------------------------- 2. รายการเคลื่อนไหว (สมุด)
 -- qty เก็บเป็นเลขมีเครื่องหมาย: รับเข้า/คืน = บวก · จ่ายออก = ลบ
@@ -86,13 +89,13 @@ create constraint trigger uni_move_balance
 drop view if exists uniform_balance;
 create view uniform_balance
 with (security_invoker = true) as
-select i.id, i.item_type, i.size, i.min_qty, i.is_active, i.remark,
+select i.id, i.item_type, i.size, i.min_qty, i.is_active, i.remark, i.sort_order,
        coalesce(sum(m.qty), 0)::int as qty,
        coalesce(sum(m.qty) filter (where m.move_type = 'issue'), 0)::int * -1 as issued_total,
        max(m.moved_on) as last_move
 from uniform_item i
 left join uniform_move m on m.item_id = i.id
-group by i.id, i.item_type, i.size, i.min_qty, i.is_active, i.remark;
+group by i.id, i.item_type, i.size, i.min_qty, i.is_active, i.remark, i.sort_order;
 
 
 -- ---------------------------------------------------------- 5. RLS
@@ -126,23 +129,37 @@ on conflict do nothing;
 
 -- ------------------------------------ 7. ตั้งรายการเริ่มต้นให้พอเริ่มใช้ได้
 -- เสื้อ/กางเกง = S-XXL · รองเท้าเซฟตี้ = เบอร์ 39-46 · หมวก = Free Size
-insert into uniform_item (item_type, size, min_qty)
-select t.name, s.size, t.minq
-from (values ('เสื้อ', 20), ('กางเกง', 20)) as t(name, minq)
-cross join (values ('S'),('M'),('L'),('XL'),('XXL')) as s(size)
-on conflict (item_type, size) do nothing;
+-- ไซส์เสื้อจริงของ Akara (ผู้ใช้ยืนยัน 2026-09-16)
+-- ⚠️ ข้าม 9XL จริง ๆ — ไปจาก 8XL เป็น 10XL อย่าไปเติม 9XL ให้ครบ
+insert into uniform_item (item_type, size, min_qty, sort_order)
+select 'เสื้อ', s.size, 20, s.ord
+from (values ('SS',1),('S',2),('M',3),('L',4),('XL',5),('2XL',6),('3XL',7),
+             ('4XL',8),('5XL',9),('6XL',10),('7XL',11),('8XL',12),('10XL',13)) as s(size, ord)
+on conflict (item_type, size) do update set sort_order = excluded.sort_order;
 
-insert into uniform_item (item_type, size, min_qty)
-select 'รองเท้าเซฟตี้', g::text, 5 from generate_series(39, 46) g
-on conflict (item_type, size) do nothing;
+insert into uniform_item (item_type, size, min_qty, sort_order)
+select 'กางเกง', s.size, 20, s.ord
+from (values ('S',2),('M',3),('L',4),('XL',5),('XXL',6)) as s(size, ord)
+on conflict (item_type, size) do update set sort_order = excluded.sort_order;
 
-insert into uniform_item (item_type, size, min_qty) values ('หมวก', 'Free Size', 10)
-on conflict (item_type, size) do nothing;
+insert into uniform_item (item_type, size, min_qty, sort_order)
+select 'รองเท้าเซฟตี้', g::text, 5, g - 38 from generate_series(39, 46) g
+on conflict (item_type, size) do update set sort_order = excluded.sort_order;
+
+insert into uniform_item (item_type, size, min_qty, sort_order)
+values ('หมวก', 'Free Size', 10, 1)
+on conflict (item_type, size) do update set sort_order = excluded.sort_order;
+
+-- ล้างไซส์ที่ตั้งไว้ผิดตอนแรก (เสื้อ XXL — ของจริงใช้ 2XL)
+-- ลบเฉพาะที่ยังไม่เคยมีการเคลื่อนไหว ถ้าเคยรับเข้า/จ่ายออกแล้วจะเก็บไว้ ไม่ทำประวัติหาย
+delete from uniform_item i
+where i.item_type = 'เสื้อ' and i.size = 'XXL'
+  and not exists (select 1 from uniform_move m where m.item_id = i.id);
 
 
 -- ============================================================================
 -- 8. ตรวจผล
 -- ============================================================================
 select item_type as ประเภท, count(*) as จำนวนไซส์,
-       string_agg(size, ', ' order by id) as ไซส์
-from uniform_item group by item_type order by min(id);
+       string_agg(size, ' · ' order by sort_order) as ไซส์เรียงตามลำดับ
+from uniform_item group by item_type order by min(sort_order), item_type;

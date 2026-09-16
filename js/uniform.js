@@ -22,7 +22,8 @@ let balance = [], moves = [], tab = "stock", filterType = "", search = "";
 
 async function loadAll() {
   const [b, m] = await Promise.all([
-    supabase.from("uniform_balance").select("*").order("item_type").order("id"),
+    // เรียงตาม sort_order — เรียงตามชื่อไซส์ไม่ได้ "10XL" จะมาก่อน "2XL"
+    supabase.from("uniform_balance").select("*").order("item_type").order("sort_order"),
     supabase.from("uniform_move").select("*").order("moved_on", { ascending:false })
       .order("id", { ascending:false }).limit(300),
   ]);
