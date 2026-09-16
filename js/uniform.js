@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc, toast, currentUser } from "./app.js";
+import { comboHTML, bindCombo } from "./combobox.js";
 
 // ============================================================================
 // สต๊อกยูนิฟอร์มพนักงาน
@@ -17,6 +18,17 @@ const MOVE = {
 };
 const n0 = v => Number(v||0).toLocaleString("th-TH");
 const canEdit = () => can("data.uniform.write");
+
+// รายชื่อสำหรับ combobox — ค่าที่เก็บคือ emp_code
+const empItems = () => allEmployees.filter(e => e.emp_code).map(e => ({
+  value: e.emp_code,
+  label: `${e.emp_code} — ${[e.firstname_th, e.lastname_th].filter(Boolean).join(" ")}`,
+  sub: [e.department, e.position].filter(Boolean).join(" · "),
+}));
+const empNameOf = code => {
+  const e = allEmployees.find(x => x.emp_code === code);
+  return e ? [e.firstname_th, e.lastname_th].filter(Boolean).join(" ") : "";
+};
 
 let balance = [], moves = [], tab = "stock", filterType = "", search = "";
 
@@ -263,10 +275,7 @@ function moveForm(kind) {
 
       <div id="um_empwrap" class="form-group" style="margin-top:12px;${needEmp?"":"display:none;"}">
         <label class="form-label">พนักงาน *</label>
-        <input id="um_emp" class="form-control" autocomplete="off"
-               placeholder="🔍 พิมพ์รหัสหรือชื่อ เช่น AKR170 หรือ สมชาย">
-        <input type="hidden" id="um_empcode"><input type="hidden" id="um_empname">
-        <div id="um_sugg" class="emp-sugg" style="display:none;"></div>
+        ${comboHTML("um_emp", empItems(), "", "พิมพ์รหัสหรือชื่อ เช่น AKR170 หรือ สมชาย")}
       </div>
 
       <div class="form-group" style="margin-top:12px;">
@@ -299,57 +308,9 @@ function moveForm(kind) {
     document.getElementById("um_bal").textContent = b ? `คงเหลือตอนนี้ ${n0(b.qty)} ชิ้น` : "";
   });
 
-  if(needEmp) bindEmpSearch();
-}
-
-// ค้นหาพนักงาน — ใช้รูปแบบเดียวกับฟอร์ม Staff Movement (รหัสน้ำเงินนำหน้า + ไฮไลต์คำที่พิมพ์)
-function bindEmpSearch() {
-  const box = document.getElementById("um_emp"), sugg = document.getElementById("um_sugg");
-  const pool = allEmployees.filter(e => e.emp_code)
-    .map(e => ({ code:e.emp_code, name:[e.firstname_th,e.lastname_th].filter(Boolean).join(" "),
-                 meta:[e.department,e.position].filter(Boolean).join(" · "),
-                 q:`${e.emp_code} ${e.firstname_th||""} ${e.lastname_th||""} ${e.department||""}`.toLowerCase() }));
-  let list = [], active = -1, terms = [];
-  const hl = (t) => { let o = esc(t);
-    for(const x of terms){ if(!x) continue;
-      o = o.replace(new RegExp(`(${x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})`,"ig"), "<mark>$1</mark>"); }
-    return o; };
-  const close = () => { sugg.style.display = "none"; list = []; active = -1; };
-  const pick = i => { const e = list[i]; if(!e) return;
-    document.getElementById("um_empcode").value = e.code;
-    document.getElementById("um_empname").value = e.name;
-    box.value = `${e.code} — ${e.name}`; close(); };
-  const paint = () => {
-    sugg.innerHTML = list.length ? list.map((e,i)=>`
-      <div data-i="${i}" class="emp-row${i===active?" active":""}">
-        <div class="emp-line"><span class="emp-code">${hl(e.code)}</span><span class="emp-name">${hl(e.name)}</span></div>
-        ${e.meta?`<div class="emp-meta">${hl(e.meta)}</div>`:""}
-      </div>`).join("")
-      : `<div class="emp-empty">ไม่พบพนักงานที่ตรงกับ “${esc(box.value.trim())}”</div>`;
-    sugg.style.display = "block";
-  };
-  const search = () => {
-    terms = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    list = (terms.length ? pool.filter(e => terms.every(t => e.q.includes(t))) : pool).slice(0,50);
-    active = list.length ? 0 : -1; paint();
-    // พิมพ์แก้แล้วต้องล้างค่าที่เลือกไว้ ไม่งั้นจะบันทึกคนเดิมทั้งที่ช่องแสดงคนใหม่
-    document.getElementById("um_empcode").value = "";
-  };
-  box.addEventListener("input", search);
-  box.addEventListener("focus", search);
-  box.addEventListener("keydown", ev => {
-    if(ev.key==="ArrowDown"||ev.key==="ArrowUp"){
-      if(!list.length) return; ev.preventDefault();
-      active = (active + (ev.key==="ArrowDown"?1:-1) + list.length) % list.length;
-      paint(); sugg.children[active]?.scrollIntoView({block:"nearest"});
-    } else if(ev.key==="Enter"){ if(active>=0){ ev.preventDefault(); pick(active); } }
-    else if(ev.key==="Escape") close();
-  });
-  sugg.addEventListener("mousedown", ev => {
-    const el = ev.target.closest("[data-i]"); if(!el) return;
-    ev.preventDefault(); pick(Number(el.dataset.i));
-  });
-  box.addEventListener("blur", () => setTimeout(close, 150));
+  // ใช้ combobox กลางของโปรเจกต์ — มันวางกล่องรายการไว้ที่ <body> แบบ fixed
+  // ถ้าวางไว้ในฟอร์มจะโดน .modal (overflow-y:auto) ตัดหายทั้งกล่อง
+  if(needEmp) bindCombo("um_emp", empItems());
 }
 
 window._umSave = async kind => {
@@ -361,7 +322,7 @@ window._umSave = async kind => {
   if(kind !== "adjust" && raw < 0){ toast("จำนวนต้องมากกว่า 0","error"); return; }
 
   const needEmp = kind === "issue" || kind === "return";
-  const code = g("um_empcode");
+  const code = g("um_emp");          // combobox เก็บค่าไว้ใน hidden input id เดียวกัน
   if(needEmp && !code){ toast("กรุณาเลือกพนักงานจากรายการที่ค้นหา","error"); return; }
 
   // แปลงเป็นเลขมีเครื่องหมายตามชนิดรายการ — จ่ายออกเป็นลบ
@@ -376,7 +337,7 @@ window._umSave = async kind => {
 
   const { error } = await supabase.from("uniform_move").insert({
     item_id:itemId, move_type:kind, qty, moved_on:g("um_date") || new Date().toISOString().slice(0,10),
-    emp_code:needEmp ? code : null, emp_name:needEmp ? g("um_empname") : null,
+    emp_code:needEmp ? code : null, emp_name:needEmp ? empNameOf(code) : null,
     note:g("um_note") || null, created_by:currentUser?.id || null,
   });
   if(error){
