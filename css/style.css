@@ -645,3 +645,45 @@ textarea.form-control{resize:vertical;min-height:72px;}
   border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;}
 .cp-docs-t{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
   letter-spacing:.4px;margin-right:4px;}
+
+/* ===== สต๊อกยูนิฟอร์ม (js/uniform.js) ===== */
+.uni-alert{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;background:var(--gold-light);
+  border:1px solid #F0D9A8;border-left:3px solid var(--gold);border-radius:var(--radius-sm);
+  padding:10px 14px;font-size:12.5px;color:#8A6D12;}
+.uni-alert b{font-weight:700;}
+.uni-alert span{color:#A08030;}
+
+.uni-filter,.uni-kinds{display:flex;gap:7px;flex-wrap:wrap;}
+.uni-chip{border:1px solid var(--border2);background:var(--card);border-radius:999px;
+  padding:5px 13px;font-family:inherit;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;
+  transition:all .15s;}
+.uni-chip:hover{border-color:var(--blue);color:var(--blue);}
+.uni-chip.on{background:var(--blue-light);border-color:#A8C1EC;color:var(--blue);}
+
+.uni-th{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-bottom:12px;}
+.uni-sub{font-size:11.5px;color:var(--muted);}
+
+/* ตารางไซส์ — ให้กวาดตาเห็นทั้งประเภทว่าไซส์ไหนเหลือเท่าไหร่ในแวบเดียว */
+.uni-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:9px;}
+.uni-cell{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 8px;
+  text-align:center;background:var(--card);}
+.uni-cell.low{border-color:var(--gold);background:var(--gold-light);}
+.uni-cell.out{border-color:var(--red);background:var(--red-light);}
+.uni-size{font-size:11.5px;font-weight:700;color:var(--muted);}
+.uni-qty{font-size:24px;font-weight:800;line-height:1.15;margin:2px 0;
+  font-variant-numeric:tabular-nums;color:var(--text);}
+.uni-cell.low .uni-qty{color:var(--gold-dark);}
+.uni-cell.out .uni-qty{color:var(--red);}
+.uni-min{font-size:10px;color:var(--muted2);}
+
+.uni-emp{display:flex;flex-wrap:wrap;gap:6px;}
+.uni-tag{display:inline-flex;align-items:baseline;gap:6px;background:var(--bg);
+  border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:12px;}
+.uni-tag.ret{background:var(--blue-light);border-color:#C5D8F3;}
+.uni-tag b{font-variant-numeric:tabular-nums;}
+.uni-tag em{font-style:normal;font-size:10.5px;color:var(--muted2);}
+
+.uni-balhint{font-size:11px;color:var(--blue);margin-top:4px;min-height:14px;}
+.uni-hint{margin-top:12px;font-size:11.5px;color:var(--muted);background:var(--bg);
+  border-radius:var(--radius-sm);padding:9px 12px;}

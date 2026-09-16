@@ -224,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","contractpay","shiftallow","users","settings"];
+const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","contractpay","shiftallow","uniform","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -274,6 +274,7 @@ async function renderPage(page) {
   else if(page==="payroll") renderPayroll();
   else if(page==="payrollexp") (await import("./payroll-summary.js")).renderPayrollExpense();
   else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
+  else if(page==="uniform") (await import("./uniform.js")).renderUniform();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="users") (await import("./users.js")).renderUsers();
   else if(page==="settings") (await import("./masterdata-admin.js")).renderSettings();
@@ -288,10 +289,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
   th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.contractpay":"ค่าจ้างเหมา",
-        "grp.records":"ทะเบียนพนักงาน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
   en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.payrollexp":"Payroll Expense", "nav.contractpay":"Contract Payroll",
-        "grp.records":"Employee Records", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
