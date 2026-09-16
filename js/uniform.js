@@ -57,8 +57,10 @@ function draw() {
     <div><div class="page-heading">สต๊อกยูนิฟอร์ม</div>
       <div class="page-sub">${balance.length} รายการ · คงเหลือรวม ${n0(balance.reduce((s,b)=>s+b.qty,0))} ชิ้น</div></div>
     ${canEdit()?`<div class="header-actions">
-      <button class="btn btn-secondary" onclick="window._uniMove('receive')">📥 รับเข้า</button>
-      <button class="btn btn-primary" onclick="window._uniMove('issue')">📤 จ่ายให้พนักงาน</button>
+      ${tab==="items"
+        ? `<button class="btn btn-primary" onclick="window._uniItem(null)">+ เพิ่มรายการของ</button>`
+        : `<button class="btn btn-secondary" onclick="window._uniMove('receive')">📥 รับเข้า</button>
+           <button class="btn btn-primary" onclick="window._uniMove('issue')">📤 จ่ายให้พนักงาน</button>`}
     </div>`:""}
   </div>
 
@@ -72,9 +74,11 @@ function draw() {
       <button class="cp-tab${tab==="stock"?" on":""}"   onclick="window._uniTab('stock')">ยอดคงเหลือ</button>
       <button class="cp-tab${tab==="history"?" on":""}" onclick="window._uniTab('history')">ประวัติการเคลื่อนไหว</button>
       <button class="cp-tab${tab==="byemp"?" on":""}"   onclick="window._uniTab('byemp')">ใครเบิกอะไรไปบ้าง</button>
+      ${canEdit()?`<button class="cp-tab${tab==="items"?" on":""}" onclick="window._uniTab('items')">รายการของ</button>`:""}
     </div>
   </div>
-  ${tab==="stock" ? stockHTML(types) : tab==="history" ? historyHTML() : byEmpHTML()}
+  ${tab==="stock" ? stockHTML(types) : tab==="history" ? historyHTML()
+    : tab==="items" ? itemsHTML() : byEmpHTML()}
   <div class="pb-4"></div>`;
   wire();
 }
@@ -170,6 +174,42 @@ function byEmpHTML() {
   </div>`;
 }
 
+// ---------- จัดการรายการของ ----------
+// ที่นี่คือที่เดียวที่เพิ่มประเภท/ไซส์ใหม่ได้ — ไม่ต้องกลับไปแก้ไฟล์ SQL อีก
+function itemsHTML() {
+  const byType = {};
+  for(const b of balance) (byType[b.item_type] ||= []).push(b);
+  return `<div class="section mt-4">
+    <div class="uni-hint" style="margin:0 0 12px;">
+      เพิ่มประเภทใหม่ได้เลย — พิมพ์ชื่อประเภทที่ยังไม่มี เช่น <b>กางเกง</b> หรือ <b>รองเท้าเซฟตี้</b>
+      แล้วใส่ไซส์ทีละอัน · <b>ลำดับ</b> คุมว่าไซส์ไหนแสดงก่อนหลัง
+      (เรียงตามชื่อไม่ได้ — <code>10XL</code> จะมาก่อน <code>2XL</code>)
+    </div>
+    ${Object.entries(byType).map(([type, list])=>`
+    <div class="card" style="margin-bottom:12px;"><div class="card-body">
+      <div class="uni-th">
+        <span class="card-title" style="margin:0;">${esc(type)}</span>
+        <span class="uni-sub">${list.length} ไซส์</span>
+      </div>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>ไซส์</th><th class="num">ลำดับ</th><th class="num">ขั้นต่ำ</th>
+          <th class="num">คงเหลือ</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody>${list.map(b=>`<tr>
+          <td><b>${esc(b.size)}</b></td>
+          <td class="num text-muted">${b.sort_order}</td>
+          <td class="num text-muted">${b.min_qty || "—"}</td>
+          <td class="num">${n0(b.qty)}</td>
+          <td>${b.is_active?`<span class="badge" style="color:var(--green);background:var(--green-light);">ใช้งาน</span>`
+                           :`<span class="badge badge-gray">ปิด</span>`}</td>
+          <td><button class="btn btn-secondary btn-sm" onclick="window._uniItem(${b.id})">แก้ไข</button></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </div></div>`).join("")||`<div class="card"><div class="card-body" style="padding:40px;text-align:center;">
+      <div class="empty-title">ยังไม่มีรายการของ</div>
+      <div class="empty-sub" style="margin-top:6px;">กด “+ เพิ่มรายการของ” เพื่อเริ่ม</div></div></div>`}
+  </div>`;
+}
+
 const emptyBox = (t,s) => `<div class="section mt-4"><div class="card"><div class="card-body"
   style="padding:40px;text-align:center;"><div class="empty-title">${esc(t)}</div>
   ${s?`<div class="empty-sub" style="margin-top:6px;">${esc(s)}</div>`:""}</div></div></div>`;
@@ -186,6 +226,7 @@ function wire() {
     const next = document.querySelector('input[oninput*="_uniSearch"]');
     if(next){ next.focus(); if(pos!=null) next.setSelectionRange(pos,pos); } };
   window._uniMove   = kind => moveForm(kind);
+  window._uniItem   = id => itemForm(id);
 }
 
 // ฟอร์มเดียวใช้ได้ทั้งรับเข้า/จ่ายออก/รับคืน/ปรับยอด — ต่างกันแค่ช่องพนักงานกับทิศทาง
@@ -347,3 +388,101 @@ window._umSave = async kind => {
   await loadAll(); draw();
   toast(`${MOVE[kind].label} ${Math.abs(qty)} ชิ้น เรียบร้อย`, "success");
 };
+
+// ---------- ฟอร์มรายการของ (เพิ่ม/แก้ประเภทและไซส์) ----------
+function itemForm(id) {
+  const b = id ? balance.find(x => x.id === id) : null;
+  const types = [...new Set(balance.map(x => x.item_type))];
+  // ลำดับถัดไปในประเภทนั้น — เดาให้ก่อน คนกรอกแก้ได้
+  const nextOrd = t => Math.max(0, ...balance.filter(x => x.item_type === t).map(x => x.sort_order || 0)) + 1;
+
+  const el = document.createElement("div");
+  el.className = "modal-overlay"; el.id = "uiModal";
+  el.innerHTML = `<div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">${b ? "แก้ไขรายการของ" : "เพิ่มรายการของ"}</div>
+      <button class="modal-close" onclick="document.getElementById('uiModal').remove()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">ประเภท *</label>
+          <input id="ui_type" class="form-control" list="ui_types" value="${esc(b?.item_type||"")}"
+                 placeholder="เช่น เสื้อ, กางเกง, รองเท้าเซฟตี้">
+          <datalist id="ui_types">${types.map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
+          <div class="uni-balhint">พิมพ์ชื่อใหม่ได้เลยถ้ายังไม่มีประเภทนั้น</div></div>
+        <div class="form-group"><label class="form-label">ไซส์ *</label>
+          <input id="ui_size" class="form-control" value="${esc(b?.size||"")}"
+                 placeholder="เช่น M, 2XL, 42, Free Size"></div>
+        <div class="form-group"><label class="form-label">ลำดับการแสดง</label>
+          <input id="ui_ord" type="number" class="form-control" value="${b?.sort_order ?? ""}"
+                 placeholder="เลขน้อยแสดงก่อน">
+          <div class="uni-balhint">เว้นว่างได้ ระบบจะต่อท้ายให้</div></div>
+        <div class="form-group"><label class="form-label">จำนวนขั้นต่ำ</label>
+          <input id="ui_min" type="number" min="0" class="form-control" value="${b?.min_qty ?? 0}">
+          <div class="uni-balhint">ต่ำกว่านี้จะขึ้นเตือน · 0 = ไม่เตือน</div></div>
+      </div>
+      <div class="form-group" style="margin-top:12px;"><label class="form-label">หมายเหตุ</label>
+        <input id="ui_remark" class="form-control" value="${esc(b?.remark||"")}"></div>
+      ${b?`<div class="form-group" style="margin-top:12px;">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+          <input id="ui_active" type="checkbox" ${b.is_active?"checked":""} style="width:auto;margin:0;"> ใช้งานอยู่
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+          ปิดแล้วจะไม่ขึ้นในช่องเลือกตอนรับเข้า/จ่ายออก แต่ยอดและประวัติยังอยู่ครบ</div>
+      </div>`:""}
+    </div>
+    <div class="modal-footer">
+      ${b?`<button class="btn btn-danger" onclick="window._uiDel(${b.id})">ลบ</button>`:""}
+      <div style="flex:1;"></div>
+      <button class="btn btn-secondary" onclick="document.getElementById('uiModal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="window._uiSave(${b?.id ?? "null"})">บันทึก</button>
+    </div>
+  </div>`;
+  document.getElementById("modalPortal").appendChild(el);
+
+  // พิมพ์ประเภทแล้วเดาลำดับถัดไปให้ (เฉพาะตอนเพิ่มใหม่)
+  if(!b) document.getElementById("ui_type").addEventListener("change", ev => {
+    const o = document.getElementById("ui_ord");
+    if(!o.value) o.value = nextOrd(ev.target.value.trim());
+  });
+
+  window._uiSave = async itemId => {
+    const g = i => document.getElementById(i)?.value?.trim() || "";
+    const type = g("ui_type"), size = g("ui_size");
+    if(!type){ toast("กรุณากรอกประเภท","error"); return; }
+    if(!size){ toast("กรุณากรอกไซส์","error"); return; }
+    const data = {
+      item_type:type, size,
+      sort_order: g("ui_ord") !== "" ? Number(g("ui_ord")) : nextOrd(type),
+      min_qty: Number(g("ui_min")) || 0,
+      remark: g("ui_remark") || null,
+      updated_at: new Date().toISOString(),
+      ...(itemId ? { is_active: document.getElementById("ui_active").checked } : {}),
+    };
+    const { error } = itemId
+      ? await supabase.from("uniform_item").update(data).eq("id", itemId)
+      : await supabase.from("uniform_item").insert(data);
+    if(error){
+      toast(error.message.includes("duplicate") || error.message.includes("unique")
+        ? `มี "${type} ${size}" อยู่แล้ว` : "บันทึกไม่สำเร็จ: " + error.message, "error");
+      return;
+    }
+    document.getElementById("uiModal").remove();
+    await loadAll(); draw(); toast("บันทึกแล้ว","success");
+  };
+
+  window._uiDel = async itemId => {
+    const it = balance.find(x => x.id === itemId);
+    // มีประวัติแล้วลบไม่ได้ (FK restrict) — แนะให้ปิดการใช้งานแทน ประวัติจะได้ไม่หาย
+    const used = moves.some(m => m.item_id === itemId);
+    if(used){
+      toast(`"${it.item_type} ${it.size}" เคยมีการรับเข้า/จ่ายออกแล้ว ลบไม่ได้ — ให้ติ๊ก “ใช้งานอยู่” ออกแทน`,"error");
+      return;
+    }
+    if(!confirm(`ลบ "${it.item_type} ${it.size}" ?`)) return;
+    const { error } = await supabase.from("uniform_item").delete().eq("id", itemId);
+    if(error){ toast("ลบไม่สำเร็จ: "+error.message,"error"); return; }
+    document.getElementById("uiModal").remove();
+    await loadAll(); draw(); toast("ลบแล้ว","info");
+  };
+}

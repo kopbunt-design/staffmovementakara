@@ -137,24 +137,16 @@ from (values ('SS',1),('S',2),('M',3),('L',4),('XL',5),('2XL',6),('3XL',7),
              ('4XL',8),('5XL',9),('6XL',10),('7XL',11),('8XL',12),('10XL',13)) as s(size, ord)
 on conflict (item_type, size) do update set sort_order = excluded.sort_order;
 
-insert into uniform_item (item_type, size, min_qty, sort_order)
-select 'กางเกง', s.size, 20, s.ord
-from (values ('S',2),('M',3),('L',4),('XL',5),('XXL',6)) as s(size, ord)
-on conflict (item_type, size) do update set sort_order = excluded.sort_order;
+-- ตอนนี้มีแต่เสื้อ (ผู้ใช้ยืนยัน 2026-09-16)
+-- กางเกง / รองเท้าเซฟตี้ / หมวก ยังไม่มี — เพิ่มเองได้จากหน้าเว็บ (แท็บ "รายการของ")
+-- ไม่ต้องกลับมาแก้ไฟล์นี้
 
-insert into uniform_item (item_type, size, min_qty, sort_order)
-select 'รองเท้าเซฟตี้', g::text, 5, g - 38 from generate_series(39, 46) g
-on conflict (item_type, size) do update set sort_order = excluded.sort_order;
-
-insert into uniform_item (item_type, size, min_qty, sort_order)
-values ('หมวก', 'Free Size', 10, 1)
-on conflict (item_type, size) do update set sort_order = excluded.sort_order;
-
--- ล้างไซส์ที่ตั้งไว้ผิดตอนแรก (เสื้อ XXL — ของจริงใช้ 2XL)
--- ลบเฉพาะที่ยังไม่เคยมีการเคลื่อนไหว ถ้าเคยรับเข้า/จ่ายออกแล้วจะเก็บไว้ ไม่ทำประวัติหาย
+-- ล้างของที่ผมตั้งไว้เกินตอนแรก (เสื้อ XXL ที่จริงใช้ 2XL · กางเกง/รองเท้า/หมวกที่ยังไม่มี)
+-- ลบเฉพาะที่ยังไม่เคยมีการเคลื่อนไหว — ถ้าเผลอรับเข้า/จ่ายออกไปแล้วจะเก็บไว้ ไม่ทำประวัติหาย
 delete from uniform_item i
-where i.item_type = 'เสื้อ' and i.size = 'XXL'
-  and not exists (select 1 from uniform_move m where m.item_id = i.id);
+where not exists (select 1 from uniform_move m where m.item_id = i.id)
+  and ( (i.item_type = 'เสื้อ' and i.size = 'XXL')
+     or  i.item_type in ('กางเกง', 'รองเท้าเซฟตี้', 'หมวก') );
 
 
 -- ============================================================================
