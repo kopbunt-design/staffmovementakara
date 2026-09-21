@@ -236,10 +236,15 @@ export function navigate(page) {
   renderPage(page);
 }
 
+// หน้าที่ไม่มี permission key ของตัวเอง ใช้สิทธิ์ของหน้าที่เป็นทางเข้าแทน
+// ⚠️ ต้องใช้ตารางนี้ทั้งตอนซ่อนเมนูและตอนกันเข้าหน้า ไม่งั้นเมนูหายแต่ router ปล่อยผ่าน (หรือกลับกัน)
+const PERM_ALIAS = { empprofile: "page.employees", shiftcompare: "page.shiftallow" };
+const pagePerm = page => PERM_ALIAS[page] || "page." + page;
+
 // ซ่อน/แสดงเมนูตามสิทธิ์ · หัวข้อกลุ่มจะซ่อนเองถ้าไม่เหลือเมนูในกลุ่ม
 function applyNavPermissions() {
   document.querySelectorAll(".nav-item[data-page]").forEach(el => {
-    el.style.display = can("page." + el.dataset.page) ? "flex" : "none";
+    el.style.display = can(pagePerm(el.dataset.page)) ? "flex" : "none";
   });
   // หัวข้อกลุ่ม (.nav-section) คุมเมนูที่อยู่ถัดจากมันจนถึงหัวข้อถัดไป
   document.querySelectorAll(".sidebar-nav .nav-section").forEach(sec => {
@@ -260,12 +265,9 @@ function denyPage(page, label) {
       ติดต่อผู้ดูแลระบบถ้าคิดว่าควรเข้าได้</div></div>`;
 }
 
-// หน้าที่ไม่มีเมนูของตัวเอง ใช้สิทธิ์ของหน้าที่เป็นทางเข้า — จะได้ไม่ต้องเพิ่ม permission key ใน DB
-const PERM_ALIAS = { empprofile: "page.employees", shiftcompare: "page.shiftallow" };
-
 async function renderPage(page) {
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
-  if (!can(PERM_ALIAS[page] || "page." + page)) { denyPage(page); return; }
+  if (!can(pagePerm(page))) { denyPage(page); return; }
   if(page==="dashboard") renderDashboard();
   else if(page==="employees") (await import("./employees.js")).renderEmployees();
   else if(page==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();

@@ -487,6 +487,35 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 }
 
 let lastResult = null;
+
+// ===== การแก้ยอดด้วยมือ =====
+// เก็บกลางที่เดียว ใช้ร่วมทั้งหน้าคำนวณและหน้าที่ดึงประวัติกลับมาแก้
+// key = "รหัสพนักงาน||เดือน" เพราะคนเดียวกันมีได้หลายเดือนในผลลัพธ์เดียว
+// value = { amount, reason } · amount === null แปลว่า "ยกเลิกการแก้ กลับไปใช้ยอดที่ระบบคำนวณ"
+const manualEdits = new Map();
+const editKey = r => `${r.Employee_ID ?? r.emp_code}||${r.month}`;
+const editOf  = r => manualEdits.get(editKey(r));
+// ยอดที่ใช้จริงของแถวหนึ่ง — ที่แก้ไว้ในหน้านี้มาก่อน แล้วค่อยถึงที่เคยบันทึกไว้ แล้วค่อยถึงยอดที่คำนวณ
+function effTotal(r) {
+  const e = editOf(r);
+  if (e) return e.amount === null ? Number(r.total || 0) : e.amount;
+  if (r.manual_total !== null && r.manual_total !== undefined) return Number(r.manual_total);
+  return Number(r.total || 0);
+}
+const isEdited = r => {
+  const e = editOf(r);
+  if (e) return e.amount !== null;
+  return r.manual_total !== null && r.manual_total !== undefined;
+};
+// เซลล์ยอดค่ากะที่กดแก้ได้ — ใช้เหมือนกันทั้งสองตาราง
+function totalCell(r, canEdit) {
+  const calc = Number(r.total || 0), eff = effTotal(r), ed = isEdited(r);
+  const inner = `${ed ? `<span class="sa-struck">${fmtB(calc)}</span> ` : ""}<b${ed?' style="color:var(--gold-dark);"':""}>${fmtB(eff)}</b>`;
+  if (!canEdit) return inner;
+  return `<button class="sa-edit-cell" onclick="window._saEdit('${esc(String(r.Employee_ID ?? r.emp_code))}','${esc(r.month)}')"
+    title="กดเพื่อแก้ยอด">${inner}<span class="sa-pencil">✎</span></button>`;
+}
+
 let lastMeta = null; // {sheetName, rowCount, notFound, ineligible}
 let onlyDiff = false; // โหมดเทียบเฉลย: แสดงเฉพาะรายการที่ไม่ตรง
 let lastRows = null;  // แถวดิบจากไฟล์ลงเวลา — เก็บไว้คำนวณใหม่เมื่อเพิ่มรหัสกะ
@@ -582,6 +611,7 @@ export function renderShiftAllowance() {
   </div>`;
 
   window._saTab = (t) => {
+    if (t === "hist" && histEdit) exitHistEdit();   // กลับไปดูประวัติ = เลิกโหมดแก้
     document.getElementById("saCalcTab").style.display = t==="calc" ? "" : "none";
     document.getElementById("saHistTab").style.display = t==="hist" ? "" : "none";
     document.getElementById("saTabCalc").classList.toggle("btn-primary", t==="calc");
@@ -594,6 +624,7 @@ export function renderShiftAllowance() {
     const file = inputEl.files?.[0];
     inputEl.value = "";
     if (!file) return;
+    if (histEdit) exitHistEdit();   // อัปโหลดไฟล์ใหม่ = ออกจากโหมดแก้ประวัติ
     if (!window.XLSX) { toast("กรุณารอโหลด library","error"); return; }
     const reader = new FileReader();
     reader.onload = async ev => {
@@ -741,10 +772,28 @@ export function renderShiftAllowance() {
     const btn = document.getElementById("saSaveBtn");
     btn.disabled = true; btn.textContent = "กำลังบันทึก...";
     const { error } = await supabase.from("shift_allowance").upsert(rows, { onConflict:"emp_code,month" });
+    if (error) { btn.disabled = false; btn.textContent = "💾 บันทึกเดือนนี้"; toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+
+    // ยอดที่แก้มือส่งแยกทีละแถว ไม่รวมไปกับ upsert ข้างบน ด้วยเหตุผลสองข้อ:
+    //  1) PostgREST บังคับให้ทุก object ใน bulk upsert มีคีย์ชุดเดียวกัน — ถ้าใส่ manual_* ไปด้วย
+    //     แถวที่ไม่ได้แก้จะต้องส่ง null ไปด้วย ซึ่งจะล้างยอดที่เคยแก้ไว้ใน DB ทิ้ง
+    //  2) แยกแล้วแถวที่ไม่ได้แตะ จะไม่ถูกเขียนถึงเลย
+    const edited = lastResult.summary.filter(r => r.Employee_ID && manualEdits.has(editKey(r)));
+    const now = new Date().toISOString();
+    let failed = 0;
+    for (const r of edited) {
+      const e = manualEdits.get(editKey(r));
+      const patch = e.amount === null
+        ? { manual_total:null, manual_reason:null, manual_by:null, manual_at:null }
+        : { manual_total:e.amount, manual_reason:e.reason, manual_by:currentUser?.id || null, manual_at:now };
+      const { error: me } = await supabase.from("shift_allowance")
+        .update(patch).eq("emp_code", r.Employee_ID).eq("month", r.month);
+      if (me) { failed++; console.warn("[ค่ากะ] บันทึกยอดที่แก้ไม่สำเร็จ", r.Employee_ID, me.message); }
+    }
     btn.disabled = false; btn.textContent = "💾 บันทึกเดือนนี้";
-    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+    if (failed) { toast(`บันทึกยอดหลักแล้ว แต่ยอดที่แก้มือไม่สำเร็จ ${failed} รายการ — ดู console`, "error"); return; }
     const months = [...new Set(rows.map(r=>r.month))].join(", ");
-    toast(`บันทึกแล้ว ${rows.length} รายการ (เดือน ${months})`, "success");
+    toast(`บันทึกแล้ว ${rows.length} รายการ (เดือน ${months})${edited.length?` · แก้มือ ${edited.length}`:""}`, "success");
   };
 
   window._saExport = () => {
@@ -789,7 +838,10 @@ function renderResults() {
   const cmpCount = all.filter(r => r.diff !== null).length;   // เทียบได้จริงกี่รายการ
   const rows = (cmp && onlyDiff) ? badRows : all;
 
-  const grand = round2(all.reduce((s,r)=>s+r.total, 0));
+  const canEditAmt = can("data.shiftallow.write");
+  // รวมด้วยยอดที่ใช้จริง — ถ้ารวมจาก r.total เฉย ๆ ยอดที่เพิ่งแก้จะไม่ถูกนับ
+  const grand = round2(all.reduce((s,r)=>s+effTotal(r), 0));
+  const nEdited = all.filter(isEdited).length;
   const grandManual = round2(all.reduce((s,r)=>s+(r.manual||0), 0));
   const totalCheck = all.reduce((s,r)=>s+r.checkDays, 0);
   const { sheetName, rowCount, notFound, ineligible, keyFile: kf } = lastMeta;
@@ -834,7 +886,7 @@ function renderResults() {
           · ลาป่วย: ${srcTxt(xcols.leaveTypeCol, xcols.noteCol, SICK_WORDS)}
         </div>
       </div>
-      <div style="font-size:13px;">รวมค่ากะ: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
+      <div style="font-size:13px;">${nEdited?`<span class="badge badge-gold" style="margin-right:8px;" title="ยอดที่แก้มือ ยังไม่ถูกบันทึกจนกว่าจะกด 💾 บันทึกเดือนนี้">แก้มือ ${nEdited} รายการ</span>`:""}รวมค่ากะ: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
     </div>
     ${cmp ? `<div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${badRows.length?"var(--gold-light)":"rgba(22,163,74,.08)"};">
       <div style="font-size:13px;">
@@ -962,7 +1014,7 @@ function renderResults() {
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>
-            <td class="text-right"><b>${fmtB(r.total)}</b></td>
+            <td class="text-right">${totalCell(r, canEditAmt)}</td>
             ${cmp ? `<td class="text-right ${r.manual===null?"text-muted":""}">${r.manual===null?"-":fmtB(r.manual)}</td>
             <td class="text-right${isBad(r)?"":" text-muted"}"${isBad(r)?' style="color:#dc2626;font-weight:700;"':""}>${r.diff===null?"-":(isBad(r)?(r.diff>0?"+":"")+fmtB(r.diff):"✓")}</td>
             <td style="font-size:11px;">${(()=>{const c=classifyDiff(r);return c?`<span class="badge ${c.key==="other"?"badge-gray":"badge-gold"}">${esc(c.label)}</span>`:'<span class="text-muted">-</span>';})()}</td>` : ""}
@@ -974,7 +1026,8 @@ function renderResults() {
 }
 
 // ===== ประวัติที่บันทึก =====
-let histRows = [];   // แถวของเดือนที่เปิดอยู่ — modal แก้ไขหยิบจากตรงนี้
+let histRows = [];     // แถวของเดือนที่เปิดอยู่ในแท็บประวัติ
+let histEdit = null;   // { month, rows } เมื่อดึงประวัติกลับมาแก้ — null = อยู่โหมดคำนวณปกติ
 async function loadHistMonths() {
   const sel = document.getElementById("saHistMonth");
   if (!sel) return;
@@ -986,79 +1039,188 @@ async function loadHistMonths() {
 }
 
 // ---------- แก้ไขยอดด้วยมือ ----------
-// แก้ที่ประวัติที่บันทึกแล้วเท่านั้น ไม่ใช่ที่หน้าคำนวณ — หน้าคำนวณสร้างยอดจากไฟล์ใหม่ทุกครั้ง
-// ถ้าให้แก้ตรงนั้น อัปโหลดรอบถัดไปค่าที่แก้จะหายโดยไม่มีใครรู้
-window._saEditRow = (id) => {
-  const r = histRows.find(x => x.id === id);
-  if (!r) { toast("ไม่พบรายการนี้", "error"); return; }
-  const calc = Number(r.total || 0);
-  const edited = r.manual_total !== null && r.manual_total !== undefined;
+// แก้ได้ทั้งที่หน้าคำนวณ และที่ตารางซึ่งดึงประวัติกลับมา — ใช้ modal กับ state ตัวเดียวกัน
+// ปลอดภัยเพราะ DB แยกช่อง: total = ยอดที่ระบบคำนวณ · manual_total = ยอดที่แก้
+// อัปโหลดไฟล์เดือนเดิมซ้ำจึงทับแค่ total ยอดที่แก้ไว้ไม่หาย
+window._saEdit = (empId, month) => {
+  const row = (histEdit?.rows || lastResult?.summary || []).find(
+    r => String(r.Employee_ID ?? r.emp_code) === empId && r.month === month);
+  if (!row) { toast("ไม่พบรายการนี้", "error"); return; }
+  const calc = Number(row.total || 0);
+  const cur  = editOf(row);
+  const ed   = isEdited(row);
+  const val  = ed ? effTotal(row) : calc;
+  const reason = cur?.reason ?? row.manual_reason ?? "";
+  const name = row.Employee_Name ?? row.employee_name ?? "";
+  const rate = row.monthlyRate ?? row.monthly_rate ?? 0;
+  const pd   = row.payDays ?? row.pay_days;
+  const ab   = row.absentDays ?? row.absent_days;
   document.getElementById("modalPortal").innerHTML = `<div class="modal-overlay" id="saEditModal">
     <div class="modal">
       <div class="modal-header">
         <div><div class="modal-title">แก้ไขยอดค่ากะ</div>
-        <div class="text-sm text-muted">${esc(r.emp_code)} · ${esc(r.employee_name||"")} · เดือน ${esc(r.month)}</div></div>
+        <div class="text-sm text-muted">${esc(empId)} · ${esc(name)} · เดือน ${esc(month)}</div></div>
         <button class="modal-close" onclick="document.getElementById('saEditModal').remove()">×</button>
       </div>
       <div class="modal-body">
         <div class="sa-edit-calc">
-          <div>
-            <div class="sa-edit-l">ยอดที่ระบบคำนวณ</div>
-            <div class="sa-edit-n">${fmtB(calc)}</div>
-          </div>
+          <div><div class="sa-edit-l">ยอดที่ระบบคำนวณ</div><div class="sa-edit-n">${fmtB(calc)}</div></div>
           <div class="text-sm text-muted" style="text-align:right;line-height:1.5;">
-            อัตรา ${Number(r.monthly_rate||0).toLocaleString("th-TH")}/เดือน<br>
-            จ่าย ${r.pay_days??"-"} วัน${r.absent_days?` · ขาด ${r.absent_days} วัน`:""}
+            อัตรา ${Number(rate).toLocaleString("th-TH")}/เดือน<br>
+            จ่าย ${pd ?? "-"} วัน${ab ? ` · ขาด ${ab} วัน` : ""}
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">ยอดที่จะจ่ายจริง *</label>
-          <input id="sa_manual" type="number" step="0.01" min="0" class="form-input"
-                 value="${edited ? r.manual_total : calc}" placeholder="เช่น 1740">
+          <input id="sa_manual" type="number" step="0.01" min="0" class="form-input" value="${val}">
         </div>
         <div class="form-group">
           <label class="form-label">เหตุผลที่แก้ *</label>
           <textarea id="sa_reason" class="form-input" rows="3"
-            placeholder="เช่น ไฟล์ลงเวลาวันที่ 5 ผิด พนักงานมาทำงานจริง มีใบรับรองจากหัวหน้ากะ">${esc(r.manual_reason||"")}</textarea>
+            placeholder="เช่น ไฟล์ลงเวลาวันที่ 5 ผิด พนักงานมาทำงานจริง มีใบรับรองจากหัวหน้ากะ">${esc(reason)}</textarea>
           <div class="text-sm text-muted mt-1">บังคับกรอก — อีกสามเดือนจะได้รู้ว่าทำไมเลขไม่ตรงกับที่ระบบคำนวณ</div>
         </div>
-        ${edited?`<div class="sa-edit-prev">แก้ล่าสุดเมื่อ ${String(r.manual_at||"").substring(0,16).replace("T"," ")||"-"}</div>`:""}
       </div>
       <div class="modal-footer">
-        ${edited?`<button class="btn btn-secondary" onclick="window._saClearManual(${r.id})" style="margin-right:auto;color:var(--red);">ยกเลิกการแก้มือ</button>`:""}
+        ${ed ? `<button class="btn btn-secondary" onclick="window._saEditClear('${esc(empId)}','${esc(month)}')" style="margin-right:auto;color:var(--red);">ยกเลิกการแก้มือ</button>` : ""}
         <button class="btn btn-secondary" onclick="document.getElementById('saEditModal').remove()">ยกเลิก</button>
-        <button class="btn btn-primary" onclick="window._saSaveManual(${r.id})">บันทึก</button>
+        <button class="btn btn-primary" onclick="window._saEditApply('${esc(empId)}','${esc(month)}')">ตกลง</button>
       </div>
     </div>
   </div>`;
 };
 
-window._saSaveManual = async (id) => {
+window._saEditApply = (empId, month) => {
   const v = document.getElementById("sa_manual").value.trim();
   const reason = document.getElementById("sa_reason").value.trim();
   const amt = Number(v);
   if (v === "" || !isFinite(amt) || amt < 0) { toast("กรอกยอดเป็นตัวเลขที่ไม่ติดลบ", "error"); return; }
   if (!reason) { toast("กรุณากรอกเหตุผลที่แก้", "error"); return; }
-  const { error } = await supabase.from("shift_allowance").update({
-    manual_total: round2(amt), manual_reason: reason,
-    manual_by: currentUser?.id || null, manual_at: new Date().toISOString(),
-  }).eq("id", id);
-  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+  manualEdits.set(`${empId}||${month}`, { amount: round2(amt), reason });
   document.getElementById("saEditModal")?.remove();
-  toast("บันทึกยอดที่แก้แล้ว", "success");
-  window._saHistMonth(document.getElementById("saHistMonth")?.value);
+  repaintEdits();
 };
 
-window._saClearManual = async (id) => {
-  if (!confirm("ยกเลิกการแก้มือ แล้วกลับไปใช้ยอดที่ระบบคำนวณ?")) return;
-  // ต้องล้าง reason ไปพร้อมกัน ไม่งั้นเหลือเหตุผลค้างของยอดที่ไม่มีอยู่แล้ว
-  const { error } = await supabase.from("shift_allowance").update({
-    manual_total: null, manual_reason: null, manual_by: null, manual_at: null,
-  }).eq("id", id);
-  if (error) { toast("ยกเลิกไม่สำเร็จ: " + error.message, "error"); return; }
+window._saEditClear = (empId, month) => {
+  // amount:null = สั่งให้กลับไปใช้ยอดที่ระบบคำนวณ · ต้องส่ง null ลง DB ตอนบันทึกด้วย
+  // ถ้าแค่ลบออกจาก Map ยอดที่เคยบันทึกไว้ใน DB จะยังอยู่
+  manualEdits.set(`${empId}||${month}`, { amount: null, reason: null });
   document.getElementById("saEditModal")?.remove();
-  toast("กลับไปใช้ยอดที่ระบบคำนวณแล้ว", "info");
-  window._saHistMonth(document.getElementById("saHistMonth")?.value);
+  repaintEdits();
+};
+
+function repaintEdits() {
+  if (histEdit) renderHistEdit();
+  else if (lastResult) renderResults();
+}
+
+// ---------- Export ประวัติเป็น Excel ----------
+window._saHistExport = () => {
+  if (!window.XLSX) { toast("กรุณารอโหลด library", "error"); return; }
+  if (!histRows.length) { toast("ยังไม่มีข้อมูลให้ export", "error"); return; }
+  const data = histRows.map(r => ({
+    รหัสพนักงาน:r.emp_code, ชื่อ:r.employee_name, แผนก:r.department, เดือน:r.month,
+    ระดับ:r.job_level, ได้ค่ากะ:r.eligible ? "ใช่" : "ไม่",
+    จำนวนตระกูลกะ:r.family_count, "อัตรา/เดือน":r.monthly_rate,
+    วันจ่าย:r.pay_days, วันไม่จ่าย:r.no_pay_days, วันขาด:r.absent_days, ต้องตรวจ:r.check_days,
+    ระบบคำนวณ:r.total,
+    ยอดที่แก้มือ:r.manual_total ?? "",
+    เหตุผลที่แก้:r.manual_reason ?? "",
+    ยอดที่ใช้จริง:r.final_total ?? r.manual_total ?? r.total,
+    บันทึกเมื่อ:r.created_at ? String(r.created_at).substring(0,19).replace("T"," ") : "",
+  }));
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(data), "ค่ากะ");
+  window.XLSX.writeFile(wb, `shift_allowance_${histRows[0].month}.xlsx`);
+};
+
+// ---------- ดึงประวัติกลับมาแก้ ----------
+// ประวัติเก็บแค่ยอดสรุป ไม่มีรายวันและไม่มีไฟล์ต้นทาง โหมดนี้จึงแก้ได้แค่ "ยอด"
+// ถ้าต้องการให้ระบบคำนวณใหม่ ต้องอัปโหลดไฟล์ลงเวลาของเดือนนั้นอีกครั้ง
+window._saHistPull = () => {
+  if (!histRows.length) { toast("ยังไม่มีข้อมูลให้ดึง", "error"); return; }
+  manualEdits.clear();
+  histEdit = { month: histRows[0].month, rows: histRows.map(r => ({ ...r })) };
+  window._saTab("calc");
+  renderHistEdit();
+};
+
+function exitHistEdit() {
+  histEdit = null;
+  manualEdits.clear();
+  const el = document.getElementById("saResults");
+  if (el) el.innerHTML = lastResult ? "" : "";
+  if (lastResult) renderResults();
+}
+
+function renderHistEdit() {
+  const el = document.getElementById("saResults");
+  if (!el) return;
+  // ปุ่มของโฟลว์อัปโหลดไม่เกี่ยวกับโหมดนี้ ซ่อนไว้กันกดผิด
+  for (const id of ["saExportBtn","saSaveBtn","saKeyBtn"]) {
+    const b = document.getElementById(id); if (b) b.style.display = "none";
+  }
+  const rows = histEdit.rows;
+  const grand = round2(rows.reduce((s,r) => s + effTotal(r), 0));
+  const nEdited = rows.filter(isEdited).length;
+  const nPending = [...manualEdits.keys()].length;
+
+  el.innerHTML = `<div class="card">
+    <div class="sa-hist-bar">
+      <div>
+        <div class="card-title" style="margin:0;">แก้ยอดของเดือน ${esc(histEdit.month)}</div>
+        <div class="text-sm text-muted">ดึงจากประวัติที่บันทึกไว้ — แก้ได้เฉพาะยอด
+          เพราะประวัติไม่ได้เก็บรายวันและไฟล์ลงเวลา ถ้าจะให้คำนวณใหม่ต้องอัปโหลดไฟล์ของเดือนนั้น</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:13px;">${nEdited?`<span class="badge badge-gold" style="margin-right:6px;">แก้มือ ${nEdited}</span>`:""}รวม: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
+        <button class="btn btn-secondary btn-sm" onclick="window._saTab('hist')">ยกเลิก</button>
+        <button class="btn btn-primary btn-sm" onclick="window._saHistSave()" ${nPending?"":"disabled"}>💾 บันทึกการแก้ไข${nPending?` (${nPending})`:""}</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th>
+          <th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">วันขาด</th>
+          <th class="text-right">ยอดค่ากะ</th><th>เหตุผลที่แก้</th></tr></thead>
+        <tbody>${rows.map(r => `<tr${r.eligible?"":' style="opacity:0.6;"'}>
+          <td><b>${esc(r.emp_code||"-")}</b></td>
+          <td>${esc(r.employee_name||"-")}</td>
+          <td class="text-muted">${esc(r.department||"-")}</td>
+          <td>${esc(r.job_level||"-")}</td>
+          <td class="text-right">${Number(r.monthly_rate||0).toLocaleString("th-TH")}</td>
+          <td class="text-right">${r.pay_days??"-"}</td>
+          <td class="text-right ${r.absent_days?"":"text-muted"}" ${r.absent_days?'style="color:var(--red);font-weight:600;"':""}>${r.absent_days??"-"}</td>
+          <td class="text-right">${totalCell(r, true)}</td>
+          <td class="text-muted" style="font-size:11.5px;max-width:260px;">${esc(editOf(r)?.reason ?? r.manual_reason ?? "")}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+window._saHistSave = async () => {
+  if (!histEdit) return;
+  const changed = histEdit.rows.filter(r => manualEdits.has(editKey(r)));
+  if (!changed.length) { toast("ยังไม่ได้แก้อะไร", "error"); return; }
+  const now = new Date().toISOString();
+  let failed = 0;
+  for (const r of changed) {
+    const e = manualEdits.get(editKey(r));
+    const patch = e.amount === null
+      ? { manual_total:null, manual_reason:null, manual_by:null, manual_at:null }
+      : { manual_total:e.amount, manual_reason:e.reason, manual_by:currentUser?.id || null, manual_at:now };
+    const { error } = await supabase.from("shift_allowance").update(patch).eq("id", r.id);
+    if (error) { failed++; console.warn("[ค่ากะ] บันทึกไม่สำเร็จ", r.emp_code, error.message); }
+  }
+  if (failed) { toast(`บันทึกไม่สำเร็จ ${failed} รายการ — ดูรายละเอียดใน console`, "error"); return; }
+  toast(`บันทึกแล้ว ${changed.length} รายการ`, "success");
+  const m = histEdit.month;
+  exitHistEdit();
+  window._saTab("hist");
+  const sel = document.getElementById("saHistMonth");
+  if (sel) sel.value = m;
+  window._saHistMonth(m);
 };
 
 window._saHistMonth = async (m) => {
@@ -1077,13 +1239,17 @@ window._saHistMonth = async (m) => {
   <div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
       <div class="card-title" style="margin:0;">เดือน ${esc(m)} · ${rows.length} รายการ</div>
-      <div style="font-size:13px;">${nEdited?`<span class="badge badge-gold" style="margin-right:8px;">แก้มือ ${nEdited} รายการ</span>`:""}รวม: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:13px;">${nEdited?`<span class="badge badge-gold" style="margin-right:8px;">แก้มือ ${nEdited} รายการ</span>`:""}รวม: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
+        <button class="btn btn-secondary btn-sm" onclick="window._saHistExport()">📤 Export Excel</button>
+        ${canEdit?`<button class="btn btn-primary btn-sm" onclick="window._saHistPull()">↩ ดึงกลับไปแก้ไข</button>`:""}
+      </div>
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">วันขาด</th><th class="text-right">ระบบคำนวณ</th><th class="text-right">ยอดที่ใช้จริง</th><th>บันทึกเมื่อ</th>${canEdit?"<th></th>":""}</tr></thead>
+        <thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">วันขาด</th><th class="text-right">ระบบคำนวณ</th><th class="text-right">ยอดที่ใช้จริง</th><th>บันทึกเมื่อ</th></tr></thead>
         <tbody>
-        ${rows.length===0 ? `<tr><td colspan="${canEdit?11:10}" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
+        ${rows.length===0 ? `<tr><td colspan="10" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
           rows.map(r=>{ const edited = r.manual_total !== null && r.manual_total !== undefined; return `<tr${r.eligible?"":' style="opacity:0.6;"'}>
             <td><b>${esc(r.emp_code||"-")}</b></td>
             <td>${esc(r.employee_name||"-")}</td>
@@ -1095,7 +1261,6 @@ window._saHistMonth = async (m) => {
             <td class="text-right ${edited?"sa-struck":""}">${fmtB(r.total||0)}</td>
             <td class="text-right"><b${edited?' style="color:var(--gold-dark);"':""}>${fmtB(r.final_total ?? r.total ?? 0)}</b>${edited?` <span class="badge badge-gold" title="${esc(r.manual_reason||"")}">แก้มือ</span>`:""}</td>
             <td class="text-muted" style="font-size:11px;">${r.created_at?String(r.created_at).substring(0,10):"-"}</td>
-            ${canEdit?`<td><button class="btn btn-secondary btn-sm" onclick="window._saEditRow(${r.id})">แก้ไข</button></td>`:""}
           </tr>`; }).join("")}
         </tbody>
       </table>
