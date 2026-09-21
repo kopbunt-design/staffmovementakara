@@ -193,9 +193,9 @@ export function renderEmployees() {
         ${canWrite?"<th></th>":""}
       </tr></thead>
       <tbody>${filtered.length===0?`<tr><td colspan="${COLS.filter(c=>isColOn(c.key)).length+(canWrite?1:0)}" class="text-center text-muted" style="padding:48px;">ไม่พบพนักงาน${empSearch||empDept||empStatus?" ที่ตรงกับเงื่อนไข":""}</td></tr>`:
-      filtered.map(e=>`<tr>
+      filtered.map(e=>`<tr class="emp-row" onclick="window._empOpenProfile('${esc(e.emp_code)}')" title="ดูประวัติพนักงาน">
           ${COLS.filter(c=>isColOn(c.key)).map(c=>`<td class="${c.cls||""}">${c.cell(e)}</td>`).join("")}
-          ${canWrite?`<td><button class="btn btn-secondary btn-sm" onclick="window._openEmp('${e.emp_code}')">แก้ไข</button></td>`:""}
+          ${canWrite?`<td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window._openEmp('${e.emp_code}')">แก้ไข</button></td>`:""}
         </tr>`).join("")}</tbody>
     </table>
   </div></div></div>`;
@@ -213,11 +213,18 @@ export function renderEmployees() {
   window._empDept = v => { empDept=v; renderEmployees(); };
   window._empStatus = v => { empStatus=v; renderEmployees(); };
   window._openEmp = code => openEmpModal(code ? allEmployees.find(e=>e.emp_code===code) : null);
+  // โหลดตอนกดแถวเท่านั้น หน้าประวัติเป็นก้อนใหญ่ ไม่ควรถ่วงตอนเปิดตาราง
+  window._empOpenProfile = async code => (await import("./employee-profile.js")).openEmployee(code);
   window._empTemplate = downloadTemplate;
   window._empImport = handleImport;
   window._empExport = handleExport;
   // โหลดตอนกดเท่านั้น — คนส่วนใหญ่ไม่ได้ใช้ทุกวัน ไม่ต้องถ่วงหน้าแรก
   window._rlOpen = async () => (await import("./reporting-import.js")).openDialog();
+}
+
+// ให้หน้าประวัติพนักงานเรียกฟอร์มเดิมได้ — ฟอร์มมีที่เดียว แก้ที่เดียว
+export function openEmpForm(code) {
+  openEmpModal(code ? allEmployees.find(e => e.emp_code === code) : null);
 }
 
 function openEmpModal(emp=null) {

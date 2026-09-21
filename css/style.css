@@ -687,3 +687,172 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .uni-balhint{font-size:11px;color:var(--blue);margin-top:4px;min-height:14px;}
 .uni-hint{margin-top:12px;font-size:11.5px;color:var(--muted);background:var(--bg);
   border-radius:var(--radius-sm);padding:9px 12px;}
+
+/* ===== หน้าประวัติพนักงาน (Employee Profile) ===== */
+/* สองคอลัมน์: แถบรายชื่อตรึงซ้าย + เนื้อหาเลื่อนขวา — สูงเต็มจอเพื่อให้สองฝั่งเลื่อนแยกกัน */
+.ep-wrap{display:grid;grid-template-columns:252px minmax(0,1fr);gap:18px;height:100vh;padding:18px 24px;}
+.ep-main{min-width:0;overflow-y:auto;padding-right:4px;padding-bottom:32px;}
+
+/* --- แถบรายชื่อซ้าย --- */
+.ep-rail{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-md);box-shadow:var(--shadow-card);overflow:hidden;min-height:0;}
+.ep-rail-head{padding:12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;}
+.ep-back{display:flex;align-items:center;gap:7px;border:none;background:none;cursor:pointer;padding:0;
+  color:var(--blue);font-size:12.5px;font-weight:600;}
+.ep-back:hover{color:var(--blue-dark);}
+.ep-rail-search{position:relative;display:flex;align-items:center;}
+.ep-rail-search svg{position:absolute;left:9px;color:var(--muted2);pointer-events:none;}
+.ep-rail-search input{width:100%;padding:7px 9px 7px 28px;border:1px solid var(--border);border-radius:8px;
+  font-size:12.5px;background:var(--bg);color:var(--text);}
+.ep-rail-search input:focus{outline:none;border-color:var(--blue);background:var(--card);}
+.ep-tree{flex:1;overflow-y:auto;padding:6px;min-height:0;}
+.ep-tree-empty{padding:24px 12px;text-align:center;color:var(--muted);font-size:12.5px;}
+.ep-grp+.ep-grp{margin-top:2px;}
+.ep-grp-head{width:100%;display:flex;align-items:center;gap:6px;padding:7px 8px;border:none;background:none;
+  cursor:pointer;border-radius:7px;text-align:left;color:var(--text);}
+.ep-grp-head:hover{background:var(--bg);}
+.ep-caret{flex-shrink:0;color:var(--muted2);transition:transform .15s;}
+.ep-grp.open .ep-caret{transform:rotate(90deg);}
+.ep-grp-name{flex:1;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ep-grp-n{font-size:11px;color:var(--muted);background:var(--bg);border-radius:20px;padding:1px 7px;flex-shrink:0;}
+.ep-grp-list{padding:2px 0 4px 10px;margin-left:5px;border-left:1px solid var(--border);}
+.ep-person{width:100%;display:flex;align-items:center;gap:8px;padding:5px 8px;border:none;background:none;
+  cursor:pointer;border-radius:7px;text-align:left;color:var(--text);}
+.ep-person:hover{background:var(--bg);}
+.ep-person.on{background:var(--blue-light);}
+.ep-person.on .ep-person-name{color:var(--blue-dark);font-weight:700;}
+.ep-person-txt{min-width:0;display:flex;flex-direction:column;line-height:1.25;}
+.ep-person-name{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ep-person-sub{font-size:10.5px;color:var(--muted2);}
+.ep-rail-foot{padding:9px 12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);text-align:center;}
+
+/* วงกลมตัวย่อชื่อ ใช้ซ้ำทุกที่ในหน้านี้ */
+.ep-av{display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;}
+
+/* --- หัวประวัติ --- */
+.ep-hero{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-card);padding:20px 22px;display:flex;justify-content:space-between;
+  align-items:flex-start;gap:20px;flex-wrap:wrap;}
+.ep-hero-main{display:flex;gap:16px;min-width:0;}
+.ep-hero-txt{min-width:0;}
+.ep-hero-name{font-size:20px;font-weight:700;line-height:1.25;}
+.ep-hero-en{font-size:13px;color:var(--muted);margin-bottom:8px;}
+.ep-hero-tags{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;}
+.ep-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;
+  color:var(--blue);background:var(--blue-light);border-radius:6px;padding:2px 8px;}
+.ep-chip{font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px;white-space:nowrap;}
+.ep-chip-level{color:var(--purple);background:var(--purple-light);}
+.ep-chip-gray{color:var(--muted);background:#f1f5f9;}
+.ep-hero-pos{font-size:14px;font-weight:600;}
+.ep-hero-path{font-size:12px;color:var(--muted);margin-top:3px;}
+.ep-sep{color:var(--muted2);margin:0 6px;}
+.ep-hero-side{display:flex;flex-direction:column;align-items:flex-end;gap:12px;}
+.ep-hero-actions{display:flex;gap:8px;}
+.ep-back-wide{display:none;}
+@media (max-width:1100px){ .ep-back-wide{display:inline-flex;} }
+.ep-quick{display:flex;gap:8px;}
+.ep-quick-item{display:flex;flex-direction:column;align-items:center;min-width:78px;padding:8px 10px;
+  background:var(--bg);border-radius:10px;}
+.ep-quick-n{font-size:17px;font-weight:700;color:var(--exec-navy);line-height:1.2;}
+.ep-quick-l{font-size:10.5px;color:var(--muted);white-space:nowrap;}
+
+/* --- แท็บ --- */
+.ep-tabs{display:flex;gap:2px;margin:16px 0 14px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.ep-tab{border:none;background:none;cursor:pointer;padding:9px 14px;font-size:13px;font-weight:600;
+  color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;}
+.ep-tab:hover{color:var(--text);}
+.ep-tab.on{color:var(--blue);border-bottom-color:var(--blue);}
+
+/* --- การ์ดเนื้อหา --- */
+.ep-cols{display:flex;flex-direction:column;gap:14px;}
+.ep-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-card);padding:16px 18px;}
+.ep-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.ep-card-head h3{font-size:13.5px;font-weight:700;}
+.ep-card-note{font-size:11px;color:var(--muted2);}
+.ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 20px;}
+.ep-f-l{font-size:11px;color:var(--muted);margin-bottom:2px;}
+.ep-f-v{font-size:13.5px;font-weight:500;word-break:break-word;}
+.ep-f-empty{color:var(--muted2);font-weight:400;}
+.ep-note{font-size:11px;color:var(--muted2);font-weight:400;}
+.ep-link{color:var(--blue);font-weight:600;}
+.ep-remark{font-size:13.5px;white-space:pre-wrap;line-height:1.6;}
+.ep-empty{padding:20px;text-align:center;background:var(--bg);border-radius:10px;}
+.ep-empty-t{font-size:13px;font-weight:600;color:var(--muted);}
+.ep-empty-s{font-size:11.5px;color:var(--muted2);margin-top:3px;}
+.ep-loading{padding:28px;text-align:center;color:var(--muted);font-size:13px;}
+
+/* --- สายบังคับบัญชา --- */
+.ep-prow{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid transparent;
+  background:none;cursor:pointer;border-radius:10px;text-align:left;color:var(--text);}
+.ep-prow:hover{background:var(--bg);border-color:var(--border);}
+.ep-prow-self{background:var(--blue-light);border-color:#BFD2F5;cursor:default;}
+.ep-prow-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3;}
+.ep-prow-name{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;}
+.ep-prow-sub{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ep-prow-tag{font-size:10px;font-weight:600;color:var(--muted);background:#f1f5f9;border-radius:5px;padding:1px 6px;}
+.ep-tag-self{color:var(--blue-dark);background:#DCE7FA;}
+.ep-prow-list{display:flex;flex-direction:column;gap:2px;}
+/* ขั้นบันไดสายบังคับบัญชา — เยื้องทีละขั้นให้เห็นว่าใครอยู่เหนือใคร */
+.ep-ladder{display:flex;flex-direction:column;gap:4px;}
+.ep-ladder-step{margin-left:calc(var(--lv) * 22px);position:relative;}
+.ep-ladder-step:not(:first-child)::before{content:"";position:absolute;left:-13px;top:-4px;bottom:50%;
+  width:11px;border-left:1.5px solid var(--border2);border-bottom:1.5px solid var(--border2);
+  border-bottom-left-radius:7px;}
+
+/* --- ไทม์ไลน์ประวัติ --- */
+.ep-tl{list-style:none;position:relative;padding-left:22px;}
+.ep-tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1.5px;background:var(--border);}
+.ep-tl-item{position:relative;padding-bottom:12px;}
+.ep-tl-item:last-child{padding-bottom:0;}
+.ep-tl-dot{position:absolute;left:-22px;top:9px;width:11px;height:11px;border-radius:50%;
+  background:var(--card);border:2.5px solid var(--blue);}
+.ep-tl-join .ep-tl-dot{border-color:var(--green);}
+.ep-tl-card{background:var(--bg);border-radius:10px;padding:10px 12px;}
+.ep-tl-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.ep-tl-date{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--muted);}
+.ep-clip{border:none;background:none;cursor:pointer;font-size:13px;padding:0 2px;}
+.ep-tl-body{margin-top:5px;font-size:13px;}
+.ep-tl-move{font-weight:600;}
+.ep-tl-meta{font-size:11.5px;color:var(--muted);}
+.ep-tl-reason{font-size:12.5px;color:var(--muted);margin-top:3px;white-space:pre-wrap;}
+.ep-tl-by{font-size:10.5px;color:var(--muted2);margin-top:5px;}
+
+/* --- ตารางในหน้าประวัติ --- */
+.ep-table{width:100%;border-collapse:collapse;font-size:13px;}
+.ep-table th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.03em;padding:6px 10px;border-bottom:1px solid var(--border);}
+.ep-table td{padding:8px 10px;border-bottom:1px solid var(--border);}
+.ep-table tr:last-child td{border-bottom:none;}
+.ep-num{text-align:right;font-variant-numeric:tabular-nums;}
+.ep-table th.ep-num{text-align:right;}   /* .ep-table th ตั้ง left ไว้ และ specificity สูงกว่า .ep-num เดี่ยว ๆ */
+.ep-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);}
+.ep-pos{color:var(--green);font-weight:600;}
+.ep-neg{color:var(--red);font-weight:600;}
+.ep-uni-sum{font-size:12.5px;color:var(--muted);margin-bottom:10px;}
+.ep-uni-sum b{color:var(--text);font-size:15px;}
+
+/* --- ค่าตอบแทน / เอกสาร --- */
+.ep-salary{display:flex;align-items:baseline;gap:8px;}
+.ep-salary-n{font-size:28px;font-weight:700;color:var(--exec-navy);font-variant-numeric:tabular-nums;}
+.ep-salary-u{font-size:13px;color:var(--muted);}
+.ep-docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;}
+.ep-doc{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);
+  background:var(--card);border-radius:10px;cursor:pointer;text-align:left;color:var(--text);}
+.ep-doc:hover{border-color:var(--blue);background:var(--blue-light);}
+.ep-doc-ico{font-size:18px;flex-shrink:0;}
+.ep-doc-txt{min-width:0;display:flex;flex-direction:column;line-height:1.3;}
+.ep-doc-name{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ep-doc-sub{font-size:11px;color:var(--muted);}
+
+/* แถวในตารางพนักงานกดได้ */
+.emp-row{cursor:pointer;}
+.emp-row:hover td{background:var(--blue-light);}
+.emp-row:hover td.col-pin{background:var(--blue-light);}
+
+/* จอแคบ — ซ่อนแถบรายชื่อ ใช้ปุ่มย้อนกลับในหัวแทน */
+@media (max-width:1100px){
+  .ep-wrap{grid-template-columns:minmax(0,1fr);height:auto;padding:18px;}
+  .ep-rail{display:none;}
+  .ep-main{overflow:visible;}
+}

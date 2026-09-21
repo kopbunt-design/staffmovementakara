@@ -224,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","contractpay","shiftallow","uniform","users","settings"];
+const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","contractpay","shiftallow","uniform","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -260,11 +260,15 @@ function denyPage(page, label) {
       ติดต่อผู้ดูแลระบบถ้าคิดว่าควรเข้าได้</div></div>`;
 }
 
+// หน้าที่ไม่มีเมนูของตัวเอง ใช้สิทธิ์ของหน้าที่เป็นทางเข้า — จะได้ไม่ต้องเพิ่ม permission key ใน DB
+const PERM_ALIAS = { empprofile: "page.employees" };
+
 async function renderPage(page) {
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
-  if (!can("page." + page)) { denyPage(page); return; }
+  if (!can(PERM_ALIAS[page] || "page." + page)) { denyPage(page); return; }
   if(page==="dashboard") renderDashboard();
   else if(page==="employees") (await import("./employees.js")).renderEmployees();
+  else if(page==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
   else if(page==="movements") renderMovements();
   else if(page==="headcount") (await import("./headcount.js")).renderHeadcount();
   else if(page==="movreport") (await import("./movement-report.js")).renderMovementReport();
@@ -436,11 +440,13 @@ function startRealtime() {
       if(currentPage==="dashboard") renderDashboard();
       if(currentPage==="movements") renderMovements();
       if(currentPage==="analytics") renderAnalytics();
+      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"*", schema:"public", table:"employees"}, async () => {
       await loadEmployees();
       if(currentPage==="dashboard") renderDashboard();
       if(currentPage==="employees") (await import("./employees.js")).renderEmployees();
+      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"INSERT", schema:"public", table:"notifications"}, (payload) => {
       pushNotification(payload.new); // เฉพาะ INSERT — upsert ซ้ำ dedup_key เดิมจะเป็น UPDATE ซึ่งไม่ต้องเด้งซ้ำ
