@@ -1,1 +1,24 @@
-{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
+    {
+      "//": "แอปเป็น static ไม่มี build step จึงไม่มีชื่อไฟล์ติด hash ให้ล้าง cache อัตโนมัติ",
+      "//2": "css ใส่ ?v= เองได้ แต่ js ทำไม่ได้ เพราะ dynamic import() 16 จุดใน app.js resolve กันเองโดยไม่พา query ไปด้วย",
+      "//3": "no-cache = ให้ถามเซิร์ฟเวอร์ทุกครั้ง ถ้าไฟล์ไม่เปลี่ยนได้ 304 กลับมา ซึ่งถูกมาก แต่ของใหม่ขึ้นทันทีเสมอ",
+      "source": "/js/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
+      "source": "/css/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    }
+  ]
+}
