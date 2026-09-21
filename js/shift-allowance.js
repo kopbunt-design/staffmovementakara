@@ -21,7 +21,7 @@ const FAMILY_TH = { DAY:"เช้า", AFT:"บ่าย", NIT:"ดึก" };
 const PAYABLE = new Set(["WORKED","WEEKLY_OFF_DAY","HOLIDAY","PAID_LEAVE"]);
 const ELIGIBLE_LEVELS = new Set(["O1","O2","O3"]); // เฉพาะระดับ O ได้ค่ากะ
 
-// อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ ทุกเดือน (ยอดรวมทั้งเดือนไม่เกินอัตราเดือน)
+// ฐานรายวัน = อัตราเดือน ÷ 30 คงที่ ทุกเดือน — ใช้ทั้งตอน pro-rate และตอนหักวันขาด
 const DAILY_DIVISOR = 30;
 // กะที่จ่ายแม้ทำกะเดียวทั้งเดือน (ปกติกะเดียว = 0) — ค่าเริ่มต้น เผื่อยังไม่ได้ตั้งใน DB
 const SOLO_RATE = { N03: 1200 };
@@ -411,11 +411,28 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     // (เคสจริง AKR26071372 เข้า 13 ก.ค. ทำครบ 19 วัน เฉลยให้ 60x19 = 1,140 ไม่ใช่เต็ม)
     const payDays = days.filter(earns).length;
     const wholeMonth = payDays > 0 && payDays >= daysInMonth(g.y, g.m);
+
+    // วันที่ "ขาดงาน" จริง ๆ = สถานะของวันนั้นไม่จ่าย (ขาด / ลาไม่รับค่าจ้าง / พักงาน / ต้องตรวจ)
+    // หรือเป็นลาป่วยยาวที่ HR ยังไม่อนุมัติ
+    // ⚠️ ไม่นับวันที่ถูกตัดออกด้วยกติกากะ — วัน NOR ในคู่ NOR+N03 และวัน N03 ของสาย Process
+    //    วันพวกนั้นไม่จ่ายเพราะกติกา ไม่ใช่เพราะพนักงานไม่มาทำงาน ถ้านับเป็นวันขาดจะโดนหักซ้ำสอง
+    const absentDays = days.filter(d => !PAYABLE.has(d.status) || (d.unpaidSick && !approved)).length;
+
+    // วิธีคิด: หายอดที่ "ควรได้ถ้าไม่ขาดงาน" ก่อน แล้วค่อยหักวันขาดออกด้วยฐาน 30 วันคงที่
+    // ขาด 1 วันจึงหัก 1 วันเสมอ ไม่ว่าเดือนนั้นจะมี 28/30/31 วัน (ผู้ใช้เลือก 2026-09-21)
+    // ก่อนหน้านี้คิดเป็น payDays × อัตรา÷30 ตรง ๆ ทำให้เดือน 31 วันมีวันขาดวันแรกฟรี
+    // เพราะ 30 วัน × 60 = 1,800 ชนเพดานอัตราเดือนพอดีอยู่แล้ว
+    const baseDays = payDays + absentDays;              // วันที่จะจ่ายได้ถ้าไม่ขาดงานเลย
+    const baseWholeMonth = baseDays >= daysInMonth(g.y, g.m);
+    const perDay = monthlyRate / DAILY_DIVISOR;
     // อยู่กะดึกเกิน 15 วัน = จ่ายเต็มอัตราไปเลย ไม่ pro-rate
-    const dailyRate = !payDays ? 0
-      : (shiftOnlyFull || wholeMonth) ? monthlyRate / payDays
-      : Math.min(monthlyRate / DAILY_DIVISOR, monthlyRate / payDays);
-    const capped = wholeMonth && payDays > DAILY_DIVISOR && monthlyRate > 0;
+    const base = !baseDays ? 0
+      : (shiftOnlyFull || baseWholeMonth) ? monthlyRate
+      : Math.min(baseDays * perDay, monthlyRate);
+    const grossTotal = Math.max(0, base - absentDays * perDay);
+    // กระจายยอดลงวันที่จ่ายได้ เพื่อให้รายวันที่ export ออกไปบวกกลับได้ยอดเดิมพอดี
+    const dailyRate = payDays ? grossTotal / payDays : 0;
+    const capped = baseWholeMonth && baseDays > DAILY_DIVISOR && monthlyRate > 0;
 
     // ถ้าไฟล์มีคอลัมน์ Shift_Allowance มาด้วย = "เฉลย" ที่คิดมือไว้แล้ว -> เก็บไว้เทียบ
     let total = 0, noPayDays = 0, checkDays = 0;
@@ -449,7 +466,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       suspendDays, workedDays, noWorkedDay,
       shiftOnly: payShiftDaysOnly, shiftOnlyFull, isProcess: isProc, approvedNoWork: approved,
       noPayPair: noPayPair ? noPayPair.join(" + ") : "",
-      payDays, noPayDays, checkDays,
+      payDays, noPayDays, checkDays, absentDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
       diff:   hasManualRow ? round2(total - manual) : null,
@@ -544,7 +561,9 @@ export function renderShiftAllowance() {
       <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-top:10px;">
         • จ่ายเฉพาะพนักงาน <b>ระดับ O</b> (O1/O2/O3) — ตรวจจาก job_level ในระบบ · ระดับอื่น/ไม่พบ = ฿0<br>
         • ครบ <b>3 ตระกูลกะ</b> = <b>1,800</b>/เดือน · <b>2 ตระกูล</b> = <b>1,200</b> · กะเดียว = <b>0</b> (ยกเว้นกะที่ตั้ง "กะเดี่ยว" ไว้ เช่น N03 = 1,200)<br>
-        • อัตรารายวัน = อัตราเดือน <b>÷ 30 คงที่</b> ทุกเดือน · ยอดรวมทั้งเดือนไม่เกินอัตราเดือน · <b>ตัดวันนอกช่วงการจ้างออก</b>ก่อนคำนวณ<br>
+        • คิดยอด <b>"ถ้าไม่ขาดงาน"</b> ก่อน (ทำครบทั้งเดือน = เต็มอัตรา ไม่ว่าเดือนนั้นจะมี 28/30/31 วัน) แล้ว<b>หักวันที่ไม่ได้เงินวันละ อัตราเดือน ÷ 30</b><br>
+        &nbsp;&nbsp;&nbsp;ขาด 1 วันหัก 1 วันเสมอทุกเดือน · หักเฉพาะวันขาด/ลาไม่รับค่าจ้าง/พักงาน/ลาป่วยยาวที่ยังไม่อนุมัติ — <b>วัน NOR และวัน N03 ของสาย Process ไม่ใช่วันขาด ไม่ถูกหัก</b><br>
+        • <b>ตัดวันนอกช่วงการจ้างออก</b>ก่อนคำนวณ · คนเข้าใหม่กลางเดือนคิดตามวันที่ถูกจ้าง (เช่น จ้าง 19 วัน = 60 × 19)<br>
         • <b>เทียบกับที่คิดมือ:</b> ถ้าไฟล์ลงเวลามีคอลัมน์ <b>Shift_Allowance</b> อยู่แล้ว ระบบเทียบให้เอง —
           ถ้าเฉลยอยู่คนละไฟล์ (ไฟล์สรุป 1 บรรทัด/คน) ให้คำนวณก่อน แล้วกด <b>📋 เทียบกับไฟล์เฉลย</b>
       </div>
@@ -713,6 +732,9 @@ export function renderShiftAllowance() {
         month:r.month, job_level:r.job_level, eligible:r.eligible,
         family_count:r.familyCount, monthly_rate:r.monthlyRate,
         pay_days:r.payDays, no_pay_days:r.noPayDays, check_days:r.checkDays,
+        absent_days:r.absentDays,
+        // ส่งเฉพาะ total (ยอดที่ระบบคำนวณ) — ไม่แตะ manual_* เพื่อให้ยอดที่ HR แก้มือไว้ไม่หาย
+        // PostgREST upsert เขียนทับเฉพาะคอลัมน์ที่ส่งมาเท่านั้น
         total:r.total, created_by: currentUser?.id || null,
       }));
     if (!rows.length) { toast("ไม่มีรายการที่มี emp_code","error"); return; }
@@ -952,6 +974,7 @@ function renderResults() {
 }
 
 // ===== ประวัติที่บันทึก =====
+let histRows = [];   // แถวของเดือนที่เปิดอยู่ — modal แก้ไขหยิบจากตรงนี้
 async function loadHistMonths() {
   const sel = document.getElementById("saHistMonth");
   if (!sel) return;
@@ -962,6 +985,82 @@ async function loadHistMonths() {
     months.map(m=>`<option value="${esc(m)}" ${m===cur?"selected":""}>${esc(m)}</option>`).join("");
 }
 
+// ---------- แก้ไขยอดด้วยมือ ----------
+// แก้ที่ประวัติที่บันทึกแล้วเท่านั้น ไม่ใช่ที่หน้าคำนวณ — หน้าคำนวณสร้างยอดจากไฟล์ใหม่ทุกครั้ง
+// ถ้าให้แก้ตรงนั้น อัปโหลดรอบถัดไปค่าที่แก้จะหายโดยไม่มีใครรู้
+window._saEditRow = (id) => {
+  const r = histRows.find(x => x.id === id);
+  if (!r) { toast("ไม่พบรายการนี้", "error"); return; }
+  const calc = Number(r.total || 0);
+  const edited = r.manual_total !== null && r.manual_total !== undefined;
+  document.getElementById("modalPortal").innerHTML = `<div class="modal-overlay" id="saEditModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div><div class="modal-title">แก้ไขยอดค่ากะ</div>
+        <div class="text-sm text-muted">${esc(r.emp_code)} · ${esc(r.employee_name||"")} · เดือน ${esc(r.month)}</div></div>
+        <button class="modal-close" onclick="document.getElementById('saEditModal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="sa-edit-calc">
+          <div>
+            <div class="sa-edit-l">ยอดที่ระบบคำนวณ</div>
+            <div class="sa-edit-n">${fmtB(calc)}</div>
+          </div>
+          <div class="text-sm text-muted" style="text-align:right;line-height:1.5;">
+            อัตรา ${Number(r.monthly_rate||0).toLocaleString("th-TH")}/เดือน<br>
+            จ่าย ${r.pay_days??"-"} วัน${r.absent_days?` · ขาด ${r.absent_days} วัน`:""}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ยอดที่จะจ่ายจริง *</label>
+          <input id="sa_manual" type="number" step="0.01" min="0" class="form-input"
+                 value="${edited ? r.manual_total : calc}" placeholder="เช่น 1740">
+        </div>
+        <div class="form-group">
+          <label class="form-label">เหตุผลที่แก้ *</label>
+          <textarea id="sa_reason" class="form-input" rows="3"
+            placeholder="เช่น ไฟล์ลงเวลาวันที่ 5 ผิด พนักงานมาทำงานจริง มีใบรับรองจากหัวหน้ากะ">${esc(r.manual_reason||"")}</textarea>
+          <div class="text-sm text-muted mt-1">บังคับกรอก — อีกสามเดือนจะได้รู้ว่าทำไมเลขไม่ตรงกับที่ระบบคำนวณ</div>
+        </div>
+        ${edited?`<div class="sa-edit-prev">แก้ล่าสุดเมื่อ ${String(r.manual_at||"").substring(0,16).replace("T"," ")||"-"}</div>`:""}
+      </div>
+      <div class="modal-footer">
+        ${edited?`<button class="btn btn-secondary" onclick="window._saClearManual(${r.id})" style="margin-right:auto;color:var(--red);">ยกเลิกการแก้มือ</button>`:""}
+        <button class="btn btn-secondary" onclick="document.getElementById('saEditModal').remove()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="window._saSaveManual(${r.id})">บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+};
+
+window._saSaveManual = async (id) => {
+  const v = document.getElementById("sa_manual").value.trim();
+  const reason = document.getElementById("sa_reason").value.trim();
+  const amt = Number(v);
+  if (v === "" || !isFinite(amt) || amt < 0) { toast("กรอกยอดเป็นตัวเลขที่ไม่ติดลบ", "error"); return; }
+  if (!reason) { toast("กรุณากรอกเหตุผลที่แก้", "error"); return; }
+  const { error } = await supabase.from("shift_allowance").update({
+    manual_total: round2(amt), manual_reason: reason,
+    manual_by: currentUser?.id || null, manual_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+  document.getElementById("saEditModal")?.remove();
+  toast("บันทึกยอดที่แก้แล้ว", "success");
+  window._saHistMonth(document.getElementById("saHistMonth")?.value);
+};
+
+window._saClearManual = async (id) => {
+  if (!confirm("ยกเลิกการแก้มือ แล้วกลับไปใช้ยอดที่ระบบคำนวณ?")) return;
+  // ต้องล้าง reason ไปพร้อมกัน ไม่งั้นเหลือเหตุผลค้างของยอดที่ไม่มีอยู่แล้ว
+  const { error } = await supabase.from("shift_allowance").update({
+    manual_total: null, manual_reason: null, manual_by: null, manual_at: null,
+  }).eq("id", id);
+  if (error) { toast("ยกเลิกไม่สำเร็จ: " + error.message, "error"); return; }
+  document.getElementById("saEditModal")?.remove();
+  toast("กลับไปใช้ยอดที่ระบบคำนวณแล้ว", "info");
+  window._saHistMonth(document.getElementById("saHistMonth")?.value);
+};
+
 window._saHistMonth = async (m) => {
   const el = document.getElementById("saHistResults");
   if (!el) return;
@@ -969,28 +1068,35 @@ window._saHistMonth = async (m) => {
   const { data, error } = await supabase.from("shift_allowance").select("*").eq("month", m).order("emp_code");
   if (error) { toast("โหลดไม่สำเร็จ: " + error.message, "error"); return; }
   const rows = data || [];
-  const grand = round2(rows.reduce((s,r)=>s+Number(r.total||0), 0));
+  // รวมด้วยยอดที่ใช้จริง — ถ้ารวมจาก total เฉย ๆ ยอดที่แก้มือจะไม่ถูกนับ
+  const grand = round2(rows.reduce((s,r)=>s+Number(r.final_total ?? r.total ?? 0), 0));
+  const nEdited = rows.filter(r => r.manual_total !== null && r.manual_total !== undefined).length;
+  const canEdit = can("data.shiftallow.write");
+  histRows = rows;
   el.innerHTML = `
   <div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
       <div class="card-title" style="margin:0;">เดือน ${esc(m)} · ${rows.length} รายการ</div>
-      <div style="font-size:13px;">รวม: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
+      <div style="font-size:13px;">${nEdited?`<span class="badge badge-gold" style="margin-right:8px;">แก้มือ ${nEdited} รายการ</span>`:""}รวม: <b style="color:var(--green);font-size:16px;">${fmtB(grand)}</b> บาท</div>
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">ยอดค่ากะ</th><th>บันทึกเมื่อ</th></tr></thead>
+        <thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th class="text-right">อัตรา/เดือน</th><th class="text-right">วันจ่าย</th><th class="text-right">วันขาด</th><th class="text-right">ระบบคำนวณ</th><th class="text-right">ยอดที่ใช้จริง</th><th>บันทึกเมื่อ</th>${canEdit?"<th></th>":""}</tr></thead>
         <tbody>
-        ${rows.length===0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
-          rows.map(r=>`<tr${r.eligible?"":' style="opacity:0.6;"'}>
+        ${rows.length===0 ? `<tr><td colspan="${canEdit?11:10}" class="text-center text-muted" style="padding:32px;">ไม่มีข้อมูล</td></tr>` :
+          rows.map(r=>{ const edited = r.manual_total !== null && r.manual_total !== undefined; return `<tr${r.eligible?"":' style="opacity:0.6;"'}>
             <td><b>${esc(r.emp_code||"-")}</b></td>
             <td>${esc(r.employee_name||"-")}</td>
             <td class="text-muted">${esc(r.department||"-")}</td>
             <td>${esc(r.job_level||"-")}</td>
             <td class="text-right">${Number(r.monthly_rate||0).toLocaleString("th-TH")}</td>
             <td class="text-right">${r.pay_days??"-"}</td>
-            <td class="text-right"><b>${fmtB(r.total||0)}</b></td>
+            <td class="text-right ${r.absent_days?"":"text-muted"}" ${r.absent_days?'style="color:var(--red);font-weight:600;"':""}>${r.absent_days??"-"}</td>
+            <td class="text-right ${edited?"sa-struck":""}">${fmtB(r.total||0)}</td>
+            <td class="text-right"><b${edited?' style="color:var(--gold-dark);"':""}>${fmtB(r.final_total ?? r.total ?? 0)}</b>${edited?` <span class="badge badge-gold" title="${esc(r.manual_reason||"")}">แก้มือ</span>`:""}</td>
             <td class="text-muted" style="font-size:11px;">${r.created_at?String(r.created_at).substring(0,10):"-"}</td>
-          </tr>`).join("")}
+            ${canEdit?`<td><button class="btn btn-secondary btn-sm" onclick="window._saEditRow(${r.id})">แก้ไข</button></td>`:""}
+          </tr>`; }).join("")}
         </tbody>
       </table>
     </div>
