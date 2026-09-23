@@ -570,7 +570,7 @@ const CSS = `
 @page { size: A4 portrait; margin: 11mm 13mm; }
 *{box-sizing:border-box;}
 body{font-family:'Sarabun',system-ui,sans-serif;font-size:9.5pt;color:#000;background:#fff;margin:0;}
-.sheet{max-width:186mm;margin:0 auto;}
+.sheet{width:100%;margin:0 auto;}
 .top{display:flex;align-items:flex-end;justify-content:space-between;}
 .logo{height:13mm;}
 .site{font-size:10pt;font-weight:700;color:#1a3e9a;}
@@ -638,26 +638,48 @@ function fitToPage(){
   var sheet = document.querySelector(".sheet");
   var sigs  = document.querySelector(".sigs");
   var note  = document.getElementById("fitNote");
+  var inner = document.querySelectorAll(".inner");
   var MM    = 3.779527;
   var GAP   = 8 * MM;                          // ระยะห่างขั้นต่ำระหว่างเนื้อหากับช่องเซ็น
   var avail = (297 - 22 - 3) * MM;             // A4 ลบขอบบน/ล่างใน @page แล้วเผื่อไว้อีก 3mm
 
   body.classList.remove("compact", "compact2");
+  // ล้างแถวเติมของรอบก่อน ไม่งั้นกดพิมพ์ซ้ำแล้วแถวสะสมขึ้นเรื่อย ๆ
+  inner.forEach(function(t){
+    t.querySelectorAll("tr.fill").forEach(function(r){ r.remove(); });
+  });
   var measure = function(){
     if (sigs) sigs.style.marginTop = GAP + "px";
     return sheet.getBoundingClientRect().height;
   };
 
   var h = measure(), level = "";
-  if (h > avail) { body.classList.add("compact");  level = "บีบ";      h = measure(); }
-  if (h > avail) { body.classList.add("compact2"); level = "บีบมาก";   h = measure(); }
+  if (h > avail) { body.classList.add("compact");  level = "บีบ";    h = measure(); }
+  if (h > avail) { body.classList.add("compact2"); level = "บีบมาก"; h = measure(); }
 
   if (h > avail) {
     // บีบสุดแล้วยังไม่พอ — ปล่อยให้ไปหน้าสองดีกว่าตัดเนื้อหาทิ้ง แต่ต้องบอกให้รู้
     if (note) note.textContent = "รายการเยอะเกินกว่าจะจบในหน้าเดียว — เอกสารจะมี 2 หน้า";
     return;
   }
-  if (sigs) sigs.style.marginTop = (GAP + (avail - h)) + "px";
+
+  // ที่เหลือเอาไปยืดตารางรายได้/รายหัก ให้ใบดูเต็มหน้าแทนที่จะทิ้งช่องว่างไว้กลางใบ
+  var rows = inner[0] ? inner[0].rows : null;
+  var rowH = rows && rows.length ? rows[rows.length - 1].getBoundingClientRect().height : 0;
+  if (rowH > 0) {
+    var add = Math.floor((avail - h) / rowH);
+    for (var i = 0; i < add; i++) {
+      inner.forEach(function(t){
+        var tr = t.insertRow(-1);
+        tr.className = "fill";
+        var a = tr.insertCell(-1); a.innerHTML = "&nbsp;";
+        var b = tr.insertCell(-1); b.className = "n";
+      });
+    }
+    h = measure();
+  }
+
+  if (sigs) sigs.style.marginTop = (GAP + Math.max(0, avail - h)) + "px";
   if (note) note.textContent = level ? ("ใช้โหมด" + level + "เพื่อให้จบในหน้าเดียว") : "";
 }
 fitToPage();                                    // วัดทันที เผื่อถูกสั่งพิมพ์ก่อนฟอนต์โหลดเสร็จ
