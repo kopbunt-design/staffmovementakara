@@ -26,7 +26,7 @@ const INCOME_LINES = [
   { key:"leavepay",  en:"Unused AL / CL Payout",           cols:["เงินจ่ายคืนวันลา"] },
   { key:"bonus",     en:"Bonus",                           cols:["โบนัส"] },
   { key:"ert",       en:"ERT Training",                    cols:["ค่าฝึกอบรม ERT"] },
-  { key:"housing",   en:"Relocation Allowance",            cols:["เงินช่วยเหลือค่าเช่าที่พักอาศัย"] },
+  { key:"housing",   en:"Temporary Accommodation Support", cols:["เงินช่วยเหลือค่าเช่าที่พักอาศัย"] },
   { key:"cosec",     en:"Company Secretary Remuneration",  cols:["ค่าตอบแทนเลขานุการบริษัท"] },
   { key:"director",  en:"Directory Fee",                    cols:["ค่าตอบแทนกรรมการ"] },
   { key:"severance", en:"Severance Pay",                   cols:["เงินชดเชย1","เงินชดเชย2"] },
@@ -483,15 +483,10 @@ function buildDoc() {
   const processAmt = round2(net + ledAmt);
   const transferTx = Math.max(0, payees - ledTx);
 
-  const rows = (list) => {
-    const n = Math.max(list.length, 1);
-    return { n, html: list.map(([l, v]) =>
-      `<tr><td>${esc(l)}</td><td class="n">${fmt(v)}</td></tr>`).join("") };
-  };
-  const inc = rows(income), dedR = rows(deduct);
-  // สองคอลัมน์ต้องสูงเท่ากัน เติมแถวว่างฝั่งที่สั้นกว่า — ใบจริงก็เว้นบรรทัดว่างไว้แบบนี้
-  const pad = k => Array.from({ length: Math.max(0, Math.max(inc.n, dedR.n) - k) },
-    () => `<tr><td>&nbsp;</td><td class="n"></td></tr>`).join("");
+  // สองฝั่งต้องสูงเท่ากัน เติมแถวว่างให้ฝั่งที่สั้นกว่า — ใบจริงก็เว้นบรรทัดว่างไว้แบบนี้
+  const maxRows = Math.max(income.length, deduct.length, 1);
+  const side = list => list.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="n">${fmt(v)}</td></tr>`).join("")
+    + Array.from({ length: maxRows - list.length }, () => `<tr><td>&nbsp;</td><td class="n"></td></tr>`).join("");
 
   const logo = new URL("assets/logo.png", location.href).href;
   const hc = [["Starting Staff", f.start], ["New Joiner (+)", f.joiner],
@@ -523,10 +518,11 @@ function buildDoc() {
 
   <h2>TRANSACTIONS BREAKDOWN (THB)</h2>
   <table class="grid br">
+    <colgroup><col class="cl"><col class="cn"><col class="cl"><col class="cn"></colgroup>
     <tr><th colspan="2">Income</th><th colspan="2">Deduction</th></tr>
     <tr>
-      <td class="half" colspan="2"><table class="inner">${inc.html}${pad(inc.n)}</table></td>
-      <td class="half" colspan="2"><table class="inner">${dedR.html}${pad(dedR.n)}</table></td>
+      <td class="half" colspan="2"><table class="inner"><colgroup><col class="cl"><col class="cn"></colgroup>${side(income)}</table></td>
+      <td class="half" colspan="2"><table class="inner"><colgroup><col class="cl"><col class="cn"></colgroup>${side(deduct)}</table></td>
     </tr>
     <tr class="tot">
       <td>TOTAL GROSS INCOME</td><td class="n">${fmt(gross)}</td>
@@ -585,9 +581,14 @@ table{border-collapse:collapse;width:100%;}
 .grid th{background:#fff;font-weight:700;text-align:left;}
 .c{text-align:center;} .n{text-align:right;font-variant-numeric:tabular-nums;}
 .hc th,.hc td{text-align:center;}
-/* ช่องรายได้/รายหักเป็นตารางซ้อน เพื่อให้สองฝั่งสูงเท่ากันและเส้นตรงกัน */
+/* ช่องรายได้/รายหักเป็นตารางซ้อน เพื่อให้สองฝั่งสูงเท่ากันและเส้นตรงกัน
+   ต้องล็อกความกว้างด้วย table-layout:fixed ไม่งั้นเบราว์เซอร์ยืดคอลัมน์ตามความยาวข้อความ
+   แล้วเส้นแบ่งกลางของฝั่ง Income กับ Deduction จะไม่ตรงกัน (ครึ่งซ้ายกว้างกว่าครึ่งขวา) */
+.br{table-layout:fixed;}
+.br .cl{width:34%;} .br .cn{width:16%;}
 .br .half{padding:0;vertical-align:top;}
-.inner{width:100%;}
+.inner{width:100%;table-layout:fixed;}
+.inner .cl{width:68%;} .inner .cn{width:32%;}
 .inner td{border:0;border-bottom:.4pt solid #bbb;padding:.9mm 2mm;}
 .inner tr:last-child td{border-bottom:0;}
 .tot td{font-weight:700;}
@@ -609,16 +610,20 @@ table{border-collapse:collapse;width:100%;}
 // ย่อทั้งใบให้จบในหน้าเดียวเสมอ — เดือนที่มีรายการเงินได้/เงินหักเยอะกว่าปกติจะไม่ตกไปหน้า 2
 // ต้องรอฟอนต์โหลดก่อนถึงวัดได้ตรง ไม่งั้นความสูงที่วัดได้เป็นของฟอนต์สำรอง
 const FIT = `
-document.fonts.ready.then(function(){
+function fitToPage(){
   var sheet = document.querySelector(".sheet");
-  var avail = (297 - 22) * 3.779527;          // A4 สูง 297mm ลบขอบบน+ล่างที่ตั้งไว้ใน @page
+  sheet.style.zoom = 1;                        // วัดจากขนาดจริงเสมอ ไม่ใช่ขนาดที่ย่อไว้รอบก่อน
+  var avail = (297 - 22) * 3.779527;           // A4 สูง 297mm ลบขอบบน+ล่างที่ตั้งไว้ใน @page
   var h = sheet.getBoundingClientRect().height;
-  if (h <= avail) return;
-  var k = Math.max(0.7, avail / h);            // ไม่ย่อต่ำกว่า 70% เพราะจะอ่านไม่ออก
+  var note = document.getElementById("fitNote");
+  if (h <= avail) { if (note) note.textContent = ""; return; }
+  var k = Math.max(0.7, avail / h);             // ไม่ย่อต่ำกว่า 70% เพราะจะอ่านไม่ออก
   sheet.style.zoom = k;
-  document.getElementById("fitNote").textContent =
-    "ย่อขนาดลงเหลือ " + Math.round(k * 100) + "% เพื่อให้จบในหน้าเดียว";
-});
+  if (note) note.textContent = "ย่อขนาดลงเหลือ " + Math.round(k * 100) + "% เพื่อให้จบในหน้าเดียว";
+}
+fitToPage();                                    // วัดทันที เผื่อถูกสั่งพิมพ์ก่อนฟอนต์โหลดเสร็จ
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitToPage);
+window.addEventListener("beforeprint", fitToPage);
 `;
 
 function openPrint(body) {
