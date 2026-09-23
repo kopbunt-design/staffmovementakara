@@ -484,7 +484,9 @@ function buildDoc() {
   const transferTx = Math.max(0, payees - ledTx);
 
   // สองฝั่งต้องสูงเท่ากัน เติมแถวว่างให้ฝั่งที่สั้นกว่า — ใบจริงก็เว้นบรรทัดว่างไว้แบบนี้
-  const maxRows = Math.max(income.length, deduct.length, 1);
+  // ขั้นต่ำ 9 แถวเพื่อให้ใบลูกจ้างสัญญา (มีแค่ 1-2 รายการ) เต็มหน้าเหมือนใบพนักงานประจำ
+  const MIN_ROWS = 9;
+  const maxRows = Math.max(income.length, deduct.length, MIN_ROWS);
   const side = list => list.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="n">${fmt(v)}</td></tr>`).join("")
     + Array.from({ length: maxRows - list.length }, () => `<tr><td>&nbsp;</td><td class="n"></td></tr>`).join("");
 
@@ -595,7 +597,7 @@ table{border-collapse:collapse;width:100%;}
 .net td{font-weight:700;text-align:center;}
 .net td.n{text-align:right;}
 .note{font-size:8.5pt;margin:3mm 0 0;}
-.sigs{display:flex;gap:18mm;margin-top:6mm;page-break-inside:avoid;}
+.sigs{display:flex;gap:18mm;margin-top:8mm;page-break-inside:avoid;}
 .sig{flex:1;text-align:center;}
 .sigline{height:9mm;}
 .signame{border-top:0;font-size:9pt;}
@@ -604,22 +606,59 @@ table{border-collapse:collapse;width:100%;}
 .noprint{margin-top:8mm;text-align:center;}
 .noprint #fitNote{font-size:8.5pt;color:#b54708;margin-top:4mm;}
 .noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #1a3e9a;background:#1a3e9a;color:#fff;border-radius:6px;}
+/* โหมดบีบ — ใช้เมื่อรายการเยอะจนไม่จบในหน้าเดียว ลดตัวอักษรและระยะ ไม่ตัดเนื้อหาทิ้ง */
+body.compact{font-size:8.7pt;}
+body.compact .meta th,body.compact .meta td,body.compact .grid th,body.compact .grid td{padding:.75mm 1.7mm;}
+body.compact .inner td{padding:.65mm 1.7mm;}
+body.compact h2{margin:2.4mm 0 1mm;}
+body.compact .sigline{height:7mm;}
+body.compact2{font-size:8pt;}
+body.compact2 .meta th,body.compact2 .meta td,body.compact2 .grid th,body.compact2 .grid td{padding:.55mm 1.5mm;}
+body.compact2 .inner td{padding:.45mm 1.5mm;}
+body.compact2 h2{margin:1.8mm 0 .8mm;}
+body.compact2 h1{font-size:11pt;margin:0 0 2mm;}
+body.compact2 .sigline{height:6mm;}
 @media print{.noprint{display:none;}}
 `;
 
 // ย่อทั้งใบให้จบในหน้าเดียวเสมอ — เดือนที่มีรายการเงินได้/เงินหักเยอะกว่าปกติจะไม่ตกไปหน้า 2
 // ต้องรอฟอนต์โหลดก่อนถึงวัดได้ตรง ไม่งั้นความสูงที่วัดได้เป็นของฟอนต์สำรอง
+// จัดใบให้พอดีหน้าเดียว ทำสองอย่าง:
+//   เนื้อหาไม่เต็มหน้า -> ดันช่องเซ็นลงล่างสุด ใบจะได้ไม่โหรงเหรง
+//   เนื้อหาเกินหน้า    -> สลับเป็นโหมดบีบ (ตัวอักษรเล็กลง ระยะแคบลง) ทีละขั้น
+//
+// ⚠️ เคยลองย่อด้วย zoom และ transform:scale แล้วทั้งคู่ใช้ไม่ได้ตอนพิมพ์จริง
+//    zoom: Chrome ย่อให้บนจอ แต่ PDF ยังล้นไปหน้า 2
+//    transform: ย่อภาพแต่ลูก ๆ ยังวางตัวขนาดเต็ม ต้องปิด overflow ซึ่งกลายเป็น "ตัดเนื้อหาทิ้ง"
+//    — ช่องเซ็นหายทั้งบล็อกโดยไม่มีใครรู้ ซึ่งแย่กว่าเอกสารสองหน้ามาก
+//    ลดขนาดตัวอักษรด้วย class เป็นวิธีเดียวที่พิมพ์ออกมาแล้วได้ผลจริงและไม่ทำเนื้อหาหาย
 const FIT = `
 function fitToPage(){
+  var body  = document.body;
   var sheet = document.querySelector(".sheet");
-  sheet.style.zoom = 1;                        // วัดจากขนาดจริงเสมอ ไม่ใช่ขนาดที่ย่อไว้รอบก่อน
-  var avail = (297 - 22) * 3.779527;           // A4 สูง 297mm ลบขอบบน+ล่างที่ตั้งไว้ใน @page
-  var h = sheet.getBoundingClientRect().height;
-  var note = document.getElementById("fitNote");
-  if (h <= avail) { if (note) note.textContent = ""; return; }
-  var k = Math.max(0.7, avail / h);             // ไม่ย่อต่ำกว่า 70% เพราะจะอ่านไม่ออก
-  sheet.style.zoom = k;
-  if (note) note.textContent = "ย่อขนาดลงเหลือ " + Math.round(k * 100) + "% เพื่อให้จบในหน้าเดียว";
+  var sigs  = document.querySelector(".sigs");
+  var note  = document.getElementById("fitNote");
+  var MM    = 3.779527;
+  var GAP   = 8 * MM;                          // ระยะห่างขั้นต่ำระหว่างเนื้อหากับช่องเซ็น
+  var avail = (297 - 22 - 3) * MM;             // A4 ลบขอบบน/ล่างใน @page แล้วเผื่อไว้อีก 3mm
+
+  body.classList.remove("compact", "compact2");
+  var measure = function(){
+    if (sigs) sigs.style.marginTop = GAP + "px";
+    return sheet.getBoundingClientRect().height;
+  };
+
+  var h = measure(), level = "";
+  if (h > avail) { body.classList.add("compact");  level = "บีบ";      h = measure(); }
+  if (h > avail) { body.classList.add("compact2"); level = "บีบมาก";   h = measure(); }
+
+  if (h > avail) {
+    // บีบสุดแล้วยังไม่พอ — ปล่อยให้ไปหน้าสองดีกว่าตัดเนื้อหาทิ้ง แต่ต้องบอกให้รู้
+    if (note) note.textContent = "รายการเยอะเกินกว่าจะจบในหน้าเดียว — เอกสารจะมี 2 หน้า";
+    return;
+  }
+  if (sigs) sigs.style.marginTop = (GAP + (avail - h)) + "px";
+  if (note) note.textContent = level ? ("ใช้โหมด" + level + "เพื่อให้จบในหน้าเดียว") : "";
 }
 fitToPage();                                    // วัดทันที เผื่อถูกสั่งพิมพ์ก่อนฟอนต์โหลดเสร็จ
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitToPage);
