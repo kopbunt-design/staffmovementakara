@@ -95,11 +95,14 @@ export function summarize(header, rows) {
 
   const empSso = sumCols(["ประกันสังคม"]);
   const empPvd = sumCols(["กองทุนสำรองเลี้ยงชีพ"]);
-  const netRows = rows.filter(r => idx["สุทธิ"] !== undefined && num(r[idx["สุทธิ"]]) !== 0).length;
+  // คนที่ยอดสุทธิเป็น 0 — ยังนับเป็นรายการในรอบจ่าย แค่เอาไว้เตือนบนหน้าจอว่ามีอยู่กี่คน
+  const zeroNet = rows.filter(r => idx["สุทธิ"] !== undefined && num(r[idx["สุทธิ"]]) === 0).length;
 
   return {
     headcountInFile: rows.length,
-    payees: netRows || rows.length,
+    // Total Payroll Processing = ทุกคนในรอบจ่าย ไม่ใช่เฉพาะคนที่มียอดสุทธิ (ผู้ใช้ยืนยัน 2026-09-23)
+    payees: rows.length,
+    zeroNet,
     income, deduct,
     grossCalc, dedCalc, netCalc: round2(grossCalc - dedCalc),
     grossFile, dedFile, netFile,
@@ -277,6 +280,7 @@ function srcSummary() {
   <div class="pa-src mt-3">
     <div><div class="pa-src-l">ไฟล์</div><div class="pa-src-v">${esc(fileName)}</div></div>
     <div><div class="pa-src-l">จำนวนคนในไฟล์</div><div class="pa-src-v">${fmtI(src.headcountInFile)}</div></div>
+    ${src.zeroNet ? `<div><div class="pa-src-l">ยอดสุทธิเป็น 0</div><div class="pa-src-v" style="color:var(--amber);">${fmtI(src.zeroNet)}</div></div>` : ""}
     <div><div class="pa-src-l">รายได้รวม</div><div class="pa-src-v">${fmt(src.grossFile)}</div></div>
     <div><div class="pa-src-l">รายหักรวม</div><div class="pa-src-v">${fmt(src.dedFile)}</div></div>
     <div><div class="pa-src-l">จ่ายสุทธิ</div><div class="pa-src-v pa-net">${fmt(src.netFile)}</div></div>
