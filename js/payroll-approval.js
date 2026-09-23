@@ -605,6 +605,7 @@ table{border-collapse:collapse;width:100%;}
 .sigdate{font-size:8.5pt;margin-top:3mm;}
 .noprint{margin-top:8mm;text-align:center;}
 .noprint #fitNote{font-size:8.5pt;color:#b54708;margin-top:4mm;}
+.noprint .tip{font-size:8.5pt;color:#667085;margin-top:3mm;}
 .noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #1a3e9a;background:#1a3e9a;color:#fff;border-radius:6px;}
 /* โหมดบีบ — ใช้เมื่อรายการเยอะจนไม่จบในหน้าเดียว ลดตัวอักษรและระยะ ไม่ตัดเนื้อหาทิ้ง */
 body.compact{font-size:8.7pt;}
@@ -642,6 +643,10 @@ function fitToPage(){
   var MM    = 3.779527;
   var GAP   = 8 * MM;                          // ระยะห่างขั้นต่ำระหว่างเนื้อหากับช่องเซ็น
   var avail = (297 - 22 - 3) * MM;             // A4 ลบขอบบน/ล่างใน @page แล้วเผื่อไว้อีก 3mm
+  // ที่ยอมให้ "ยืดตาราง" ลงไปได้ ต้องน้อยกว่าที่ว่างจริงอีก 18mm
+  // เพราะหน้าต่างพิมพ์ของเบราว์เซอร์อาจเปิด Headers and footers ไว้ ซึ่งกินพื้นที่บน/ล่างเพิ่ม
+  // โดยที่ JS มองไม่เห็น ถ้ายืดจนเต็มพอดี ลายเซ็นจะตกไปหน้า 2 บนเครื่องที่เปิดตัวเลือกนั้น
+  var fillTo = avail - 18 * MM;
 
   body.classList.remove("compact", "compact2");
   // ล้างแถวเติมของรอบก่อน ไม่งั้นกดพิมพ์ซ้ำแล้วแถวสะสมขึ้นเรื่อย ๆ
@@ -667,7 +672,7 @@ function fitToPage(){
   var rows = inner[0] ? inner[0].rows : null;
   var rowH = rows && rows.length ? rows[rows.length - 1].getBoundingClientRect().height : 0;
   if (rowH > 0) {
-    var add = Math.floor((avail - h) / rowH);
+    var add = Math.floor((fillTo - h) / rowH);
     for (var i = 0; i < add; i++) {
       inner.forEach(function(t){
         var tr = t.insertRow(-1);
@@ -679,7 +684,7 @@ function fitToPage(){
     h = measure();
   }
 
-  if (sigs) sigs.style.marginTop = (GAP + Math.max(0, avail - h)) + "px";
+  if (sigs) sigs.style.marginTop = (GAP + Math.max(0, fillTo - h)) + "px";
   if (note) note.textContent = level ? ("ใช้โหมด" + level + "เพื่อให้จบในหน้าเดียว") : "";
 }
 fitToPage();                                    // วัดทันที เผื่อถูกสั่งพิมพ์ก่อนฟอนต์โหลดเสร็จ
@@ -696,6 +701,7 @@ function openPrint(body) {
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>${CSS}</style></head><body>${body}
     <div class="noprint"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button>
+      <div class="tip">ในหน้าต่างพิมพ์ ให้ตั้ง Paper size = A4 · Margins = Default · และ<b>ปิด Headers and footers</b></div>
       <div id="fitNote"></div></div>
     <script>${FIT}<\/script>
     </body></html>`);
