@@ -28,7 +28,7 @@ const INCOME_LINES = [
   { key:"ert",       en:"ERT Training",                    cols:["ค่าฝึกอบรม ERT"] },
   { key:"housing",   en:"Relocation Allowance",            cols:["เงินช่วยเหลือค่าเช่าที่พักอาศัย"] },
   { key:"cosec",     en:"Company Secretary Remuneration",  cols:["ค่าตอบแทนเลขานุการบริษัท"] },
-  { key:"director",  en:"Director Remuneration",           cols:["ค่าตอบแทนกรรมการ"] },
+  { key:"director",  en:"Directory Fee",                    cols:["ค่าตอบแทนกรรมการ"] },
   { key:"severance", en:"Severance Pay",                   cols:["เงินชดเชย1","เงินชดเชย2"] },
   { key:"taxborne",  en:"Tax Borne by Company",            cols:["ภาษีบริษัทจ่ายให้"] },
   { key:"advance",   en:"Advance Payment",                 cols:["เบิกเงินล่วงหน้า"] },
@@ -50,6 +50,14 @@ const DEDUCT_LINES = [
   { key:"otherDed",  en:"Other Deductions",       cols:["รายการหัก 4","รายการหัก 5","รายการหัก 6","รายการหัก 7","รายการหัก 8","รายการหัก 9",
                                                         "รายการหัก 10","รายการหัก 11","รายการหัก 12","รายการหัก 13","รายการหัก 14","รายการหัก 15",
                                                         "รายการหัก 16","รายการหัก 17","รายการหัก 18","รายการหัก 19","รายการหัก 20"] },
+];
+
+// ผู้ลงนามที่ใช้ประจำ — เลือกจากลิสต์ได้ หรือพิมพ์เองก็ได้
+// ช่องที่ 2 มีผู้ลงนามแทนได้ เมื่อ GM ไม่อยู่ให้ Deputy GM เซ็นแทน
+const SIGNERS = [
+  { name:"Mr. Suphachoke Phanthumitr", title:"Human Resources Manager" },
+  { name:"Mr. Bob Kennedy",            title:"General Manager – Operations" },
+  { name:"Mr. Craig Jacobson",         title:"Deputy General Manager – Operations" },
 ];
 
 const norm = s => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -344,14 +352,24 @@ function contractUI() {
 
 function sigUI() {
   const f = F();
+  const block = (n) => {
+    const name = f[`sig${n}Name`], title = f[`sig${n}Title`];
+    const match = SIGNERS.findIndex(p => p.name === name && p.title === title);
+    return `<div class="pa-sig">
+      <div class="pa-sig-h">ผู้ลงนามที่ ${n}</div>
+      <select class="filter-select" onchange="window._paSigPick(${n}, this.value)">
+        ${SIGNERS.map((p, i) => `<option value="${i}" ${i===match?"selected":""}>${esc(p.name)} — ${esc(p.title)}</option>`).join("")}
+        <option value="x" ${match<0?"selected":""}>อื่น ๆ (พิมพ์เอง)</option>
+      </select>
+      <input class="form-input mt-2" value="${esc(name)}" placeholder="ชื่อ"
+             onchange="window._paSet('sig${n}Name',this.value)">
+      <input class="form-input mt-2" value="${esc(title)}" placeholder="ตำแหน่ง"
+             onchange="window._paSet('sig${n}Title',this.value)">
+    </div>`;
+  };
   return `<div class="card-title mt-4">ผู้ลงนาม</div>
-  <div class="text-sm text-muted mt-1">ช่องวันที่เว้นว่างไว้ให้เซ็นด้วยมือ</div>
-  <div class="pa-grid mt-3">
-    ${[["sig1Name","ชื่อผู้ลงนามที่ 1"],["sig1Title","ตำแหน่งที่ 1"],
-       ["sig2Name","ชื่อผู้ลงนามที่ 2"],["sig2Title","ตำแหน่งที่ 2"]].map(([k,l]) =>
-      `<div class="form-group"><label class="form-label">${l}</label>
-        <input class="form-input" value="${esc(f[k])}" onchange="window._paSet('${k}',this.value)"></div>`).join("")}
-  </div>`;
+  <div class="text-sm text-muted mt-1">ช่องวันที่เว้นว่างไว้ให้เซ็นด้วยมือ · เลือกจากรายชื่อหรือพิมพ์เองก็ได้</div>
+  <div class="pa-sigs mt-3">${block(1)}${block(2)}</div>`;
 }
 
 // ---------- ผูก event ----------
@@ -361,6 +379,13 @@ function wire() {
   window._paLineAdd = which => { F()[which].push({ label:"", amount:"" }); renderPayrollApproval(); };
   window._paLineDel = (which, i) => { F()[which].splice(i, 1); renderPayrollApproval(); };
   window._paLine = (which, i, k, v) => { F()[which][i][k] = v; renderPayrollApproval(); };
+  window._paSigPick = (n, v) => {
+    if (v === "x") return;                    // "พิมพ์เอง" — ปล่อยให้แก้ในช่องข้างล่าง
+    const p = SIGNERS[Number(v)];
+    if (!p) return;
+    F()[`sig${n}Name`] = p.name; F()[`sig${n}Title`] = p.title;
+    renderPayrollApproval();
+  };
 
   window._paPullHc = () => {
     const hc = headcountFor(F().period);

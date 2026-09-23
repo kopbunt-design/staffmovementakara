@@ -935,3 +935,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .pa-netbar{background:var(--exec-navy);color:#fff;border-radius:10px;padding:11px 16px;font-size:13px;
   display:flex;justify-content:space-between;align-items:center;}
 .pa-netbar b{font-size:19px;font-variant-numeric:tabular-nums;}
+.pa-sigs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+.pa-sig{background:var(--bg);border-radius:10px;padding:12px 14px;}
+.pa-sig-h{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;}
+.pa-sig .filter-select{width:100%;}
