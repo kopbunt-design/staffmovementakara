@@ -544,18 +544,18 @@ function buildDoc() {
 }
 
 const CSS = `
-@page { size: A4 portrait; margin: 12mm 13mm; }
+@page { size: A4 portrait; margin: 11mm 13mm; }
 *{box-sizing:border-box;}
 body{font-family:'Sarabun',system-ui,sans-serif;font-size:9.5pt;color:#000;background:#fff;margin:0;}
 .sheet{max-width:186mm;margin:0 auto;}
 .top{display:flex;align-items:flex-end;justify-content:space-between;}
 .logo{height:13mm;}
 .site{font-size:10pt;font-weight:700;color:#1a3e9a;}
-.rule{height:1.6pt;background:#1a3e9a;margin:1.5mm 0 4mm;}
-h1{font-size:12pt;text-align:center;letter-spacing:.3pt;margin:0 0 4mm;}
-h2{font-size:9pt;font-weight:700;margin:4mm 0 1.4mm;}
+.rule{height:1.6pt;background:#1a3e9a;margin:1.5mm 0 3mm;}
+h1{font-size:12pt;text-align:center;letter-spacing:.3pt;margin:0 0 3mm;}
+h2{font-size:9pt;font-weight:700;margin:3mm 0 1.2mm;}
 table{border-collapse:collapse;width:100%;}
-.meta th,.meta td,.grid th,.grid td{border:.6pt solid #000;padding:1.2mm 2mm;}
+.meta th,.meta td,.grid th,.grid td{border:.6pt solid #000;padding:1mm 2mm;}
 .meta th{background:#fff;font-weight:700;text-align:left;white-space:nowrap;}
 .grid th{background:#fff;font-weight:700;text-align:left;}
 .c{text-align:center;} .n{text-align:right;font-variant-numeric:tabular-nums;}
@@ -563,21 +563,37 @@ table{border-collapse:collapse;width:100%;}
 /* ช่องรายได้/รายหักเป็นตารางซ้อน เพื่อให้สองฝั่งสูงเท่ากันและเส้นตรงกัน */
 .br .half{padding:0;vertical-align:top;}
 .inner{width:100%;}
-.inner td{border:0;border-bottom:.4pt solid #bbb;padding:1.1mm 2mm;}
+.inner td{border:0;border-bottom:.4pt solid #bbb;padding:.9mm 2mm;}
 .inner tr:last-child td{border-bottom:0;}
 .tot td{font-weight:700;}
 .net td{font-weight:700;text-align:center;}
 .net td.n{text-align:right;}
-.note{font-size:8.5pt;margin:3.5mm 0 0;}
-.sigs{display:flex;gap:18mm;margin-top:9mm;page-break-inside:avoid;}
+.note{font-size:8.5pt;margin:3mm 0 0;}
+.sigs{display:flex;gap:18mm;margin-top:6mm;page-break-inside:avoid;}
 .sig{flex:1;text-align:center;}
-.sigline{height:13mm;}
+.sigline{height:9mm;}
 .signame{border-top:0;font-size:9pt;}
 .sigtitle{font-size:8.5pt;}
 .sigdate{font-size:8.5pt;margin-top:3mm;}
 .noprint{margin-top:8mm;text-align:center;}
+.noprint #fitNote{font-size:8.5pt;color:#b54708;margin-top:4mm;}
 .noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #1a3e9a;background:#1a3e9a;color:#fff;border-radius:6px;}
 @media print{.noprint{display:none;}}
+`;
+
+// ย่อทั้งใบให้จบในหน้าเดียวเสมอ — เดือนที่มีรายการเงินได้/เงินหักเยอะกว่าปกติจะไม่ตกไปหน้า 2
+// ต้องรอฟอนต์โหลดก่อนถึงวัดได้ตรง ไม่งั้นความสูงที่วัดได้เป็นของฟอนต์สำรอง
+const FIT = `
+document.fonts.ready.then(function(){
+  var sheet = document.querySelector(".sheet");
+  var avail = (297 - 22) * 3.779527;          // A4 สูง 297mm ลบขอบบน+ล่างที่ตั้งไว้ใน @page
+  var h = sheet.getBoundingClientRect().height;
+  if (h <= avail) return;
+  var k = Math.max(0.7, avail / h);            // ไม่ย่อต่ำกว่า 70% เพราะจะอ่านไม่ออก
+  sheet.style.zoom = k;
+  document.getElementById("fitNote").textContent =
+    "ย่อขนาดลงเหลือ " + Math.round(k * 100) + "% เพื่อให้จบในหน้าเดียว";
+});
 `;
 
 function openPrint(body) {
@@ -588,7 +604,9 @@ function openPrint(body) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>${CSS}</style></head><body>${body}
-    <div class="noprint"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button></div>
+    <div class="noprint"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button>
+      <div id="fitNote"></div></div>
+    <script>${FIT}<\/script>
     </body></html>`);
   w.document.close();
 }
