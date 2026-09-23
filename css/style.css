@@ -899,3 +899,39 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .sa-edit-cell:hover .sa-pencil{color:var(--blue);}
 .sa-hist-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;
   padding:14px 16px;border-bottom:1px solid var(--border);}
+
+/* ===== ใบสรุปอนุมัติเงินเดือน ===== */
+.pa-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:0 24px;}
+.pa-mode{text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-card);padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:3px;color:var(--text);}
+.pa-mode:hover{border-color:var(--border2);}
+.pa-mode.on{border-color:var(--blue);background:var(--blue-light);box-shadow:none;}
+.pa-mode-t{font-size:14px;font-weight:700;}
+.pa-mode.on .pa-mode-t{color:var(--blue-dark);}
+.pa-mode-s{font-size:11.5px;color:var(--muted);}
+#paBody{padding:0 24px;}
+.pa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 16px;}
+.pa-empty{padding:22px;text-align:center;background:var(--bg);border-radius:10px;color:var(--muted);font-size:13px;}
+.pa-ok{padding:9px 12px;border-radius:8px;background:var(--green-light);color:var(--green);font-size:12.5px;}
+.pa-warn{padding:9px 12px;border-radius:8px;background:var(--amber-light);color:var(--amber);font-size:12.5px;line-height:1.6;}
+.pa-bad{padding:10px 12px;border-radius:8px;background:var(--red-light);color:var(--red);font-size:12.5px;
+  font-weight:600;line-height:1.7;}
+.pa-src{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;
+  background:var(--bg);border-radius:10px;padding:12px 14px;}
+.pa-src-l{font-size:11px;color:var(--muted);}
+.pa-src-v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+.pa-net{color:var(--green);}
+.pa-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+.pa-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.pa-tbl th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;
+  padding:6px 8px;border-bottom:1px solid var(--border);}
+.pa-tbl td{padding:5px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.pa-tbl .pa-zero td{color:var(--muted2);}
+.pa-tbl .pa-tot td{font-weight:700;border-top:1.5px solid var(--border2);border-bottom:none;}
+.pa-sub{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;}
+.pa-row{display:grid;grid-template-columns:1fr 130px 34px;gap:6px;margin-bottom:6px;}
+.pa-linetot{margin-top:10px;padding-top:8px;border-top:1.5px solid var(--border2);font-size:12.5px;
+  display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;}
+.pa-netbar{background:var(--exec-navy);color:#fff;border-radius:10px;padding:11px 16px;font-size:13px;
+  display:flex;justify-content:space-between;align-items:center;}
+.pa-netbar b{font-size:19px;font-variant-numeric:tabular-nums;}
