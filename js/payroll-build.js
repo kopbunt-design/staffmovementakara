@@ -303,7 +303,7 @@ export function buildReport(input) {
       assigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
                       amount, dept, section: type, org: known?.org || "—", level: known?.level || "" });
 
-    people.push({ code, name: norm(row[1]), dept, section: type,
+    people.push({ code, name: norm(row[1]), alias: "", dept, section: type,
                   org: known?.org || "—", level: known?.level || "" });
 
     if (LUMP.has(type)) {
@@ -359,9 +359,12 @@ export function buildReport(input) {
         const dept = a.dept
           || (ALL_DEPTS.includes(refDept) ? refDept : null)
           || (ALL_DEPTS.includes(byRole) ? byRole : null);
-        // บางเดือนไฟล์ไม่มีคอลัมน์ Name/Surname ภาษาอังกฤษ ต้องถอยไปใช้ชื่อไทย
-        const who = [norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" ")
-                    || [norm(r[ci("ชื่อ")]), norm(r[ci("นามสกุล")])].filter(Boolean).join(" ");
+        // เก็บชื่อทั้งสองภาษา — ค้นหาด้วยภาษาไหนก็ต้องเจอ
+        // (เคยเก็บแต่ชื่ออังกฤษ แล้วพิมพ์ชื่อไทยหาไม่เจอเลย)
+        const whoEn = [norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" ");
+        const whoTh = [norm(r[ci("ชื่อ")]), norm(r[ci("นามสกุล")])].filter(Boolean).join(" ");
+        const who = whoTh || whoEn;
+        const alias = whoTh && whoEn ? whoEn : "";
         const income = num(r[ci("Income")]);
         consRows.push({ id, name:[norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" "),
                         role, section, dept, income });
@@ -375,7 +378,7 @@ export function buildReport(input) {
           continue;
         }
         // ใส่ในรายชื่อค้นหาด้วย คนจากไฟล์ที่ปรึกษาก็ต้องย้ายหมวดได้ เช่นสัญญาจ้างที่ต้องลง Contractors
-        people.push({ code:id, name:who, dept, section, org: role || "—", level:"" });
+        people.push({ code:id, name:who, alias, dept, section, org: role || "—", level:"" });
         if (a.dept)
           assigned.push({ code:id, name:who, kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income),
                           dept, section, org: role || "—", level:"" });

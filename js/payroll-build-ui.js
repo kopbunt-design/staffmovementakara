@@ -124,7 +124,8 @@ const SECTION_TH = { senior:"SENIOR STAFF", staff:"STAFF", casual:"CASUAL LABOUR
 const peopleItems = () => (rep?.people || [])
   .filter(p => !assign[p.code])
   .map(p => ({ value:p.code, label:`${p.code} — ${p.name || ""}`,
-               sub:[p.org, p.level, SECTION_TH[p.section] || p.section].filter(Boolean).join(" · ") }));
+               // ใส่ชื่ออีกภาษาลงใน sub ด้วย เพราะ combobox ค้นจาก label + sub
+               sub:[p.alias, p.org, p.level, SECTION_TH[p.section] || p.section].filter(Boolean).join(" · ") }));
 
 // ผูก combobox หลังวาดหน้าเสร็จทุกครั้ง เพราะหน้าถูกวาดใหม่ทั้งหน้าเมื่อมีการเปลี่ยนแปลง
 function bindFind() {
