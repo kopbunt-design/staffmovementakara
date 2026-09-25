@@ -12,7 +12,8 @@ const SRC = read(`${ROOT}/js/payroll-build.js`).replace(/^export /gm, "");
 const M = new Function(`${SRC}
   return { buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
-           COST_CODES, COST_CODE_DOUBTS };`)();
+           COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
+           SECTION_LABEL, groupHc };`)();
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -259,5 +260,33 @@ eq(M.COST_CODE_DOUBTS.length, 1, "เหลือช่องที่ยัง�
 // ผู้ใช้ยืนยันแล้วว่าผิด จึงแก้ — เทสนี้กันไม่ให้เผลอกลับไปใช้ค่าเดิมตอนอัปเดตตารางรอบหน้า
 eq(M.COST_CODES["Science & Health"][5], "507856301950", "ที่ปรึกษา Science & Health ใช้ฐานของตัวเอง");
 eq(M.COST_CODES["Science & Health"][5].startsWith("5050038"), false, "ต้องไม่ใช่ฐานของ Maintenance อีก");
+
+// ---------- เก็บลงฐานข้อมูลแล้วอ่านกลับ ต้องได้ตัวเลขเดิม ----------
+// นี่คือสิ่งที่ทำให้ "ดึงย้อนหลัง" เชื่อถือได้ — ถ้าแปลงไป-กลับแล้วเพี้ยน รายงานเก่าจะผิดเงียบ ๆ
+{
+  const rows = M.toSummaryRows(rep, "2026-08");
+  eq(rows.every(r => r.month === "2026-08"), true, "ทุกแถวติดเดือนกำกับ");
+  eq(rows.some(r => r.section === "SENIOR STAFF" && r.line_item === "Basic Salary"), true, "ใช้ชื่อหมวดชุดเดียวกับหน้าค่าใช้จ่ายเงินเดือน");
+  eq(rows.some(r => r.col_kind === "group_total"), true, "มีคอลัมน์รวมกลุ่ม");
+  eq(rows.some(r => r.col_kind === "grand_total"), true, "มีคอลัมน์รวมใหญ่");
+
+  const back = M.repFromRows(rows, "2026-08");
+  eq(back.get("senior","Basic Salary","Processing"), rep.get("senior","Basic Salary","Processing"), "อ่านกลับ: เงินเดือน Senior");
+  eq(back.get("staff","Overtime","Processing"),      rep.get("staff","Overtime","Processing"),      "อ่านกลับ: โอที");
+  eq(back.get("casual","Amount","CRD"),              rep.get("casual","Amount","CRD"),              "อ่านกลับ: แรงงานรายวัน");
+  eq(back.headcount("senior","Processing"),          rep.headcount("senior","Processing"),          "อ่านกลับ: จำนวนคน");
+  eq(back.ded.pnd1, rep.ded.pnd1, "อ่านกลับ: ภาษี");
+  eq(back.ded.pvdEmployer, rep.ded.pvdEmployer, "อ่านกลับ: เงินสมทบบริษัท");
+  eq(M.grandExpense(back),  M.grandExpense(rep),  "อ่านกลับแล้วยอดรวมใหญ่ต้องเท่าเดิม");
+  eq(M.totalDeduction(back), M.totalDeduction(rep), "อ่านกลับแล้วยอดหักรวมต้องเท่าเดิม");
+  eq(M.netSalary(back),      M.netSalary(rep),      "อ่านกลับแล้วยอดสุทธิต้องเท่าเดิม");
+  eq(M.grandHeadcount(back), M.grandHeadcount(rep), "อ่านกลับแล้วจำนวนคนต้องเท่าเดิม");
+  eq(back.fromHistory, true, "ติดธงว่ามาจากประวัติ ไม่ใช่เพิ่งคำนวณ");
+
+  // คอลัมน์รวมที่เก็บไว้ ต้องเท่ากับผลรวมของแผนกในกลุ่ม ไม่ใช่เลขที่พิมพ์แยกกันไว้
+  const gt = rows.find(r => r.col_kind === "group_total" && r.section === "SENIOR STAFF"
+                         && r.line_item === "Basic Salary" && r.department === "OPERATIONS Total");
+  eq(gt.value, M.groupTotal(rep, "senior", "Basic Salary", M.GROUPS[0]), "ยอดรวมกลุ่มคิดจากแผนกในกลุ่ม");
+}
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

@@ -398,3 +398,106 @@ export const grandHeadcount = rep =>
 export const totalDeduction = rep =>
   round2(rep.ded.pvd + rep.ded.sso + rep.ded.studentLoan + rep.ded.led + rep.ded.pnd1 + rep.ded.pnd3);
 export const netSalary = rep => round2(grandExpense(rep) - totalDeduction(rep));
+
+// ---------- แปลงเป็นแถวสำหรับเก็บลงฐานข้อมูล ----------
+// ใช้ชื่อหมวด/บรรทัดชุดเดียวกับหน้า "ค่าใช้จ่ายเงินเดือน" (js/payroll-summary.js) โดยตั้งใจ
+// รายงานที่สร้างจากไฟล์ดิบจะได้ไปโผล่ในหน้านั้นด้วย ไม่ต้องมีประวัติสองชุดที่ไม่ตรงกัน
+export const SECTION_LABEL = {
+  senior:"SENIOR STAFF", staff:"STAFF",
+  annualLeave:"ANNUAL LEAVE (RESIGNED) & COMPENSATE",
+  bonus:"EMPLOYEES BONUS", severance:"PROVISION FOR SEVERANCE PAYMENTS",
+  consultants:"CONSULTANTS — TECHNICAL", contractors:"CONTRACTORS — OTHER", casual:"CASUAL LABOUR",
+};
+const DED_LABEL = [
+  ["pvd","Provident Fund"], ["sso","Social Security"], ["studentLoan","Student Loan (general)"],
+  ["led","Legal Execution Department"], ["pnd1","Clearing Account — Employee W/Tax (PND 1)"],
+  ["pnd3","CL ACC EXP — Clearing Account W/Tax (PND 3)"],
+];
+
+// รายชื่อคอลัมน์พร้อมชนิด ใช้ทั้งตอนเก็บและตอนอ่านกลับ
+export function columnList() {
+  const out = []; let i = 0;
+  for (const g of GROUPS) {
+    for (const d of g.depts) out.push({ group:g.name, dept:d, kind:"dept", order:i++ });
+    out.push({ group:g.name, dept:`${g.name} Total`, kind:"group_total", order:i++ });
+  }
+  for (const d of STANDALONE) out.push({ group:d, dept:d, kind:"dept", order:i++ });
+  out.push({ group:"GRAND TOTAL", dept:"GRAND TOTAL", kind:"grand_total", order:i++ });
+  return out;
+}
+
+export function toSummaryRows(rep, month) {
+  const cols = columnList();
+  const rows = [];
+  let rowOrder = 0;
+  const push = (c, section, line, value, kind, code) => rows.push({
+    month, business_group:c.group, department:c.dept, col_kind:c.kind,
+    section, line_item:line, cost_code:code || null,
+    value: round2(value), value_kind:kind, row_order:rowOrder, col_order:c.order,
+  });
+  // ยอดของคอลัมน์รวม คิดจากแผนกในกลุ่มนั้น ไม่ได้เก็บซ้ำจากที่อื่น
+  const valueAt = (c, fn) => {
+    if (c.kind === "dept") return fn(c.dept);
+    if (c.kind === "grand_total") return ALL_DEPTS.reduce((s, d) => s + fn(d), 0);
+    const g = GROUPS.find(g => `${g.name} Total` === c.dept);
+    return g ? g.depts.reduce((s, d) => s + fn(d), 0) : 0;
+  };
+
+  for (const [key, label] of Object.entries(SECTION_LABEL)) {
+    const lines = key === "senior" ? SENIOR_LINES : key === "staff" ? STAFF_LINES : ["Amount"];
+    const hasHc = ["senior","staff","consultants","contractors","casual"].includes(key);
+    if (hasHc) {
+      for (const c of cols) push(c, label, "Headcount", valueAt(c, d => rep.headcount(key, d)), "headcount");
+      rowOrder++;
+    }
+    for (const line of lines) {
+      for (const c of cols) push(c, label, line, valueAt(c, d => rep.get(key, line, d)), "amount",
+        COST_CODES[c.dept]?.[SECTION_KEYS.indexOf(key)]);
+      rowOrder++;
+    }
+    if (key === "senior" || key === "staff") {
+      const total = d => lines.reduce((s, l) => s + rep.get(key, l, d), 0);
+      const lbl = key === "senior" ? "Total — Senior Staff" : "Total — Staff";
+      for (const c of cols) push(c, label, lbl, valueAt(c, total), "amount");
+      rowOrder++;
+    }
+  }
+  // รายการหักและยอดสรุป เก็บไว้ที่คอลัมน์รวมใหญ่คอลัมน์เดียว เพราะรายงานก็แสดงรวมบรรทัดเดียว
+  const grand = cols[cols.length - 1];
+  for (const [k, label] of DED_LABEL) {
+    push(grand, "DEDUCTION — STAFF EXPENSES", label, rep.ded[k], "amount", DED_CODES[k]);
+    rowOrder++;
+  }
+  push(grand, "PROVIDENT FUND", "Provident Fund Employer Contribution", rep.ded.pvdEmployer, "amount", DED_CODES.pvdEmployer);
+  rowOrder++;
+  for (const c of cols) push(c, "SUMMARY", "GRAND TOTAL — PAYROLL EXPENSE", valueAt(c, d => deptTotal(rep, d)), "amount");
+  rowOrder++;
+  for (const c of cols) push(c, "SUMMARY", "TOTAL HEADCOUNT",
+    valueAt(c, d => ["senior","staff","consultants","contractors","casual"].reduce((s, k) => s + rep.headcount(k, d), 0)), "headcount");
+  rowOrder++;
+  push(grand, "SUMMARY", "GRAND TOTAL — DEDUCTION", totalDeduction(rep), "amount");
+  rowOrder++;
+  push(grand, "SUMMARY", "NET SALARY", netSalary(rep), "amount");
+  return rows;
+}
+
+// ---------- อ่านกลับจากฐานข้อมูล ----------
+// คืนวัตถุหน้าตาเดียวกับที่ buildReport คืน เพื่อให้ตัวพิมพ์/ตัว export ใช้ได้โดยไม่ต้องรู้ว่ามาจากไหน
+export function repFromRows(rows, month) {
+  const cells = new Map(), hc = new Map();
+  const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0 };
+  const BY_LABEL = Object.fromEntries(Object.entries(SECTION_LABEL).map(([k, v]) => [v, k]));
+  const DED_BY_LABEL = Object.fromEntries(DED_LABEL.map(([k, v]) => [v, k]));
+  for (const r of rows) {
+    if (r.section === "DEDUCTION — STAFF EXPENSES") { const k = DED_BY_LABEL[r.line_item]; if (k) ded[k] = Number(r.value) || 0; continue; }
+    if (r.section === "PROVIDENT FUND") { ded.pvdEmployer = Number(r.value) || 0; continue; }
+    const key = BY_LABEL[r.section];
+    if (!key || r.col_kind !== "dept") continue;     // คอลัมน์รวมคิดใหม่ได้ ไม่ต้องอ่านกลับ
+    if (r.value_kind === "headcount") hc.set(`${key}|${r.department}`, Number(r.value) || 0);
+    else cells.set(`${key}|${r.line_item}|${r.department}`, Number(r.value) || 0);
+  }
+  return { month, cells, hc, ded, unassigned:[], assigned:[], unknownCols:[], consRows:[],
+           fromHistory:true,
+           get:(s, l, d) => cells.get(`${s}|${l}|${d}`) || 0,
+           headcount:(s, d) => hc.get(`${s}|${d}`) || 0 };
+}

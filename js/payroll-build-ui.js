@@ -3,9 +3,11 @@
 // แล้วประกอบเป็นรายงาน -> ดูตัวอย่างบนจอ -> ดาวน์โหลด Excel / พิมพ์ PDF
 //
 // ⚠️ ไฟล์ดิบมีเงินเดือนรายคนทั้งบริษัท — อ่านในเบราว์เซอร์เท่านั้น
-//    ตัวเลขรายคนไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่ถูกเก็บลง localStorage
-//    สิ่งเดียวที่จำไว้คือ "คนนี้ลงแผนกไหน" ซึ่งเป็นการจัดประเภท ไม่ใช่ตัวเงิน
-import { esc, toast, can, allEmployees } from "./app.js";
+//    ที่ส่งขึ้นเซิร์ฟเวอร์มีแค่ "ยอดรวมระดับแผนก" ตอนกดบันทึก ซึ่งเป็นสิ่งที่ตาราง
+//    payroll_summary ออกแบบมารองรับอยู่แล้ว — ไม่มีแถวรายคนถูกส่งขึ้นไปเลย
+//    ส่วน localStorage จำแค่ "คนนี้ลงแผนกไหน" ซึ่งเป็นการจัดประเภท ไม่ใช่ตัวเงิน
+import { esc, toast, can, allEmployees, currentUser } from "./app.js";
+import { supabase } from "./supabase-config.js";
 import * as PB from "./payroll-build.js";
 
 const ASSIGN_KEY = "payroll_build_assign";
@@ -14,6 +16,8 @@ let files = [];          // [{name, role, aoa}]
 let rep = null;          // ผลลัพธ์จาก buildReport
 let month = "";
 let assign = load();
+let savedMonths = [];     // เดือนที่เคยบันทึกไว้ ใช้ดึงย้อนหลัง
+let loadedFrom = "";      // เดือนที่กำลังเปิดดูจากประวัติ ("" = เพิ่งสร้างจากไฟล์)
 
 function load() {
   try { return JSON.parse(localStorage.getItem(ASSIGN_KEY)) || {}; } catch { return {}; }
@@ -26,20 +30,37 @@ const fmt  = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits
 const fmtI = n => Number(n || 0).toLocaleString("en-US");
 
 // ---------- หน้าเว็บ ----------
+async function loadSavedMonths() {
+  const { data } = await supabase.from("payroll_period").select("month").order("month", { ascending:false });
+  savedMonths = (data || []).map(r => r.month);
+}
+
 export function renderPayrollBuild() {
   const pg = document.getElementById("pagePayrollbuild");
   if (!can("data.payroll.read")) { pg.innerHTML = ""; return; }
+  // โหลดรายชื่อเดือนครั้งเดียวตอนเปิดหน้า แล้ววาดซ้ำเมื่อได้ผล
+  if (!savedMonths.length && !loadedFrom) loadSavedMonths().then(() => { if (savedMonths.length) renderPayrollBuild(); });
 
   pg.innerHTML = `
   <div class="page-header">
     <div><div class="page-heading">สร้าง Payroll Report</div>
     <div class="page-sub">อัปโหลดไฟล์เงินเดือนดิบ + ไฟล์ที่ปรึกษา แล้วระบบประกอบรายงานให้</div></div>
     <div class="header-actions">
+      ${savedMonths.length ? `<select class="filter-select" onchange="window._pbOpen(this.value)">
+        <option value="">— ดึงรายงานย้อนหลัง —</option>
+        ${savedMonths.map(m => `<option value="${esc(m)}" ${m === loadedFrom ? "selected" : ""}>${esc(m)}</option>`).join("")}
+      </select>` : ""}
+      ${rep && !rep.fromHistory && !rep.unassigned.length
+        ? `<button class="btn btn-secondary" onclick="window._pbSave()">💾 บันทึกเข้าระบบ</button>` : ""}
       ${rep ? `<button class="btn btn-secondary" onclick="window._pbExcel()">📥 ดาวน์โหลด Excel</button>
                <button class="btn btn-gold" onclick="window._pbPrint()">🖨 พิมพ์ PDF</button>` : ""}
     </div>
   </div>
   <div class="section mt-4 pb-4">
+    ${rep?.fromHistory ? `<div class="pa-ok" style="margin-bottom:14px;">
+      กำลังดูรายงานเดือน <b>${esc(loadedFrom)}</b> ที่บันทึกไว้ — พิมพ์หรือดาวน์โหลดได้เลยโดยไม่ต้องอัปโหลดไฟล์ใหม่
+      · ถ้าจะสร้างใหม่ให้เลือกไฟล์ด้านล่าง
+    </div>` : ""}
     ${uploadCard()}
     ${rep ? assignCard() + warnCard() + summaryCard() : ""}
   </div>`;
@@ -198,7 +219,7 @@ function summaryCard() {
 // ---------- event ----------
 function wire() {
   window._pbMonth = v => { month = v; renderPayrollBuild(); };
-  window._pbClear = () => { files = []; rep = null; renderPayrollBuild(); };
+  window._pbClear = () => { files = []; rep = null; loadedFrom = ""; renderPayrollBuild(); };
   window._pbAssign = (code, k, v) => {
     if (k === "dept" && !v) return window._pbUnassign(code);   // เลือกกลับเป็น "— เลือก —" = ล้าง
     assign[code] = { ...(assign[code] || {}), [k]: v };
@@ -229,8 +250,44 @@ function wire() {
         toast(`อ่าน ${f.name} ไม่ได้: ${err.message}`, "error");
       }
     }
+    loadedFrom = "";
     if (!month) month = guessMonth();
     rebuild();
+  };
+
+  window._pbSave = async () => {
+    if (!rep || rep.fromHistory) return;
+    if (!month) { toast("เลือกงวดเงินเดือนก่อน", "error"); return; }
+    if (rep.unassigned.length) { toast("ยังมีคนที่ยังไม่ได้ลงแผนก", "error"); return; }
+    const per = {
+      month, report_date: new Date().toISOString().slice(0, 10),
+      total_expense: PB.grandExpense(rep), total_deduction: PB.totalDeduction(rep),
+      net_salary: PB.netSalary(rep), total_headcount: PB.grandHeadcount(rep),
+      source_file: files.filter(f => f.role).map(f => f.name.split(" › ")[0]).join(" + ") || null,
+      uploaded_by: currentUser?.id || null, uploaded_at: new Date().toISOString(),
+    };
+    const { error: e1 } = await supabase.from("payroll_period").upsert(per, { onConflict:"month" });
+    if (e1) { toast("บันทึกไม่สำเร็จ: " + e1.message, "error"); return; }
+    // ลบของเดือนนั้นก่อนเสมอ — ถ้า upsert ทับอย่างเดียว แถวเก่าที่เดือนใหม่ไม่มีจะค้างอยู่
+    await supabase.from("payroll_summary").delete().eq("month", month);
+    const rows = PB.toSummaryRows(rep, month);
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("payroll_summary").insert(rows.slice(i, i + 500));
+      if (error) { toast("บันทึกรายละเอียดไม่สำเร็จ: " + error.message, "error"); return; }
+    }
+    toast(`บันทึกรายงานเดือน ${month} แล้ว (${rows.length} แถว)`, "success");
+    await loadSavedMonths();
+    renderPayrollBuild();
+  };
+
+  window._pbOpen = async m => {
+    if (!m) return;
+    const { data, error } = await supabase.from("payroll_summary").select("*").eq("month", m);
+    if (error) { toast("ดึงข้อมูลไม่สำเร็จ: " + error.message, "error"); return; }
+    if (!data?.length) { toast("ไม่พบข้อมูลของเดือนนี้", "error"); return; }
+    rep = PB.repFromRows(data, m);
+    month = m; loadedFrom = m; files = [];
+    renderPayrollBuild();
   };
 
   window._pbExcel = () => exportExcel();
