@@ -124,7 +124,7 @@ function assignCard() {
 
   const deptOpts = sel => `<option value="">— เลือก —</option>` + PB.ALL_DEPTS.map(d =>
     `<option value="${esc(d)}" ${d === sel ? "selected" : ""}>${esc(d)}</option>`).join("");
-  const secOpts = sel => [["casual","แรงงานรายวัน"],["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"]]
+  const secOpts = sel => [["casual","แรงงานรายวัน"],["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"],["director","กรรมการบริษัท"]]
     .map(([v,l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
   const held = rep.unassigned.reduce((s, u) => s + u.amount, 0);
   const nDone = rep.assigned.length;
@@ -393,6 +393,10 @@ const LINES = [
   ["sec",  "CASUAL LABOUR",  "casual"],
   ["hc",   "Headcount",      "casual"],
   ["amt",  "Amount",         "casual"],
+  // กรรมการบริษัท — ไม่ใช่ทั้งที่ปรึกษาและจ้างเหมา จึงแยกเป็นหมวดของตัวเองต่อจากแรงงานรายวัน
+  ["sec",  "DIRECTOR'S FEE", "director"],
+  ["hc",   "Headcount",      "director"],
+  ["amt",  "Amount",         "director"],
 ];
 const SECTION_LINES = { senior:PB.SENIOR_LINES, staff:PB.STAFF_LINES };
 
@@ -538,6 +542,13 @@ async function exportExcel() {
       r.getCell(2).alignment = { horizontal:"center" };
       r.getCell(sh.depts.length + 3).font = { bold:true };
     }
+    const hcRow = ws.addRow(["TOTAL HEADCOUNT", "คน",
+      ...sh.depts.map(d => PB.deptHeadcount(rep, d)), sh.depts.reduce((t, d) => t + PB.deptHeadcount(rep, d), 0)]);
+    hcRow.eachCell((c, i) => { c.font = { bold:true }; c.fill = fill(TINT);
+      c.border = { top:thin, bottom:thin }; if (i > 2) c.numFmt = COUNT; });
+    hcRow.getCell(2).font = { size:8, color:{ argb:MUTED } };
+    hcRow.getCell(2).alignment = { horizontal:"center" };
+
     const g = ws.addRow(["GRAND TOTAL — PAYROLL EXPENSE", "",
       ...sh.depts.map(d => PB.deptTotal(rep, d)), sh.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0)]);
     g.eachCell((c, i) => {
@@ -606,6 +617,9 @@ function printReport() {
             ${vals.map(v => `<td class="n">${f(v)}</td>`).join("")}
             <td class="n b">${f(sum)}</td></tr>`;
         }).join("")}
+        <tr class="hcrow"><td class="l">TOTAL HEADCOUNT</td><td class="c u">คน</td>
+          ${depts.map(d => `<td class="n">${fmtI(PB.deptHeadcount(rep, d))}</td>`).join("")}
+          <td class="n b">${fmtI(depts.reduce((t, d) => t + PB.deptHeadcount(rep, d), 0))}</td></tr>
         <tr class="gt"><td class="l">GRAND TOTAL — PAYROLL EXPENSE</td><td></td>
           ${depts.map(d => `<td class="n">${fmt(PB.deptTotal(rep, d))}</td>`).join("")}
           <td class="n">${fmt(depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>
@@ -688,7 +702,7 @@ const PRINT_CSS = `
 *{box-sizing:border-box;}
 body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.1pt;color:#101828;background:#fff;margin:0;
   -webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.sheet{page-break-after:always;display:flex;flex-direction:column;min-height:180mm;}
+.sheet{page-break-after:always;display:flex;flex-direction:column;min-height:178mm;}
 .sheet:last-of-type{page-break-after:auto;}
 .flex{flex:1;}
 
@@ -704,7 +718,7 @@ body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.1pt;color:#101828;ba
 
 /* ตาราง */
 table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
-.grid th,.grid td{padding:.34mm 1.4mm;overflow:hidden;}
+.grid th,.grid td{padding:.24mm 1.4mm;overflow:hidden;}
 .grid thead th{background:#0F1C4D;color:#fff;font-weight:600;font-size:6.8pt;
   text-align:right;vertical-align:bottom;line-height:1.2;}
 .grid thead th.l{text-align:left;} .grid thead th.c{text-align:center;}
@@ -715,6 +729,7 @@ table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
 tr.sec td{background:#EEF1F8;font-weight:700;font-size:7.1pt;}
 tr.sec td.cc{font-weight:400;}
 tr.tot td{background:#F7FAFC;font-weight:600;}
+tr.hcrow td{background:#F7FAFC;font-weight:600;border-top:.8pt solid #CBD5E1;}
 tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0F1C4D;font-size:7.5pt;
   padding-top:.9mm;padding-bottom:.9mm;}
 .pf{color:#475467;}

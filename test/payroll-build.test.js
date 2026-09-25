@@ -13,7 +13,7 @@ const M = new Function(`${SRC}
   return { buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
-           SECTION_LABEL, groupHc };`)();
+           SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS };`)();
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -145,6 +145,28 @@ eq(rep.assigned[0].amount, 11000, "บอกยอดด้วย จะได�
   eq(r.unassigned[0].section, "consultants", "จ่ายรายเดือน = เดาว่าเป็นที่ปรึกษา ไม่ใช่แรงงานรายวัน");
 }
 
+// ---------- ค่าตอบแทนกรรมการ — หมวดของตัวเอง ไม่ใช่ที่ปรึกษาหรือจ้างเหมา ----------
+{
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,["SUB1258","Consultant","Sustainability","Monthly","Charunmas","R",150000,0,4500]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons,
+                            assign:{ SUB1258:{ dept:"BKK Office", section:"director" } } });
+  eq(r.get("director","Amount","BKK Office"), 150000, "ลงหมวดกรรมการที่ BKK Office");
+  eq(r.headcount("director","BKK Office"), 1, "นับหัวในหมวดกรรมการ");
+  eq(r.get("consultants","Amount","BKK Office"), 0, "ต้องไม่ไปอยู่ในที่ปรึกษา");
+  eq(M.deptTotal(r, "BKK Office"), 150000, "ยอดรวมแผนกต้องนับหมวดกรรมการด้วย");
+  eq(M.grandHeadcount(r), 1, "จำนวนคนรวมต้องนับหมวดกรรมการด้วย");
+}
+{
+  // ค่าตอบแทนกรรมการที่จ่ายให้พนักงานประจำ — นับแต่ยอด ห้ามนับหัวซ้ำ
+  const H2 = [...H, "ค่าตอบแทนกรรมการ"];
+  const r = M.buildReport({ payroll:[H2, [...R("E1","หนึ่ง",100000,0,0,0), 80000]], employees:EMPS });
+  eq(r.get("director","Amount","Processing"), 80000, "ยอดเข้าหมวดกรรมการ");
+  eq(r.headcount("director","Processing"), 0, "ไม่นับหัวซ้ำ เพราะนับไปแล้วในแถว Senior");
+  eq(r.get("senior","Other Income","Processing"), 0, "ต้องไม่ปนอยู่ใน Other Income อีก");
+  eq(M.deptHeadcount(r, "Processing"), 1, "จำนวนคนรวมของแผนกยังเป็น 1");
+}
+
 // ---------- รายการหัก เก็บรวมทั้งบริษัท ----------
 eq(rep.ded.pnd1, 5100, "ภาษี");
 eq(rep.ded.sso,  1500, "ประกันสังคม");
@@ -252,7 +274,7 @@ eq(M.findHeaderRow([["Emp. Code","Basic Salary"], H]), 1, "หาแถวหั
 }
 
 // ---------- รหัสบัญชี ----------
-eq(M.COST_CODES["Processing"].length, 8, "รหัสบัญชีครบทุกหมวดของแต่ละแผนก");
+eq(M.COST_CODES["Processing"].length, 9, "รหัสบัญชีครบทุกหมวดของแต่ละแผนก (รวมค่าตอบแทนกรรมการ)");
 eq(M.ALL_DEPTS.length, 20, "คอลัมน์แผนกในรายงาน 18 แผนก + BKK Office + Legal");
 eq(Object.keys(M.COST_CODES).length, M.ALL_DEPTS.length, "ทุกแผนกมีรหัสบัญชี");
 eq(M.COST_CODE_DOUBTS.length, 1, "เหลือช่องที่ยังสงสัยอยู่หนึ่งช่อง (Mining · Senior)");
