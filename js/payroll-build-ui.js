@@ -22,12 +22,12 @@ let loadedFrom = "";      // เดือนที่กำลังเปิด
 // ผู้ลงนามท้ายรายงาน — แก้ได้ในหน้าจอ เก็บไว้ใช้รอบถัดไป
 const SIGN_KEY = "payroll_build_signers";
 const DEFAULT_SIGNERS = [
-  { role:"Prepared by", name:"Mr. Suphachoke Phanthumitr", title:"Human Resources Manager" },
-  { role:"Reviewed by", name:"Mr. Craig Jacobson",         title:"Deputy General Manager – Operations" },
-  { role:"Approved by", name:"Mr. Bob Kennedy",            title:"General Manager – Operations" },
+  { role:"Prepared by", dept:"Human Resources", name:"Kopbun Tungkasen",     title:"HRIS Supervisor" },
+  { role:"Reviewed by", dept:"HR Manager",      name:"Chalita Kongpradab",   title:"Compensation & Benefit Supervisor" },
+  { role:"Approved by", dept:"HR Manager",      name:"Suphachoke Phanthumitr", title:"Human Resources Manager" },
 ];
 let signers = (() => {
-  try { const v = JSON.parse(localStorage.getItem(SIGN_KEY)); return Array.isArray(v) && v.length === 3 ? v : DEFAULT_SIGNERS; }
+  try { const v = JSON.parse(localStorage.getItem(SIGN_KEY)); return Array.isArray(v) && v.length ? v : DEFAULT_SIGNERS; }
   catch { return DEFAULT_SIGNERS; }
 })();
 const saveSigners = () => { try { localStorage.setItem(SIGN_KEY, JSON.stringify(signers)); } catch {} };
@@ -175,14 +175,23 @@ function warnCard() {
 // ---------- ผู้ลงนาม ----------
 function signCard() {
   return `<div class="card card-body mt-4">
-    <div class="card-title">ผู้ลงนามท้ายรายงาน</div>
-    <div class="text-sm text-muted mt-1">ขึ้นท้ายทุกหน้าของ PDF · ช่องวันที่เว้นว่างไว้ให้เซ็นด้วยมือ</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div><div class="card-title" style="margin:0;">ผู้ลงนามท้ายรายงาน (${signers.length} ช่อง)</div>
+        <div class="text-sm text-muted">ขึ้นที่หน้าสรุปของ PDF และชีต Summary ของ Excel · ช่องวันที่เว้นว่างไว้ให้เซ็นด้วยมือ</div></div>
+      <button class="btn btn-secondary btn-sm" onclick="window._pbSignAdd()">+ เพิ่มผู้ลงนาม</button>
+    </div>
     <div class="pb-signs mt-3">${signers.map((sg, i) => `<div class="pb-sign">
-      <input class="form-input" value="${esc(sg.role)}"  placeholder="ตำแหน่งในการลงนาม"
+      <div class="pb-sign-h">
+        <span>ช่องที่ ${i + 1}</span>
+        ${signers.length > 1 ? `<button class="pb-x" title="ลบช่องนี้" onclick="window._pbSignDel(${i})">×</button>` : ""}
+      </div>
+      <input class="form-input" value="${esc(sg.role || "")}" placeholder="หัวข้อ เช่น Prepared by"
              onchange="window._pbSigner(${i},'role',this.value)">
-      <input class="form-input mt-2" value="${esc(sg.name)}"  placeholder="ชื่อ"
+      <input class="form-input mt-2" value="${esc(sg.dept || "")}" placeholder="หน่วยงาน (บรรทัดเล็กใต้หัวข้อ)"
+             onchange="window._pbSigner(${i},'dept',this.value)">
+      <input class="form-input mt-2" value="${esc(sg.name || "")}" placeholder="ชื่อ-นามสกุล"
              onchange="window._pbSigner(${i},'name',this.value)">
-      <input class="form-input mt-2" value="${esc(sg.title)}" placeholder="ตำแหน่ง"
+      <input class="form-input mt-2" value="${esc(sg.title || "")}" placeholder="ตำแหน่ง"
              onchange="window._pbSigner(${i},'title',this.value)">
     </div>`).join("")}</div>
   </div>`;
@@ -320,6 +329,8 @@ function wire() {
   };
 
   window._pbSigner = (i, k, v) => { signers[i] = { ...signers[i], [k]: v }; saveSigners(); };
+  window._pbSignAdd = () => { signers = [...signers, { role:"", dept:"", name:"", title:"" }]; saveSigners(); renderPayrollBuild(); };
+  window._pbSignDel = i => { signers = signers.filter((_, j) => j !== i); saveSigners(); renderPayrollBuild(); };
   window._pbExcel = () => exportExcel();
   window._pbPrint = () => printReport();
 }
@@ -401,67 +412,140 @@ const costCodeOf = (section, dept) => {
 async function exportExcel() {
   if (!window.ExcelJS) { toast("กรุณารอโหลด library", "error"); return; }
   const wb = new window.ExcelJS.Workbook();
-  const money = '#,##0.00', count = '#,##0';
+  wb.creator = "Akara Resources HR System";
+  wb.created = new Date();
 
-  // ---- ชีตสรุป ----
-  const s = wb.addWorksheet("Summary");
-  s.columns = [{ width:34 }, { width:14 }, { width:18 }];
-  s.addRow(["AKARA RESOURCES — Payroll Report"]).font = { bold:true, size:14 };
-  s.addRow([`งวด ${month || "-"}`]).font = { color:{ argb:"FF667085" } };
-  s.addRow([]);
-  const head = s.addRow(["สายงาน", "จำนวนคน", "ค่าใช้จ่าย (THB)"]);
-  head.font = { bold:true }; head.eachCell(c => c.border = { bottom:{ style:"thin" } });
-  const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, sec) => t + PB.groupHc(rep, sec, g), 0);
+  // สีและรูปแบบชุดเดียวกับ PDF เพื่อให้ไฟล์สองแบบดูเป็นรายงานฉบับเดียวกัน
+  const NAVY = "FF0F1C4D", BAND = "FFEEF1F8", TINT = "FFF7FAFC",
+        LINE = "FFE4E7EC", MUTED = "FF98A2B3", GREEN = "FF0D7C4B";
+  const MONEY = '#,##0.00', COUNT = '#,##0';
+  const fill = argb => ({ type:"pattern", pattern:"solid", fgColor:{ argb } });
+  const thin = { style:"thin", color:{ argb:LINE } };
+
+  const titleBlock = (ws, sub, span) => {
+    ws.mergeCells(1, 1, 1, span);
+    const t = ws.getCell(1, 1);
+    t.value = "AKARA RESOURCES  ·  Chatree Gold Mine";
+    t.font = { bold:true, size:13, color:{ argb:NAVY } };
+    ws.mergeCells(2, 1, 2, span);
+    const u = ws.getCell(2, 1);
+    u.value = `PAYROLL REPORT — ${sub}${month ? `  ·  ${monthLabel(month)}` : ""}`;
+    u.font = { size:10, color:{ argb:"FF667085" } };
+    ws.getRow(1).height = 20; ws.getRow(2).height = 15;
+    ws.addRow([]);
+  };
+  const setup = (ws, span) => {
+    ws.pageSetup = { orientation:"landscape", paperSize:9, fitToPage:true, fitToWidth:1, fitToHeight:0,
+                     margins:{ left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2 } };
+    ws.headerFooter = { oddFooter:"&L&8Akara Resources — Payroll Report&R&8Page &P of &N" };
+    ws.views = [{ state:"frozen", xSplit:2, ySplit:5 }];
+  };
+
+  // ---------- ชีตสรุป ----------
+  const s1 = wb.addWorksheet("Summary", { properties:{ tabColor:{ argb:NAVY } } });
+  s1.columns = [{ width:46 }, { width:16 }, { width:20 }];
+  titleBlock(s1, "Summary", 3);
+  const kh = s1.addRow(["สายงาน", "จำนวนคน", "ค่าใช้จ่าย (THB)"]);
+  kh.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:10 }; c.fill = fill(NAVY);
+                     c.alignment = { horizontal:"center" }; });
+  kh.getCell(1).alignment = { horizontal:"left" };
+  const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, k) => t + PB.groupHc(rep, k, g), 0);
   for (const g of PB.GROUPS)
-    s.addRow([g.name, hcOf(g), g.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0)]);
+    s1.addRow([g.name, hcOf(g), g.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0)]);
   for (const d of PB.STANDALONE)
-    s.addRow([d, ["senior","staff","consultants","contractors","casual"].reduce((t, sec) => t + rep.headcount(sec, d), 0), PB.deptTotal(rep, d)]);
-  const tot = s.addRow(["รวมทั้งหมด", PB.grandHeadcount(rep), PB.grandExpense(rep)]);
-  tot.font = { bold:true }; tot.eachCell(c => c.border = { top:{ style:"thin" } });
-  s.addRow([]);
-  const dh = s.addRow(["รายการหัก", "", "จำนวนเงิน (THB)"]); dh.font = { bold:true };
-  for (const [l, v] of [["Provident Fund", rep.ded.pvd], ["Social Security", rep.ded.sso],
-                        ["Student Loan (general)", rep.ded.studentLoan], ["Legal Execution Department", rep.ded.led],
-                        ["Clearing Account — Employee W/Tax (PND 1)", rep.ded.pnd1],
-                        ["CL ACC EXP — Clearing Account W/Tax (PND 3)", rep.ded.pnd3]])
-    s.addRow([l, "", v]);
-  const dt = s.addRow(["GRAND TOTAL — DEDUCTION", "", PB.totalDeduction(rep)]); dt.font = { bold:true };
-  const ns = s.addRow(["NET SALARY", "", PB.netSalary(rep)]); ns.font = { bold:true };
-  s.addRow([]);
-  s.addRow(["Provident Fund Employer Contribution", "", rep.ded.pvdEmployer]);
-  s.eachRow(r => { r.getCell(2).numFmt = count; r.getCell(3).numFmt = money; });
+    s1.addRow([d, ["senior","staff","consultants","contractors","casual"].reduce((t, k) => t + rep.headcount(k, d), 0),
+               PB.deptTotal(rep, d)]);
+  const gt = s1.addRow(["รวมทั้งหมด", PB.grandHeadcount(rep), PB.grandExpense(rep)]);
+  gt.eachCell(c => { c.font = { bold:true, color:{ argb:NAVY } }; c.border = { top:{ style:"medium", color:{ argb:NAVY } } }; });
 
-  // ---- ชีตละสายงาน ----
+  s1.addRow([]);
+  const dh = s1.addRow(["DEDUCTION — STAFF EXPENSES", "COST CODE", "THB"]);
+  dh.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:10 }; c.fill = fill(NAVY);
+                     c.alignment = { horizontal:"center" }; });
+  dh.getCell(1).alignment = { horizontal:"left" };
+  for (const [l, c, v] of [["Provident Fund", PB.DED_CODES.pvd, rep.ded.pvd],
+       ["Social Security", PB.DED_CODES.sso, rep.ded.sso],
+       ["Student Loan (general)", PB.DED_CODES.studentLoan, rep.ded.studentLoan],
+       ["Legal Execution Department", PB.DED_CODES.led, rep.ded.led],
+       ["Clearing Account — Employee W/Tax (PND 1)", PB.DED_CODES.pnd1, rep.ded.pnd1],
+       ["CL ACC EXP — Clearing Account W/Tax (PND 3)", PB.DED_CODES.pnd3, rep.ded.pnd3]]) {
+    const r = s1.addRow([l, c, v]);
+    r.getCell(2).font = { size:8, color:{ argb:MUTED } };
+    r.getCell(2).alignment = { horizontal:"center" };
+  }
+  const dt = s1.addRow(["GRAND TOTAL — DEDUCTION", "", PB.totalDeduction(rep)]);
+  dt.font = { bold:true }; dt.eachCell(c => c.border = { top:thin });
+  const ns = s1.addRow(["NET SALARY", "", PB.netSalary(rep)]);
+  ns.eachCell(c => { c.font = { bold:true, color:{ argb:GREEN } }; c.border = { top:{ style:"medium", color:{ argb:NAVY } } }; });
+  s1.addRow([]);
+  const pf = s1.addRow(["Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, rep.ded.pvdEmployer]);
+  pf.getCell(2).font = { size:8, color:{ argb:MUTED } };
+  pf.getCell(2).alignment = { horizontal:"center" };
+  s1.eachRow(r => { r.getCell(2).numFmt = r.getCell(2).numFmt || COUNT; r.getCell(3).numFmt = MONEY; });
+  s1.getColumn(2).alignment = { horizontal:"right" };
+
+  // ลายเซ็นท้ายชีตสรุป
+  s1.addRow([]); s1.addRow([]);
+  const sr = s1.addRow(signers.map(sg => (sg.role || "").toUpperCase()));
+  sr.eachCell(c => c.font = { bold:true, size:9 });
+  const sd = s1.addRow(signers.map(sg => sg.dept || ""));
+  sd.eachCell(c => c.font = { size:9, color:{ argb:"FFB7791F" } });
+  s1.addRow([]); s1.addRow([]);
+  const sl = s1.addRow(signers.map(() => ""));
+  sl.eachCell(c => c.border = { bottom:{ style:"thin", color:{ argb:"FF101828" } } });
+  const sn = s1.addRow(signers.map(sg => sg.name || ""));
+  sn.eachCell(c => c.font = { bold:true, size:10 });
+  const st = s1.addRow(signers.map(sg => sg.title || ""));
+  st.eachCell(c => c.font = { size:9, color:{ argb:"FF667085" } });
+  const sdt = s1.addRow(signers.map(() => "Date  ______________________"));
+  sdt.eachCell(c => c.font = { size:9, color:{ argb:"FF667085" } });
+  setup(s1, 3);
+
+  // ---------- ชีตละสายงาน ----------
   const sheets = [...PB.GROUPS.map(g => ({ name:g.name, depts:g.depts })),
-                  { name:"OTHER", depts:PB.STANDALONE }];
+                  { name:"BKK Office & Legal", depts:PB.STANDALONE }];
   for (const sh of sheets) {
     const ws = wb.addWorksheet(sh.name.slice(0, 31));
-    ws.columns = [{ width:38 }, { width:16 }, ...sh.depts.map(() => ({ width:16 })), { width:16 }];
-    ws.addRow([`AKARA RESOURCES — Payroll Report · ${sh.name}`]).font = { bold:true, size:13 };
-    ws.addRow([`งวด ${month || "-"}`]).font = { color:{ argb:"FF667085" } };
-    ws.addRow([]);
+    ws.columns = [{ width:38 }, { width:11 }, ...sh.depts.map(() => ({ width:15 })), { width:16 }];
+    titleBlock(ws, sh.name, sh.depts.length + 3);
+
     const hr = ws.addRow(["ITEM", "COST CODE", ...sh.depts, "TOTAL"]);
-    hr.font = { bold:true };
-    hr.eachCell(c => { c.border = { bottom:{ style:"medium" } }; c.alignment = { horizontal:"center", wrapText:true }; });
-    hr.getCell(1).alignment = { horizontal:"left" };
+    hr.height = 28;
+    hr.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:9 }; c.fill = fill(NAVY);
+                       c.alignment = { horizontal:"right", vertical:"bottom", wrapText:true }; });
+    hr.getCell(1).alignment = { horizontal:"left", vertical:"bottom" };
+    hr.getCell(2).alignment = { horizontal:"center", vertical:"bottom" };
 
     for (const [kind, line, section] of LINES) {
       if (kind === "sec") {
         const r = ws.addRow([line, "", ...sh.depts.map(d => costCodeOf(section, d)), ""]);
-        r.font = { bold:true };
-        r.eachCell(c => c.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:"FFEEF1F8" } });
+        r.eachCell((c, i) => {
+          c.fill = fill(BAND);
+          c.font = i <= 2 ? { bold:true, size:10 } : { size:7.5, color:{ argb:MUTED } };
+          if (i > 2) c.alignment = { horizontal:"right" };
+        });
         continue;
       }
       const vals = sh.depts.map(d => valueOf(kind, line, section, d));
-      const r = ws.addRow([line, kind === "hc" ? "คน" : "", ...vals, vals.reduce((a, b) => a + b, 0)]);
-      if (kind === "tot") { r.font = { bold:true }; r.eachCell(c => c.border = { top:{ style:"thin" } }); }
-      r.eachCell((c, i) => { if (i > 2) c.numFmt = kind === "hc" ? count : money; });
+      const sum = vals.reduce((a, b) => a + b, 0);
+      const r = ws.addRow([line, kind === "hc" ? "คน" : "", ...vals, sum]);
+      r.eachCell((c, i) => {
+        c.border = { bottom:thin };
+        if (i > 2) c.numFmt = kind === "hc" ? COUNT : MONEY;
+        if (kind === "tot") { c.font = { bold:true }; c.fill = fill(TINT); }
+      });
+      r.getCell(2).font = { size:8, color:{ argb:MUTED } };
+      r.getCell(2).alignment = { horizontal:"center" };
+      r.getCell(sh.depts.length + 3).font = { bold:true };
     }
-    const gt = ws.addRow(["GRAND TOTAL — PAYROLL EXPENSE", "",
+    const g = ws.addRow(["GRAND TOTAL — PAYROLL EXPENSE", "",
       ...sh.depts.map(d => PB.deptTotal(rep, d)), sh.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0)]);
-    gt.font = { bold:true };
-    gt.eachCell((c, i) => { c.border = { top:{ style:"medium" } }; if (i > 2) c.numFmt = money; });
-    ws.views = [{ state:"frozen", xSplit:2, ySplit:4 }];
+    g.eachCell((c, i) => {
+      c.font = { bold:true, color:{ argb:NAVY }, size:10.5 };
+      c.border = { top:{ style:"medium", color:{ argb:NAVY } } };
+      if (i > 2) c.numFmt = MONEY;
+    });
+    setup(ws, sh.depts.length + 3);
   }
 
   const buf = await wb.xlsx.writeBuffer();
@@ -482,6 +566,7 @@ function printReport() {
   const sigBlock = `<div class="sigs">${signers.map(sg => `
     <div class="sig">
       <div class="sig-role">${esc((sg.role || "").toUpperCase())}</div>
+      ${sg.dept ? `<div class="sig-dept">${esc(sg.dept)}</div>` : ""}
       <div class="sig-space"></div>
       <div class="sig-rule"></div>
       <div class="sig-name">${esc(sg.name || "")}</div>
@@ -646,7 +731,8 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 /* ลายเซ็น */
 .sigs{display:flex;gap:14mm;padding-top:4mm;page-break-inside:avoid;}
 .sig{flex:1;}
-.sig-role{font-size:6pt;font-weight:700;color:#1A3E9A;letter-spacing:.6pt;}
+.sig-role{font-size:6pt;font-weight:700;color:#101828;letter-spacing:.7pt;}
+.sig-dept{font-size:6.4pt;color:#B7791F;}
 .sig-space{height:8mm;}
 .sig-rule{height:.5pt;background:#101828;}
 .sig-name{font-size:7.4pt;font-weight:600;margin-top:1.4mm;}
