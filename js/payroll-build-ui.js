@@ -71,6 +71,11 @@ export function renderPayrollBuild() {
     </div>
   </div>
   <div class="section mt-4 pb-4">
+    ${rep?.fromHistory && !rep.dedByDept ? `<div class="pa-bad" style="margin-bottom:14px;">
+      เดือน <b>${esc(loadedFrom)}</b> ถูกบันทึกไว้ก่อนที่ระบบจะเก็บยอดหักแยกรายแผนก — ในระบบจึงมีแค่ยอดหักรวมทั้งบริษัท
+      ช่องหักรายแผนกในรายงานจะแสดงเป็น “—” ไม่ใช่ 0<br>
+      แก้ได้โดยอัปโหลดไฟล์ของเดือนนี้อีกครั้ง แล้วกด 💾 บันทึกเข้าระบบ ทับของเดิม
+    </div>` : ""}
     ${rep?.fromHistory ? `<div class="pa-ok" style="margin-bottom:14px;">
       กำลังดูรายงานเดือน <b>${esc(loadedFrom)}</b> ที่บันทึกไว้ — พิมพ์หรือดาวน์โหลดได้เลยโดยไม่ต้องอัปโหลดไฟล์ใหม่
       · ถ้าจะสร้างใหม่ให้เลือกไฟล์ด้านล่าง
@@ -599,8 +604,9 @@ async function exportExcel() {
       r.eachCell(c => { c.fill = fill(BAND); c.font = { bold:true, size:10 }; });
     };
     const dedRow = (label, code, fn, style) => {
-      const vals = sh.depts.map(fn);
-      const r = ws.addRow([label, code || "", ...vals, vals.reduce((a, b) => a + b, 0)]);
+      const known = rep.dedByDept !== false;
+      const vals = sh.depts.map(d => known ? fn(d) : "—");
+      const r = ws.addRow([label, code || "", ...vals, known ? vals.reduce((a, b) => a + b, 0) : "—"]);
       r.eachCell((c, i) => {
         c.border = { bottom:thin };
         if (i > 2) c.numFmt = MONEY;
@@ -696,11 +702,12 @@ function printReport() {
 
   // รายการหักแยกรายแผนก — ต้นฉบับแสดงแบบนี้ในทุกคอลัมน์แผนก
   const dedRows = depts => {
+    const known = rep.dedByDept !== false;
     const row = (label, code, fn, cls = "") => {
       const vals = depts.map(fn);
       return `<tr class="${cls}"><td class="l">${esc(label)}</td><td class="cc c">${esc(code || "")}</td>
-        ${vals.map(v => `<td class="n">${fmt(v)}</td>`).join("")}
-        <td class="n b">${fmt(vals.reduce((a, b) => a + b, 0))}</td></tr>`;
+        ${vals.map(v => `<td class="n">${known ? fmt(v) : "—"}</td>`).join("")}
+        <td class="n b">${known ? fmt(vals.reduce((a, b) => a + b, 0)) : "—"}</td></tr>`;
     };
     return `<tr class="sec"><td class="l" colspan="2">DEDUCTION — STAFF EXPENSES</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
       ${PB.DED_LINES.map(([k, l]) => row(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k))).join("")}

@@ -415,6 +415,12 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(back.fromHistory, true, "ติดธงว่ามาจากประวัติ ไม่ใช่เพิ่งคำนวณ");
   eq(M.deptDeduction(back, "Processing"), M.deptDeduction(rep, "Processing"), "อ่านกลับ: ยอดหักรายแผนกเท่าเดิม");
   eq(M.deptNet(back, "Processing"), M.deptNet(rep, "Processing"), "อ่านกลับ: สุทธิรายแผนกเท่าเดิม");
+  eq(back.dedByDept, true, "ข้อมูลใหม่มียอดหักรายแผนก");
+  // เดือนที่บันทึกก่อนมีการแยก: มีแต่แถวคอลัมน์รวมใหญ่ ต้องรู้ตัวว่าไม่มีข้อมูลรายแผนก ไม่ใช่ถือว่าเป็น 0
+  const old = rows.filter(r => !(["DEDUCTION — STAFF EXPENSES","PROVIDENT FUND"].includes(r.section) && r.col_kind !== "grand_total"));
+  const legacy = M.repFromRows(old, "2026-08");
+  eq(legacy.dedByDept, false, "เดือนเก่ารู้ว่าไม่มียอดหักรายแผนก");
+  eq(legacy.ded.pnd1, rep.ded.pnd1, "ยอดหักรวมทั้งบริษัทของเดือนเก่ายังอ่านได้");
 
   // คอลัมน์รวมที่เก็บไว้ ต้องเท่ากับผลรวมของแผนกในกลุ่ม ไม่ใช่เลขที่พิมพ์แยกกันไว้
   const gt = rows.find(r => r.col_kind === "group_total" && r.section === "SENIOR STAFF"

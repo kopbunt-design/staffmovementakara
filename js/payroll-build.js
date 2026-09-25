@@ -403,7 +403,7 @@ export function buildReport(input) {
 
   for (const k of Object.keys(ded)) ded[k] = round2(ded[k]);
 
-  return { month, cells, hc, ded, unassigned, assigned, people, unknownCols, consRows,
+  return { month, cells, hc, ded, unassigned, assigned, people, unknownCols, consRows, dedByDept:true,
            get: (section, line, dept) => cells.get(`${section}|${line}|${dept}`) || 0,
            headcount: (section, dept) => hc.get(`${section}|${dept}`) || 0 };
 }
@@ -550,8 +550,10 @@ export function repFromRows(rows, month) {
     if (r.value_kind === "headcount") hc.set(`${key}|${r.department}`, Number(r.value) || 0);
     else cells.set(`${key}|${r.line_item}|${r.department}`, Number(r.value) || 0);
   }
+  // เดือนที่บันทึกก่อนมีการแยกยอดหักรายแผนก จะมีแต่ยอดรวมทั้งบริษัท — ต้องรู้ไว้ จะได้ไม่โชว์ 0 หลอกตา
+  const dedByDept = [...cells.keys()].some(k => k.startsWith("ded|"));
   return { month, cells, hc, ded, unassigned:[], assigned:[], people:[], unknownCols:[], consRows:[],
-           fromHistory:true,
+           fromHistory:true, dedByDept,
            get:(s, l, d) => cells.get(`${s}|${l}|${d}`) || 0,
            headcount:(s, d) => hc.get(`${s}|${d}`) || 0 };
 }
