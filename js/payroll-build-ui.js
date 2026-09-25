@@ -19,6 +19,19 @@ let assign = load();
 let savedMonths = [];     // เดือนที่เคยบันทึกไว้ ใช้ดึงย้อนหลัง
 let loadedFrom = "";      // เดือนที่กำลังเปิดดูจากประวัติ ("" = เพิ่งสร้างจากไฟล์)
 
+// ผู้ลงนามท้ายรายงาน — แก้ได้ในหน้าจอ เก็บไว้ใช้รอบถัดไป
+const SIGN_KEY = "payroll_build_signers";
+const DEFAULT_SIGNERS = [
+  { role:"Prepared by", name:"Mr. Suphachoke Phanthumitr", title:"Human Resources Manager" },
+  { role:"Reviewed by", name:"Mr. Craig Jacobson",         title:"Deputy General Manager – Operations" },
+  { role:"Approved by", name:"Mr. Bob Kennedy",            title:"General Manager – Operations" },
+];
+let signers = (() => {
+  try { const v = JSON.parse(localStorage.getItem(SIGN_KEY)); return Array.isArray(v) && v.length === 3 ? v : DEFAULT_SIGNERS; }
+  catch { return DEFAULT_SIGNERS; }
+})();
+const saveSigners = () => { try { localStorage.setItem(SIGN_KEY, JSON.stringify(signers)); } catch {} };
+
 function load() {
   try { return JSON.parse(localStorage.getItem(ASSIGN_KEY)) || {}; } catch { return {}; }
 }
@@ -62,7 +75,7 @@ export function renderPayrollBuild() {
       · ถ้าจะสร้างใหม่ให้เลือกไฟล์ด้านล่าง
     </div>` : ""}
     ${uploadCard()}
-    ${rep ? assignCard() + warnCard() + summaryCard() : ""}
+    ${rep ? assignCard() + warnCard() + summaryCard() + signCard() : ""}
   </div>`;
   wire();
 }
@@ -157,6 +170,22 @@ function warnCard() {
     bits.push(`<div class="pa-warn">รหัสบัญชี ${PB.COST_CODE_DOUBTS.length} ช่องที่คัดมาจากไฟล์เดิมยังน่าสงสัย แต่คงไว้ตามเดิม —
       ${PB.COST_CODE_DOUBTS.map(d => `${esc(d.dept)} · ${esc(d.section)} = ${esc(d.code)} (${esc(d.note)})`).join(" · ")}</div>`);
   return bits.length ? `<div class="mt-4" style="display:flex;flex-direction:column;gap:8px;">${bits.join("")}</div>` : "";
+}
+
+// ---------- ผู้ลงนาม ----------
+function signCard() {
+  return `<div class="card card-body mt-4">
+    <div class="card-title">ผู้ลงนามท้ายรายงาน</div>
+    <div class="text-sm text-muted mt-1">ขึ้นท้ายทุกหน้าของ PDF · ช่องวันที่เว้นว่างไว้ให้เซ็นด้วยมือ</div>
+    <div class="pb-signs mt-3">${signers.map((sg, i) => `<div class="pb-sign">
+      <input class="form-input" value="${esc(sg.role)}"  placeholder="ตำแหน่งในการลงนาม"
+             onchange="window._pbSigner(${i},'role',this.value)">
+      <input class="form-input mt-2" value="${esc(sg.name)}"  placeholder="ชื่อ"
+             onchange="window._pbSigner(${i},'name',this.value)">
+      <input class="form-input mt-2" value="${esc(sg.title)}" placeholder="ตำแหน่ง"
+             onchange="window._pbSigner(${i},'title',this.value)">
+    </div>`).join("")}</div>
+  </div>`;
 }
 
 // ---------- ตัวอย่างรายงาน ----------
@@ -290,6 +319,7 @@ function wire() {
     renderPayrollBuild();
   };
 
+  window._pbSigner = (i, k, v) => { signers[i] = { ...signers[i], [k]: v }; saveSigners(); };
   window._pbExcel = () => exportExcel();
   window._pbPrint = () => printReport();
 }
@@ -448,73 +478,111 @@ function printReport() {
   const w = window.open("", "_blank");
   if (!w) { toast("เบราว์เซอร์บล็อกป็อปอัป — อนุญาตแล้วลองใหม่", "error"); return; }
   const logo = new URL("assets/logo.png", location.href).href;
+
+  const sigBlock = `<div class="sigs">${signers.map(sg => `
+    <div class="sig">
+      <div class="sig-role">${esc((sg.role || "").toUpperCase())}</div>
+      <div class="sig-space"></div>
+      <div class="sig-rule"></div>
+      <div class="sig-name">${esc(sg.name || "")}</div>
+      <div class="sig-title">${esc(sg.title || "")}</div>
+      <div class="sig-date">Date&nbsp;&nbsp;______________________</div>
+    </div>`).join("")}</div>`;
+
+  const head = sub => `
+    <div class="top">
+      <div class="brand"><img class="logo" src="${logo}" alt="Akara Resources">
+        <div class="bw2">Chatree Gold Mine</div></div>
+      <div class="meta"><div class="m1">PAYROLL REPORT</div>
+        <div class="m2">${esc(sub)}${month ? `  ·  ${esc(monthLabel(month))}` : ""}</div></div>
+    </div>
+    <div class="rule"></div>`;
+
+  // คอลัมน์แผนกกว้างเท่ากันทุกช่องเสมอ ไม่ว่าสายงานนั้นจะมีกี่แผนก
+  const cols = n => `<colgroup><col class="c-item"><col class="c-code">${
+    Array.from({ length:n }, () => `<col class="c-dep" style="width:${(61 / n).toFixed(3)}%">`).join("")}<col class="c-tot"></colgroup>`;
+
   const page = (title, depts) => `
     <div class="sheet">
-      <div class="top"><img class="logo" src="${logo}" alt=""><div class="site">Chatree Gold Mine</div></div>
-      <div class="rule"></div>
-      <h1>PAYROLL REPORT — ${esc(title)}</h1>
-      <div class="period">งวด ${esc(month || "-")}</div>
+      ${head(title)}
       <table class="grid">
-        <tr><th class="l">ITEM</th><th>COST CODE</th>${depts.map(d => `<th>${esc(d)}</th>`).join("")}<th>TOTAL</th></tr>
+        ${cols(depts.length)}
+        <thead><tr><th class="l">ITEM</th><th class="c">COST CODE</th>
+          ${depts.map(d => `<th class="n">${esc(d)}</th>`).join("")}<th class="n">TOTAL</th></tr></thead>
+        <tbody>
         ${LINES.map(([kind, line, section]) => {
           if (kind === "sec") return `<tr class="sec"><td class="l">${esc(line)}</td><td></td>${
             depts.map(d => `<td class="cc">${esc(costCodeOf(section, d))}</td>`).join("")}<td></td></tr>`;
           const vals = depts.map(d => valueOf(kind, line, section, d));
+          const sum = vals.reduce((a, b) => a + b, 0);
+          const f = v => kind === "hc" ? fmtI(v) : fmt(v);
           return `<tr class="${kind === "tot" ? "tot" : ""}"><td class="l">${esc(line)}</td>
-            <td class="c">${kind === "hc" ? "คน" : ""}</td>
-            ${vals.map(v => `<td class="n">${kind === "hc" ? fmtI(v) : fmt(v)}</td>`).join("")}
-            <td class="n">${kind === "hc" ? fmtI(vals.reduce((a,b)=>a+b,0)) : fmt(vals.reduce((a,b)=>a+b,0))}</td></tr>`;
+            <td class="c u">${kind === "hc" ? "คน" : ""}</td>
+            ${vals.map(v => `<td class="n">${f(v)}</td>`).join("")}
+            <td class="n b">${f(sum)}</td></tr>`;
         }).join("")}
         <tr class="gt"><td class="l">GRAND TOTAL — PAYROLL EXPENSE</td><td></td>
           ${depts.map(d => `<td class="n">${fmt(PB.deptTotal(rep, d))}</td>`).join("")}
           <td class="n">${fmt(depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>
+        </tbody>
       </table>
+      <div class="flex"></div>
+      <div class="foot">${esc(title)}  ·  ${esc(monthLabel(month))}</div>
     </div>`;
 
+  const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + PB.groupHc(rep, s, g), 0);
   const summary = `
     <div class="sheet">
-      <div class="top"><img class="logo" src="${logo}" alt=""><div class="site">Chatree Gold Mine</div></div>
-      <div class="rule"></div>
-      <h1>PAYROLL REPORT — SUMMARY</h1>
-      <div class="period">งวด ${esc(month || "-")}</div>
-      <table class="grid">
-        <tr><th class="l">สายงาน</th><th>จำนวนคน</th><th>ค่าใช้จ่าย (THB)</th></tr>
-        ${PB.GROUPS.map(g => `<tr><td class="l">${esc(g.name)}</td>
-          <td class="c">${fmtI(["senior","staff","consultants","contractors","casual"].reduce((t,s)=>t+PB.groupHc(rep,s,g),0))}</td>
-          <td class="n">${fmt(g.depts.reduce((t,d)=>t+PB.deptTotal(rep,d),0))}</td></tr>`).join("")}
-        ${PB.STANDALONE.map(d => `<tr><td class="l">${esc(d)}</td>
-          <td class="c">${fmtI(["senior","staff","consultants","contractors","casual"].reduce((t,s)=>t+rep.headcount(s,d),0))}</td>
-          <td class="n">${fmt(PB.deptTotal(rep, d))}</td></tr>`).join("")}
-        <tr class="gt"><td class="l">รวมทั้งหมด</td><td class="c">${fmtI(PB.grandHeadcount(rep))}</td>
-          <td class="n">${fmt(PB.grandExpense(rep))}</td></tr>
-      </table>
-      <h2>DEDUCTION — STAFF EXPENSES</h2>
-      <table class="grid">
-        ${[["Provident Fund", PB.DED_CODES.pvd, rep.ded.pvd],
-           ["Social Security", PB.DED_CODES.sso, rep.ded.sso],
-           ["Student Loan (general)", PB.DED_CODES.studentLoan, rep.ded.studentLoan],
-           ["Legal Execution Department", PB.DED_CODES.led, rep.ded.led],
-           ["Clearing Account — Employee W/Tax (PND 1)", PB.DED_CODES.pnd1, rep.ded.pnd1],
-           ["CL ACC EXP — Clearing Account W/Tax (PND 3)", PB.DED_CODES.pnd3, rep.ded.pnd3]]
-          .map(([l, c, v]) => `<tr><td class="l">${esc(l)}</td><td class="cc">${esc(c)}</td><td class="n">${fmt(v)}</td></tr>`).join("")}
-        <tr class="gt"><td class="l">GRAND TOTAL — DEDUCTION</td><td></td><td class="n">${fmt(PB.totalDeduction(rep))}</td></tr>
-        <tr class="gt"><td class="l">NET SALARY</td><td></td><td class="n">${fmt(PB.netSalary(rep))}</td></tr>
-      </table>
-      <h2>PROVIDENT FUND : K MASTER POOL FUND</h2>
-      <table class="grid">
-        <tr><td class="l">Provident Fund Employer Contribution</td><td class="cc">${esc(PB.DED_CODES.pvdEmployer)}</td>
-        <td class="n">${fmt(rep.ded.pvdEmployer)}</td></tr>
-      </table>
+      ${head("Summary")}
+      <div class="kpis">
+        ${[["ค่าใช้จ่ายรวม", fmt(PB.grandExpense(rep))],
+           ["รายการหักรวม", fmt(PB.totalDeduction(rep))],
+           ["จ่ายสุทธิ", fmt(PB.netSalary(rep))],
+           ["จำนวนคนรวม", fmtI(PB.grandHeadcount(rep))]]
+          .map(([l, v], i) => `<div class="kpi ${i === 2 ? "kpi-net" : ""}"><div class="kl">${esc(l)}</div><div class="kv">${v}</div></div>`).join("")}
+      </div>
+      <div class="two">
+        <table class="grid">
+          <colgroup><col style="width:46%"><col style="width:22%"><col style="width:32%"></colgroup>
+          <thead><tr><th class="l">สายงาน</th><th class="n">จำนวนคน</th><th class="n">ค่าใช้จ่าย (THB)</th></tr></thead>
+          <tbody>
+          ${PB.GROUPS.map(g => `<tr><td class="l">${esc(g.name)}</td><td class="n">${fmtI(hcOf(g))}</td>
+            <td class="n">${fmt(g.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>`).join("")}
+          ${PB.STANDALONE.map(d => `<tr><td class="l">${esc(d)}</td>
+            <td class="n">${fmtI(["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + rep.headcount(s, d), 0))}</td>
+            <td class="n">${fmt(PB.deptTotal(rep, d))}</td></tr>`).join("")}
+          <tr class="gt"><td class="l">รวมทั้งหมด</td><td class="n">${fmtI(PB.grandHeadcount(rep))}</td>
+            <td class="n">${fmt(PB.grandExpense(rep))}</td></tr>
+          </tbody>
+        </table>
+        <table class="grid">
+          <colgroup><col style="width:52%"><col style="width:22%"><col style="width:26%"></colgroup>
+          <thead><tr><th class="l">DEDUCTION — STAFF EXPENSES</th><th class="c">COST CODE</th><th class="n">THB</th></tr></thead>
+          <tbody>
+          ${[["Provident Fund", PB.DED_CODES.pvd, rep.ded.pvd],
+             ["Social Security", PB.DED_CODES.sso, rep.ded.sso],
+             ["Student Loan (general)", PB.DED_CODES.studentLoan, rep.ded.studentLoan],
+             ["Legal Execution Department", PB.DED_CODES.led, rep.ded.led],
+             ["Clearing Account — Employee W/Tax (PND 1)", PB.DED_CODES.pnd1, rep.ded.pnd1],
+             ["CL ACC EXP — Clearing Account W/Tax (PND 3)", PB.DED_CODES.pnd3, rep.ded.pnd3]]
+            .map(([l, c, v]) => `<tr><td class="l">${esc(l)}</td><td class="cc">${esc(c)}</td><td class="n">${fmt(v)}</td></tr>`).join("")}
+          <tr class="tot"><td class="l">GRAND TOTAL — DEDUCTION</td><td></td><td class="n b">${fmt(PB.totalDeduction(rep))}</td></tr>
+          <tr class="gt"><td class="l">NET SALARY</td><td></td><td class="n">${fmt(PB.netSalary(rep))}</td></tr>
+          <tr><td class="l pf">Provident Fund Employer Contribution</td><td class="cc">${esc(PB.DED_CODES.pvdEmployer)}</td>
+            <td class="n">${fmt(rep.ded.pvdEmployer)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="flex"></div>
+      ${sigBlock}
     </div>`;
 
-  const pages = [summary,
-    ...PB.GROUPS.map(g => page(g.name, g.depts)),
-    page("BKK OFFICE & LEGAL", PB.STANDALONE)];
+  const pages = [summary, ...PB.GROUPS.map(g => page(g.name, g.depts)), page("BKK Office & Legal", PB.STANDALONE)];
 
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8">
     <title>Payroll Report ${esc(month)}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>${PRINT_CSS}</style></head><body>${pages.join("")}
     <div class="noprint"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button>
       <div class="tip">ตั้ง Paper size = A4 · Layout = Landscape · ปิด Headers and footers</div></div>
@@ -522,29 +590,72 @@ function printReport() {
   w.document.close();
 }
 
+const monthLabel = ym => {
+  if (!ym) return "";
+  const [y, m] = ym.split("-").map(Number);
+  return `${["January","February","March","April","May","June","July","August","September","October","November","December"][m-1]} ${y}`;
+};
+
 const PRINT_CSS = `
+/* ดีไซน์ตามที่วางไว้ใน Figma — เรียบ ทางการ ไม่มีเส้นตารางทึบทั้งผืน
+   ใช้หัวตารางสีกรมท่า เส้นคั่นบาง ๆ และตัวเลขแบบความกว้างเท่ากันทุกหลัก */
 @page { size: A4 landscape; margin: 10mm 11mm; }
 *{box-sizing:border-box;}
-body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.4pt;color:#000;background:#fff;margin:0;}
-.sheet{page-break-after:always;}
+body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.1pt;color:#101828;background:#fff;margin:0;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.sheet{page-break-after:always;display:flex;flex-direction:column;min-height:180mm;}
 .sheet:last-of-type{page-break-after:auto;}
-.top{display:flex;align-items:flex-end;justify-content:space-between;}
-.logo{height:8.5mm;}
-.site{font-size:9pt;font-weight:700;color:#1a3e9a;}
-.rule{height:1.2pt;background:#1a3e9a;margin:1mm 0 2mm;}
-h1{font-size:10pt;text-align:center;margin:0;}
-h2{font-size:8pt;margin:2.6mm 0 1mm;}
-.period{text-align:center;font-size:7.4pt;color:#667085;margin:.6mm 0 2mm;}
-table.grid{border-collapse:collapse;width:100%;}
-.grid th,.grid td{border:.5pt solid #333;padding:.5mm 1.3mm;line-height:1.25;}
-.grid th{background:#eef1f8;font-weight:700;text-align:center;}
+.flex{flex:1;}
+
+/* หัวกระดาษ */
+.top{display:flex;align-items:center;justify-content:space-between;}
+.brand{display:flex;align-items:center;gap:4mm;}
+.logo{height:10mm;}
+.bw2{font-size:7.4pt;font-weight:600;color:#1A3E9A;letter-spacing:.2pt;}
+.meta{text-align:right;}
+.m1{font-size:10pt;font-weight:700;letter-spacing:.3pt;}
+.m2{font-size:7.4pt;color:#667085;}
+.rule{height:1.6pt;background:#0F1C4D;margin:1.3mm 0 2.6mm;}
+
+/* ตาราง */
+table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
+.grid th,.grid td{padding:.34mm 1.4mm;overflow:hidden;}
+.grid thead th{background:#0F1C4D;color:#fff;font-weight:600;font-size:6.8pt;
+  text-align:right;vertical-align:bottom;line-height:1.2;}
+.grid thead th.l{text-align:left;} .grid thead th.c{text-align:center;}
+.grid tbody tr{border-bottom:.4pt solid #E4E7EC;}
 .l{text-align:left;} .c{text-align:center;} .n{text-align:right;font-variant-numeric:tabular-nums;}
-.cc{text-align:center;font-size:6pt;color:#475467;}
-tr.sec td{background:#f4f6fb;font-weight:700;}
-tr.tot td{font-weight:700;background:#fafbfd;}
-tr.gt td{font-weight:700;border-top:1.2pt solid #000;}
+.b{font-weight:600;} .u{color:#667085;font-size:6.6pt;}
+.cc{text-align:right;font-size:5.8pt;color:#98A2B3;letter-spacing:.1pt;}
+tr.sec td{background:#EEF1F8;font-weight:700;font-size:7.1pt;}
+tr.sec td.cc{font-weight:400;}
+tr.tot td{background:#F7FAFC;font-weight:600;}
+tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0F1C4D;font-size:7.5pt;
+  padding-top:.9mm;padding-bottom:.9mm;}
+.pf{color:#475467;}
+
+/* หน้าสรุป */
+.kpis{display:flex;gap:3mm;margin-bottom:3mm;}
+.kpi{flex:1;background:#F7FAFC;border:.4pt solid #E4E7EC;border-radius:2mm;padding:2.4mm 3mm;}
+.kl{font-size:6.6pt;color:#667085;}
+.kv{font-size:12pt;font-weight:700;color:#0F1C4D;font-variant-numeric:tabular-nums;}
+.kpi-net .kv{color:#0D7C4B;}
+.two{display:flex;gap:6mm;align-items:flex-start;}
+.two>table{flex:1;}
+
+/* ลายเซ็น */
+.sigs{display:flex;gap:14mm;padding-top:4mm;page-break-inside:avoid;}
+.sig{flex:1;}
+.sig-role{font-size:6pt;font-weight:700;color:#1A3E9A;letter-spacing:.6pt;}
+.sig-space{height:8mm;}
+.sig-rule{height:.5pt;background:#101828;}
+.sig-name{font-size:7.4pt;font-weight:600;margin-top:1.4mm;}
+.sig-title{font-size:6.8pt;color:#667085;}
+.sig-date{font-size:6.8pt;color:#667085;margin-top:1.2mm;}
+
+.foot{font-size:6.4pt;color:#98A2B3;text-align:right;padding-top:2mm;border-top:.4pt solid #E4E7EC;}
 .noprint{margin:6mm 0;text-align:center;}
-.noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #1a3e9a;background:#1a3e9a;color:#fff;border-radius:6px;}
+.noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #0F1C4D;background:#0F1C4D;color:#fff;border-radius:6px;}
 .noprint .tip{font-size:8pt;color:#667085;margin-top:3mm;}
 @media print{.noprint{display:none;}}
 `;
