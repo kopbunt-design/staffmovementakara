@@ -490,7 +490,7 @@ async function exportExcel() {
   const s1 = wb.addWorksheet("Summary", { properties:{ tabColor:{ argb:NAVY } } });
   s1.columns = [{ width:46 }, { width:16 }, { width:20 }];
   titleBlock(s1, "Summary", 3);
-  const kh = s1.addRow(["สายงาน", "จำนวนคน", "ค่าใช้จ่าย (THB)"]);
+  const kh = s1.addRow(["DIVISION", "HEADCOUNT (persons)", "PAYROLL EXPENSE (THB)"]);
   kh.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:10 }; c.fill = fill(NAVY);
                      c.alignment = { horizontal:"center" }; });
   kh.getCell(1).alignment = { horizontal:"left" };
@@ -500,7 +500,7 @@ async function exportExcel() {
   for (const d of PB.STANDALONE)
     s1.addRow([d, ["senior","staff","consultants","contractors","casual"].reduce((t, k) => t + rep.headcount(k, d), 0),
                PB.deptTotal(rep, d)]);
-  const gt = s1.addRow(["รวมทั้งหมด", PB.grandHeadcount(rep), PB.grandExpense(rep)]);
+  const gt = s1.addRow(["GRAND TOTAL", PB.grandHeadcount(rep), PB.grandExpense(rep)]);
   gt.eachCell(c => { c.font = { bold:true, color:{ argb:NAVY } }; c.border = { top:{ style:"medium", color:{ argb:NAVY } } }; });
 
   s1.addRow([]);
@@ -722,23 +722,23 @@ function printReport() {
     <div class="sheet">
       ${head("Summary")}
       <div class="kpis">
-        ${[["ค่าใช้จ่ายรวม", fmt(PB.grandExpense(rep))],
-           ["รายการหักรวม", fmt(PB.totalDeduction(rep))],
-           ["จ่ายสุทธิ", fmt(PB.netSalary(rep))],
-           ["จำนวนคนรวม", fmtI(PB.grandHeadcount(rep))]]
+        ${[["Total Payroll Expense", fmt(PB.grandExpense(rep))],
+           ["Total Deduction", fmt(PB.totalDeduction(rep))],
+           ["Net Salary", fmt(PB.netSalary(rep))],
+           ["Total Headcount (persons)", fmtI(PB.grandHeadcount(rep))]]
           .map(([l, v], i) => `<div class="kpi ${i === 2 ? "kpi-net" : ""}"><div class="kl">${esc(l)}</div><div class="kv">${v}</div></div>`).join("")}
       </div>
       <div class="two">
         <table class="grid">
           <colgroup><col style="width:46%"><col style="width:22%"><col style="width:32%"></colgroup>
-          <thead><tr><th class="l">สายงาน</th><th class="n">จำนวนคน</th><th class="n">ค่าใช้จ่าย (THB)</th></tr></thead>
+          <thead><tr><th class="l">DIVISION</th><th class="n">HEADCOUNT (persons)</th><th class="n">PAYROLL EXPENSE (THB)</th></tr></thead>
           <tbody>
           ${PB.GROUPS.map(g => `<tr><td class="l">${esc(g.name)}</td><td class="n">${fmtI(hcOf(g))}</td>
             <td class="n">${fmt(g.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>`).join("")}
           ${PB.STANDALONE.map(d => `<tr><td class="l">${esc(d)}</td>
             <td class="n">${fmtI(["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + rep.headcount(s, d), 0))}</td>
             <td class="n">${fmt(PB.deptTotal(rep, d))}</td></tr>`).join("")}
-          <tr class="gt"><td class="l">รวมทั้งหมด</td><td class="n">${fmtI(PB.grandHeadcount(rep))}</td>
+          <tr class="gt"><td class="l">GRAND TOTAL</td><td class="n">${fmtI(PB.grandHeadcount(rep))}</td>
             <td class="n">${fmt(PB.grandExpense(rep))}</td></tr>
           </tbody>
         </table>
