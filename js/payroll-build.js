@@ -314,6 +314,9 @@ export function buildReport(input) {
     people.push({ code, name: norm(row[1]), alias: "", dept, section: type,
                   org: known?.org || "—", level: known?.level || "" });
 
+    // รายการหักแยกตามแผนกของคนนั้น เหมือนต้นฉบับ (ยอดรวมทั้งบริษัทเก็บไว้ใน ded ด้านบนแล้ว)
+    for (const k of ["pnd1","sso","pvd","studentLoan","led","pvdEmployer"]) add("ded", k, dept, sum(row, k));
+
     if (LUMP.has(type)) {
       addHc(type, dept);
       add(type, "Amount", dept, lumpAmount);
@@ -390,6 +393,8 @@ export function buildReport(input) {
         if (a.dept)
           assigned.push({ code:id, name:who, kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income),
                           dept, section, org: role || "—", level:"" });
+        add("ded", "pnd3", dept, num(r[ci("WHT 3%")]));
+        add("ded", "led",  dept, num(r[ci("LED")]));
         addHc(section, dept);
         add(section, "Amount", dept, income);
       }
@@ -431,6 +436,16 @@ export const deptHeadcount = (rep, dept) => HC_SECTIONS.reduce((s, k) => s + rep
 export const totalDeduction = rep =>
   round2(rep.ded.pvd + rep.ded.sso + rep.ded.studentLoan + rep.ded.led + rep.ded.pnd1 + rep.ded.pnd3);
 export const netSalary = rep => round2(grandExpense(rep) - totalDeduction(rep));
+
+// ---------- รายการหักรายแผนก ----------
+export const DED_LINES = [
+  ["pvd","Provident Fund"], ["sso","Social Security"], ["studentLoan","Student Loan (general)"],
+  ["led","Legal Execution Department"], ["pnd1","Clearing Account — Employee W/Tax (PND 1)"],
+  ["pnd3","CL ACC EXP — Clearing Account W/Tax (PND 3)"],
+];
+export const deptDed = (rep, dept, k) => rep.get("ded", k, dept);
+export const deptDeduction = (rep, dept) => round2(DED_LINES.reduce((s, [k]) => s + rep.get("ded", k, dept), 0));
+export const deptNet = (rep, dept) => round2(deptTotal(rep, dept) - deptDeduction(rep, dept));
 
 // ---------- แปลงเป็นแถวสำหรับเก็บลงฐานข้อมูล ----------
 // ใช้ชื่อหมวด/บรรทัดชุดเดียวกับหน้า "ค่าใช้จ่ายเงินเดือน" (js/payroll-summary.js) โดยตั้งใจ
@@ -499,18 +514,19 @@ export function toSummaryRows(rep, month) {
   // รายการหักและยอดสรุป เก็บไว้ที่คอลัมน์รวมใหญ่คอลัมน์เดียว เพราะรายงานก็แสดงรวมบรรทัดเดียว
   const grand = cols[cols.length - 1];
   for (const [k, label] of DED_LABEL) {
-    push(grand, "DEDUCTION — STAFF EXPENSES", label, rep.ded[k], "amount", DED_CODES[k]);
+    for (const c of cols) push(c, "DEDUCTION — STAFF EXPENSES", label, valueAt(c, d => rep.get("ded", k, d)), "amount", DED_CODES[k]);
     rowOrder++;
   }
-  push(grand, "PROVIDENT FUND", "Provident Fund Employer Contribution", rep.ded.pvdEmployer, "amount", DED_CODES.pvdEmployer);
+  for (const c of cols) push(c, "PROVIDENT FUND", "Provident Fund Employer Contribution",
+    valueAt(c, d => rep.get("ded", "pvdEmployer", d)), "amount", DED_CODES.pvdEmployer);
   rowOrder++;
   for (const c of cols) push(c, "SUMMARY", "GRAND TOTAL — PAYROLL EXPENSE", valueAt(c, d => deptTotal(rep, d)), "amount");
   rowOrder++;
   for (const c of cols) push(c, "SUMMARY", "TOTAL HEADCOUNT", valueAt(c, d => deptHeadcount(rep, d)), "headcount");
   rowOrder++;
-  push(grand, "SUMMARY", "GRAND TOTAL — DEDUCTION", totalDeduction(rep), "amount");
+  for (const c of cols) push(c, "SUMMARY", "GRAND TOTAL — DEDUCTION", valueAt(c, d => deptDeduction(rep, d)), "amount");
   rowOrder++;
-  push(grand, "SUMMARY", "NET SALARY", netSalary(rep), "amount");
+  for (const c of cols) push(c, "SUMMARY", "NET SALARY", valueAt(c, d => deptNet(rep, d)), "amount");
   return rows;
 }
 
@@ -522,8 +538,13 @@ export function repFromRows(rows, month) {
   const BY_LABEL = Object.fromEntries(Object.entries(SECTION_LABEL).map(([k, v]) => [v, k]));
   const DED_BY_LABEL = Object.fromEntries(DED_LABEL.map(([k, v]) => [v, k]));
   for (const r of rows) {
-    if (r.section === "DEDUCTION — STAFF EXPENSES") { const k = DED_BY_LABEL[r.line_item]; if (k) ded[k] = Number(r.value) || 0; continue; }
-    if (r.section === "PROVIDENT FUND") { ded.pvdEmployer = Number(r.value) || 0; continue; }
+    const dk = r.section === "DEDUCTION — STAFF EXPENSES" ? DED_BY_LABEL[r.line_item]
+             : r.section === "PROVIDENT FUND" ? "pvdEmployer" : null;
+    if (dk) {
+      if (r.col_kind === "grand_total") ded[dk] = Number(r.value) || 0;
+      else if (r.col_kind === "dept") cells.set(`ded|${dk}|${r.department}`, Number(r.value) || 0);
+      continue;
+    }
     const key = BY_LABEL[r.section];
     if (!key || r.col_kind !== "dept") continue;     // คอลัมน์รวมคิดใหม่ได้ ไม่ต้องอ่านกลับ
     if (r.value_kind === "headcount") hc.set(`${key}|${r.department}`, Number(r.value) || 0);

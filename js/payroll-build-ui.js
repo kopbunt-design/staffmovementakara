@@ -592,6 +592,34 @@ async function exportExcel() {
       c.border = { top:{ style:"medium", color:{ argb:NAVY } } };
       if (i > 2) c.numFmt = MONEY;
     });
+
+    // รายการหักแยกรายแผนก เหมือนต้นฉบับ
+    const secRow = label => {
+      const r = ws.addRow([label, "", ...sh.depts.map(() => ""), ""]);
+      r.eachCell(c => { c.fill = fill(BAND); c.font = { bold:true, size:10 }; });
+    };
+    const dedRow = (label, code, fn, style) => {
+      const vals = sh.depts.map(fn);
+      const r = ws.addRow([label, code || "", ...vals, vals.reduce((a, b) => a + b, 0)]);
+      r.eachCell((c, i) => {
+        c.border = { bottom:thin };
+        if (i > 2) c.numFmt = MONEY;
+        if (style === "tot") { c.font = { bold:true }; c.fill = fill(TINT); }
+        if (style === "gt")  { c.font = { bold:true, color:{ argb:NAVY } };
+                               c.border = { top:{ style:"medium", color:{ argb:NAVY } } }; }
+      });
+      r.getCell(2).font = { size:8, color:{ argb:MUTED } };
+      r.getCell(2).alignment = { horizontal:"center" };
+      r.getCell(sh.depts.length + 3).font = { bold:true, ...(style === "gt" ? { color:{ argb:NAVY } } : {}) };
+    };
+    ws.addRow([]);
+    secRow("DEDUCTION — STAFF EXPENSES");
+    for (const [k, l] of PB.DED_LINES) dedRow(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k));
+    dedRow("GRAND TOTAL — DEDUCTION", "", d => PB.deptDeduction(rep, d), "tot");
+    dedRow("NET SALARY", "", d => PB.deptNet(rep, d), "gt");
+    ws.addRow([]);
+    secRow("PROVIDENT FUND : K MASTER POOL FUND");
+    dedRow("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"));
     setup(ws, sh.depts.length + 3);
   }
 
@@ -659,11 +687,28 @@ function printReport() {
         <tr class="gt"><td class="l">GRAND TOTAL — PAYROLL EXPENSE</td><td></td>
           ${depts.map(d => `<td class="n">${fmt(PB.deptTotal(rep, d))}</td>`).join("")}
           <td class="n">${fmt(depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>
+        ${dedRows(depts)}
         </tbody>
       </table>
       <div class="flex"></div>
       <div class="foot">${esc(title)}  ·  ${esc(monthLabel(month))}</div>
     </div>`;
+
+  // รายการหักแยกรายแผนก — ต้นฉบับแสดงแบบนี้ในทุกคอลัมน์แผนก
+  const dedRows = depts => {
+    const row = (label, code, fn, cls = "") => {
+      const vals = depts.map(fn);
+      return `<tr class="${cls}"><td class="l">${esc(label)}</td><td class="cc c">${esc(code || "")}</td>
+        ${vals.map(v => `<td class="n">${fmt(v)}</td>`).join("")}
+        <td class="n b">${fmt(vals.reduce((a, b) => a + b, 0))}</td></tr>`;
+    };
+    return `<tr class="sec"><td class="l" colspan="2">DEDUCTION — STAFF EXPENSES</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
+      ${PB.DED_LINES.map(([k, l]) => row(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k))).join("")}
+      ${row("GRAND TOTAL — DEDUCTION", "", d => PB.deptDeduction(rep, d), "tot")}
+      ${row("NET SALARY", "", d => PB.deptNet(rep, d), "gt")}
+      <tr class="sec"><td class="l" colspan="2">PROVIDENT FUND : K MASTER POOL FUND</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
+      ${row("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"))}`;
+  };
 
   const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + PB.groupHc(rep, s, g), 0);
   const summary = `
@@ -736,7 +781,7 @@ const PRINT_CSS = `
    ใช้หัวตารางสีกรมท่า เส้นคั่นบาง ๆ และตัวเลขแบบความกว้างเท่ากันทุกหลัก */
 @page { size: A4 landscape; margin: 10mm 11mm; }
 *{box-sizing:border-box;}
-body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.1pt;color:#101828;background:#fff;margin:0;
+body{font-family:'Sarabun',system-ui,sans-serif;font-size:6.7pt;color:#101828;background:#fff;margin:0;
   -webkit-print-color-adjust:exact;print-color-adjust:exact;}
 .sheet{page-break-after:always;display:flex;flex-direction:column;min-height:178mm;}
 .sheet:last-of-type{page-break-after:auto;}
@@ -745,16 +790,19 @@ body{font-family:'Sarabun',system-ui,sans-serif;font-size:7.1pt;color:#101828;ba
 /* หัวกระดาษ */
 .top{display:flex;align-items:center;justify-content:space-between;}
 .brand{display:flex;align-items:center;gap:4mm;}
-.logo{height:10mm;}
+.logo{height:8.5mm;}
 .bw2{font-size:7.4pt;font-weight:600;color:#1A3E9A;letter-spacing:.2pt;}
 .meta{text-align:right;}
 .m1{font-size:10pt;font-weight:700;letter-spacing:.3pt;}
 .m2{font-size:7.4pt;color:#667085;}
-.rule{height:1.6pt;background:#0F1C4D;margin:1.3mm 0 2.6mm;}
+.rule{height:1.4pt;background:#0F1C4D;margin:1.1mm 0 2mm;}
 
 /* ตาราง */
 table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
-.grid th,.grid td{padding:.24mm 1.4mm;overflow:hidden;}
+/* ความกว้างคอลัมน์ต้องกำหนดเอง ไม่งั้น ITEM แคบจนหัวข้อยาว ๆ ขึ้นสองบรรทัดแล้วกินที่ทั้งหน้า */
+.c-item{width:21%;} .c-code{width:7%;} .c-tot{width:11%;}
+.grid th,.grid td{padding:.16mm 1.3mm;overflow:hidden;line-height:1.16;white-space:nowrap;text-overflow:ellipsis;}
+.grid thead th{white-space:normal;}
 .grid thead th{background:#0F1C4D;color:#fff;font-weight:600;font-size:6.8pt;
   text-align:right;vertical-align:bottom;line-height:1.2;}
 .grid thead th.l{text-align:left;} .grid thead th.c{text-align:center;}
@@ -762,7 +810,7 @@ table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
 .l{text-align:left;} .c{text-align:center;} .n{text-align:right;font-variant-numeric:tabular-nums;}
 .b{font-weight:600;} .u{color:#667085;font-size:6.6pt;}
 .cc{text-align:right;font-size:5.8pt;color:#98A2B3;letter-spacing:.1pt;}
-tr.sec td{background:#EEF1F8;font-weight:700;font-size:7.1pt;}
+tr.sec td{background:#EEF1F8;font-weight:700;font-size:6.7pt;}
 tr.sec td.cc{font-weight:400;}
 tr.tot td{background:#F7FAFC;font-weight:600;}
 tr.hcrow td{background:#F7FAFC;font-weight:600;border-top:.8pt solid #CBD5E1;}

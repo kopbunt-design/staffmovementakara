@@ -13,7 +13,8 @@ const M = new Function(`${SRC}
   return { buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
-           SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE };`)();
+           SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE,
+           deptDed, deptDeduction, deptNet, DED_LINES };`)();
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -373,6 +374,24 @@ eq(M.COST_CODE_DOUBTS.length, 1, "เหลือช่องที่ยัง�
 eq(M.COST_CODES["Science & Health"][5], "507856301950", "ที่ปรึกษา Science & Health ใช้ฐานของตัวเอง");
 eq(M.COST_CODES["Science & Health"][5].startsWith("5050038"), false, "ต้องไม่ใช่ฐานของ Maintenance อีก");
 
+// ---------- รายการหักแยกรายแผนก เหมือนต้นฉบับ ----------
+// ต้นฉบับแสดงยอดหักทุกบรรทัด + ยอดหักรวม + สุทธิ แยกตามคอลัมน์แผนก ไม่ใช่รวมบรรทัดเดียว
+eq(M.deptDed(rep, "Processing", "pnd1"), 5000 + 100, "ภาษีของพนักงานใน Processing");
+eq(M.deptDed(rep, "Supply", "led"), 2000, "บังคับคดีลงแผนกของคนนั้น");
+eq(M.deptDed(rep, "CRD", "pvdEmployer"), 4500, "เงินสมทบบริษัทแยกรายแผนกด้วย");
+eq(M.deptDeduction(rep, "Processing"), 5100 + 1500 + 3900 + 1000, "ยอดหักรวมของแผนก ไม่รวมเงินสมทบบริษัท");
+eq(M.deptNet(rep, "Processing"), M.deptTotal(rep, "Processing") - M.deptDeduction(rep, "Processing"), "สุทธิรายแผนก");
+// ผลรวมรายแผนกต้องเท่ากับยอดรวมทั้งบริษัท เมื่อทุกคนถูกจัดแผนกครบ
+eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeduction(rep), "รวมรายแผนกเท่ากับยอดรวมทั้งบริษัท");
+{
+  // ภาษี 3% กับบังคับคดีของที่ปรึกษา ต้องลงแผนกของที่ปรึกษาคนนั้น
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,["S1","Consultant","Regulatory Affairs","Monthly","A","B",17000,16490,510]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
+  eq([M.deptDed(r, "Regulatory Affairs", "pnd3"), M.deptDed(r, "Regulatory Affairs", "led")], [510, 16490],
+     "PND 3 และบังคับคดีของที่ปรึกษาลงแผนกที่ถูก");
+}
+
 // ---------- เก็บลงฐานข้อมูลแล้วอ่านกลับ ต้องได้ตัวเลขเดิม ----------
 // นี่คือสิ่งที่ทำให้ "ดึงย้อนหลัง" เชื่อถือได้ — ถ้าแปลงไป-กลับแล้วเพี้ยน รายงานเก่าจะผิดเงียบ ๆ
 {
@@ -394,6 +413,8 @@ eq(M.COST_CODES["Science & Health"][5].startsWith("5050038"), false, "ต้อ�
   eq(M.netSalary(back),      M.netSalary(rep),      "อ่านกลับแล้วยอดสุทธิต้องเท่าเดิม");
   eq(M.grandHeadcount(back), M.grandHeadcount(rep), "อ่านกลับแล้วจำนวนคนต้องเท่าเดิม");
   eq(back.fromHistory, true, "ติดธงว่ามาจากประวัติ ไม่ใช่เพิ่งคำนวณ");
+  eq(M.deptDeduction(back, "Processing"), M.deptDeduction(rep, "Processing"), "อ่านกลับ: ยอดหักรายแผนกเท่าเดิม");
+  eq(M.deptNet(back, "Processing"), M.deptNet(rep, "Processing"), "อ่านกลับ: สุทธิรายแผนกเท่าเดิม");
 
   // คอลัมน์รวมที่เก็บไว้ ต้องเท่ากับผลรวมของแผนกในกลุ่ม ไม่ใช่เลขที่พิมพ์แยกกันไว้
   const gt = rows.find(r => r.col_kind === "group_total" && r.section === "SENIOR STAFF"
