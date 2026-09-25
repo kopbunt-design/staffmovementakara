@@ -359,22 +359,26 @@ export function buildReport(input) {
         const dept = a.dept
           || (ALL_DEPTS.includes(refDept) ? refDept : null)
           || (ALL_DEPTS.includes(byRole) ? byRole : null);
+        // บางเดือนไฟล์ไม่มีคอลัมน์ Name/Surname ภาษาอังกฤษ ต้องถอยไปใช้ชื่อไทย
+        const who = [norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" ")
+                    || [norm(r[ci("ชื่อ")]), norm(r[ci("นามสกุล")])].filter(Boolean).join(" ");
         const income = num(r[ci("Income")]);
         consRows.push({ id, name:[norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" "),
                         role, section, dept, income });
         ded.pnd3 += num(r[ci("WHT 3%")]);
         ded.led  += num(r[ci("LED")]);
         if (!dept) {
-          unassigned.push({ code:id, name:norm(r[ci("Name")]) + " " + norm(r[ci("Surname")]),
+          unassigned.push({ code:id, name:who,
                             kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income), section,
                             org: role || "—", level:"",
                             why:"ไฟล์บอกแค่ตำแหน่ง ไม่ได้บอกแผนกในรายงาน" });
           continue;
         }
+        // ใส่ในรายชื่อค้นหาด้วย คนจากไฟล์ที่ปรึกษาก็ต้องย้ายหมวดได้ เช่นสัญญาจ้างที่ต้องลง Contractors
+        people.push({ code:id, name:who, dept, section, org: role || "—", level:"" });
         if (a.dept)
-          assigned.push({ code:id, name:[norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" "),
-                          kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income), dept, section,
-                          org: role || "—", level:"" });
+          assigned.push({ code:id, name:who, kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income),
+                          dept, section, org: role || "—", level:"" });
         addHc(section, dept);
         add(section, "Amount", dept, income);
       }

@@ -174,6 +174,29 @@ eq(rep.assigned[0].amount, 11000, "บอกยอดด้วย จะได�
   const e1 = r.people.find(p => p.code === "E1");
   eq([e1.dept, e1.section, e1.level], ["Processing","senior","S2"], "บอกว่าตอนนี้ระบบจัดไว้ที่ไหน");
 }
+{
+  // คนจากไฟล์ที่ปรึกษาต้องค้นเจอด้วย — บางคนเป็นสัญญาจ้างที่ต้องย้ายไป Contractors
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","คำนำหน้า","ชื่อ","นามสกุล","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,
+    ["SUB2620","Consultant","Administration","Monthly","นางสาว","กษิษฐา","เมืองแป้น","Kasittha","Meangpaen",20000,0,600]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
+  eq(r.people.map(p => p.code), ["SUB2620"], "คนจากไฟล์ที่ปรึกษาอยู่ในรายชื่อค้นหา");
+  eq(r.people[0].section, "consultants", "ตั้งต้นเป็นที่ปรึกษาตามที่เดาได้");
+  eq(r.unassigned.length, 0, "ระบบจัดให้เองได้ จึงไม่ขึ้นในรายการที่ต้องระบุ");
+  // ย้ายไปจ้างเหมา
+  const r2 = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons,
+                             assign:{ SUB2620:{ dept:"Administration", section:"contractors" } } });
+  eq(r2.get("contractors","Amount","Administration"), 20000, "ย้ายไป Contractors — Other ได้");
+  eq(r2.get("consultants","Amount","Administration"), 0, "ไม่เหลือค้างในที่ปรึกษา");
+  eq(r2.headcount("contractors","Administration"), 1, "นับหัวในหมวดใหม่");
+}
+{
+  // ไฟล์ที่ปรึกษาบางเดือนไม่มีคอลัมน์ Name/Surname ภาษาอังกฤษ ต้องถอยไปใช้ชื่อไทย
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","คำนำหน้า","ชื่อ","นามสกุล","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,["SUB9","Consultant","Senior Surveyor","Monthly","นางสาว","กษิษฐา","เมืองแป้น",20000,0,600]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
+  eq(r.unassigned[0].name, "กษิษฐา เมืองแป้น", "แสดงชื่อไทยเมื่อไม่มีชื่ออังกฤษ");
+}
 
 // ---------- ค่าตอบแทนกรรมการ — หมวดของตัวเอง ไม่ใช่ที่ปรึกษาหรือจ้างเหมา ----------
 {
