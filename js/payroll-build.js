@@ -152,6 +152,7 @@ export const COL_ALIAS = {
   transport:    ["ค่าเดินทาง","เงินทดแทนการจัดรถรับส่ง"],
   ert:          ["ค่าฝึกอบรม ERT"],
   director:     ["ค่าตอบแทนกรรมการ"],
+  gross:        ["รวมรายได้"],        // ยอดรายได้รวมของคนนั้นทั้งแถว ใช้กับหมวดที่ลงเป็นก้อนเดียว
   otherIncome:  ["รายได้อื่นๆ","ค่าตอบแทนเลขานุการบริษัท","เงินช่วยเหลือค่าเช่าที่พักอาศัย",
                  "รายการได้พิเศษ","รายการได้พิเศษ 1","รายการได้พิเศษ 2","รายการได้พิเศษ 3",
                  "รายการได้ 12","รายการได้ 13","รายการได้ 14","รายการได้ 15","รายการได้ 16",
@@ -221,7 +222,7 @@ export function buildReport(input) {
 
   // คอลัมน์ที่ไม่มีในตารางแปลเลย — บอกไว้ ไม่ปล่อยให้ยอดหายเงียบ ๆ
   const claimed = new Set(Object.values(COL_ALIAS).flat().map(norm));
-  const IGNORE = new Set(["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","รายได้สุทธิ","รวมรายได้","รวมรายหัก","สุทธิ",
+  const IGNORE = new Set(["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","รายได้สุทธิ","รวมรายหัก","สุทธิ",
                           "ประกันสังคมบริษัทสมทบ","กองทุนสงเคราะห์ลูกจ้าง","กองทุนสงเคราะห์บริษัทสมทบ",
                           "หักเบิกเงินล่วงหน้า","เบิกเงินล่วงหน้า","ภาษีบริษัทจ่ายให้",
                           "ค่าอาหารปกติ","ค่าอาหารโอที","ค่าอาหารเกินโอที"]);
@@ -286,11 +287,13 @@ export function buildReport(input) {
     // ที่ต้องถามคือเฉพาะคนที่ทะเบียนไม่มีหรือไม่ได้กรอกสังกัดไว้
     const isDay = /^DAY/i.test(code);
     const dept = manual?.dept || known?.dept || null;
-    const type = isDay ? "casual" : (manual?.type || known?.type || null);
+    // หมวดที่ผู้ใช้เลือกคือ section — ยอมรับทั้งสองชื่อ เผื่อบางที่ตั้งมาแค่ตัวใดตัวหนึ่ง
+    const type = isDay && !manual?.section ? "casual"
+               : (manual?.type || manual?.section || known?.type || null);
 
     if (!dept || !type) {
       unassigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
-                        amount: round2(sum(row, "basic") - sum(row, "basicMinus")),
+                        amount: round2((colIdx.gross.length ? sum(row, "gross") : sum(row, "basic")) - sum(row, "basicMinus")),
                         org: known?.org || "—", level: known?.level || "",
                         why: !known ? (isDay ? "แรงงานรายวัน ไม่มีในทะเบียนพนักงาน" : "ไม่พบใน ทะเบียนพนักงาน")
                            : !known.dept ? "ทะเบียนพนักงานไม่ได้ระบุสังกัด หรือสังกัดยังไม่มีในผังรายงาน"
@@ -298,17 +301,22 @@ export function buildReport(input) {
       continue;
     }
 
+    // หมวดที่ลงเป็นก้อนเดียวต้องใช้ "รายได้รวมทั้งแถว" ไม่ใช่เงินเดือนอย่างเดียว
+    // กรรมการบางคนไม่มีเงินเดือนเลย มีแต่ค่าตอบแทนกรรมการ ถ้าคิดจากเงินเดือนจะได้ 0 แล้วเงินหายทั้งก้อน
+    const gross = colIdx.gross.length ? sum(row, "gross") : null;
+    const lumpAmount = round2((gross === null ? sum(row, "basic") : gross) - sum(row, "basicMinus"));
     const amount = round2(sum(row, "basic") - sum(row, "basicMinus"));
     if (manual?.dept)
       assigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
-                      amount, dept, section: type, org: known?.org || "—", level: known?.level || "" });
+                      amount: LUMP.has(type) ? lumpAmount : amount,
+                      dept, section: type, org: known?.org || "—", level: known?.level || "" });
 
     people.push({ code, name: norm(row[1]), alias: "", dept, section: type,
                   org: known?.org || "—", level: known?.level || "" });
 
     if (LUMP.has(type)) {
       addHc(type, dept);
-      add(type, "Amount", dept, amount);
+      add(type, "Amount", dept, lumpAmount);
       continue;
     }
 
