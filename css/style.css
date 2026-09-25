@@ -968,3 +968,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .pb-sign-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);
   font-weight:600;margin-bottom:6px;}
 .pb-x{border:none;background:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:0 4px;}
+.pb-find{max-width:460px;}
+.pb-find .form-label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;}
+.pb-find{max-width:470px;}
+.pb-find .form-label{font-size:11px;color:var(--muted);display:block;margin-bottom:5px;}

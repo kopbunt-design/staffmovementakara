@@ -7,6 +7,7 @@
 //    payroll_summary ออกแบบมารองรับอยู่แล้ว — ไม่มีแถวรายคนถูกส่งขึ้นไปเลย
 //    ส่วน localStorage จำแค่ "คนนี้ลงแผนกไหน" ซึ่งเป็นการจัดประเภท ไม่ใช่ตัวเงิน
 import { esc, toast, can, allEmployees, currentUser } from "./app.js";
+import { comboHTML, bindCombo } from "./combobox.js";
 import { supabase } from "./supabase-config.js";
 import * as PB from "./payroll-build.js";
 
@@ -78,6 +79,7 @@ export function renderPayrollBuild() {
     ${rep ? assignCard() + warnCard() + summaryCard() + signCard() : ""}
   </div>`;
   wire();
+  bindFind();
 }
 
 function uploadCard() {
@@ -115,16 +117,37 @@ const ROLE_TH = { payroll:"เงินเดือนดิบ", consultant:"�
 // ---------- การลงแผนกด้วยมือ ----------
 // แสดงทั้งคนที่ยังไม่ได้เลือก และคนที่เลือกไปแล้ว ไว้ในตารางเดียวกัน
 // เดิมพอเลือกเสร็จแถวหายจากหน้าจอทันที ถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
+// รายชื่อทุกคนในไฟล์ ไว้ให้ค้นหาเพื่อเปลี่ยนหมวด — ไม่มีตัวเงินติดมากับรายการ
+const SECTION_TH = { senior:"Senior Staff", staff:"Staff", casual:"แรงงานรายวัน",
+                     consultants:"ที่ปรึกษา", contractors:"จ้างเหมาอื่น", director:"กรรมการบริษัท" };
+const peopleItems = () => (rep?.people || [])
+  .filter(p => !assign[p.code])
+  .map(p => ({ value:p.code, label:`${p.code} — ${p.name || ""}`,
+               sub:[p.org, p.level, SECTION_TH[p.section] || p.section].filter(Boolean).join(" · ") }));
+
+// ผูก combobox หลังวาดหน้าเสร็จทุกครั้ง เพราะหน้าถูกวาดใหม่ทั้งหน้าเมื่อมีการเปลี่ยนแปลง
+function bindFind() {
+  if (!document.getElementById("pbFind_txt")) return;
+  bindCombo("pbFind", peopleItems(), code => {
+    if (!code) return;
+    const p = (rep?.people || []).find(x => x.code === code);
+    if (!p) return;
+    // ตั้งต้นด้วยที่ระบบจัดไว้ให้ก่อน แล้วผู้ใช้ค่อยเปลี่ยนหมวดในตารางข้างล่าง
+    assign[code] = { dept:p.dept, section:p.section, type:p.section };
+    save();
+    rebuild();
+  });
+}
+
 function assignCard() {
   const rows = [
     ...rep.unassigned.map(u => ({ ...u, done:false })),
     ...rep.assigned.map(a => ({ ...a, done:true, why:"" })),
   ];
-  if (!rows.length) return "";
-
   const deptOpts = sel => `<option value="">— เลือก —</option>` + PB.ALL_DEPTS.map(d =>
     `<option value="${esc(d)}" ${d === sel ? "selected" : ""}>${esc(d)}</option>`).join("");
-  const secOpts = sel => [["casual","แรงงานรายวัน"],["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"],["director","กรรมการบริษัท"]]
+  const secOpts = sel => [["senior","Senior Staff"],["staff","Staff"],["casual","แรงงานรายวัน"],
+                          ["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"],["director","กรรมการบริษัท"]]
     .map(([v,l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
   const held = rep.unassigned.reduce((s, u) => s + u.amount, 0);
   const nDone = rep.assigned.length;
@@ -138,7 +161,11 @@ function assignCard() {
       เลือกแล้วแถวยังอยู่ แก้หรือกดล้างได้ · ระบบจำไว้ใช้เดือนถัดไป
       · ถ้าเป็นพนักงานประจำ การไปเติมสังกัดในหน้าข้อมูลพนักงานจะแก้ได้ถาวรกว่า
     </div>
-    <table class="pb-tbl mt-3">
+    <div class="pb-find mt-3">
+      <label class="form-label">ย้ายคนที่ระบบจัดไปแล้ว — เช่น พนักงานสัญญาจ้างที่ต้องลง Contractors — Other</label>
+      ${comboHTML("pbFind", peopleItems(), "", "พิมพ์ชื่อหรือรหัสพนักงาน")}
+    </div>
+    ${rows.length ? `<table class="pb-tbl mt-3">
       <thead><tr><th></th><th>รหัส</th><th>ชื่อ</th><th>สังกัดในทะเบียน</th><th>ระดับ</th>
         <th class="text-right">ยอด</th><th>สาเหตุ</th><th>ลงแผนก</th><th>หมวด</th><th></th></tr></thead>
       <tbody>${rows.map(u => `<tr class="${u.done ? "pb-done" : ""}">
@@ -156,7 +183,7 @@ function assignCard() {
         <td>${u.done ? `<button class="btn btn-secondary btn-sm" title="ล้างการเลือก กลับไปให้ระบบจัดเอง"
           onclick="window._pbUnassign('${esc(u.code)}')">ล้าง</button>` : ""}</td>
       </tr>`).join("")}</tbody>
-    </table>
+    </table>` : ""}
   </div>`;
 }
 

@@ -13,7 +13,7 @@ const M = new Function(`${SRC}
   return { buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
-           SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS };`)();
+           SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE };`)();
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -56,6 +56,13 @@ const rep = M.buildReport({ payroll, employees:EMPS, month:"2026-08",
   assign:{ DAY01:{ dept:"CRD", type:"casual" }, DAY02:{ dept:"CRD", type:"casual" } } });
 
 // ---------- แยก Senior / Staff ตามระดับงาน ----------
+eq(M.LEVEL_TYPE.M1, "senior", "M = Senior Staff");
+eq(M.LEVEL_TYPE.S1, "senior", "S = Senior Staff");
+eq(M.LEVEL_TYPE.O1, "staff",  "O = Staff");
+eq(Object.keys(M.LEVEL_TYPE).filter(k => M.LEVEL_TYPE[k] === "senior").sort().join(","),
+   "M1,M2,M3,M4,S1,S2,S3", "Senior Staff = M ทุกระดับ + S ทุกระดับ");
+eq(Object.keys(M.LEVEL_TYPE).filter(k => M.LEVEL_TYPE[k] === "staff").sort().join(","),
+   "O1,O2,O3", "Staff = O ทุกระดับ");
 eq(rep.headcount("senior","Processing"), 1, "S2 = Senior Staff");
 eq(rep.headcount("staff","Processing"),  1, "O1 = Staff");
 eq(rep.get("senior","Basic Salary","Processing"), 100000, "เงินเดือน Senior");
@@ -143,6 +150,29 @@ eq(rep.assigned[0].amount, 11000, "บอกยอดด้วย จะได�
   const cons = [[],[],[],CH,["SUB8","Consultant","Senior Surveyor","Monthly","A","B",75000,0,2250]];
   const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
   eq(r.unassigned[0].section, "consultants", "จ่ายรายเดือน = เดาว่าเป็นที่ปรึกษา ไม่ใช่แรงงานรายวัน");
+}
+
+// ---------- ย้ายพนักงานที่ระบบจัดไปแล้ว ไปเป็นจ้างเหมา ----------
+// คนที่มีครบทั้งสังกัดและระดับ ระบบจะจัดเป็น Senior/Staff ให้เอง
+// แต่บางคนเป็นสัญญาจ้าง ต้องเปลี่ยนหมวดได้ และต้องไม่เหลือยอดค้างอยู่ในแถวเงินเดือน
+{
+  const r = M.buildReport({ payroll:[H, R("E2","สอง",30000,2000,1800,900)], employees:EMPS,
+                            assign:{ E2:{ dept:"Processing", section:"contractors", type:"contractors" } } });
+  eq(r.get("contractors","Amount","Processing"), 30000, "ยอดไปอยู่ในจ้างเหมาเป็นก้อนเดียว");
+  eq(r.headcount("contractors","Processing"), 1, "นับหัวในหมวดจ้างเหมา");
+  eq(r.get("staff","Basic Salary","Processing"), 0, "ต้องไม่เหลือในแถวเงินเดือน");
+  eq(r.get("staff","Overtime","Processing"), 0, "ค่าโอทีก็ต้องไม่เหลือ");
+  eq(r.headcount("staff","Processing"), 0, "ต้องไม่ถูกนับเป็นพนักงานประจำอีก");
+  eq(M.deptHeadcount(r, "Processing"), 1, "นับรวมแล้วยังเป็น 1 คน ไม่ซ้ำ");
+}
+{
+  // รายชื่อสำหรับให้หน้าจอค้นหา ต้องมีทุกคนที่จัดได้ และต้องไม่มีตัวเงินติดไปด้วย
+  const r = M.buildReport({ payroll:[H, ...ROWS], employees:EMPS,
+                            assign:{ DAY01:{dept:"CRD",type:"casual"}, DAY02:{dept:"CRD",type:"casual"} } });
+  eq(r.people.length, 8, "มีครบทุกคนในไฟล์");
+  eq(r.people.every(p => !("amount" in p)), true, "ไม่ส่งตัวเงินรายคนออกไปกับรายชื่อ");
+  const e1 = r.people.find(p => p.code === "E1");
+  eq([e1.dept, e1.section, e1.level], ["Processing","senior","S2"], "บอกว่าตอนนี้ระบบจัดไว้ที่ไหน");
 }
 
 // ---------- ค่าตอบแทนกรรมการ — หมวดของตัวเอง ไม่ใช่ที่ปรึกษาหรือจ้างเหมา ----------

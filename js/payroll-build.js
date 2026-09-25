@@ -257,7 +257,12 @@ export function buildReport(input) {
     hc.set(`${section}|${dept}`, (hc.get(`${section}|${dept}`) || 0) + n);
   };
 
+  // หมวดที่ไม่ได้คิดเป็นพนักงานประจำ — ลงเป็นยอดก้อนเดียวในบรรทัด Amount ของหมวดนั้น
+  const LUMP = new Set(["casual", "consultants", "contractors", "director"]);
+
   const unassigned = [];   // คนที่ยังไม่รู้ว่าลงแผนกไหน — ต้องให้ผู้ใช้เลือก
+  // ทุกคนที่ประมวลผลได้ ไว้ให้หน้าจอค้นหาเพื่อเปลี่ยนหมวดทีหลัง — ไม่มีตัวเงินติดไปด้วย
+  const people = [];
   // คนที่ลงแผนกได้เพราะผู้ใช้เลือกเอง — ต้องคืนออกไปด้วย ไม่งั้นพอเลือกแล้วแถวหายจากหน้าจอ
   // แล้วถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
   const assigned = [];
@@ -298,9 +303,12 @@ export function buildReport(input) {
       assigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
                       amount, dept, section: type, org: known?.org || "—", level: known?.level || "" });
 
-    if (type === "casual") {
-      addHc("casual", dept);
-      add("casual", "Amount", dept, amount);
+    people.push({ code, name: norm(row[1]), dept, section: type,
+                  org: known?.org || "—", level: known?.level || "" });
+
+    if (LUMP.has(type)) {
+      addHc(type, dept);
+      add(type, "Amount", dept, amount);
       continue;
     }
 
@@ -375,7 +383,7 @@ export function buildReport(input) {
 
   for (const k of Object.keys(ded)) ded[k] = round2(ded[k]);
 
-  return { month, cells, hc, ded, unassigned, assigned, unknownCols, consRows,
+  return { month, cells, hc, ded, unassigned, assigned, people, unknownCols, consRows,
            get: (section, line, dept) => cells.get(`${section}|${line}|${dept}`) || 0,
            headcount: (section, dept) => hc.get(`${section}|${dept}`) || 0 };
 }
@@ -506,7 +514,7 @@ export function repFromRows(rows, month) {
     if (r.value_kind === "headcount") hc.set(`${key}|${r.department}`, Number(r.value) || 0);
     else cells.set(`${key}|${r.line_item}|${r.department}`, Number(r.value) || 0);
   }
-  return { month, cells, hc, ded, unassigned:[], assigned:[], unknownCols:[], consRows:[],
+  return { month, cells, hc, ded, unassigned:[], assigned:[], people:[], unknownCols:[], consRows:[],
            fromHistory:true,
            get:(s, l, d) => cells.get(`${s}|${l}|${d}`) || 0,
            headcount:(s, d) => hc.get(`${s}|${d}`) || 0 };
