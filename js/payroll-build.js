@@ -98,6 +98,35 @@ export const DEPT_KEY = {
   "SustainabilityCommunity Relations & DevelopmentCommunity Relations & DevelopmentCommunity Relations & DevelopmentThanwat":"BKK Office",
 };
 
+// ชื่อสังกัดยาว ๆ ที่รายงานเรียกสั้นกว่า
+export const DEPT_ALIAS = {
+  "Community Relations & Development": "CRD",
+  "Occupational Health & Safety": "OH & S",
+};
+
+// หาว่าพนักงานคนนี้ควรอยู่คอลัมน์ไหนของรายงาน
+// ตารางคีย์เต็ม (DEPT_KEY) ครอบคลุมเฉพาะเส้นทางที่เคยมีอยู่ตอนทำ ref_dept — ทีม/แผนกที่ตั้งใหม่
+// หลังจากนั้นจะไม่มีในตาราง ถ้าจับคู่แบบตรงตัวอย่างเดียวคนกลุ่มนั้นจะตกไปให้กรอกมือทุกเดือน
+// จึงไล่จากเจาะจงที่สุดลงมา แล้วค่อยถอยไปดูชื่อ section / department ตรง ๆ
+// ตรวจกับทะเบียนจริง 503 คนแล้ว: ไม่มีใครที่ตัวถอยหลังไปทับผลที่คีย์เต็มเคยให้ไว้
+export function resolveDept(e) {
+  const div  = norm(e.division), dept = norm(e.department);
+  const sect = norm(e.section),  team = norm(e.team);
+  const key  = div + dept + sect + team;
+  const first = norm(e.firstname_en);
+  if (first && DEPT_KEY[key + first]) return DEPT_KEY[key + first];
+  if (DEPT_KEY[key]) return DEPT_KEY[key];
+  const s = DEPT_ALIAS[sect] || sect;
+  if (ALL_DEPTS.includes(s)) return s;
+  const d = DEPT_ALIAS[dept] || dept;
+  if (ALL_DEPTS.includes(d)) return d;
+  if (div === "Kingsgate") return "Legal";
+  return null;
+}
+
+export const orgPath = e => [e.division, e.department, e.section, e.team]
+  .map(norm).filter(v => v && v !== "-").join(" / ") || "—";
+
 // ระดับงาน -> Senior Staff / Staff (ref_joblevel)
 export const LEVEL_TYPE = {
   M4:"senior", M3:"senior", M2:"senior", M1:"senior",
@@ -199,10 +228,12 @@ export function buildReport(input) {
   const empMap = new Map();
   for (const e of employees) {
     if (!e.emp_code) continue;
-    const key = [e.division, e.department, e.section, e.team].map(norm).join("");
-    const first = norm(e.firstname_en);
-    const dept = DEPT_KEY[key + first] || DEPT_KEY[key] || null;
-    empMap.set(norm(e.emp_code), { dept, type: LEVEL_TYPE[norm(e.job_level).toUpperCase()] || null });
+    empMap.set(norm(e.emp_code), {
+      dept: resolveDept(e),
+      type: LEVEL_TYPE[norm(e.job_level).toUpperCase()] || null,
+      org:  orgPath(e),
+      level: norm(e.job_level) || "",
+    });
   }
 
   // ---------- ตัวเก็บยอด ----------
@@ -242,7 +273,11 @@ export function buildReport(input) {
     if (!dept || !type) {
       unassigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
                         amount: round2(sum(row, "basic") - sum(row, "basicMinus")),
-                        why: !known ? "ไม่พบใน ทะเบียนพนักงาน" : !known.dept ? "สังกัดไม่ตรงกับผังรายงาน" : "ไม่รู้ระดับพนักงาน" });
+                        org: known?.org || "—", level: known?.level || "",
+                        why: isDay ? "แรงงานรายวัน ไม่มีในทะเบียนพนักงาน"
+                           : !known ? "ไม่พบใน ทะเบียนพนักงาน"
+                           : !known.dept ? "ทะเบียนพนักงานไม่ได้ระบุสังกัด หรือสังกัดยังไม่มีในผังรายงาน"
+                           : "ทะเบียนพนักงานไม่ได้ระบุระดับพนักงาน" });
       continue;
     }
 

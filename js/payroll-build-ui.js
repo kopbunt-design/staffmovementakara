@@ -90,15 +90,18 @@ function assignCard() {
   return `<div class="card card-body mt-4">
     <div class="card-title">ต้องระบุแผนกก่อน (${rep.unassigned.length} รายการ)</div>
     <div class="text-sm text-muted mt-1">
-      คนเหล่านี้ไม่มีในทะเบียนพนักงาน หรือไฟล์ไม่ได้บอกว่าลงแผนกไหน
+      ระบบหาแผนกจาก <b>Division / Department / Section / Team</b> ในทะเบียนพนักงานให้อัตโนมัติแล้ว
+      เหลือเฉพาะคนที่ทะเบียนยังไม่ได้กรอกสังกัด ไม่มีในทะเบียน หรือไฟล์ไม่ได้บอกว่าลงแผนกไหน<br>
       <b>ยอดรวม ${fmt(held)} บาท ยังไม่ถูกนับเข้ารายงาน</b>จนกว่าจะเลือกให้ครบ · ระบบจะจำไว้ใช้เดือนถัดไป
+      · ถ้าเป็นพนักงานประจำ การไปเติมสังกัดในหน้าข้อมูลพนักงานจะแก้ได้ถาวรกว่า
     </div>
     <table class="pb-tbl mt-3">
-      <thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="text-right">ยอด</th><th>สาเหตุ</th><th>ลงแผนก</th><th>หมวด</th></tr></thead>
+      <thead><tr><th>รหัส</th><th>ชื่อ</th><th>สังกัดในทะเบียน</th><th>ระดับ</th><th class="text-right">ยอด</th><th>สาเหตุ</th><th>ลงแผนก</th><th>หมวด</th></tr></thead>
       <tbody>${rep.unassigned.map(u => `<tr>
         <td><b>${esc(u.code)}</b></td>
         <td>${esc(u.name || "-")}</td>
-        <td class="text-muted">${esc(u.kind)}</td>
+        <td class="text-muted" style="font-size:11.5px;">${esc(u.org || "—")}</td>
+        <td class="text-muted">${esc(u.level || "—")}</td>
         <td class="text-right">${fmt(u.amount)}</td>
         <td class="text-muted" style="font-size:11.5px;">${esc(u.why)}</td>
         <td><select class="filter-select" onchange="window._pbAssign('${esc(u.code)}','dept',this.value)">

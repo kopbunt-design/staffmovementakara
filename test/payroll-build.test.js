@@ -137,6 +137,37 @@ eq(M.netSalary(rep), M.grandExpense(rep) - M.totalDeduction(rep), "สุทธ�
   eq(rc.unassigned[0].code, "SUB2", "บอกว่าเป็นใคร");
 }
 
+// ---------- จับคู่สังกัดแบบถอยหลังทีละขั้น ----------
+// ตารางคีย์เต็มครอบคลุมเฉพาะเส้นทางที่มีอยู่ตอนทำ ref_dept — ทีมที่ตั้งใหม่ภายหลังต้องยังจับคู่ได้
+{
+  const rd = new Function(`${SRC} return resolveDept;`)();
+  eq(rd({ division:"Operations", department:"Mining", section:"Chatree North", team:"Chatree North" }), "Mining",
+     "ทีมใหม่ที่ไม่มีในตาราง ถอยไปใช้ชื่อ department");
+  eq(rd({ division:"Operations", department:"Processing", section:"Maintenance", team:"ทีมใหม่" }), "Maintenance",
+     "ชื่อ section ที่เป็นคอลัมน์ในรายงาน มาก่อน department");
+  eq(rd({ division:"Sustainability", department:"Community Relations & Development",
+          section:"หน่วยใหม่", team:"หน่วยใหม่" }), "CRD", "ชื่อยาวย่อเป็น CRD");
+  eq(rd({ division:"Operations", department:"Occupational Health & Safety", section:"ใหม่", team:"ใหม่" }), "OH & S",
+     "Occupational Health & Safety ย่อเป็น OH & S");
+  eq(rd({ division:"Kingsgate", department:"อะไรก็ตาม", section:"x", team:"y" }), "Legal", "Kingsgate ลง Legal");
+  // คีย์ที่เจาะจงกว่าต้องมาก่อนเสมอ ไม่งั้นคนที่ถูกแยกไป BKK Office จะโดนกลืนกลับ
+  eq(rd({ division:"Sustainability", department:"Community Relations & Development",
+          section:"Community Relations & Development", team:"Community Relations & Development",
+          firstname_en:"Cherdsak" }), "BKK Office", "คีย์+ชื่อ ชนะคีย์แผนก");
+  // ทะเบียนไม่ได้กรอกสังกัด -> ต้องคืน null เพื่อไปถามผู้ใช้ ไม่ใช่เดา
+  eq(rd({ division:"-", department:"-", section:"-", team:"-" }), null, "ไม่มีสังกัด ต้องไม่เดา");
+  eq(rd({ division:"Commercial", department:"-", section:"-", team:"-" }), null, "มีแต่ Division ยังไม่พอ");
+}
+
+// ---------- บอกสังกัดที่ระบบเห็น เวลาจับคู่ไม่ได้ ----------
+{
+  const r = M.buildReport({ payroll:[H, R("Z1","ใครสักคน",50000,0,0,0)],
+    employees:[{ emp_code:"Z1", division:"Commercial", department:"-", section:"-", team:"-", job_level:"O1" }] });
+  eq(r.unassigned.length, 1, "คนที่สังกัดไม่ครบ ต้องถูกถาม");
+  eq(r.unassigned[0].org, "Commercial", "แสดงสังกัดเท่าที่มี เพื่อให้รู้ว่าทำไมจับคู่ไม่ได้");
+  eq(r.unassigned[0].level, "O1", "แสดงระดับพนักงานด้วย");
+}
+
 // ---------- รู้จักไฟล์จากหัวตาราง ----------
 eq(M.sheetRole([H]), "payroll", "รู้ว่าเป็นไฟล์เงินเดือน");
 eq(M.sheetRole([["ID Card No.","WHT 3%"]]), "consultant", "รู้ว่าเป็นไฟล์ที่ปรึกษา");
