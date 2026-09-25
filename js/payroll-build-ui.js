@@ -1,4 +1,4 @@
-// ===== หน้าสร้าง Payroll Report จากไฟล์ดิบ =====
+// ===== หน้าสร้าง Payroll Register จากไฟล์ดิบ =====
 // โยนไฟล์เข้ามาพร้อมกันหลายไฟล์ ระบบดูจากหัวตารางเองว่าไฟล์ไหนเป็นอะไร
 // แล้วประกอบเป็นรายงาน -> ดูตัวอย่างบนจอ -> ดาวน์โหลด Excel / พิมพ์ PDF
 //
@@ -57,7 +57,7 @@ export function renderPayrollBuild() {
 
   pg.innerHTML = `
   <div class="page-header">
-    <div><div class="page-heading">สร้าง Payroll Report</div>
+    <div><div class="page-heading">สร้าง Payroll Register</div>
     <div class="page-sub">อัปโหลดไฟล์เงินเดือนดิบ + ไฟล์ที่ปรึกษา แล้วระบบประกอบรายงานให้</div></div>
     <div class="header-actions">
       ${savedMonths.length ? `<select class="filter-select" onchange="window._pbOpen(this.value)">
@@ -474,7 +474,7 @@ async function exportExcel() {
     t.font = { bold:true, size:13, color:{ argb:NAVY } };
     ws.mergeCells(2, 1, 2, span);
     const u = ws.getCell(2, 1);
-    u.value = `PAYROLL REPORT — ${sub}${month ? `  ·  ${monthLabel(month)}` : ""}`;
+    u.value = `PAYROLL REGISTER — ${sub}${month ? `  ·  ${monthLabel(month)}` : ""}`;
     u.font = { size:10, color:{ argb:"FF667085" } };
     ws.getRow(1).height = 20; ws.getRow(2).height = 15;
     ws.addRow([]);
@@ -482,7 +482,7 @@ async function exportExcel() {
   const setup = (ws, span) => {
     ws.pageSetup = { orientation:"landscape", paperSize:9, fitToPage:true, fitToWidth:1, fitToHeight:0,
                      margins:{ left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2 } };
-    ws.headerFooter = { oddFooter:"&L&8Akara Resources — Payroll Report&R&8Page &P of &N" };
+    ws.headerFooter = { oddFooter:"&L&8Akara Resources — Payroll Register&R&8Page &P of &N" };
     ws.views = [{ state:"frozen", xSplit:2, ySplit:5 }];
   };
 
@@ -526,6 +526,7 @@ async function exportExcel() {
   const pf = s1.addRow(["Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, rep.ded.pvdEmployer]);
   pf.getCell(2).font = { size:8, color:{ argb:MUTED } };
   pf.getCell(2).alignment = { horizontal:"center" };
+  s1.addRow(["Social Security Employer Contribution", "", rep.ded.ssoEmployer || 0]);
   s1.eachRow(r => { r.getCell(2).numFmt = r.getCell(2).numFmt || COUNT; r.getCell(3).numFmt = MONEY; });
   s1.getColumn(2).alignment = { horizontal:"right" };
 
@@ -632,7 +633,7 @@ async function exportExcel() {
   const buf = await wb.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   const a = document.createElement("a");
-  a.href = url; a.download = `Payroll Report_${month || "draft"}.xlsx`;
+  a.href = url; a.download = `Payroll Register_${month || "draft"}.xlsx`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast("ดาวน์โหลด Excel แล้ว", "success");
@@ -659,7 +660,7 @@ function printReport() {
     <div class="top">
       <div class="brand"><img class="logo" src="${logo}" alt="Akara Resources">
         <div class="bw2">Chatree Gold Mine</div></div>
-      <div class="meta"><div class="m1">PAYROLL REPORT</div>
+      <div class="meta"><div class="m1">PAYROLL REGISTER</div>
         <div class="m2">${esc(sub)}${month ? `  ·  ${esc(monthLabel(month))}` : ""}</div></div>
     </div>
     <div class="rule"></div>`;
@@ -757,6 +758,8 @@ function printReport() {
           <tr class="gt"><td class="l">NET SALARY</td><td></td><td class="n">${fmt(PB.netSalary(rep))}</td></tr>
           <tr><td class="l pf">Provident Fund Employer Contribution</td><td class="cc">${esc(PB.DED_CODES.pvdEmployer)}</td>
             <td class="n">${fmt(rep.ded.pvdEmployer)}</td></tr>
+          <tr><td class="l pf">Social Security Employer Contribution</td><td class="cc"></td>
+            <td class="n">${fmt(rep.ded.ssoEmployer || 0)}</td></tr>
           </tbody>
         </table>
       </div>
@@ -767,7 +770,7 @@ function printReport() {
   const pages = [summary, ...PB.GROUPS.map(g => page(g.name, g.depts)), page("BKK Office & Legal", PB.STANDALONE)];
 
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8">
-    <title>Payroll Report ${esc(month)}</title>
+    <title>Payroll Register ${esc(month)}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>${PRINT_CSS}</style></head><body>${pages.join("")}

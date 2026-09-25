@@ -374,6 +374,18 @@ eq(M.COST_CODE_DOUBTS.length, 1, "เหลือช่องที่ยัง�
 eq(M.COST_CODES["Science & Health"][5], "507856301950", "ที่ปรึกษา Science & Health ใช้ฐานของตัวเอง");
 eq(M.COST_CODES["Science & Health"][5].startsWith("5050038"), false, "ต้องไม่ใช่ฐานของ Maintenance อีก");
 
+// ---------- ประกันสังคมฝั่งนายจ้าง ----------
+{
+  const H2 = [...H, "ประกันสังคมบริษัทสมทบ"];
+  const r = M.buildReport({ payroll:[H2, [...R("E1","หนึ่ง",100000,0,0,0,{ sso:750 }), 750],
+                                          [...R("E2","สอง",30000,0,0,0,{ sso:750 }), 750]], employees:EMPS });
+  eq(r.ded.ssoEmployer, 1500, "รวมประกันสังคมฝั่งนายจ้าง");
+  eq(M.totalDeduction(r), 1500, "เป็นเงินสมทบของบริษัท ไม่นับเป็นรายการหักของพนักงาน");
+  eq(r.unknownCols.length, 0, "คอลัมน์นี้ระบบรู้จักแล้ว");
+  const back = M.repFromRows(M.toSummaryRows(r, "2026-08"), "2026-08");
+  eq(back.ded.ssoEmployer, 1500, "บันทึกแล้วอ่านกลับได้เท่าเดิม");
+}
+
 // ---------- รายการหักแยกรายแผนก เหมือนต้นฉบับ ----------
 // ต้นฉบับแสดงยอดหักทุกบรรทัด + ยอดหักรวม + สุทธิ แยกตามคอลัมน์แผนก ไม่ใช่รวมบรรทัดเดียว
 eq(M.deptDed(rep, "Processing", "pnd1"), 5000 + 100, "ภาษีของพนักงานใน Processing");
@@ -417,7 +429,7 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(M.deptNet(back, "Processing"), M.deptNet(rep, "Processing"), "อ่านกลับ: สุทธิรายแผนกเท่าเดิม");
   eq(back.dedByDept, true, "ข้อมูลใหม่มียอดหักรายแผนก");
   // เดือนที่บันทึกก่อนมีการแยก: มีแต่แถวคอลัมน์รวมใหญ่ ต้องรู้ตัวว่าไม่มีข้อมูลรายแผนก ไม่ใช่ถือว่าเป็น 0
-  const old = rows.filter(r => !(["DEDUCTION — STAFF EXPENSES","PROVIDENT FUND"].includes(r.section) && r.col_kind !== "grand_total"));
+  const old = rows.filter(r => !(["DEDUCTION — STAFF EXPENSES","PROVIDENT FUND","SOCIAL SECURITY"].includes(r.section) && r.col_kind !== "grand_total"));
   const legacy = M.repFromRows(old, "2026-08");
   eq(legacy.dedByDept, false, "เดือนเก่ารู้ว่าไม่มียอดหักรายแผนก");
   eq(legacy.ded.pnd1, rep.ded.pnd1, "ยอดหักรวมทั้งบริษัทของเดือนเก่ายังอ่านได้");

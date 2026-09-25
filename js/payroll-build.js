@@ -167,6 +167,7 @@ export const COL_ALIAS = {
   studentLoan:  ["กยศ./กรอ."],
   led:          ["บังคับคดี"],
   pvdEmployer:  ["กองทุนบริษัทสมทบ"],
+  ssoEmployer:  ["ประกันสังคมบริษัทสมทบ"],   // เงินสมทบฝั่งบริษัท ไม่ใช่รายการหักของพนักงาน
 };
 
 // บรรทัดที่แสดงในตารางของแต่ละกลุ่มพนักงาน
@@ -223,7 +224,7 @@ export function buildReport(input) {
   // คอลัมน์ที่ไม่มีในตารางแปลเลย — บอกไว้ ไม่ปล่อยให้ยอดหายเงียบ ๆ
   const claimed = new Set(Object.values(COL_ALIAS).flat().map(norm));
   const IGNORE = new Set(["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","รายได้สุทธิ","รวมรายหัก","สุทธิ",
-                          "ประกันสังคมบริษัทสมทบ","กองทุนสงเคราะห์ลูกจ้าง","กองทุนสงเคราะห์บริษัทสมทบ",
+                          "กองทุนสงเคราะห์ลูกจ้าง","กองทุนสงเคราะห์บริษัทสมทบ",
                           "หักเบิกเงินล่วงหน้า","เบิกเงินล่วงหน้า","ภาษีบริษัทจ่ายให้",
                           "ค่าอาหารปกติ","ค่าอาหารโอที","ค่าอาหารเกินโอที"]);
   const unknownCols = [];
@@ -267,7 +268,7 @@ export function buildReport(input) {
   // คนที่ลงแผนกได้เพราะผู้ใช้เลือกเอง — ต้องคืนออกไปด้วย ไม่งั้นพอเลือกแล้วแถวหายจากหน้าจอ
   // แล้วถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
   const assigned = [];
-  const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0 };
+  const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0, ssoEmployer:0 };
 
   for (const row of body) {
     const code = norm(row[0]);
@@ -281,6 +282,7 @@ export function buildReport(input) {
     ded.studentLoan += sum(row, "studentLoan");
     ded.led         += sum(row, "led");
     ded.pvdEmployer += sum(row, "pvdEmployer");
+    ded.ssoEmployer += sum(row, "ssoEmployer");
 
     // รหัส DAY* คือแรงงานรายวัน — นับเป็นหมวด casual เสมอ ไม่ใช่พนักงานประจำ
     // แต่แผนกยังดึงจากทะเบียนพนักงานได้ถ้ามี (ส.ค. 2026 ทั้งห้าคนอยู่ในทะเบียนและลง CRD ตรงกับรายงานจริง)
@@ -315,7 +317,7 @@ export function buildReport(input) {
                   org: known?.org || "—", level: known?.level || "" });
 
     // รายการหักแยกตามแผนกของคนนั้น เหมือนต้นฉบับ (ยอดรวมทั้งบริษัทเก็บไว้ใน ded ด้านบนแล้ว)
-    for (const k of ["pnd1","sso","pvd","studentLoan","led","pvdEmployer"]) add("ded", k, dept, sum(row, k));
+    for (const k of ["pnd1","sso","pvd","studentLoan","led","pvdEmployer","ssoEmployer"]) add("ded", k, dept, sum(row, k));
 
     if (LUMP.has(type)) {
       addHc(type, dept);
@@ -520,6 +522,9 @@ export function toSummaryRows(rep, month) {
   for (const c of cols) push(c, "PROVIDENT FUND", "Provident Fund Employer Contribution",
     valueAt(c, d => rep.get("ded", "pvdEmployer", d)), "amount", DED_CODES.pvdEmployer);
   rowOrder++;
+  for (const c of cols) push(c, "SOCIAL SECURITY", "Social Security Employer Contribution",
+    valueAt(c, d => rep.get("ded", "ssoEmployer", d)), "amount", null);
+  rowOrder++;
   for (const c of cols) push(c, "SUMMARY", "GRAND TOTAL — PAYROLL EXPENSE", valueAt(c, d => deptTotal(rep, d)), "amount");
   rowOrder++;
   for (const c of cols) push(c, "SUMMARY", "TOTAL HEADCOUNT", valueAt(c, d => deptHeadcount(rep, d)), "headcount");
@@ -534,12 +539,13 @@ export function toSummaryRows(rep, month) {
 // คืนวัตถุหน้าตาเดียวกับที่ buildReport คืน เพื่อให้ตัวพิมพ์/ตัว export ใช้ได้โดยไม่ต้องรู้ว่ามาจากไหน
 export function repFromRows(rows, month) {
   const cells = new Map(), hc = new Map();
-  const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0 };
+  const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0, ssoEmployer:0 };
   const BY_LABEL = Object.fromEntries(Object.entries(SECTION_LABEL).map(([k, v]) => [v, k]));
   const DED_BY_LABEL = Object.fromEntries(DED_LABEL.map(([k, v]) => [v, k]));
   for (const r of rows) {
     const dk = r.section === "DEDUCTION — STAFF EXPENSES" ? DED_BY_LABEL[r.line_item]
-             : r.section === "PROVIDENT FUND" ? "pvdEmployer" : null;
+             : r.section === "PROVIDENT FUND" ? "pvdEmployer"
+             : r.section === "SOCIAL SECURITY" ? "ssoEmployer" : null;
     if (dk) {
       if (r.col_kind === "grand_total") ded[dk] = Number(r.value) || 0;
       else if (r.col_kind === "dept") cells.set(`ded|${dk}|${r.department}`, Number(r.value) || 0);
