@@ -224,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","users","settings"];
+const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -239,7 +239,8 @@ export function navigate(page) {
 // หน้าที่ไม่มี permission key ของตัวเอง ใช้สิทธิ์ของหน้าที่เป็นทางเข้าแทน
 // ⚠️ ต้องใช้ตารางนี้ทั้งตอนซ่อนเมนูและตอนกันเข้าหน้า ไม่งั้นเมนูหายแต่ router ปล่อยผ่าน (หรือกลับกัน)
 const PERM_ALIAS = { empprofile: "page.employees", shiftcompare: "page.shiftallow",
-                     payrollapproval: "page.payrollexp" };
+                     payrollapproval: "page.payrollexp",
+                     payrollbuild: "page.payrollexp" };
 const pagePerm = page => PERM_ALIAS[page] || "page." + page;
 
 // ซ่อน/แสดงเมนูตามสิทธิ์ · หัวข้อกลุ่มจะซ่อนเองถ้าไม่เหลือเมนูในกลุ่ม
@@ -280,6 +281,7 @@ async function renderPage(page) {
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
   else if(page==="payrollexp") (await import("./payroll-summary.js")).renderPayrollExpense();
+  else if(page==="payrollbuild") (await import("./payroll-build-ui.js")).renderPayrollBuild();
   else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
   else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
   else if(page==="uniform") (await import("./uniform.js")).renderUniform();
@@ -297,10 +299,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ตอนนี้แปลเฉพาะเปลือกแอป (ป้ายเมนู/หัวกลุ่มที่ติด data-i18n) — เนื้อหาในหน้ายังเป็นไทย
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
-  th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.contractpay":"ค่าจ้างเหมา",
+  th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Report", "nav.contractpay":"ค่าจ้างเหมา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
-  en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.contractpay":"Contract Payroll",
+  en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Report", "nav.contractpay":"Contract Payroll",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.system":"System" },
 };

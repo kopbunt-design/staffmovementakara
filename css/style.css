@@ -939,3 +939,25 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .pa-sig{background:var(--bg);border-radius:10px;padding:12px 14px;}
 .pa-sig-h{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;}
 .pa-sig .filter-select{width:100%;}
+
+/* ===== สร้าง Payroll Report จากไฟล์ดิบ ===== */
+.pb-files{display:flex;flex-direction:column;gap:6px;}
+.pb-file{display:flex;justify-content:space-between;gap:12px;background:var(--bg);border-radius:8px;
+  padding:8px 12px;font-size:12.5px;}
+.pb-file-bad{background:var(--amber-light);color:var(--amber);}
+.pb-file-n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pb-file-r{color:var(--muted);white-space:nowrap;}
+.pb-empty{padding:22px;text-align:center;background:var(--bg);border-radius:10px;color:var(--muted);font-size:13px;}
+.pb-period .form-label{font-size:11px;color:var(--muted);}
+.pb-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+.pb-kpi{background:var(--bg);border-radius:10px;padding:12px 14px;}
+.pb-kpi-l{font-size:11px;color:var(--muted);}
+.pb-kpi-n{font-size:19px;font-weight:700;color:var(--exec-navy);font-variant-numeric:tabular-nums;}
+.pb-net{color:var(--green);}
+.pb-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:20px;}
+.pb-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.pb-tbl th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;
+  padding:6px 8px;border-bottom:1px solid var(--border);}
+.pb-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.pb-tbl .pb-tot td{font-weight:700;border-top:1.5px solid var(--border2);border-bottom:none;}
+.pb-tbl .filter-select{width:100%;min-width:130px;}
