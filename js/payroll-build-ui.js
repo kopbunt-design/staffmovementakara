@@ -568,7 +568,7 @@ async function exportExcel() {
       }
       const vals = sh.depts.map(d => valueOf(kind, line, section, d));
       const sum = vals.reduce((a, b) => a + b, 0);
-      const r = ws.addRow([line, kind === "hc" ? "คน" : "", ...vals, sum]);
+      const r = ws.addRow([line, kind === "hc" ? "persons" : "", ...vals, sum]);
       r.eachCell((c, i) => {
         c.border = { bottom:thin };
         if (i > 2) c.numFmt = kind === "hc" ? COUNT : MONEY;
@@ -578,7 +578,7 @@ async function exportExcel() {
       r.getCell(2).alignment = { horizontal:"center" };
       r.getCell(sh.depts.length + 3).font = { bold:true };
     }
-    const hcRow = ws.addRow(["TOTAL HEADCOUNT", "คน",
+    const hcRow = ws.addRow(["TOTAL HEADCOUNT", "persons",
       ...sh.depts.map(d => PB.deptHeadcount(rep, d)), sh.depts.reduce((t, d) => t + PB.deptHeadcount(rep, d), 0)]);
     hcRow.eachCell((c, i) => { c.font = { bold:true }; c.fill = fill(TINT);
       c.border = { top:thin, bottom:thin }; if (i > 2) c.numFmt = COUNT; });
@@ -649,11 +649,11 @@ function printReport() {
           const sum = vals.reduce((a, b) => a + b, 0);
           const f = v => kind === "hc" ? fmtI(v) : fmt(v);
           return `<tr class="${kind === "tot" ? "tot" : ""}"><td class="l">${esc(line)}</td>
-            <td class="c u">${kind === "hc" ? "คน" : ""}</td>
+            <td class="c u">${kind === "hc" ? "persons" : ""}</td>
             ${vals.map(v => `<td class="n">${f(v)}</td>`).join("")}
             <td class="n b">${f(sum)}</td></tr>`;
         }).join("")}
-        <tr class="hcrow"><td class="l">TOTAL HEADCOUNT</td><td class="c u">คน</td>
+        <tr class="hcrow"><td class="l">TOTAL HEADCOUNT</td><td class="c u">persons</td>
           ${depts.map(d => `<td class="n">${fmtI(PB.deptHeadcount(rep, d))}</td>`).join("")}
           <td class="n b">${fmtI(depts.reduce((t, d) => t + PB.deptHeadcount(rep, d), 0))}</td></tr>
         <tr class="gt"><td class="l">GRAND TOTAL — PAYROLL EXPENSE</td><td></td>
