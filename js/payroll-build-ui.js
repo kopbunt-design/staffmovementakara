@@ -118,8 +118,9 @@ const ROLE_TH = { payroll:"เงินเดือนดิบ", consultant:"�
 // แสดงทั้งคนที่ยังไม่ได้เลือก และคนที่เลือกไปแล้ว ไว้ในตารางเดียวกัน
 // เดิมพอเลือกเสร็จแถวหายจากหน้าจอทันที ถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
 // รายชื่อทุกคนในไฟล์ ไว้ให้ค้นหาเพื่อเปลี่ยนหมวด — ไม่มีตัวเงินติดมากับรายการ
-const SECTION_TH = { senior:"Senior Staff", staff:"Staff", casual:"แรงงานรายวัน",
-                     consultants:"ที่ปรึกษา", contractors:"จ้างเหมาอื่น", director:"กรรมการบริษัท" };
+const SECTION_TH = { senior:"SENIOR STAFF", staff:"STAFF", casual:"CASUAL LABOUR",
+                     consultants:"CONSULTANTS — TECHNICAL", contractors:"CONTRACTORS — OTHER",
+                     director:"DIRECTOR'S FEE" };
 const peopleItems = () => (rep?.people || [])
   .filter(p => !assign[p.code])
   .map(p => ({ value:p.code, label:`${p.code} — ${p.name || ""}`,
@@ -146,8 +147,15 @@ function assignCard() {
   ];
   const deptOpts = sel => `<option value="">— เลือก —</option>` + PB.ALL_DEPTS.map(d =>
     `<option value="${esc(d)}" ${d === sel ? "selected" : ""}>${esc(d)}</option>`).join("");
-  const secOpts = sel => [["senior","Senior Staff"],["staff","Staff"],["casual","แรงงานรายวัน"],
-                          ["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"],["director","กรรมการบริษัท"]]
+  // ใช้ชื่อเดียวกับหัวข้อในรายงานเป๊ะ ๆ แล้วต่อท้ายด้วยคำไทย
+  // ก่อนหน้านี้ตั้งชื่อว่า "จ้างเหมาอื่น" ซึ่งไม่ตรงกับ CONTRACTORS — OTHER ในรายงาน หาไม่เจอกัน
+  const secOpts = sel => [
+      ["senior","SENIOR STAFF (พนักงานระดับ M · S)"],
+      ["staff","STAFF (พนักงานระดับ O)"],
+      ["consultants","CONSULTANTS — TECHNICAL (ที่ปรึกษา)"],
+      ["contractors","CONTRACTORS — OTHER (สัญญาจ้าง / จ้างเหมา)"],
+      ["casual","CASUAL LABOUR (แรงงานรายวัน)"],
+      ["director","DIRECTOR'S FEE (กรรมการบริษัท)"]]
     .map(([v,l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
   const held = rep.unassigned.reduce((s, u) => s + u.amount, 0);
   const nDone = rep.assigned.length;
@@ -162,7 +170,7 @@ function assignCard() {
       · ถ้าเป็นพนักงานประจำ การไปเติมสังกัดในหน้าข้อมูลพนักงานจะแก้ได้ถาวรกว่า
     </div>
     <div class="pb-find mt-3">
-      <label class="form-label">ย้ายคนที่ระบบจัดไปแล้ว — เช่น พนักงานสัญญาจ้างที่ต้องลง Contractors — Other</label>
+      <label class="form-label">ย้ายคนที่ระบบจัดไปแล้ว — เช่น พนักงานสัญญาจ้างที่ต้องลง CONTRACTORS — OTHER<br>พิมพ์ชื่อไทย ชื่ออังกฤษ หรือรหัสก็ได้</label>
       ${comboHTML("pbFind", peopleItems(), "", "พิมพ์ชื่อหรือรหัสพนักงาน")}
     </div>
     ${rows.length ? `<table class="pb-tbl mt-3">
