@@ -201,6 +201,10 @@ eq(M.findHeaderRow([["Emp. Code","Basic Salary"], H]), 1, "หาแถวหั
 eq(M.COST_CODES["Processing"].length, 8, "รหัสบัญชีครบทุกหมวดของแต่ละแผนก");
 eq(M.ALL_DEPTS.length, 20, "คอลัมน์แผนกในรายงาน 18 แผนก + BKK Office + Legal");
 eq(Object.keys(M.COST_CODES).length, M.ALL_DEPTS.length, "ทุกแผนกมีรหัสบัญชี");
-eq(M.COST_CODE_DOUBTS.length, 2, "ยังคงบันทึกไว้ว่ามีสองช่องที่น่าจะพิมพ์ผิดในไฟล์ต้นฉบับ");
+eq(M.COST_CODE_DOUBTS.length, 1, "เหลือช่องที่ยังสงสัยอยู่หนึ่งช่อง (Mining · Senior)");
+// ที่ปรึกษาของ Science & Health เคยใช้ฐานของ Maintenance ทำให้ลงบัญชีผิดแผนก
+// ผู้ใช้ยืนยันแล้วว่าผิด จึงแก้ — เทสนี้กันไม่ให้เผลอกลับไปใช้ค่าเดิมตอนอัปเดตตารางรอบหน้า
+eq(M.COST_CODES["Science & Health"][5], "507856301950", "ที่ปรึกษา Science & Health ใช้ฐานของตัวเอง");
+eq(M.COST_CODES["Science & Health"][5].startsWith("5050038"), false, "ต้องไม่ใช่ฐานของ Maintenance อีก");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
