@@ -78,36 +78,49 @@ const ROLE_TH = { payroll:"เงินเดือนดิบ", consultant:"�
                   stafflist:"ทะเบียนพนักงาน (ไม่จำเป็น — ใช้ของในเว็บอยู่แล้ว)",
                   refDept:"ตารางแผนก", refJobLevel:"ตารางระดับงาน" };
 
-// ---------- คนที่ยังไม่รู้ว่าลงแผนกไหน ----------
+// ---------- การลงแผนกด้วยมือ ----------
+// แสดงทั้งคนที่ยังไม่ได้เลือก และคนที่เลือกไปแล้ว ไว้ในตารางเดียวกัน
+// เดิมพอเลือกเสร็จแถวหายจากหน้าจอทันที ถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
 function assignCard() {
-  if (!rep.unassigned.length) return "";
-  const opts = (sel) => PB.ALL_DEPTS.map(d =>
+  const rows = [
+    ...rep.unassigned.map(u => ({ ...u, done:false })),
+    ...rep.assigned.map(a => ({ ...a, done:true, why:"" })),
+  ];
+  if (!rows.length) return "";
+
+  const deptOpts = sel => `<option value="">— เลือก —</option>` + PB.ALL_DEPTS.map(d =>
     `<option value="${esc(d)}" ${d === sel ? "selected" : ""}>${esc(d)}</option>`).join("");
-  const secOpts = (sel) => [["casual","แรงงานรายวัน"],["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"]]
+  const secOpts = sel => [["casual","แรงงานรายวัน"],["consultants","ที่ปรึกษา"],["contractors","จ้างเหมาอื่น"]]
     .map(([v,l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
   const held = rep.unassigned.reduce((s, u) => s + u.amount, 0);
+  const nDone = rep.assigned.length;
 
   return `<div class="card card-body mt-4">
-    <div class="card-title">ต้องระบุแผนกก่อน (${rep.unassigned.length} รายการ)</div>
+    <div class="card-title">การลงแผนกด้วยมือ (${rep.unassigned.length} รอเลือก · ${nDone} เลือกแล้ว)</div>
     <div class="text-sm text-muted mt-1">
       ระบบหาแผนกจาก <b>Division / Department / Section / Team</b> ในทะเบียนพนักงานให้อัตโนมัติแล้ว
       เหลือเฉพาะคนที่ทะเบียนยังไม่ได้กรอกสังกัด ไม่มีในทะเบียน หรือไฟล์ไม่ได้บอกว่าลงแผนกไหน<br>
-      <b>ยอดรวม ${fmt(held)} บาท ยังไม่ถูกนับเข้ารายงาน</b>จนกว่าจะเลือกให้ครบ · ระบบจะจำไว้ใช้เดือนถัดไป
+      ${held ? `<b>ยอดรวม ${fmt(held)} บาท ยังไม่ถูกนับเข้ารายงาน</b>จนกว่าจะเลือกให้ครบ · ` : ""}
+      เลือกแล้วแถวยังอยู่ แก้หรือกดล้างได้ · ระบบจำไว้ใช้เดือนถัดไป
       · ถ้าเป็นพนักงานประจำ การไปเติมสังกัดในหน้าข้อมูลพนักงานจะแก้ได้ถาวรกว่า
     </div>
     <table class="pb-tbl mt-3">
-      <thead><tr><th>รหัส</th><th>ชื่อ</th><th>สังกัดในทะเบียน</th><th>ระดับ</th><th class="text-right">ยอด</th><th>สาเหตุ</th><th>ลงแผนก</th><th>หมวด</th></tr></thead>
-      <tbody>${rep.unassigned.map(u => `<tr>
+      <thead><tr><th></th><th>รหัส</th><th>ชื่อ</th><th>สังกัดในทะเบียน</th><th>ระดับ</th>
+        <th class="text-right">ยอด</th><th>สาเหตุ</th><th>ลงแผนก</th><th>หมวด</th><th></th></tr></thead>
+      <tbody>${rows.map(u => `<tr class="${u.done ? "pb-done" : ""}">
+        <td>${u.done ? `<span class="pb-tick" title="ลงแผนกแล้ว">✓</span>` : ""}</td>
         <td><b>${esc(u.code)}</b></td>
         <td>${esc(u.name || "-")}</td>
         <td class="text-muted" style="font-size:11.5px;">${esc(u.org || "—")}</td>
         <td class="text-muted">${esc(u.level || "—")}</td>
         <td class="text-right">${fmt(u.amount)}</td>
-        <td class="text-muted" style="font-size:11.5px;">${esc(u.why)}</td>
+        <td class="text-muted" style="font-size:11.5px;">${esc(u.why || "")}</td>
         <td><select class="filter-select" onchange="window._pbAssign('${esc(u.code)}','dept',this.value)">
-          <option value="">— เลือก —</option>${opts(assign[u.code]?.dept)}</select></td>
+          ${deptOpts(assign[u.code]?.dept || (u.done ? u.dept : ""))}</select></td>
         <td><select class="filter-select" onchange="window._pbAssign('${esc(u.code)}','section',this.value)">
-          ${secOpts(assign[u.code]?.section || "casual")}</select></td>
+          ${secOpts(assign[u.code]?.section || u.section || "casual")}</select></td>
+        <td>${u.done ? `<button class="btn btn-secondary btn-sm" title="ล้างการเลือก กลับไปให้ระบบจัดเอง"
+          onclick="window._pbUnassign('${esc(u.code)}')">ล้าง</button>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table>
   </div>`;
@@ -120,7 +133,7 @@ function warnCard() {
       ${rep.unknownCols.map(c => `${esc(c.col)} (${fmt(c.total)})`).join(" · ")}
       <br>ยอดพวกนี้<b>ไม่ได้ถูกนับ</b>ในรายงาน ถ้าควรนับบอกผมเพื่อเพิ่มเข้าไป</div>`);
   if (PB.COST_CODE_DOUBTS.length)
-    bits.push(`<div class="pa-warn">รหัสบัญชี 2 ช่องที่คัดมาจากไฟล์เดิมดูเหมือนพิมพ์ผิด แต่คงไว้ตามเดิม —
+    bits.push(`<div class="pa-warn">รหัสบัญชี ${PB.COST_CODE_DOUBTS.length} ช่องที่คัดมาจากไฟล์เดิมยังน่าสงสัย แต่คงไว้ตามเดิม —
       ${PB.COST_CODE_DOUBTS.map(d => `${esc(d.dept)} · ${esc(d.section)} = ${esc(d.code)} (${esc(d.note)})`).join(" · ")}</div>`);
   return bits.length ? `<div class="mt-4" style="display:flex;flex-direction:column;gap:8px;">${bits.join("")}</div>` : "";
 }
@@ -187,11 +200,13 @@ function wire() {
   window._pbMonth = v => { month = v; renderPayrollBuild(); };
   window._pbClear = () => { files = []; rep = null; renderPayrollBuild(); };
   window._pbAssign = (code, k, v) => {
+    if (k === "dept" && !v) return window._pbUnassign(code);   // เลือกกลับเป็น "— เลือก —" = ล้าง
     assign[code] = { ...(assign[code] || {}), [k]: v };
-    if (k === "section") assign[code].type = v === "casual" ? "casual" : assign[code].type;
+    if (k === "section") assign[code].type = v === "casual" ? "casual" : v;
     save();
     rebuild();
   };
+  window._pbUnassign = code => { delete assign[code]; save(); rebuild(); };
 
   window._pbUpload = async inputEl => {
     const picked = [...(inputEl.files || [])];

@@ -91,6 +91,16 @@ eq(rep.headcount("casual","CRD"), 2, "DAY สองคนลงที่ CRD ต
 eq(rep.get("casual","Amount","CRD"), 23000, "ยอดแรงงานรายวัน");
 eq(rep.get("staff","Basic Salary","CRD"), 0, "DAY ต้องไม่ถูกนับเป็นพนักงานประจำ");
 {
+  // DAY ที่อยู่ในทะเบียนพนักงาน ต้องดึงแผนกมาใช้ได้เอง ไม่ต้องถาม — แต่ยังนับเป็นแรงงานรายวัน
+  const r0 = M.buildReport({ payroll:[H, R("DAY77","รายวัน",9000,0,0,0)],
+    employees:[...EMPS, { emp_code:"DAY77", division:"Sustainability",
+      department:"Community Relations & Development", section:"Community Relations & Development",
+      team:"Community Relations & Development", job_level:"O1" }] });
+  eq(r0.unassigned.length, 0, "DAY ที่มีสังกัดในทะเบียน ไม่ต้องถาม");
+  eq(r0.get("casual","Amount","CRD"), 9000, "ลงหมวดแรงงานรายวันที่แผนกตามทะเบียน");
+  eq(r0.get("staff","Basic Salary","CRD"), 0, "ถึงจะมีระดับ O1 ในทะเบียน ก็ต้องไม่นับเป็นพนักงานประจำ");
+}
+{
   // ไม่ได้บอกแผนก -> ต้องขึ้นรายการให้ผู้ใช้เลือก ไม่ใช่เงียบหายหรือเดาเอง
   const r3 = M.buildReport({ payroll:[H, R("DAY09","ใครไม่รู้",9000,0,0,0)], employees:EMPS });
   eq(r3.unassigned.length, 1, "DAY ที่ยังไม่ระบุแผนก ต้องถูกรายงาน");
@@ -102,6 +112,36 @@ eq(rep.get("staff","Basic Salary","CRD"), 0, "DAY ต้องไม่ถูก
   const r4 = M.buildReport({ payroll:[H, R("ไม่มีคนนี้","ผี",50000,0,0,0)], employees:EMPS });
   eq(r4.unassigned.length, 1, "พนักงานที่ไม่พบในทะเบียน ต้องถูกรายงาน");
   eq(r4.unassigned[0].why, "ไม่พบใน ทะเบียนพนักงาน", "บอกสาเหตุ");
+}
+
+// ---------- คนที่ถูกจัดด้วยมือ ต้องคืนออกมาให้แก้ได้ ----------
+// เดิมพอเลือกแผนกเสร็จ แถวหายจากหน้าจอทันที เลือกผิดแล้วกลับไปแก้ไม่ได้เลย
+eq(rep.assigned.length, 2, "คืนรายการที่ผู้ใช้เลือกเอง (DAY สองคน)");
+eq(rep.assigned.map(a => a.code).sort(), ["DAY01","DAY02"], "บอกว่าเป็นใครบ้าง");
+eq([rep.assigned[0].dept, rep.assigned[0].section], ["CRD","casual"], "บอกว่าถูกจัดไปไว้ที่ไหน");
+eq(rep.assigned[0].amount, 11000, "บอกยอดด้วย จะได้ตรวจได้ว่าจัดถูกคน");
+{
+  // ล้างการเลือกแล้ว ต้องกลับไปอยู่ในรายการรอเลือก ไม่ใช่หายไปเฉย ๆ
+  const r = M.buildReport({ payroll:[H, R("DAY01","รายวัน1",11000,0,0,0)], employees:EMPS, assign:{} });
+  eq([r.assigned.length, r.unassigned.length], [0, 1], "ไม่มีการเลือก = กลับไปรอเลือก");
+  eq(M.grandExpense(r), 0, "ยอดไม่ถูกนับจนกว่าจะเลือกใหม่");
+}
+{
+  // ที่ปรึกษาที่ผู้ใช้เลือกแผนกให้ ก็ต้องคืนออกมาแก้ได้เหมือนกัน
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,["SUB9","Consultant","Senior Surveyor","Monthly","A","B",75000,0,2250]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons,
+                            assign:{ SUB9:{ dept:"Mining", section:"consultants" } } });
+  eq(r.assigned.length, 1, "ที่ปรึกษาที่เลือกแผนกแล้ว ต้องคืนออกมา");
+  eq([r.assigned[0].dept, r.assigned[0].section], ["Mining","consultants"], "จัดไปที่ Mining เป็นที่ปรึกษา");
+  eq(r.get("consultants","Amount","Mining"), 75000, "ยอดเข้ารายงานแล้ว");
+}
+{
+  // ที่ปรึกษาที่ยังไม่ระบุแผนก ต้องพกหมวดที่เดาได้ไปด้วย ช่องบนหน้าจอจะได้ตั้งต้นถูก
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,["SUB8","Consultant","Senior Surveyor","Monthly","A","B",75000,0,2250]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
+  eq(r.unassigned[0].section, "consultants", "จ่ายรายเดือน = เดาว่าเป็นที่ปรึกษา ไม่ใช่แรงงานรายวัน");
 }
 
 // ---------- รายการหัก เก็บรวมทั้งบริษัท ----------
@@ -135,6 +175,19 @@ eq(M.netSalary(rep), M.grandExpense(rep) - M.totalDeduction(rep), "สุทธ�
   // แถวที่ไม่มี Ref.2 (เช่น "Senior Surveyor" ซึ่งไม่ใช่ชื่อแผนก) ต้องให้คนเลือกเอง
   eq(rc.unassigned.length, 1, "ที่ปรึกษาที่ไม่ระบุแผนก ต้องถูกรายงาน");
   eq(rc.unassigned[0].code, "SUB2", "บอกว่าเป็นใคร");
+}
+{
+  // ไฟล์ดิบไม่มี Ref.2 — ถ้าช่อง Department/Position เป็นชื่อแผนกตรง ๆ ก็ใช้ได้เลย
+  const CH = ["ID Card No.","Project/Team","Department/Position","Payment Type.","Name","Surname","Income","LED","WHT 3%"];
+  const cons = [[],[],[],CH,
+    ["S1","Consultant","Regulatory Affairs","Monthly","A","B",17000,0,510],
+    ["S2","Consultant","Community Relations & Development","Monthly","C","D",60000,0,1800],
+    ["S3","Consultant","Senior Surveyor","Monthly","E","F",75000,0,2250]];
+  const r = M.buildReport({ payroll:[H], employees:EMPS, consultants:cons });
+  eq(r.get("consultants","Amount","Regulatory Affairs"), 17000, "ชื่อแผนกตรง ๆ ใช้ได้");
+  eq(r.get("consultants","Amount","CRD"), 60000, "ชื่อยาวย่อเป็น CRD ได้");
+  eq(r.unassigned.map(u => u.code), ["S3"], "เหลือถามเฉพาะแถวที่บอกแค่ตำแหน่ง");
+  eq(r.unassigned[0].org, "Senior Surveyor", "แสดงสิ่งที่ไฟล์บอกมา เพื่อให้เลือกได้ถูก");
 }
 
 // ---------- จับคู่สังกัดแบบถอยหลังทีละขั้น ----------

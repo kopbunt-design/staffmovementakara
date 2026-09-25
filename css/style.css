@@ -961,3 +961,5 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .pb-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
 .pb-tbl .pb-tot td{font-weight:700;border-top:1.5px solid var(--border2);border-bottom:none;}
 .pb-tbl .filter-select{width:100%;min-width:130px;}
+.pb-tbl tr.pb-done td{background:var(--green-light);}
+.pb-tick{color:var(--green);font-weight:700;}

@@ -254,6 +254,9 @@ export function buildReport(input) {
   };
 
   const unassigned = [];   // คนที่ยังไม่รู้ว่าลงแผนกไหน — ต้องให้ผู้ใช้เลือก
+  // คนที่ลงแผนกได้เพราะผู้ใช้เลือกเอง — ต้องคืนออกไปด้วย ไม่งั้นพอเลือกแล้วแถวหายจากหน้าจอ
+  // แล้วถ้าเลือกผิดจะไม่มีทางกลับไปแก้ได้เลย
+  const assigned = [];
   const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0 };
 
   for (const row of body) {
@@ -269,25 +272,31 @@ export function buildReport(input) {
     ded.led         += sum(row, "led");
     ded.pvdEmployer += sum(row, "pvdEmployer");
 
-    // แรงงานรายวัน (รหัส DAY*) ไม่ได้อยู่ในทะเบียนพนักงาน ต้องให้ผู้ใช้บอกแผนก
+    // รหัส DAY* คือแรงงานรายวัน — นับเป็นหมวด casual เสมอ ไม่ใช่พนักงานประจำ
+    // แต่แผนกยังดึงจากทะเบียนพนักงานได้ถ้ามี (ส.ค. 2026 ทั้งห้าคนอยู่ในทะเบียนและลง CRD ตรงกับรายงานจริง)
+    // ที่ต้องถามคือเฉพาะคนที่ทะเบียนไม่มีหรือไม่ได้กรอกสังกัดไว้
     const isDay = /^DAY/i.test(code);
-    const dept = manual?.dept || (isDay ? null : known?.dept) || null;
+    const dept = manual?.dept || known?.dept || null;
     const type = isDay ? "casual" : (manual?.type || known?.type || null);
 
     if (!dept || !type) {
       unassigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
                         amount: round2(sum(row, "basic") - sum(row, "basicMinus")),
                         org: known?.org || "—", level: known?.level || "",
-                        why: isDay ? "แรงงานรายวัน ไม่มีในทะเบียนพนักงาน"
-                           : !known ? "ไม่พบใน ทะเบียนพนักงาน"
+                        why: !known ? (isDay ? "แรงงานรายวัน ไม่มีในทะเบียนพนักงาน" : "ไม่พบใน ทะเบียนพนักงาน")
                            : !known.dept ? "ทะเบียนพนักงานไม่ได้ระบุสังกัด หรือสังกัดยังไม่มีในผังรายงาน"
                            : "ทะเบียนพนักงานไม่ได้ระบุระดับพนักงาน" });
       continue;
     }
 
+    const amount = round2(sum(row, "basic") - sum(row, "basicMinus"));
+    if (manual?.dept)
+      assigned.push({ code, name: norm(row[1]), kind: isDay ? "แรงงานรายวัน" : "พนักงาน",
+                      amount, dept, section: type, org: known?.org || "—", level: known?.level || "" });
+
     if (type === "casual") {
       addHc("casual", dept);
-      add("casual", "Amount", dept, round2(sum(row, "basic") - sum(row, "basicMinus")));
+      add("casual", "Amount", dept, amount);
       continue;
     }
 
@@ -327,18 +336,30 @@ export function buildReport(input) {
         const section = a.section || ({ "CONSULTANTS — TECHNICAL":"consultants",
                                         "CONTRACTORS — OTHER":"contractors",
                                         "CASUAL LABOUR":"casual" }[refCat]) || guessed;
-        const dept = a.dept || (ALL_DEPTS.includes(refDept) ? refDept : null);
+        // ไฟล์ที่ปรึกษาที่ HR เติมเองมีคอลัมน์ Ref.2 บอกแผนกไว้ ไฟล์ดิบไม่มี
+        // จึงลองอ่านจากช่อง Department/Position ต่อ — บางแถวเป็นชื่อแผนกตรง ๆ ใช้ได้เลย
+        // ที่เหลือเป็นชื่อตำแหน่ง (เช่น "Senior Surveyor") หรือชื่อสายงานกว้าง ๆ ซึ่งเดาไม่ได้ ต้องถาม
+        const role = norm(r[ci("Department/Position")]);
+        const byRole = DEPT_ALIAS[role] || role;
+        const dept = a.dept
+          || (ALL_DEPTS.includes(refDept) ? refDept : null)
+          || (ALL_DEPTS.includes(byRole) ? byRole : null);
         const income = num(r[ci("Income")]);
         consRows.push({ id, name:[norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" "),
-                        role: norm(r[ci("Department/Position")]), section, dept, income });
+                        role, section, dept, income });
         ded.pnd3 += num(r[ci("WHT 3%")]);
         ded.led  += num(r[ci("LED")]);
         if (!dept) {
           unassigned.push({ code:id, name:norm(r[ci("Name")]) + " " + norm(r[ci("Surname")]),
-                            kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income),
-                            why:"ไฟล์ไม่ได้ระบุแผนกในรายงาน" });
+                            kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income), section,
+                            org: role || "—", level:"",
+                            why:"ไฟล์บอกแค่ตำแหน่ง ไม่ได้บอกแผนกในรายงาน" });
           continue;
         }
+        if (a.dept)
+          assigned.push({ code:id, name:[norm(r[ci("Name")]), norm(r[ci("Surname")])].filter(Boolean).join(" "),
+                          kind:"ที่ปรึกษา / จ้างเหมา", amount:round2(income), dept, section,
+                          org: role || "—", level:"" });
         addHc(section, dept);
         add(section, "Amount", dept, income);
       }
@@ -347,7 +368,7 @@ export function buildReport(input) {
 
   for (const k of Object.keys(ded)) ded[k] = round2(ded[k]);
 
-  return { month, cells, hc, ded, unassigned, unknownCols, consRows,
+  return { month, cells, hc, ded, unassigned, assigned, unknownCols, consRows,
            get: (section, line, dept) => cells.get(`${section}|${line}|${dept}`) || 0,
            headcount: (section, dept) => hc.get(`${section}|${dept}`) || 0 };
 }
