@@ -440,4 +440,20 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(gt.value, M.groupTotal(rep, "senior", "Basic Salary", M.GROUPS[0]), "ยอดรวมกลุ่มคิดจากแผนกในกลุ่ม");
 }
 
+// ---------- ย้ายที่นั่งตั้งแต่เดือนหนึ่ง: แผนกเปลี่ยน แต่เดือนก่อนหน้าต้องเหมือนเดิม ----------
+{
+  const emp = [{ emp_code:"AKR24011081", division:"Operations", department:"Processing",
+                 section:"Process", team:"Process", job_level:"M1" }];
+  const pay = [H, R("AKR24011081","สมมติ",50000,0,0,0,{ sso:750 })];
+  const who = m => M.buildReport({ payroll:pay, employees:emp, month:m }).people[0];
+  eq([who("2026-08").dept, who("2026-08").section], ["Processing","senior"], "ส.ค. ยังลงแผนกเดิม");
+  eq([who("2026-09").dept, who("2026-09").section], ["BKK Office","senior"], "ก.ย. ลง BKK Office ระดับยังมาจากทะเบียน");
+  eq(who("2026-12").dept, "BKK Office", "เดือนหลังจากนั้นยังอยู่ BKK Office");
+  const sep = M.buildReport({ payroll:pay, employees:emp, month:"2026-09" });
+  eq(sep.get("ded","sso","BKK Office"), 750, "ยอดหักตามไปลงแผนกใหม่ด้วย");
+  const man = M.buildReport({ payroll:pay, employees:emp, month:"2026-09",
+                              assign:{ AKR24011081:{ dept:"Mining", section:"senior" } } }).people[0];
+  eq(man.dept, "Mining", "ผู้ใช้เลือกเองบนหน้าจอยังชนะเสมอ");
+}
+
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

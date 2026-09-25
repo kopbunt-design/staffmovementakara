@@ -105,6 +105,18 @@ export const DEPT_KEY = {
   "SustainabilityCommunity Relations & DevelopmentCommunity Relations & DevelopmentCommunity Relations & DevelopmentThanwat":"BKK Office",
 };
 
+// คนที่ย้ายที่นั่งไปลงแผนกอื่นตั้งแต่เดือนหนึ่ง โดยสังกัดในทะเบียนยังเหมือนเดิม
+// มีผลตั้งแต่เดือน from เป็นต้นไป — เดือนก่อนหน้ายังลงแผนกเดิม รายงานย้อนหลังจึงไม่เปลี่ยน
+// ระดับ (Senior/Staff) ยังมาจากทะเบียนตามปกติ ที่เปลี่ยนคือแผนกอย่างเดียว
+export const DEPT_MOVES = [
+  { code:"AKR24011081", dept:"BKK Office", from:"2026-09" },   // ย้ายที่นั่ง ก.ย. 2026 (ผู้ใช้แจ้ง 2026-09-25)
+];
+export function movedDept(code, month) {
+  const m = DEPT_MOVES.filter(x => x.code === code && month && month >= x.from)
+                      .sort((a, b) => b.from.localeCompare(a.from))[0];
+  return m ? m.dept : null;
+}
+
 // ชื่อสังกัดยาว ๆ ที่รายงานเรียกสั้นกว่า
 export const DEPT_ALIAS = {
   "Community Relations & Development": "CRD",
@@ -288,7 +300,7 @@ export function buildReport(input) {
     // แต่แผนกยังดึงจากทะเบียนพนักงานได้ถ้ามี (ส.ค. 2026 ทั้งห้าคนอยู่ในทะเบียนและลง CRD ตรงกับรายงานจริง)
     // ที่ต้องถามคือเฉพาะคนที่ทะเบียนไม่มีหรือไม่ได้กรอกสังกัดไว้
     const isDay = /^DAY/i.test(code);
-    const dept = manual?.dept || known?.dept || null;
+    const dept = manual?.dept || movedDept(code, month) || known?.dept || null;
     // หมวดที่ผู้ใช้เลือกคือ section — ยอมรับทั้งสองชื่อ เผื่อบางที่ตั้งมาแค่ตัวใดตัวหนึ่ง
     const type = isDay && !manual?.section ? "casual"
                : (manual?.type || manual?.section || known?.type || null);
