@@ -155,7 +155,7 @@ body{font-family:'Sarabun',sans-serif;color:#000;background:#eee}
 .page{width:210mm;min-height:297mm;padding:14mm 18mm 12mm;background:#fff;margin:0 auto 8mm;position:relative;font-size:13px;line-height:1.62;page-break-after:always}
 .page:last-child{page-break-after:auto}
 p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{text-align:right}.c{text-align:center}
-.f{display:inline-block;border-bottom:1px dotted #000;padding:0 6px;line-height:1.35;color:#0b2e8a;font-weight:600}
+.f{display:inline-block;border-bottom:1px dotted #000;padding:0 6px;text-align:center;line-height:1.35;color:#0b2e8a;font-weight:600}
 .bx{display:inline-block;width:14px;height:14px;border:1.2px solid #000;text-align:center;line-height:12px;font-size:12px;font-weight:700;vertical-align:-2px;margin-right:2px}
 .pvd-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #2B5AC7;padding-bottom:4px;margin-bottom:10px}
 .pvd-top img{height:46px}.pvd-site{font-size:13px}
