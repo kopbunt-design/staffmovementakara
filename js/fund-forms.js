@@ -413,6 +413,11 @@ function openDetail(id) {
       <div style="margin-bottom:10px;"><b>${esc(r.emp_code)} ${esc(r.emp_name)}</b> · ${esc(r.department)}
         <div class="text-muted" style="font-size:12px;">ส่งเมื่อ ${dt(r.submitted_at)} · อัปเดต ${dt(r.updated_at)}</div></div>
       ${detailBody(r)}
+      <div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center;">
+        <div style="width:150px;flex:none;color:var(--muted);">ลายเซ็นพนักงาน</div>
+        <div>${/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.payload?.signature || "")
+          ? `<img src="${r.payload.signature}" alt="" style="height:56px;border:1px solid var(--border);border-radius:6px;background:#fff;"> <span class="text-muted" style="font-size:12px;">เซ็นออนไลน์</span>`
+          : `<span class="text-muted">ไม่ได้เซ็นออนไลน์ — ต้องเซ็นบนกระดาษ</span>`}</div></div>
       <div class="form-grid" style="margin-top:14px;">
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-control" id="ffSt" ${canEdit() ? "" : "disabled"}>${Object.entries(STATUS).map(([k, v]) =>

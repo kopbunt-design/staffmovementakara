@@ -84,6 +84,32 @@ function go(step) { S.step = step; S.err = ""; render(); window.scrollTo({ top: 
 function render() {
   const v = { verify, choose, pvd: pvdForm, wef: wefForm, review, done }[S.step];
   $app.innerHTML = v();
+  if (S.step === "review") initPad();
+}
+
+// ---------------------------------------------------------- ลายเซ็นบนหน้าจอ
+// ไม่บังคับ — ถ้าเซ็นที่นี่ แบบฟอร์มที่พิมพ์จะมีลายเซ็นพนักงานอยู่แล้ว เหลือแค่พยานเซ็นบนกระดาษ
+// เก็บเป็น PNG ขนาดคงที่ 600×200 ใน payload.signature
+const cur = () => S.form === "pvd" ? S.pvd : S.wef;
+function initPad() {
+  const c = $app.querySelector("#fxPad"); if (!c) return;
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  const g = c.getContext("2d");
+  g.scale(dpr, dpr); g.lineWidth = 2.4; g.lineCap = g.lineJoin = "round"; g.strokeStyle = "#0b2e8a";
+  if (cur().signature) { const im = new Image(); im.onload = () => g.drawImage(im, 0, 0, r.width, r.height); im.src = cur().signature; }
+  let down = false, last = null, drew = false;
+  const pt = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.onpointerdown = e => { down = true; last = pt(e); c.setPointerCapture(e.pointerId); e.preventDefault(); };
+  c.onpointermove = e => { if (!down) return; const p = pt(e);
+    g.beginPath(); g.moveTo(...last); g.lineTo(...p); g.stroke(); last = p; drew = true; };
+  c.onpointerup = c.onpointercancel = () => {
+    if (!down) return; down = false; if (!drew) return;
+    const out = document.createElement("canvas"); out.width = 600; out.height = 200;
+    out.getContext("2d").drawImage(c, 0, 0, 600, 200);
+    cur().signature = out.toDataURL("image/png");
+    $app.querySelector("#fxSigState").textContent = "เซ็นแล้ว ✓";
+  };
 }
 
 const stepper = () => {
@@ -250,6 +276,7 @@ function build() {
     }
     if (need.rate) { if (!(+p.rate >= 2 && +p.rate <= 15)) return [null, "กรุณาเลือกอัตราเงินสะสม"]; out.rate = +p.rate; }
     if (need.pol) { if (!p.policy) return [null, "กรุณาเลือกนโยบายการลงทุน"]; out.policy = p.policy; }
+    if (p.signature) out.signature = p.signature;
     return [out, ""];
   }
   const w = S.wef;
@@ -268,7 +295,8 @@ function build() {
   if (bs.some(b => b.shares) && bs.some(b => !b.shares)) return [null, "ถ้าระบุจำนวนส่วน ต้องระบุให้ครบทุกคน (หรือเว้นว่างทุกคนเพื่อแบ่งเท่ากัน)"];
   return [{ title: w.title, age: +w.age || null, is_thai: w.is_thai, nationality: w.is_thai ? "ไทย" : w.nationality.trim(),
     id_card: w.is_thai ? w.id_card : "", passport: w.is_thai ? "" : w.passport.trim(), addr: { ...w.addr },
-    phone: w.phone.trim(), written_at: w.written_at.trim(), beneficiaries: bs, consent: w.consent }, ""];
+    phone: w.phone.trim(), written_at: w.written_at.trim(), beneficiaries: bs, consent: w.consent,
+    ...(w.signature ? { signature: w.signature } : {}) }, ""];
 }
 
 const subOf = payload => ({ form_type: S.form, emp_code: S.emp.emp_code,
@@ -297,6 +325,11 @@ function review() {
     <h1>ตรวจทานก่อนส่ง</h1>
     <div class="fx-muted">${FORM_NAME[S.form]}</div>
     <div class="fx-review">${body}</div>
+    <div class="fx-sec"><div class="fx-sec-t">ลงลายมือชื่อ <span class="fx-muted">(ไม่บังคับ)</span>
+        <span class="fx-sum ${f.signature ? "ok" : ""}" id="fxSigState">${f.signature ? "เซ็นแล้ว ✓" : "ยังไม่เซ็น"}</span></div>
+      <p class="fx-muted fx-small">ใช้นิ้วเซ็นในกรอบ ถ้าเซ็นที่นี่ แบบฟอร์มที่พิมพ์จะมีลายเซ็นของท่านแล้ว เหลือให้พยานเซ็นบนกระดาษ · ถ้าไม่เซ็น ให้เซ็นบนกระดาษเอง</p>
+      <canvas id="fxPad" class="fx-pad"></canvas>
+      <button class="fx-btn fx-link" data-act="clearsig" type="button">ล้างลายเซ็น</button></div>
     <button class="fx-btn fx-ghost fx-block" data-act="preview" type="button">ดูตัวอย่างแบบฟอร์มที่จะพิมพ์</button>
     <label class="fx-chk fx-consent"><input type="checkbox" data-act="consent" ${f.consent ? "checked" : ""}>
       <span>ข้าพเจ้ายืนยันว่าข้อมูลถูกต้อง และยินยอมให้บริษัทเก็บและใช้ข้อมูลนี้ รวมถึงข้อมูลของผู้รับประโยชน์
@@ -309,7 +342,7 @@ function review() {
 }
 
 function done() {
-  const wit = S.form === "wef" ? "พยาน 2 คน" : "พยาน 1 คน";
+  const wit = S.form === "wef" ? "พยาน 2 คน" : "พยาน 1 คน", signed = !!cur()?.signature;
   return `${stepper()}
   <div class="fx-card fx-center">
     <div class="fx-ok">✓</div>
@@ -318,7 +351,7 @@ function done() {
     <div class="fx-todo">
       <div class="fx-todo-t">ขั้นตอนต่อไป</div>
       <ol><li>กดปุ่มด้านล่างเพื่อพิมพ์แบบฟอร์ม (หรือบันทึกเป็น PDF แล้วไปพิมพ์ทีหลัง)</li>
-        <li>ลงชื่อ พร้อมให้${wit}ลงชื่อ</li>
+        <li>${signed ? `ให้${wit}ลงชื่อ (ลายเซ็นของท่านอยู่ในแบบฟอร์มแล้ว)` : `ลงชื่อ พร้อมให้${wit}ลงชื่อ`}</li>
         <li>ส่งตัวจริงที่ฝ่ายทรัพยากรบุคคล</li></ol>
       <div class="fx-small fx-muted">ถ้าพิมพ์เองไม่ได้ แจ้ง HR ด้วยเลขที่คำขอ HR พิมพ์ให้ได้</div>
     </div>
@@ -419,6 +452,7 @@ $app.addEventListener("click", e => {
   else if (act === "delwben") { S.wef.beneficiaries.splice(i, 1); render(); }
   else if (act === "preview") { const [p] = build(); printSubmission(subOf(p)); }
   else if (act === "submit") doSubmit();
+  else if (act === "clearsig") { cur().signature = null; render(); }
   else if (act === "print") { const [p] = build(); printSubmission(subOf(p)); }
   else if (act === "again") { if (S.form === "pvd") S.pvd = null; else S.wef = null; S.result = null; go("choose"); }
 });

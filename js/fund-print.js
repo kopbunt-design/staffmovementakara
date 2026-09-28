@@ -41,6 +41,19 @@ export function thaiDate(iso) {
 const fill = (v, w) => `<span class="f" style="min-width:${w}">${esc(v) || "&nbsp;"}</span>`;
 const box  = on => `<span class="bx">${on ? "✓" : ""}</span>`;
 
+// ลายเซ็นที่พนักงานเซ็นบนหน้าจอ (ถ้ามี) — รับเฉพาะ PNG data URL กันของแปลกปลอมมาอยู่ใน src
+const sigOf = p => /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p?.signature || "") ? p.signature : "";
+
+// ช่องลงชื่อ: เส้น / ชื่อในวงเล็บ / วันที่ อยู่ในคอลัมน์เดียวกัน ชื่อจึงอยู่กึ่งกลางเส้นพอดี
+// (เดิมจัดกลางทั้งกล่อง ชื่อเลยเยื้องจากเส้นเพราะคำว่า "ลงชื่อ" กับ "พนักงาน" ยาวไม่เท่ากัน)
+function sigBlock({ role, name = "", sig = "", date, w = "58mm" }) {
+  return `<div class="sg" style="grid-template-columns:auto ${w} auto">
+    <span>ลงชื่อ</span><span class="sg-l">${sig ? `<img src="${sig}" alt="">` : ""}</span><span>${role}</span>
+    <span></span><span class="sg-n">${name ? `( ${esc(name)} )` : `(<i class="sg-b"></i>)`}</span><span></span>
+    ${date === undefined ? "" : `<span>วันที่</span><span class="sg-l sg-d">${esc(date)}</span><span></span>`}
+  </div>`;
+}
+
 // ------------------------------------------------------------------- PVD
 function pvdPage(sub) {
   const p = sub.payload || {}, req = new Set(p.requests || []);
@@ -75,13 +88,10 @@ function pvdPage(sub) {
       <div class="committee"><div>คณะกรรมการกองทุนลงนามอนุมัติ</div><div class="gap"></div>
         <div>.........................................................................</div><div>วันที่......................................</div></div>
       <div class="sigs">
-        <div>ลงชื่อ.......................................................พนักงาน</div>
-        <div class="c">( ${esc(sub.emp_name) || "......................................................."} )</div>
-        <div>วันที่.............................................................</div>
+        ${sigBlock({ role: "พนักงาน", name: sub.emp_name, sig: sigOf(p),
+                     date: sigOf(p) ? (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.submitted_at)) : "" })}
         <div class="gap"></div>
-        <div>ลงชื่อ.......................................................พยาน</div>
-        <div class="c">(.......................................................)</div>
-        <div>วันที่.............................................................</div>
+        ${sigBlock({ role: "พยาน", date: "" })}
       </div>
     </div>
     <div class="foot"><span>AKR-OHR-FM-020 Rev. 01</span><span>Effective Date:05-May-2026</span><span>Page 1 of 1</span></div>
@@ -115,9 +125,9 @@ function wefPage(sub, list, startNo, pageNo, pageCount) {
         <p>ที่อยู่ปัจจุบัน/ที่ติดต่อ ${fill(b.address, "54%")} ให้ได้รับจำนวน ${fill(b.shares ? thNum(b.shares) : "", "8%")} ส่วน</p>
       </div>`; }).join("")}
     <div class="wef-sign">
-      <div><div>ลงชื่อ ........................................... พยาน</div><div class="c">(......................................................)</div></div>
-      <div><div>ลงชื่อ ........................................... ผู้แสดงเจตนา</div><div class="c">( ${esc(sub.emp_name) || "......................................................"} )</div></div>
-      <div><div>ลงชื่อ ........................................... พยาน</div><div class="c">(......................................................)</div></div>
+      ${sigBlock({ role: "พยาน", w: "48mm" })}
+      ${sigBlock({ role: "ผู้แสดงเจตนา", name: sub.emp_name, sig: sigOf(p), w: "48mm" })}
+      ${sigBlock({ role: "พยาน", w: "48mm" })}
     </div>
     <div class="note"><b>หมายเหตุ :</b> ๑. กรณีไม่ได้กำหนดสัดส่วนไว้ให้ถือว่า ทุกคนมีสิทธิได้รับสัดส่วนที่เท่ากัน<br>
       <span class="ni">๒. ถ้าผู้รับประโยชน์คนใดถึงแก่ความตายไปก่อน ให้นำส่วนแบ่งของบุคคลนั้นจัดสรรให้แก่ผู้รับประโยชน์ที่ยังคงมีชีวิตอยู่ ตามสัดส่วนที่แต่ละคนจะได้รับ</span><br>
@@ -153,7 +163,13 @@ p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{
 .pvd-sign{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:8mm;white-space:nowrap}
 .committee{border:1.5px solid #000;padding:8px 14px;width:78mm;text-align:center;margin-top:22px}
 .committee .gap{height:22px}
-.sigs{flex:1}.sigs .gap{height:10px}
+.sigs{flex:none;display:flex;flex-direction:column;align-items:flex-start}.sigs .gap{height:10px}
+.sg{display:inline-grid;align-items:end;justify-content:start;column-gap:1.5mm;row-gap:2px}
+.sg-b{display:inline-block;width:90%;border-bottom:1px dotted #000;height:1em}
+.sg-l{border-bottom:1px dotted #000;height:7mm;position:relative;text-align:center;line-height:7mm}
+.sg-l img{position:absolute;left:50%;bottom:-1mm;transform:translateX(-50%);height:12mm;max-width:100%;object-fit:contain}
+.sg-d{color:#0b2e8a;font-weight:600}
+.sg-n{text-align:center}
 .foot{position:absolute;left:18mm;right:18mm;bottom:10mm;display:flex;justify-content:space-between;font-size:10.5px;color:#444}
 .ref{position:absolute;left:18mm;bottom:5mm;font-size:9px;color:#888}
 .wef-code{text-align:right;font-weight:700}.wef-code .pg{font-weight:400;font-size:11px}
