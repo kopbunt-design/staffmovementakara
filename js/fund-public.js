@@ -236,7 +236,7 @@ function pvdForm() {
 
     ${need.pol ? `<div class="fx-sec"><div class="fx-sec-t">นโยบายการลงทุน</div>
       ${PVD_POLICIES.map(x => `<label class="fx-radio"><input type="radio" name="pol" data-f="policy" value="${x.key}" ${p.policy === x.key ? "checked" : ""}>
-        <span><b>${x.label}</b> <span class="fx-muted">(${x.key})</span><br><span class="fx-small fx-muted">${x.risk}</span></span></label>`).join("")}
+        <span><b>${x.label}</b> <span class="fx-muted">(${x.key})</span><br><span class="fx-small fx-muted">${x.risk}${x.note ? ` · ${x.note}` : ""}</span></span></label>`).join("")}
     </div>` : ""}
 
     ${errBox()}

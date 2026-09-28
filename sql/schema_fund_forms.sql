@@ -224,7 +224,7 @@ begin
 
     -- ส่วนที่ 4 นโยบายการลงทุน
     if req ? 'apply' or req ? 'policy' then
-      if coalesce(p_payload->>'policy','') not in ('PF1103','PF4103','PF6103') then
+      if coalesce(p_payload->>'policy','') not in ('PF1103','PF4103','PF6103','PFM103','PF2103') then
         raise exception 'PVD_POLICY';
       end if;
     end if;
