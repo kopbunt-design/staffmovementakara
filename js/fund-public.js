@@ -55,15 +55,10 @@ const S = {
   result: null,       // { id, submitted_at }
 };
 // คนที่ HR เชิญคือคนที่ยังไม่เป็นสมาชิก — ติ๊ก "สมัคร" ไว้ให้ก่อน เปลี่ยนเองได้
-const newPvd = () => ({ requests: ["apply"], beneficiaries: [{ name: "", relation: "", other: "", percent: "100" }],
-  autoPct: true, rate: "", policy: "", consent: false });
+const newPvd = () => ({ requests: ["apply"], beneficiaries: [{ name: "", relation: "", other: "", percent: "" }],
+  rate: "", policy: "", consent: false });
 
-// ร้อยละผู้รับผลประโยชน์ต้องรวมได้ 100 พอดี — เพิ่ม/ลบคนแล้วแบ่งเท่ากันให้เอง (3 คน = 34/33/33)
-// จนกว่าพนักงานจะพิมพ์ตัวเลขเอง จากนั้นไม่ไปยุ่งกับตัวเลขที่เขาใส่
-function splitEven(list) {
-  const n = list.length, base = Math.floor(100 / n), rem = 100 - base * n;
-  list.forEach((b, i) => { b.percent = String(base + (i < rem ? 1 : 0)); });
-}
+// ร้อยละผู้รับผลประโยชน์ พนักงานกำหนดเองอิสระ ระบบไม่เฉลี่ยให้ — แค่บอกยอดรวม และส่งได้เมื่อรวมได้ 100 พอดี
 const pctTotal = p => p.beneficiaries.reduce((s, b) => s + (+b.percent || 0), 0);
 function sumBadge(tot) {
   const cls = tot === 100 ? "ok" : "bad";
@@ -160,7 +155,6 @@ function pvdForm() {
 
     ${need.ben ? `<div class="fx-sec"><div class="fx-sec-t">ผู้รับผลประโยชน์ <span class="fx-muted">(สูงสุด 3 คน)</span>
         ${sumBadge(pctTotal(p))}</div>
-      ${p.beneficiaries.length > 1 ? `<button class="fx-btn fx-link" data-act="split" type="button" style="padding-top:4px;">แบ่งเท่ากันทุกคน</button>` : ""}
       ${p.beneficiaries.map((b, i) => `<div class="fx-person">
         <div class="fx-person-h">คนที่ ${i + 1}${p.beneficiaries.length > 1 ? `<button class="fx-x" data-act="delben" data-i="${i}" type="button">ลบ</button>` : ""}</div>
         <label class="fx-l">ชื่อ-นามสกุล<input class="fx-i" data-f="pben.${i}.name" value="${esc(b.name)}"></label>
@@ -383,7 +377,7 @@ $app.addEventListener("input", e => {
     const clean = f.endsWith("percent") ? String(Math.min(100, +digits(e.target.value) || 0) || "") : digits(e.target.value);
     if (e.target.value !== clean) e.target.value = clean;
     setField(f, clean);
-    if (f.endsWith("percent")) { S.pvd.autoPct = false; $app.querySelector("#fxSum").outerHTML = sumBadge(pctTotal(S.pvd)); }
+    if (f.endsWith("percent")) { $app.querySelector("#fxSum").outerHTML = sumBadge(pctTotal(S.pvd)); }
     else $app.querySelector("#fxShareHint").innerHTML = shareHint(S.wef);
     return;
   }
@@ -419,10 +413,8 @@ $app.addEventListener("click", e => {
   else if (act === "back") go("choose");
   else if (act === "edit") go(S.form);
   else if (act === "toreview") { const [, err] = build(); if (err) { S.err = err; render(); return; } go("review"); }
-  else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" });
-    if (S.pvd.autoPct) splitEven(S.pvd.beneficiaries); render(); }
-  else if (act === "delben") { S.pvd.beneficiaries.splice(i, 1); if (S.pvd.autoPct) splitEven(S.pvd.beneficiaries); render(); }
-  else if (act === "split") { S.pvd.autoPct = true; splitEven(S.pvd.beneficiaries); render(); }
+  else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" }); render(); }
+  else if (act === "delben") { S.pvd.beneficiaries.splice(i, 1); render(); }
   else if (act === "addwben") { S.wef.beneficiaries.push({ name: "", relation: "", other: "", id_card: "", address: "", sameAddr: false, shares: "" }); render(); }
   else if (act === "delwben") { S.wef.beneficiaries.splice(i, 1); render(); }
   else if (act === "preview") { const [p] = build(); printSubmission(subOf(p)); }
