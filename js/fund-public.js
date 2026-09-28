@@ -178,7 +178,8 @@ function choose() {
   <div class="fx-card">
     <div class="fx-hello">สวัสดีคุณ ${esc(e.name)}<span>${esc(e.emp_code)} · ${esc(e.department || "-")}</span></div>
     ${locked() ? `<div class="fx-hint" style="margin-top:12px;"><b>HR รับเรื่องของท่านแล้ว</b> (${esc(FORM_NAME[latestAny().form_type])} #${latestAny().id})
-      <div class="fx-small">ไม่ต้องส่งเพิ่ม · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div></div>` : `
+      <div class="fx-small">ไม่ต้องส่งเพิ่ม · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div>
+      ${S.emp.latest ? `<button class="fx-btn fx-primary fx-block" data-act="dl" type="button" style="margin-top:10px;">⬇ ดาวน์โหลด PDF ฉบับที่ส่งไว้</button>` : ""}</div>` : `
     <p class="fx-muted">${forms.length > 1 ? "ท่านเลือกได้ <b>1 แบบ</b> — ถ้าส่งแล้วเปลี่ยนใจ ส่งแบบใหม่ได้ HR จะใช้ฉบับล่าสุดแทนฉบับเดิม" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
     <div class="fx-choices">
       ${forms.includes("pvd") ? card("pvd", "กองทุนสำรองเลี้ยงชีพ", "สมัครสมาชิก · เปลี่ยนผู้รับผลประโยชน์ · เปลี่ยนอัตราเงินสะสม · เปลี่ยนนโยบายการลงทุน", "แบบฟอร์ม AKR-OHR-FM-020") : ""}
@@ -191,6 +192,7 @@ function choose() {
       <div class="fx-hist-r${old || x.status === "cancelled" ? " fx-hist-old" : ""}"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
       <span class="fx-muted">${new Date(x.submitted_at).toLocaleDateString("th-TH")}</span>
       <span class="fx-tag st-${old ? "cancelled" : x.status}">${old ? "ยกเลิก · ใช้ฉบับล่าสุดแทน" : STATUS_TH[x.status] || x.status}</span>
+      ${!old && S.emp.latest?.id === x.id && x.status !== "rejected" ? `<button class="fx-btn fx-dl" data-act="dl" type="button">⬇ ดาวน์โหลด PDF</button>` : ""}
       ${!old && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
       ${locked() ? "" : `<div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div>`}</div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
@@ -428,6 +430,7 @@ async function doSubmit() {
   if (error) { S.err = errMsg(error); render(); return; }
   S.result = data;
   S.emp.history = [{ id: data.id, form_type: S.form, status: "submitted", submitted_at: data.submitted_at }, ...(S.emp.history || [])];
+  S.emp.latest = { id: data.id, form_type: S.form, status: "submitted", submitted_at: data.submitted_at, payload };
   go("done");
 }
 
@@ -495,6 +498,9 @@ $app.addEventListener("click", e => {
   else if (act === "delwben") { S.wef.beneficiaries.splice(i, 1); render(); }
   else if (act === "preview") { const [p] = build(); printSubmission(subOf(p)); }
   else if (act === "submit") doSubmit();
+  // ฉบับล่าสุดที่ส่งไว้ — เปิดหน้าพิมพ์ เลือก "บันทึกเป็น PDF" ได้
+  else if (act === "dl") { const l = S.emp.latest; if (l) printSubmission({ ...l, emp_code: S.emp.emp_code,
+    emp_name: S.emp.name || "", department: S.emp.department }); }
   else if (act === "clearsig") { cur().signature = null; render(); }
   else if (act === "print") { const [p] = build(); printSubmission(subOf(p)); }
   else if (act === "again") { if (S.form === "pvd") S.pvd = null; else S.wef = null; S.result = null; go("choose"); }

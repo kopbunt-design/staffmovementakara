@@ -169,6 +169,12 @@ begin
                'status', s.status, 'submitted_at', s.submitted_at,
                'hr_note', case when s.status = 'rejected' then s.hr_note end) order by s.submitted_at desc)
         from fund_form_submission s where s.emp_code = inv.emp_code), '[]'::jsonb),
+    -- ฉบับล่าสุด (ฟอร์มใดก็ได้) พร้อมเนื้อหา ให้พนักงานกลับมาดาวน์โหลด PDF ได้ทุกเมื่อ
+    'latest', (select jsonb_build_object('id', s.id, 'form_type', s.form_type, 'status', s.status,
+                                         'submitted_at', s.submitted_at, 'payload', s.payload)
+                 from fund_form_submission s
+                where s.emp_code = inv.emp_code and s.status <> 'cancelled'
+                order by s.submitted_at desc limit 1),
     -- ฟอร์มที่ฉบับล่าสุดถูกส่งกลับ: คืนข้อมูลเดิมให้แก้ต่อ ไม่ต้องกรอกใหม่หมด (ลายเซ็นไม่คืน ต้องเซ็นใหม่)
     -- เป็นข้อมูลของพนักงานเอง และผ่านการยืนยันลิงก์ + รหัส + เลขบัตรแล้ว
     'drafts', coalesce((
