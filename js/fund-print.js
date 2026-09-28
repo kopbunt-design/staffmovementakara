@@ -1,0 +1,189 @@
+// ============================================================================
+// พิมพ์แบบฟอร์มกองทุนจากข้อมูลที่พนักงานกรอก — หน้าตาตามฟอร์มกระดาษเดิม
+//   pvd → AKR-OHR-FM-020 Rev.01 (กองทุนสำรองเลี้ยงชีพ เค มาสเตอร์ พูล ฟันด์)
+//   wef → แบบ สกล.๕ (กองทุนสงเคราะห์ลูกจ้าง กรณีลูกจ้างตาย)
+//
+// ใช้ร่วมกัน 2 ที่: หน้าพนักงาน (fund.html) และหน้า HR (fund-forms.js)
+// ⚠️ ถ้าบริษัทออก Rev ใหม่ของฟอร์ม ให้แก้ข้อความ/เลขฟอร์มในไฟล์นี้ที่เดียว
+// ============================================================================
+
+export const PVD_REQUESTS = [
+  { key: "apply",       label: "ขอสมัครเข้าเป็นสมาชิกกองทุนสำรองเลี้ยงชีพ", parts: "ส่วนที่ 1 ถึง ส่วนที่ 4" },
+  { key: "beneficiary", label: "เปลี่ยนแปลงผู้รับผลประโยชน์",                parts: "ส่วนที่ 2" },
+  { key: "rate",        label: "เปลี่ยนแปลงอัตราการนำส่งเงินสะสม",           parts: "ส่วนที่ 3" },
+  { key: "policy",      label: "เปลี่ยนแปลงนโยบายการลงทุน",                  parts: "ส่วนที่ 4" },
+];
+export const PVD_POLICIES = [
+  { key: "PF1103", label: "ตราสารหนี้ระยะสั้นภาครัฐ สถาบันการเงิน", risk: "ความเสี่ยงต่ำ" },
+  { key: "PF4103", label: "ผสมหุ้นไม่เกิน 25%",                    risk: "ความเสี่ยงปานกลาง" },
+  { key: "PF6103", label: "ตราสารทุน",                            risk: "ความเสี่ยงสูง" },
+];
+export const FORM_NAME = { pvd: "กองทุนสำรองเลี้ยงชีพ", wef: "กองทุนสงเคราะห์ลูกจ้าง (สกล.5)" };
+
+const TH_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+                   "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const TH_DIGITS = "๐๑๒๓๔๕๖๗๘๙";
+const thNum = v => String(v).replace(/[0-9]/g, d => TH_DIGITS[d]);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+// โหลดโลโก้เป็น data URL ไว้ก่อน — หน้าต่างพิมพ์จะได้ไม่ต้องรอโหลดรูปเอง (บางเบราว์เซอร์สั่งพิมพ์ก่อนรูปมา)
+let LOGO_DATA = "";
+fetch("assets/logo.png").then(r => r.ok ? r.blob() : null).then(b => {
+  if (!b) return; const fr = new FileReader(); fr.onload = () => { LOGO_DATA = fr.result; }; fr.readAsDataURL(b);
+}).catch(() => {});
+
+export function thaiDate(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  return { d: d.getDate(), m: TH_MONTHS[d.getMonth()], y: d.getFullYear() + 543 };
+}
+
+// ช่องเส้นจุด: ถ้ามีค่าแสดงค่า ถ้าไม่มีเว้นเส้นไว้ให้เขียนมือ
+const fill = (v, w) => `<span class="f" style="min-width:${w}">${esc(v) || "&nbsp;"}</span>`;
+const box  = on => `<span class="bx">${on ? "✓" : ""}</span>`;
+
+// ------------------------------------------------------------------- PVD
+function pvdPage(sub) {
+  const p = sub.payload || {}, req = new Set(p.requests || []);
+  const showB = req.has("apply") || req.has("beneficiary");
+  const showR = req.has("apply") || req.has("rate");
+  const showP = req.has("apply") || req.has("policy");
+  const ben = showB ? (p.beneficiaries || []) : [];
+  const logo = LOGO_DATA || `${location.origin}/assets/logo.png`;
+  return `<section class="page pvd">
+    <div class="pvd-top"><img src="${logo}" alt="AKARA RESOURCES"><div class="pvd-site">Chatree Gold Mine</div></div>
+    <h1>กองทุนสำรองเลี้ยงชีพ เค มาสเตอร์ พูล ฟันด์ ซึ่งจดทะเบียนแล้ว<br>ในส่วนของบริษัท อัครา รีซอร์สเซส จำกัด (มหาชน)</h1>
+    <p>เรียน&nbsp;&nbsp;&nbsp;คณะกรรมการกองทุน</p>
+    <p class="ind">ข้าพเจ้า ${fill(sub.emp_name, "46%")} รหัสพนักงาน ${fill(sub.emp_code, "20%")}</p>
+    <p>สังกัดฝ่าย/แผนก ${fill(sub.department, "38%")} ขอแจ้งเรื่องเพื่อให้คณะกรรมการกองทุนพิจารณาดังนี้</p>
+    <p class="ind">โปรดทำเครื่อง ✓ สำหรับเรื่องที่เสนอเพื่อพิจารณา</p>
+    ${PVD_REQUESTS.map((r, i) => `<p class="ind">${box(req.has(r.key))} ${i + 1}. ${r.label} (${r.parts})</p>`).join("")}
+
+    <p class="mt"><b><u>ส่วนที่ 1</u></b> การสมัครเข้าเป็นสมาชิกกองทุนเป็นไปโดยความสมัครใจ และข้าพเจ้าขอรับรองว่าได้อ่าน ทราบ และเข้าใจข้อกำหนดและเงื่อนไขของกองทุนโดยครบถ้วนแล้ว ข้าพเจ้าตกลงและยินยอมให้บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน) ซึ่งเป็นนายจ้าง หักเงินสะสมจากเงินได้รายเดือนของข้าพเจ้า เพื่อนำส่งเข้ากองทุนตามข้อบังคับของกองทุน และ/หรือการเปลี่ยนแปลงใด ๆ ที่อาจมีขึ้นในอนาคต</p>
+
+    <p class="mt"><b><u>ส่วนที่ 2</u></b> การแต่งตั้งผู้รับผลประโยชน์ และ / หรือ การเปลี่ยนแปลงผู้รับผลประโยชน์</p>
+    <p>ในกรณีที่ข้าพเจ้าถึงแก่กรรม ข้าพเจ้าขอแต่งตั้งให้คณะกรรมการกองทุนจ่ายเงินผลประโยชน์ใด ๆ ที่ข้าพเจ้าพึงได้รับให้แก่ผู้รับผลประโยชน์ ดังต่อไปนี้</p>
+    ${[0, 1, 2].map(i => { const b = ben[i] || {}; return `<p class="ind2">${i + 1}.&nbsp; ชื่อ-นามสกุล ${fill(b.name, "34%")} ความสัมพันธ์ ${fill(b.relation, "13%")} ร้อยละ ${fill(b.percent, "7%")}</p>`; }).join("")}
+
+    <p class="mt"><b><u>ส่วนที่ 3</u></b> การยินยอมให้หักเงินสะสม / การแจ้งการเปลี่ยนแปลงอัตราการนำส่งเงินสะสม</p>
+    <p>ข้าพเจ้ายินยอมให้บริษัทหักเงินจากเงินได้รายเดือนของข้าพเจ้า เพื่อนำส่งเข้ากองทุนสะสม โดยสามารถเลือกอัตราการหักเงินได้ตั้งแต่ ร้อยละ 2 ถึงร้อยละ 15 ของเงินเดือน ทั้งนี้ การสมทบเงินของบริษัทให้เป็นไปตามระเบียบของกองทุนที่กำหนด ดังนั้น ข้าพเจ้ายินยอมให้บริษัทหักเงินสะสมในอัตรา ร้อยละ ${fill(showR ? p.rate : "", "9%")} ของเงินเดือน</p>
+
+    <p class="mt"><b><u>ส่วนที่ 4</u></b> การเลือกนโยบายการลงทุน / การแจ้งเปลี่ยนแปลงนโยบายการลงทุน</p>
+    <p>ข้าพเจ้ามีความประสงค์ให้นำเงินสะสม และเงินสมทบของข้าพเจ้าทั้งหมด ลงทุนในนโยบายการลงทุนดังนี้</p>
+    ${PVD_POLICIES.map((x, i) => `<p class="ind">${box(showP && p.policy === x.key)} ${i + 1}. ${x.label} (${x.key})</p>`).join("")}
+
+    <div class="pvd-sign">
+      <div class="committee"><div>คณะกรรมการกองทุนลงนามอนุมัติ</div><div class="gap"></div>
+        <div>.........................................................................</div><div>วันที่......................................</div></div>
+      <div class="sigs">
+        <div>ลงชื่อ.......................................................พนักงาน</div>
+        <div class="c">( ${esc(sub.emp_name) || "......................................................."} )</div>
+        <div>วันที่.............................................................</div>
+        <div class="gap"></div>
+        <div>ลงชื่อ.......................................................พยาน</div>
+        <div class="c">(.......................................................)</div>
+        <div>วันที่.............................................................</div>
+      </div>
+    </div>
+    <div class="foot"><span>AKR-OHR-FM-020 Rev. 01</span><span>Effective Date:05-May-2026</span><span>Page 1 of 1</span></div>
+    ${refLine(sub)}
+  </section>`;
+}
+
+// ------------------------------------------------------------------- WEF
+function wefPage(sub, list, startNo, pageNo, pageCount) {
+  const p = sub.payload || {}, a = p.addr || {}, dt = thaiDate(sub.submitted_at);
+  const idBoxes = s => `<span class="idb">${Array.from({ length: 13 }, (_, i) => `<i>${esc((s || "")[i] || "")}</i>`).join("")}</span>`;
+  const total = (p.beneficiaries || []).length;
+  return `<section class="page wef">
+    <div class="wef-code">แบบ สกล.๕${pageCount > 1 ? ` <span class="pg">(แผ่นที่ ${thNum(pageNo)}/${thNum(pageCount)})</span>` : ""}</div>
+    <div class="wef-rcv"><div>เลขที่คำขอ.................................</div><div>วันที่รับ.......................................</div><div>ผู้รับ............................................</div></div>
+    <h2>แบบหนังสือกำหนดบุคคลผู้จะพึงได้รับเงินจากกองทุนสงเคราะห์ลูกจ้าง กรณีลูกจ้างตาย</h2>
+    <p class="r">เขียนที่ ${fill(p.written_at, "46%")}</p>
+    <p class="r">วันที่ ${fill(thNum(dt.d), "8%")} เดือน ${fill(dt.m, "20%")} พ.ศ. ${fill(thNum(dt.y), "10%")}</p>
+    <p class="ind">ข้าพเจ้า ${fill([p.title, sub.emp_name].filter(Boolean).join(" "), "75%")}</p>
+    <p>อายุ ${fill(p.age ? thNum(p.age) : "", "16%")} ปี สัญชาติ ${fill(p.nationality, "26%")} เป็นสมาชิกกองทุนสงเคราะห์ลูกจ้าง</p>
+    <p class="idrow"><span>เลขประจำตัวประชาชน</span>${idBoxes(p.is_thai !== false ? p.id_card : "")}</p>
+    <p class="idrow"><span>เลขหนังสือเดินทาง (สำหรับผู้ซึ่งไม่มีสัญชาติไทย)<br>หรือบัตรประจำตัวผู้ซึ่งไม่มีสัญชาติไทย</span>${p.is_thai === false ? fill(p.passport, "40%") : idBoxes("")}</p>
+    <p>อยู่บ้านเลขที่ ${fill(a.no, "13%")} หมู่ที่ ${fill(a.moo, "6%")} ตรอก/ซอย ${fill(a.soi, "17%")} ถนน ${fill(a.road, "17%")}</p>
+    <p>ตำบล/แขวง ${fill(a.subdistrict, "22%")} อำเภอ/เขต ${fill(a.district, "22%")} จังหวัด ${fill(a.province, "18%")}</p>
+    <p>รหัสไปรษณีย์ ${fill(a.zip, "14%")} โทรศัพท์ ${fill(p.phone, "50%")}</p>
+    <p>ขอแสดงเจตนาระบุตัวผู้รับประโยชน์ในเงินจากกองทุนสงเคราะห์ลูกจ้าง เมื่อข้าพเจ้าถึงแก่ความตาย ข้าพเจ้าประสงค์ให้จ่ายเงินดังกล่าวแก่บุคคล รวม ${fill(thNum(total), "10%")} คน ดังมีรายชื่อต่อไปนี้</p>
+    ${[0, 1, 2, 3].map(i => { const b = list[i] || {}; const no = startNo + i; return `
+      <div class="ben">
+        <p class="ind">${thNum(no)}. ชื่อ-สกุล ${fill(b.name, "46%")} เกี่ยวข้องเป็น ${fill(b.relation, "20%")}</p>
+        <p>เลขประจำตัวประชาชน (ต้องระบุ) ${fill(b.id_card, "62%")}</p>
+        <p>ที่อยู่ปัจจุบัน/ที่ติดต่อ ${fill(b.address, "54%")} ให้ได้รับจำนวน ${fill(b.shares ? thNum(b.shares) : "", "8%")} ส่วน</p>
+      </div>`; }).join("")}
+    <div class="wef-sign">
+      <div><div>ลงชื่อ ........................................... พยาน</div><div class="c">(......................................................)</div></div>
+      <div><div>ลงชื่อ ........................................... ผู้แสดงเจตนา</div><div class="c">( ${esc(sub.emp_name) || "......................................................"} )</div></div>
+      <div><div>ลงชื่อ ........................................... พยาน</div><div class="c">(......................................................)</div></div>
+    </div>
+    <div class="note"><b>หมายเหตุ :</b> ๑. กรณีไม่ได้กำหนดสัดส่วนไว้ให้ถือว่า ทุกคนมีสิทธิได้รับสัดส่วนที่เท่ากัน<br>
+      <span class="ni">๒. ถ้าผู้รับประโยชน์คนใดถึงแก่ความตายไปก่อน ให้นำส่วนแบ่งของบุคคลนั้นจัดสรรให้แก่ผู้รับประโยชน์ที่ยังคงมีชีวิตอยู่ ตามสัดส่วนที่แต่ละคนจะได้รับ</span><br>
+      <span class="ni">๓. กรณีมีบุคคลผู้รับประโยชน์มากกว่าที่ระบุไว้ให้จัดทำแบบเพิ่มเติม</span><br>
+      <span class="ni">๔. หากมีการเปลี่ยนแปลงบุคคลผู้รับประโยชน์ให้จัดทำแบบหนังสือกำหนดบุคคลผู้จะพึงได้รับเงินจากกองทุนสงเคราะห์ลูกจ้าง กรณีลูกจ้างตาย ฉบับใหม่ และแจ้งให้กรมสวัสดิการและคุ้มครองแรงงานทราบทันที</span></div>
+    ${refLine(sub)}
+  </section>`;
+}
+
+const refLine = sub => sub.id
+  ? `<div class="ref">อ้างอิงคำขอออนไลน์ #${sub.id} · ส่งเมื่อ ${new Date(sub.submitted_at).toLocaleString("th-TH")}</div>` : "";
+
+export function formPagesHTML(sub) {
+  if (sub.form_type === "pvd") return pvdPage(sub);
+  const all = sub.payload?.beneficiaries || [];
+  const chunks = [];
+  for (let i = 0; i < Math.max(all.length, 1); i += 4) chunks.push(all.slice(i, i + 4));
+  return chunks.map((c, i) => wefPage(sub, c, i * 4 + 1, i + 1, chunks.length)).join("");
+}
+
+const PRINT_CSS = `
+@page{size:A4;margin:0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun',sans-serif;color:#000;background:#eee}
+.page{width:210mm;min-height:297mm;padding:14mm 18mm 12mm;background:#fff;margin:0 auto 8mm;position:relative;font-size:13px;line-height:1.62;page-break-after:always}
+.page:last-child{page-break-after:auto}
+p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{text-align:right}.c{text-align:center}
+.f{display:inline-block;border-bottom:1px dotted #000;padding:0 6px;line-height:1.35;color:#0b2e8a;font-weight:600}
+.bx{display:inline-block;width:14px;height:14px;border:1.2px solid #000;text-align:center;line-height:12px;font-size:12px;font-weight:700;vertical-align:-2px;margin-right:2px}
+.pvd-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #2B5AC7;padding-bottom:4px;margin-bottom:10px}
+.pvd-top img{height:46px}.pvd-site{font-size:13px}
+.pvd h1{font-size:16px;text-align:center;line-height:1.5;margin-bottom:8px}
+.pvd-sign{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:8mm;white-space:nowrap}
+.committee{border:1.5px solid #000;padding:8px 14px;width:78mm;text-align:center;margin-top:22px}
+.committee .gap{height:22px}
+.sigs{flex:1}.sigs .gap{height:10px}
+.foot{position:absolute;left:18mm;right:18mm;bottom:10mm;display:flex;justify-content:space-between;font-size:10.5px;color:#444}
+.ref{position:absolute;left:18mm;bottom:5mm;font-size:9px;color:#888}
+.wef-code{text-align:right;font-weight:700}.wef-code .pg{font-weight:400;font-size:11px}
+.wef-rcv{margin:4px 0 0 auto;width:62mm;border:1px solid #000;padding:4px 8px;font-size:12px;line-height:1.6}
+.wef h2{font-size:15px;text-align:center;margin:8px 0 4px}
+.idrow{display:flex;align-items:center;gap:6mm;margin:2px 0}.idrow>span:first-child{width:70mm;line-height:1.35}
+.idb{display:inline-flex}.idb i{width:6.2mm;height:6.2mm;border:1px solid #000;border-left:none;font-style:normal;text-align:center;line-height:6mm;color:#0b2e8a;font-weight:600}
+.idb i:first-child{border-left:1px solid #000}
+.ben{margin-top:3px}
+.wef-sign{display:grid;grid-template-columns:1fr 1fr;gap:8px 8mm;margin-top:14px;white-space:nowrap;font-size:12.5px}
+.note{margin-top:12px;font-size:12px;line-height:1.6}.note .ni{padding-left:15mm;display:inline-block}
+@media print{body{background:#fff}.page{margin:0}}
+`;
+
+// เปิดหน้าต่างใหม่แล้วสั่งพิมพ์ (ผู้ใช้เลือก "บันทึกเป็น PDF" ได้)
+// ⚠️ ต้องเรียกจาก event คลิกโดยตรง ไม่งั้นเบราว์เซอร์มือถือบล็อก popup
+export function printSubmission(sub) {
+  const w = window.open("", "_blank");
+  if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — กรุณาอนุญาต pop-up แล้วลองใหม่"); return; }
+  w.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${esc(FORM_NAME[sub.form_type])} — ${esc(sub.emp_code)}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>${PRINT_CSS}</style></head><body>${formPagesHTML(sub)}</body></html>`);
+  w.document.close();
+  // รอฟอนต์ + โลโก้โหลดก่อน ไม่งั้นพิมพ์ออกมาเป็นฟอนต์ระบบ
+  setTimeout(async () => {
+    const imgs = [...w.document.images].filter(i => !i.complete)
+      .map(i => new Promise(r => { i.onload = i.onerror = r; }));
+    try { await Promise.all([w.document.fonts?.ready, ...imgs]); } catch (_) { /* พิมพ์ต่อได้แม้ฟอนต์ไม่มา */ }
+    w.focus(); w.print();
+  }, 400);
+}

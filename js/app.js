@@ -224,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","users","settings"];
+const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","users","settings"];
 let currentPage = "dashboard";
 
 export function navigate(page) {
@@ -285,6 +285,7 @@ async function renderPage(page) {
   else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
   else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
   else if(page==="uniform") (await import("./uniform.js")).renderUniform();
+  else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="shiftcompare") (await import("./shift-compare.js")).renderShiftCompare();
   else if(page==="users") (await import("./users.js")).renderUsers();
@@ -300,10 +301,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
   th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
-        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
   en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
-        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";

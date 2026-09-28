@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แบบฟอร์มกองทุน · Akara Resources</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/fund.css?v=1">
+</head>
+<body>
+<!--
+  หน้าให้พนักงานกรอกแบบฟอร์มกองทุนเอง — ไม่ต้องมีบัญชีในระบบ HR
+  เข้าได้เฉพาะคนที่ HR เชิญ: ลิงก์ส่วนตัว https://<โดเมน>/fund.html?t=<token>
+  + รหัสพนักงาน + เลขบัตรประชาชน 5 ตัวท้าย ผ่านฟังก์ชัน fund_form_lookup (sql/schema_fund_forms.sql)
+  ลิงก์ของแต่ละคนคัดลอกได้จากเมนู แบบฟอร์มกองทุน > คำเชิญ
+-->
+<header class="fx-top">
+  <img src="assets/logo.png" alt="Akara Resources">
+  <span>แบบฟอร์มกองทุนพนักงาน</span>
+</header>
+<main id="app" class="fx-main"></main>
+<footer class="fx-foot">ฝ่ายทรัพยากรบุคคล · บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน)</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module" src="js/fund-public.js?v=1"></script>
+</body>
+</html>
