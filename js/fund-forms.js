@@ -15,7 +15,8 @@ import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-p
 
 const STATUS = {
   submitted: { th: "ส่งออนไลน์แล้ว", c: "var(--amber)", bg: "var(--amber-light)" },
-  received:  { th: "รับตัวจริงแล้ว",  c: "var(--blue)",  bg: "var(--blue-light)" },
+  accepted:  { th: "รับเรื่องแล้ว (เซ็นออนไลน์)", c: "var(--blue)", bg: "var(--blue-light)" },
+  received:  { th: "รับเอกสารตัวจริงแล้ว", c: "var(--blue)", bg: "var(--blue-light)" },
   approved:  { th: "อนุมัติแล้ว",     c: "var(--green)", bg: "var(--green-light)" },
   sent:      { th: "ส่งหน่วยงานแล้ว", c: "var(--green)", bg: "var(--green-light)" },
   rejected:  { th: "ส่งกลับแก้ไข",   c: "var(--red)",   bg: "var(--red-light)" },
@@ -24,11 +25,19 @@ const STATUS = {
 const badge = s => { const x = STATUS[s] || {}; return `<span class="badge" style="color:${x.c};background:${x.bg};">${esc(x.th || s)}</span>`; };
 const canEdit = () => can("data.fundforms.write");
 // ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
-const NEXT = {
-  submitted: { to: "received", label: "รับตัวจริงแล้ว" },
-  received:  { to: "approved", label: "อนุมัติแล้ว" },
-  approved:  { to: "sent",     label: "ส่งหน่วยงานแล้ว" },
-};
+// ตอนรับเรื่องมี 2 ทาง: เซ็นออนไลน์มาแล้ว (รับเรื่องได้เลย) หรือพิมพ์ไปเซ็นสดแล้วเอาตัวจริงมาส่ง
+// หลัง HR รับเรื่องแล้ว พนักงานส่งฉบับใหม่ไม่ได้ (fund_form_submit กันไว้) จนกว่า HR จะส่งกลับให้แก้
+const signedOnline = r => /^data:image\/png;base64,/.test(r.payload?.signature || "");
+function nextSteps(r) {
+  if (r.status === "submitted") return [
+    ...(signedOnline(r) ? [{ to: "accepted", label: "รับเรื่อง (เซ็นออนไลน์)" }] : []),
+    { to: "received", label: "รับเอกสารตัวจริง (เซ็นสด)" }];
+  return { accepted: [{ to: "approved", label: "อนุมัติแล้ว" }], received: [{ to: "approved", label: "อนุมัติแล้ว" }],
+           approved: [{ to: "sent", label: "ส่งหน่วยงานแล้ว" }] }[r.status] || [];
+}
+// ปุ่มขั้นถัดไป — เฉพาะฉบับล่าสุดของคนนั้น ฉบับที่ถูกแทนแล้วไม่ต้องรับ
+const stepBtns = (r, small) => canEdit() && isLatest(r) ? nextSteps(r).map((x, i) =>
+  `<button class="btn ${small ? "btn-sm " : ""}${i === nextSteps(r).length - 1 ? "btn-primary" : "btn-secondary"}" data-next="${r.id}" data-to="${x.to}">✓ ${x.label}</button>`).join(" ") : "";
 
 async function setStatus(r, status, note) {
   const upd = { status, updated_by: currentUser?.id || null };
@@ -93,11 +102,16 @@ async function boot() {
   draw();
 }
 
-// คำขอล่าสุดต่อคนต่อแบบฟอร์ม (ฉบับใหม่แทนฉบับเก่า)
-function latestOnly(list) {
-  const seen = new Set();
-  return list.filter(r => { const k = r.form_type + "|" + r.emp_code; if (seen.has(k)) return false; seen.add(k); return r.status !== "cancelled"; });
+// หนึ่งคนยึดฉบับล่าสุดฉบับเดียว ไม่ว่าจะเป็นฟอร์มไหน — คนที่ได้ทั้งสองกองทุนต้องเลือกอย่างใดอย่างหนึ่ง
+// (สมาชิกกองทุนสำรองเลี้ยงชีพไม่ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง) ส่งแบบใหม่มา = เปลี่ยนใจ ฉบับเก่าถูกแทน
+// rows เรียงใหม่ → เก่าอยู่แล้ว
+function latestByEmp() {
+  const m = new Map();
+  for (const r of rows) if (r.status !== "cancelled" && !m.has(r.emp_code)) m.set(r.emp_code, r);
+  return m;
 }
+const isLatest = r => latestByEmp().get(r.emp_code)?.id === r.id;
+function latestOnly(list) { const m = latestByEmp(); return list.filter(r => m.get(r.emp_code)?.id === r.id); }
 
 function filtered() {
   let list = rows.filter(r => r.form_type === tab);
@@ -111,13 +125,13 @@ function filtered() {
 function draw() {
   const pg = document.getElementById("pageFundforms");
   const cnt = t => latestOnly(rows.filter(r => r.form_type === t)).length;
-  const waiting = rows.filter(r => r.status === "submitted").length;
+  const waiting = rows.filter(r => r.status === "submitted" && isLatest(r)).length;
   const live = invites.filter(i => !i.cancelled).length;
   pg.innerHTML = `
   <div class="page-header">
     <div><div class="page-heading">แบบฟอร์มกองทุน</div>
       <div class="page-sub">เฉพาะพนักงานที่เชิญ · แต่ละคนได้ลิงก์ส่วนตัว ยืนยันตัวด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย
-        ${waiting ? ` · <b style="color:var(--amber);">รอรับตัวจริง ${waiting} รายการ</b>` : ""}</div></div>
+        ${waiting ? ` · <b style="color:var(--amber);">รอรับเรื่อง ${waiting} คน</b>` : ""}</div></div>
     <div class="header-actions">
       ${tab === "invite"
         ? `${canEdit() ? `<button class="btn btn-secondary" id="ffAdd">+ เชิญทีละคน</button>
@@ -152,8 +166,9 @@ function listHTML() {
       <tbody>${list.map(r => `<tr>
         <td>${r.id}</td><td style="white-space:nowrap;">${dt(r.submitted_at)}</td>
         <td style="white-space:nowrap;">${esc(r.emp_code)}</td><td>${esc(r.emp_name)}</td><td>${esc(r.department)}</td>
-        <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}</td>
-        <td style="white-space:nowrap;">${canEdit() && NEXT[r.status] ? `<button class="btn btn-sm btn-primary" data-next="${r.id}">✓ ${NEXT[r.status].label}</button> ` : ""}<button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
+        <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}${isLatest(r) || r.status === "cancelled" ? ""
+          : `<div class="text-muted" style="font-size:11px;">ถูกแทนด้วยฉบับใหม่ #${latestByEmp().get(r.emp_code)?.id}</div>`}</td>
+        <td style="white-space:nowrap;">${stepBtns(r, true)} <button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
           <button class="btn btn-sm btn-secondary" data-print="${r.id}">พิมพ์</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">ยังไม่มีคำขอ</div>
          <div class="empty-sub">ส่งลิงก์ให้พนักงานกรอกได้เลย</div></div>`}
@@ -166,7 +181,8 @@ function listHTML() {
 const latestSub = (code, form) => rows.find(r => r.emp_code === code && r.form_type === form && r.status !== "cancelled");
 const expired = inv => new Date(inv.expires_at) < new Date();
 // ฉบับที่ HR ส่งกลับให้แก้ ยังไม่นับว่าส่งแล้ว
-const doneAll = inv => inv.forms.every(f => { const s = latestSub(inv.emp_code, f); return s && s.status !== "rejected"; });
+// ส่งแล้ว = ฉบับล่าสุดของคนนั้น (ฟอร์มใดก็ได้ในที่เปิดให้) และไม่ได้ถูกส่งกลับ — กรอกฟอร์มเดียวก็ครบ
+const doneAll = inv => { const s = latestByEmp().get(inv.emp_code); return !!s && s.status !== "rejected"; };
 function invState(inv) {
   if (inv.cancelled) return "cancelled";
   if (doneAll(inv)) return "done";
@@ -175,8 +191,8 @@ function invState(inv) {
 }
 const INV_STATE = {
   new:       { th: "ยังไม่เปิดลิงก์",      c: "var(--muted)", bg: "#f1f5f9" },
-  opened:    { th: "เปิดแล้ว ยังส่งไม่ครบ", c: "var(--amber)", bg: "var(--amber-light)" },
-  done:      { th: "ส่งครบแล้ว",          c: "var(--green)", bg: "var(--green-light)" },
+  opened:    { th: "เปิดแล้ว ยังไม่ส่ง", c: "var(--amber)", bg: "var(--amber-light)" },
+  done:      { th: "ส่งแล้ว",              c: "var(--green)", bg: "var(--green-light)" },
   expired:   { th: "ลิงก์หมดอายุ",         c: "var(--red)",   bg: "var(--red-light)" },
   cancelled: { th: "ยกเลิกแล้ว",          c: "var(--muted)", bg: "#f1f5f9" },
 };
@@ -190,7 +206,7 @@ function inviteHTML() {
   const n = k => all.filter(i => invState(i) === k).length;
   const formCell = inv => inv.forms.map(f => { const s = latestSub(inv.emp_code, f);
     return `<div style="white-space:nowrap;margin:2px 0;"><span style="display:inline-block;min-width:92px;">${SHORT[f]}</span>
-      ${s ? `${badge(s.status)} <a href="#" data-view="${s.id}" style="font-size:12px;color:var(--blue);">#${s.id}</a>` : `<span class="text-muted" style="font-size:12px;">ยังไม่ส่ง</span>`}</div>`; }).join("");
+      ${s ? `${badge(s.status)} <a href="#" data-view="${s.id}" style="font-size:12px;color:var(--blue);">#${s.id}</a>${isLatest(s) ? "" : ` <span class="text-muted" style="font-size:11px;">ถูกแทนแล้ว</span>`}` : `<span class="text-muted" style="font-size:12px;">ยังไม่ส่ง</span>`}</div>`; }).join("");
   return `<div class="section" style="padding-top:12px;padding-bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input class="form-control" id="ffISearch" placeholder="ค้นหา รหัส / ชื่อ / ฝ่าย" value="${esc(iSearch)}" style="max-width:260px;">
       <select class="form-control" id="ffIFilter" style="max-width:220px;">
@@ -404,8 +420,8 @@ function wire() {
   const lt = pg.querySelector("#ffLatest"); if (lt) lt.onchange = () => { onlyLatest = lt.checked; draw(); };
   const itf = pg.querySelector("#ffIFilter"); if (itf) itf.onchange = () => { iFilter = itf.value; draw(); };
   pg.querySelectorAll("[data-next]").forEach(b => b.onclick = async () => {
-    const r = rows.find(x => x.id === +b.dataset.next), lbl = NEXT[r.status].label;
-    b.disabled = true; if (await setStatus(r, NEXT[r.status].to)) { draw(); toast(`#${r.id} ${lbl}`, "success"); } else b.disabled = false;
+    const r = rows.find(x => x.id === +b.dataset.next), to = b.dataset.to;
+    b.disabled = true; if (await setStatus(r, to)) { draw(); toast(`#${r.id} ${STATUS[to].th}`, "success"); } else b.disabled = false;
   });
   pg.querySelectorAll("[data-view]").forEach(b => b.onclick = e => { e.preventDefault(); openDetail(+b.dataset.view); });
   pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printSubmission(rows.find(r => r.id === +b.dataset.print)));
@@ -464,10 +480,10 @@ function openDetail(id) {
     </div>
     <div class="modal-footer">
       ${canEdit() ? `<button class="btn btn-danger" data-del style="margin-right:auto;">ลบ</button>` : ""}
-      ${canEdit() && !["rejected", "cancelled"].includes(r.status) ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ส่งกลับให้กรอกใหม่</button>` : ""}
+      ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ส่งกลับให้กรอกใหม่</button>` : ""}
       <button class="btn btn-secondary" data-print>พิมพ์ฟอร์ม</button>
       ${canEdit() ? `<button class="btn btn-secondary" data-save>บันทึก</button>` : ""}
-      ${canEdit() && NEXT[r.status] ? `<button class="btn btn-primary" data-next>✓ ${NEXT[r.status].label}</button>` : ""}
+      ${stepBtns(r, false)}
     </div></div>`;
   document.getElementById("modalPortal").appendChild(el);
   const close = () => el.remove();
@@ -481,10 +497,10 @@ function openDetail(id) {
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
     Object.assign(r, upd, { updated_at: new Date().toISOString() }); close(); draw(); toast("บันทึกแล้ว", "success");
   });
-  el.querySelector("[data-next]")?.addEventListener("click", async () => {
-    const lbl = NEXT[r.status].label;
-    if (await setStatus(r, NEXT[r.status].to, el.querySelector("#ffNote").value.trim() || null)) { close(); draw(); toast(lbl, "success"); }
-  });
+  el.querySelectorAll("[data-next]").forEach(b => b.addEventListener("click", async () => {
+    const to = b.dataset.to;
+    if (await setStatus(r, to, el.querySelector("#ffNote").value.trim() || null)) { close(); draw(); toast(STATUS[to].th, "success"); }
+  }));
   el.querySelector("[data-back]")?.addEventListener("click", async () => {
     if (await sendBack(r)) { close(); draw(); toast("ส่งกลับแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย", "success"); }
   });

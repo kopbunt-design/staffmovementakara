@@ -16,9 +16,10 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&l
 
 const RELATIONS = ["บิดา", "มารดา", "คู่สมรส", "บุตร", "พี่น้อง", "ญาติ", "อื่น ๆ"];
 const NAT_TH = { Thai: "ไทย", Lao: "ลาว", Australian: "ออสเตรเลีย" };
-const STATUS_TH = { submitted: "ส่งแล้ว รอ HR รับเอกสาร", received: "HR รับเอกสารแล้ว", approved: "อนุมัติแล้ว",
+const STATUS_TH = { submitted: "ส่งแล้ว รอ HR รับเรื่อง", accepted: "HR รับเรื่องแล้ว", received: "HR รับเอกสารตัวจริงแล้ว", approved: "อนุมัติแล้ว",
                     sent: "ส่งหน่วยงานแล้ว", rejected: "ส่งกลับให้แก้ไข", cancelled: "ยกเลิก" };
 const ERR_TH = {
+  ALREADY_RECEIVED: "HR รับเรื่องของท่านแล้ว จึงส่งใหม่ไม่ได้ — ถ้าต้องการแก้ไข กรุณาติดต่อ HR",
   VERIFY_FAILED: "ยืนยันตัวตนไม่ผ่าน กรุณาเริ่มใหม่",
   LOCKED: "กรอกผิดหลายครั้งเกินไป ระบบล็อกลิงก์นี้ไว้ 30 นาที — ถ้ามั่นใจว่าข้อมูลถูก ติดต่อ HR",
   EXPIRED: "ลิงก์นี้หมดอายุแล้ว กรุณาติดต่อ HR เพื่อขอลิงก์ใหม่",
@@ -79,6 +80,10 @@ const newWef = e => ({
 });
 
 // ---------------------------------------------------- ฉบับที่ HR ส่งกลับให้แก้
+// ฉบับล่าสุดของคนนี้ (ฟอร์มใดก็ได้) — ได้สองกองทุนก็ต้องเลือกอย่างเดียว ส่งแบบใหม่ = แทนฉบับเดิม
+const latestAny = () => (S.emp?.history || []).find(x => x.status !== "cancelled");
+// HR รับเรื่องไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (DB กันซ้ำอีกชั้น)
+const locked = () => ["accepted", "received", "approved", "sent"].includes(latestAny()?.status);
 const latestOf = f => (S.emp?.history || []).find(x => x.form_type === f && x.status !== "cancelled");
 const relIn = r => RELATIONS.includes(r) ? { relation: r, other: "" } : { relation: r ? "อื่น ๆ" : "", other: r || "" };
 function pvdFromDraft(d) {
@@ -99,12 +104,12 @@ function wefFromDraft(d, emp) {
 // เปิดฟอร์ม — ถ้าฉบับล่าสุดถูกส่งกลับ เติมข้อมูลเดิมให้แก้ต่อ
 function startForm(f) {
   S.form = f; S.result = null;
-  const d = latestOf(f)?.status === "rejected" ? S.emp.drafts?.[f] : null;
+  const d = latestOf(f)?.status === "rejected" && latestAny()?.form_type === f ? S.emp.drafts?.[f] : null;
   if (f === "pvd" && !S.pvd) S.pvd = d ? pvdFromDraft(d) : newPvd();
   if (f === "wef" && !S.wef) S.wef = d ? wefFromDraft(d, S.emp) : newWef(S.emp);
   go(f);
 }
-const rejectBox = f => { const x = latestOf(f); if (x?.status !== "rejected") return "";
+const rejectBox = f => { const x = latestAny(); if (x?.form_type !== f || x.status !== "rejected") return "";
   return `<div class="fx-err" style="margin-top:8px;"><b>HR ส่งกลับให้แก้ไข</b>${x.hr_note ? `: ${esc(x.hr_note)}` : ""}
     <div class="fx-small">ข้อมูลเดิมกรอกไว้ให้แล้ว แก้ตามที่แจ้ง แล้วส่งใหม่ได้เลย</div></div>`; };
 
@@ -172,17 +177,19 @@ function choose() {
   return `${stepper()}
   <div class="fx-card">
     <div class="fx-hello">สวัสดีคุณ ${esc(e.name)}<span>${esc(e.emp_code)} · ${esc(e.department || "-")}</span></div>
-    <p class="fx-muted">${forms.length > 1 ? "เลือกแบบฟอร์มที่ต้องการกรอก (กรอกได้ทั้งสองแบบ)" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
+    ${locked() ? `<div class="fx-hint" style="margin-top:12px;"><b>HR รับเรื่องของท่านแล้ว</b> (${esc(FORM_NAME[latestAny().form_type])} #${latestAny().id})
+      <div class="fx-small">ไม่ต้องส่งเพิ่ม · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div></div>` : `
+    <p class="fx-muted">${forms.length > 1 ? "ท่านเลือกได้ <b>1 แบบ</b> — ถ้าส่งแล้วเปลี่ยนใจ ส่งแบบใหม่ได้ HR จะใช้ฉบับล่าสุดแทนฉบับเดิม" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
     <div class="fx-choices">
       ${forms.includes("pvd") ? card("pvd", "กองทุนสำรองเลี้ยงชีพ", "สมัครสมาชิก · เปลี่ยนผู้รับผลประโยชน์ · เปลี่ยนอัตราเงินสะสม · เปลี่ยนนโยบายการลงทุน", "แบบฟอร์ม AKR-OHR-FM-020") : ""}
       ${forms.includes("wef") ? card("wef", "กองทุนสงเคราะห์ลูกจ้าง", "ระบุผู้รับประโยชน์ กรณีลูกจ้างเสียชีวิต (ส่งกรมสวัสดิการและคุ้มครองแรงงาน)", "แบบ สกล.5") : ""}
-    </div>
+    </div>`}
     ${h.length ? `<div class="fx-hist"><div class="fx-hist-t">คำขอที่เคยส่ง</div>${h.map(x => `
       <div class="fx-hist-r"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
       <span class="fx-muted">${new Date(x.submitted_at).toLocaleDateString("th-TH")}</span>
       <span class="fx-tag st-${x.status}">${STATUS_TH[x.status] || x.status}</span>
       ${x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`).join("")}
-      <div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div></div>` : ""}
+      ${locked() ? "" : `<div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div>`}</div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
   </div>`;
 }
@@ -389,7 +396,7 @@ function done() {
       <div class="fx-small fx-muted">ถ้าพิมพ์เองไม่ได้ แจ้ง HR ด้วยเลขที่คำขอ HR พิมพ์ให้ได้</div>
     </div>
     <button class="fx-btn fx-primary fx-block" data-act="print">พิมพ์ / บันทึก PDF</button>
-    <button class="fx-btn fx-ghost fx-block" data-act="again">กรอกแบบฟอร์มอื่น</button>
+    <button class="fx-btn fx-ghost fx-block" data-act="again">กลับหน้าแรก</button>
   </div>`;
 }
 
@@ -404,7 +411,7 @@ async function doVerify(form) {
   S.emp = data;
   // เปิดให้ฟอร์มเดียวและยังไม่ได้ส่ง (หรือถูกส่งกลับ) → เข้าฟอร์มเลย · ส่งไปแล้วให้เห็นสถานะที่หน้าเลือกก่อน
   const only = (data.forms || []).length === 1 && data.forms[0];
-  if (only && (!latestOf(only) || latestOf(only).status === "rejected")) { startForm(only); return; }
+  if (only && !locked() && (!latestOf(only) || latestOf(only).status === "rejected")) { startForm(only); return; }
   go("choose");
 }
 

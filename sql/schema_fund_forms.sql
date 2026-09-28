@@ -48,12 +48,16 @@ create table if not exists fund_form_submission (
   department    text,
   payload       jsonb not null,          -- ข้อมูลทั้งหมดในฟอร์ม (โครงตามแต่ละแบบ)
   status        text not null default 'submitted'
-                check (status in ('submitted','received','approved','sent','rejected','cancelled')),
+                check (status in ('submitted','accepted','received','approved','sent','rejected','cancelled')),
   hr_note       text,
   submitted_at  timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
   updated_by    uuid references auth.users(id)
 );
+-- accepted = HR รับเรื่องที่เซ็นออนไลน์ · received = HR รับเอกสารตัวจริงที่เซ็นสด (ตารางที่สร้างไปแล้วต้องเปลี่ยน check)
+alter table fund_form_submission drop constraint if exists fund_form_submission_status_check;
+alter table fund_form_submission add constraint fund_form_submission_status_check
+  check (status in ('submitted','accepted','received','approved','sent','rejected','cancelled'));
 alter table fund_form_submission add column if not exists invite_id bigint references fund_form_invite(id) on delete set null;
 create index if not exists fund_form_submission_emp_idx
   on fund_form_submission (form_type, emp_code, submitted_at desc);
@@ -185,6 +189,12 @@ begin
   inv := fund_verify_invite(p_token, p_emp_code, p_last5);
   if inv.id is null then raise exception 'VERIFY_FAILED'; end if;
   if not (p_form_type = any(inv.forms)) then raise exception 'FORM_NOT_ALLOWED'; end if;
+  -- HR รับเรื่องฉบับล่าสุดไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (status = rejected)
+  if (select s.status from fund_form_submission s
+       where s.emp_code = inv.emp_code and s.status <> 'cancelled'
+       order by s.submitted_at desc limit 1) in ('accepted','received','approved','sent') then
+    raise exception 'ALREADY_RECEIVED';
+  end if;
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then raise exception 'BAD_PAYLOAD'; end if;
   if coalesce((p_payload->>'consent')::boolean, false) is not true then raise exception 'NO_CONSENT'; end if;
 
