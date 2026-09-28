@@ -60,7 +60,9 @@ input,select,textarea,button{font-family:inherit;font-size:16px}  /* 16px กั
 .fx-hist-r{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:14px;padding:6px 0;border-bottom:1px dashed var(--border)}
 .fx-tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--muted);margin-left:auto}
 .st-submitted{background:var(--amber-light);color:var(--amber)}
-.st-received,.st-approved,.st-sent{background:var(--green-light);color:var(--green)}
+.st-accepted,.st-received,.st-approved,.st-sent{background:var(--green-light);color:var(--green)}
+.st-cancelled{background:var(--bg);color:var(--muted)}
+.fx-hist-old>span:first-child{color:var(--muted);text-decoration:line-through}
 .st-rejected{background:var(--red-light);color:var(--red)}
 
 .fx-sec{border-top:1px solid var(--border);margin-top:18px;padding-top:14px}

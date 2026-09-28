@@ -184,11 +184,14 @@ function choose() {
       ${forms.includes("pvd") ? card("pvd", "กองทุนสำรองเลี้ยงชีพ", "สมัครสมาชิก · เปลี่ยนผู้รับผลประโยชน์ · เปลี่ยนอัตราเงินสะสม · เปลี่ยนนโยบายการลงทุน", "แบบฟอร์ม AKR-OHR-FM-020") : ""}
       ${forms.includes("wef") ? card("wef", "กองทุนสงเคราะห์ลูกจ้าง", "ระบุผู้รับประโยชน์ กรณีลูกจ้างเสียชีวิต (ส่งกรมสวัสดิการและคุ้มครองแรงงาน)", "แบบ สกล.5") : ""}
     </div>`}
-    ${h.length ? `<div class="fx-hist"><div class="fx-hist-t">คำขอที่เคยส่ง</div>${h.map(x => `
-      <div class="fx-hist-r"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
+    ${h.length ? `<div class="fx-hist"><div class="fx-hist-t">คำขอที่เคยส่ง</div>${h.map(x => {
+      // ยึดฉบับล่าสุดฉบับเดียว — ฉบับก่อนหน้าแสดงเป็นยกเลิก ให้พนักงานเห็นชัดว่าอันไหนใช้จริง
+      const old = x !== latestAny() && x.status !== "cancelled";
+      return `
+      <div class="fx-hist-r${old || x.status === "cancelled" ? " fx-hist-old" : ""}"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
       <span class="fx-muted">${new Date(x.submitted_at).toLocaleDateString("th-TH")}</span>
-      <span class="fx-tag st-${x.status}">${STATUS_TH[x.status] || x.status}</span>
-      ${x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`).join("")}
+      <span class="fx-tag st-${old ? "cancelled" : x.status}">${old ? "ยกเลิก · ใช้ฉบับล่าสุดแทน" : STATUS_TH[x.status] || x.status}</span>
+      ${!old && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
       ${locked() ? "" : `<div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div>`}</div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
   </div>`;

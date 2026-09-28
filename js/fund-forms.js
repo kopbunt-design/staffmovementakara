@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, can, esc, toast, currentUser } from "./app.js";
+import { allEmployees, can, esc as escText, toast, currentUser } from "./app.js";
 import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-print.js";
 
 // ============================================================================
@@ -12,6 +12,10 @@ import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-p
 // ⚠️ เลขบัตรประชาชนเต็มในไฟล์นำเข้า ไม่ออกจากเบราว์เซอร์ — ตัดเหลือ 5 ตัวท้ายก่อนบันทึก
 // ข้อมูลเลขบัตรผู้รับประโยชน์อยู่ใน payload — ตารางนี้อ่านได้เฉพาะคนที่มีสิทธิ์ page.fundforms
 // ============================================================================
+
+// esc ใน app.js รับแค่ข้อความ — ในฟอร์มมีตัวเลข (อายุ ร้อยละ จำนวนส่วน) ส่งเข้าไปตรง ๆ จะ error
+// แล้วหน้าต่างรายละเอียดเปิดไม่ขึ้น (ปุ่ม "ดู" ของ สกล.5 เคยกดไม่ได้เพราะช่องอายุ)
+const esc = v => escText(v == null ? "" : String(v));
 
 const STATUS = {
   submitted: { th: "ส่งออนไลน์แล้ว", c: "var(--amber)", bg: "var(--amber-light)" },
@@ -59,7 +63,8 @@ async function setStatus(r, status, note) {
   return true;
 }
 async function sendBack(r) {
-  const note = prompt(`ส่งคำขอ #${r.id} ของ ${r.emp_name} กลับให้กรอกใหม่\nเหตุผล (พนักงานจะเห็นข้อความนี้):`, r.hr_note || "");
+  const was = STATUS[r.status]?.th || r.status;
+  const note = prompt(`ยกเลิกคำขอ #${r.id} ของ ${r.emp_name} (ตอนนี้: ${was}) ให้พนักงานแก้แล้วส่งใหม่\nเหตุผล (พนักงานจะเห็นข้อความนี้):`, r.hr_note || "");
   if (note === null) return false;
   return setStatus(r, "rejected", note.trim() || null);
 }
@@ -169,6 +174,7 @@ function listHTML() {
         <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}${isLatest(r) || r.status === "cancelled" ? ""
           : `<div class="text-muted" style="font-size:11px;">ถูกแทนด้วยฉบับใหม่ #${latestByEmp().get(r.emp_code)?.id}</div>`}</td>
         <td style="white-space:nowrap;">${stepBtns(r, true)} <button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
+          ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-sm btn-secondary" data-back="${r.id}" style="color:var(--red);" title="ยกเลิกรายการนี้ ให้พนักงานแก้แล้วส่งใหม่ (ใช้ได้แม้อนุมัติแล้ว)">ยกเลิก ให้แก้ไข</button>` : ""}
           <button class="btn btn-sm btn-secondary" data-print="${r.id}">พิมพ์</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">ยังไม่มีคำขอ</div>
          <div class="empty-sub">ส่งลิงก์ให้พนักงานกรอกได้เลย</div></div>`}
@@ -423,6 +429,10 @@ function wire() {
     const r = rows.find(x => x.id === +b.dataset.next), to = b.dataset.to;
     b.disabled = true; if (await setStatus(r, to)) { draw(); toast(`#${r.id} ${STATUS[to].th}`, "success"); } else b.disabled = false;
   });
+  pg.querySelectorAll("[data-back]").forEach(b => b.onclick = async () => {
+    const r = rows.find(x => x.id === +b.dataset.back);
+    if (await sendBack(r)) { draw(); toast(`#${r.id} ยกเลิกแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย`, "success"); }
+  });
   pg.querySelectorAll("[data-view]").forEach(b => b.onclick = e => { e.preventDefault(); openDetail(+b.dataset.view); });
   pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printSubmission(rows.find(r => r.id === +b.dataset.print)));
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openInvite(invites.find(i => i.id === +b.dataset.edit)));
@@ -480,7 +490,7 @@ function openDetail(id) {
     </div>
     <div class="modal-footer">
       ${canEdit() ? `<button class="btn btn-danger" data-del style="margin-right:auto;">ลบ</button>` : ""}
-      ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ส่งกลับให้กรอกใหม่</button>` : ""}
+      ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ยกเลิก ให้พนักงานแก้ไข</button>` : ""}
       <button class="btn btn-secondary" data-print>พิมพ์ฟอร์ม</button>
       ${canEdit() ? `<button class="btn btn-secondary" data-save>บันทึก</button>` : ""}
       ${stepBtns(r, false)}
@@ -502,7 +512,7 @@ function openDetail(id) {
     if (await setStatus(r, to, el.querySelector("#ffNote").value.trim() || null)) { close(); draw(); toast(STATUS[to].th, "success"); }
   }));
   el.querySelector("[data-back]")?.addEventListener("click", async () => {
-    if (await sendBack(r)) { close(); draw(); toast("ส่งกลับแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย", "success"); }
+    if (await sendBack(r)) { close(); draw(); toast("ยกเลิกแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย", "success"); }
   });
   el.querySelector("[data-del]")?.addEventListener("click", async () => {
     if (!confirm(`ลบคำขอ #${r.id} ของ ${r.emp_name}? ย้อนกลับไม่ได้ (ถ้าแค่ไม่ใช้แล้ว ให้เปลี่ยนสถานะเป็น "ยกเลิก" แทน)`)) return;
