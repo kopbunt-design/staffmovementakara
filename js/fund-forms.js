@@ -23,6 +23,37 @@ const STATUS = {
 };
 const badge = s => { const x = STATUS[s] || {}; return `<span class="badge" style="color:${x.c};background:${x.bg};">${esc(x.th || s)}</span>`; };
 const canEdit = () => can("data.fundforms.write");
+// ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
+const NEXT = {
+  submitted: { to: "received", label: "รับตัวจริงแล้ว" },
+  received:  { to: "approved", label: "อนุมัติแล้ว" },
+  approved:  { to: "sent",     label: "ส่งหน่วยงานแล้ว" },
+};
+
+async function setStatus(r, status, note) {
+  const upd = { status, updated_by: currentUser?.id || null };
+  if (note !== undefined) upd.hr_note = note;
+  const { error } = await supabase.from("fund_form_submission").update(upd).eq("id", r.id);
+  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return false; }
+  Object.assign(r, upd, { updated_at: new Date().toISOString() });
+  // ส่งกลับให้แก้ แต่ลิงก์หมด/ใกล้หมดอายุ → ต่อให้อีก 14 วัน ไม่งั้นพนักงานเข้าไปแก้ไม่ได้
+  if (status === "rejected") {
+    const inv = invites.find(i => i.emp_code === r.emp_code && !i.cancelled);
+    const soon = Date.now() + 3 * 864e5;
+    if (inv && new Date(inv.expires_at) < soon) {
+      const expires_at = new Date(Date.now() + 14 * 864e5).toISOString();
+      const { error: e2 } = await supabase.from("fund_form_invite").update({ expires_at }).eq("id", inv.id);
+      if (!e2) inv.expires_at = expires_at;
+    }
+    if (!inv) toast("คนนี้ไม่มีคำเชิญที่ใช้ได้ — ต้องเชิญใหม่ก่อน พนักงานถึงจะเข้าไปแก้ได้", "error");
+  }
+  return true;
+}
+async function sendBack(r) {
+  const note = prompt(`ส่งคำขอ #${r.id} ของ ${r.emp_name} กลับให้กรอกใหม่\nเหตุผล (พนักงานจะเห็นข้อความนี้):`, r.hr_note || "");
+  if (note === null) return false;
+  return setStatus(r, "rejected", note.trim() || null);
+}
 const dt = s => s ? new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 const dOnly = s => s ? new Date(s).toLocaleDateString("th-TH", { dateStyle: "medium" }) : "-";
 const empName = e => [e.firstname_th, e.lastname_th].filter(Boolean).join(" ");
@@ -122,7 +153,7 @@ function listHTML() {
         <td>${r.id}</td><td style="white-space:nowrap;">${dt(r.submitted_at)}</td>
         <td style="white-space:nowrap;">${esc(r.emp_code)}</td><td>${esc(r.emp_name)}</td><td>${esc(r.department)}</td>
         <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}</td>
-        <td style="white-space:nowrap;"><button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
+        <td style="white-space:nowrap;">${canEdit() && NEXT[r.status] ? `<button class="btn btn-sm btn-primary" data-next="${r.id}">✓ ${NEXT[r.status].label}</button> ` : ""}<button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
           <button class="btn btn-sm btn-secondary" data-print="${r.id}">พิมพ์</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">ยังไม่มีคำขอ</div>
          <div class="empty-sub">ส่งลิงก์ให้พนักงานกรอกได้เลย</div></div>`}
@@ -134,7 +165,8 @@ function listHTML() {
 // คำขอล่าสุดของคนนี้ในฟอร์มนี้ (ถ้ามี)
 const latestSub = (code, form) => rows.find(r => r.emp_code === code && r.form_type === form && r.status !== "cancelled");
 const expired = inv => new Date(inv.expires_at) < new Date();
-const doneAll = inv => inv.forms.every(f => latestSub(inv.emp_code, f));
+// ฉบับที่ HR ส่งกลับให้แก้ ยังไม่นับว่าส่งแล้ว
+const doneAll = inv => inv.forms.every(f => { const s = latestSub(inv.emp_code, f); return s && s.status !== "rejected"; });
 function invState(inv) {
   if (inv.cancelled) return "cancelled";
   if (doneAll(inv)) return "done";
@@ -371,6 +403,10 @@ function wire() {
   const st = pg.querySelector("#ffStatus"); if (st) st.onchange = () => { fStatus = st.value; draw(); };
   const lt = pg.querySelector("#ffLatest"); if (lt) lt.onchange = () => { onlyLatest = lt.checked; draw(); };
   const itf = pg.querySelector("#ffIFilter"); if (itf) itf.onchange = () => { iFilter = itf.value; draw(); };
+  pg.querySelectorAll("[data-next]").forEach(b => b.onclick = async () => {
+    const r = rows.find(x => x.id === +b.dataset.next), lbl = NEXT[r.status].label;
+    b.disabled = true; if (await setStatus(r, NEXT[r.status].to)) { draw(); toast(`#${r.id} ${lbl}`, "success"); } else b.disabled = false;
+  });
   pg.querySelectorAll("[data-view]").forEach(b => b.onclick = e => { e.preventDefault(); openDetail(+b.dataset.view); });
   pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printSubmission(rows.find(r => r.id === +b.dataset.print)));
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openInvite(invites.find(i => i.id === +b.dataset.edit)));
@@ -428,8 +464,10 @@ function openDetail(id) {
     </div>
     <div class="modal-footer">
       ${canEdit() ? `<button class="btn btn-danger" data-del style="margin-right:auto;">ลบ</button>` : ""}
+      ${canEdit() && !["rejected", "cancelled"].includes(r.status) ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ส่งกลับให้กรอกใหม่</button>` : ""}
       <button class="btn btn-secondary" data-print>พิมพ์ฟอร์ม</button>
-      ${canEdit() ? `<button class="btn btn-primary" data-save>บันทึก</button>` : ""}
+      ${canEdit() ? `<button class="btn btn-secondary" data-save>บันทึก</button>` : ""}
+      ${canEdit() && NEXT[r.status] ? `<button class="btn btn-primary" data-next>✓ ${NEXT[r.status].label}</button>` : ""}
     </div></div>`;
   document.getElementById("modalPortal").appendChild(el);
   const close = () => el.remove();
@@ -442,6 +480,13 @@ function openDetail(id) {
     const { error } = await supabase.from("fund_form_submission").update(upd).eq("id", r.id);
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
     Object.assign(r, upd, { updated_at: new Date().toISOString() }); close(); draw(); toast("บันทึกแล้ว", "success");
+  });
+  el.querySelector("[data-next]")?.addEventListener("click", async () => {
+    const lbl = NEXT[r.status].label;
+    if (await setStatus(r, NEXT[r.status].to, el.querySelector("#ffNote").value.trim() || null)) { close(); draw(); toast(lbl, "success"); }
+  });
+  el.querySelector("[data-back]")?.addEventListener("click", async () => {
+    if (await sendBack(r)) { close(); draw(); toast("ส่งกลับแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย", "success"); }
   });
   el.querySelector("[data-del]")?.addEventListener("click", async () => {
     if (!confirm(`ลบคำขอ #${r.id} ของ ${r.emp_name}? ย้อนกลับไม่ได้ (ถ้าแค่ไม่ใช้แล้ว ให้เปลี่ยนสถานะเป็น "ยกเลิก" แทน)`)) return;

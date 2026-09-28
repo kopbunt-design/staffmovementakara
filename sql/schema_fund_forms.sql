@@ -159,10 +159,21 @@ begin
     'forms',       to_jsonb(inv.forms),
     'expires_at',  inv.expires_at,
     -- คำขอที่เคยส่ง (ให้พนักงานเห็นว่าส่งไปแล้ว ไม่ต้องส่งซ้ำ) — ไม่คืนเนื้อหาในฟอร์ม
+    -- ฉบับที่ HR ส่งกลับ แนบเหตุผลไปด้วย พนักงานจะได้รู้ว่าต้องแก้อะไร
     'history', coalesce((
       select jsonb_agg(jsonb_build_object('id', s.id, 'form_type', s.form_type,
-               'status', s.status, 'submitted_at', s.submitted_at) order by s.submitted_at desc)
-        from fund_form_submission s where s.emp_code = inv.emp_code), '[]'::jsonb)
+               'status', s.status, 'submitted_at', s.submitted_at,
+               'hr_note', case when s.status = 'rejected' then s.hr_note end) order by s.submitted_at desc)
+        from fund_form_submission s where s.emp_code = inv.emp_code), '[]'::jsonb),
+    -- ฟอร์มที่ฉบับล่าสุดถูกส่งกลับ: คืนข้อมูลเดิมให้แก้ต่อ ไม่ต้องกรอกใหม่หมด (ลายเซ็นไม่คืน ต้องเซ็นใหม่)
+    -- เป็นข้อมูลของพนักงานเอง และผ่านการยืนยันลิงก์ + รหัส + เลขบัตรแล้ว
+    'drafts', coalesce((
+      select jsonb_object_agg(x.form_type, x.payload - 'signature' - 'consent')
+        from (select distinct on (form_type) form_type, status, payload
+                from fund_form_submission
+               where emp_code = inv.emp_code and status <> 'cancelled'
+               order by form_type, submitted_at desc) x
+       where x.status = 'rejected'), '{}'::jsonb)
   );
 end $$;
 

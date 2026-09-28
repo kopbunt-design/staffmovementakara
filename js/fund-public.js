@@ -78,6 +78,36 @@ const newWef = e => ({
   consent: false,
 });
 
+// ---------------------------------------------------- ฉบับที่ HR ส่งกลับให้แก้
+const latestOf = f => (S.emp?.history || []).find(x => x.form_type === f && x.status !== "cancelled");
+const relIn = r => RELATIONS.includes(r) ? { relation: r, other: "" } : { relation: r ? "อื่น ๆ" : "", other: r || "" };
+function pvdFromDraft(d) {
+  const bs = (d.beneficiaries || []).map(b => ({ name: b.name || "", ...relIn(b.relation), percent: b.percent ? String(b.percent) : "" }));
+  return { ...newPvd(), requests: d.requests?.length ? d.requests : ["apply"],
+           beneficiaries: bs.length ? bs : newPvd().beneficiaries,
+           rate: d.rate ? String(d.rate) : "", policy: d.policy || "" };
+}
+function wefFromDraft(d, emp) {
+  const w = newWef(emp);
+  const bs = (d.beneficiaries || []).map(b => ({ name: b.name || "", ...relIn(b.relation), id_card: b.id_card || "",
+    address: b.address || "", sameAddr: false, shares: b.shares ? String(b.shares) : "" }));
+  return { ...w, title: d.title || w.title, age: d.age ?? w.age, is_thai: d.is_thai !== false,
+           nationality: d.nationality || w.nationality, id_card: d.id_card || "", passport: d.passport || "",
+           phone: d.phone || w.phone, written_at: d.written_at || w.written_at, addr: { ...w.addr, ...(d.addr || {}) },
+           beneficiaries: bs.length ? bs : w.beneficiaries };
+}
+// เปิดฟอร์ม — ถ้าฉบับล่าสุดถูกส่งกลับ เติมข้อมูลเดิมให้แก้ต่อ
+function startForm(f) {
+  S.form = f; S.result = null;
+  const d = latestOf(f)?.status === "rejected" ? S.emp.drafts?.[f] : null;
+  if (f === "pvd" && !S.pvd) S.pvd = d ? pvdFromDraft(d) : newPvd();
+  if (f === "wef" && !S.wef) S.wef = d ? wefFromDraft(d, S.emp) : newWef(S.emp);
+  go(f);
+}
+const rejectBox = f => { const x = latestOf(f); if (x?.status !== "rejected") return "";
+  return `<div class="fx-err" style="margin-top:8px;"><b>HR ส่งกลับให้แก้ไข</b>${x.hr_note ? `: ${esc(x.hr_note)}` : ""}
+    <div class="fx-small">ข้อมูลเดิมกรอกไว้ให้แล้ว แก้ตามที่แจ้ง แล้วส่งใหม่ได้เลย</div></div>`; };
+
 function go(step) { S.step = step; S.err = ""; render(); window.scrollTo({ top: 0, behavior: "smooth" }); }
 
 // ---------------------------------------------------------------- render
@@ -150,7 +180,8 @@ function choose() {
     ${h.length ? `<div class="fx-hist"><div class="fx-hist-t">คำขอที่เคยส่ง</div>${h.map(x => `
       <div class="fx-hist-r"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
       <span class="fx-muted">${new Date(x.submitted_at).toLocaleDateString("th-TH")}</span>
-      <span class="fx-tag st-${x.status}">${STATUS_TH[x.status] || x.status}</span></div>`).join("")}
+      <span class="fx-tag st-${x.status}">${STATUS_TH[x.status] || x.status}</span>
+      ${x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`).join("")}
       <div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div></div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
   </div>`;
@@ -171,6 +202,7 @@ function pvdForm() {
   return `${stepper()}
   <div class="fx-card">
     <h1>กองทุนสำรองเลี้ยงชีพ</h1>
+    ${rejectBox("pvd")}
     <div class="fx-sec"><div class="fx-sec-t">เรื่องที่ขอ <span class="fx-muted">(เลือกได้มากกว่า 1 ข้อ)</span></div>
       ${PVD_REQUESTS.map(r => { const dis = apply && r.key !== "apply";
         return `<label class="fx-chk ${dis ? "dis" : ""}"><input type="checkbox" data-act="req" value="${r.key}"
@@ -214,6 +246,7 @@ function wefForm() {
   return `${stepper()}
   <div class="fx-card">
     <h1>กองทุนสงเคราะห์ลูกจ้าง <span class="fx-muted fx-small">แบบ สกล.5</span></h1>
+    ${rejectBox("wef")}
     <p class="fx-muted">ระบุผู้ที่จะได้รับเงินจากกองทุน หากท่านเสียชีวิต</p>
 
     <div class="fx-sec"><div class="fx-sec-t">ข้อมูลของท่าน</div>
@@ -369,8 +402,9 @@ async function doVerify(form) {
   if (error) { S.err = errMsg(error); render(); return; }
   if (!data) { S.err = "ข้อมูลไม่ตรงกับคำเชิญ ตรวจรหัสพนักงานและเลขบัตร 5 ตัวท้ายอีกครั้ง (ถ้ายังไม่ได้ ติดต่อ HR)"; render(); return; }
   S.emp = data;
-  // เปิดให้ฟอร์มเดียว ไม่ต้องให้เลือก
-  if ((data.forms || []).length === 1) { S.form = data.forms[0]; S.form === "pvd" ? (S.pvd = newPvd()) : (S.wef = newWef(data)); go(S.form); return; }
+  // เปิดให้ฟอร์มเดียวและยังไม่ได้ส่ง (หรือถูกส่งกลับ) → เข้าฟอร์มเลย · ส่งไปแล้วให้เห็นสถานะที่หน้าเลือกก่อน
+  const only = (data.forms || []).length === 1 && data.forms[0];
+  if (only && (!latestOf(only) || latestOf(only).status === "rejected")) { startForm(only); return; }
   go("choose");
 }
 
@@ -440,8 +474,7 @@ function rerenderKeepFocus(el) {
 $app.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b || b.tagName === "INPUT" || b.tagName === "FORM") return;
   const act = b.dataset.act, i = +b.dataset.i;
-  if (act === "pick") { S.form = b.dataset.form; S.result = null;
-    if (S.form === "pvd" && !S.pvd) S.pvd = newPvd(); if (S.form === "wef" && !S.wef) S.wef = newWef(S.emp); go(S.form); }
+  if (act === "pick") startForm(b.dataset.form);
   else if (act === "logout") { Object.assign(S, { emp: null, pvd: null, wef: null, cred: { code: "", last5: "" } }); go("verify"); }
   else if (act === "back") go("choose");
   else if (act === "edit") go(S.form);
