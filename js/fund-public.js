@@ -55,7 +55,25 @@ const S = {
   result: null,       // { id, submitted_at }
 };
 // คนที่ HR เชิญคือคนที่ยังไม่เป็นสมาชิก — ติ๊ก "สมัคร" ไว้ให้ก่อน เปลี่ยนเองได้
-const newPvd = () => ({ requests: ["apply"], beneficiaries: [{ name: "", relation: "", other: "", percent: "" }], rate: "", policy: "", consent: false });
+const newPvd = () => ({ requests: ["apply"], beneficiaries: [{ name: "", relation: "", other: "", percent: "100" }],
+  autoPct: true, rate: "", policy: "", consent: false });
+
+// ร้อยละผู้รับผลประโยชน์ต้องรวมได้ 100 พอดี — เพิ่ม/ลบคนแล้วแบ่งเท่ากันให้เอง (3 คน = 34/33/33)
+// จนกว่าพนักงานจะพิมพ์ตัวเลขเอง จากนั้นไม่ไปยุ่งกับตัวเลขที่เขาใส่
+function splitEven(list) {
+  const n = list.length, base = Math.floor(100 / n), rem = 100 - base * n;
+  list.forEach((b, i) => { b.percent = String(base + (i < rem ? 1 : 0)); });
+}
+const pctTotal = p => p.beneficiaries.reduce((s, b) => s + (+b.percent || 0), 0);
+function sumBadge(tot) {
+  const cls = tot === 100 ? "ok" : "bad";
+  const txt = tot === 100 ? "รวม 100% ✓" : tot > 100 ? `รวม ${tot}% · เกินมา ${tot - 100}%` : `รวม ${tot}% · ขาดอีก ${100 - tot}%`;
+  return `<span class="fx-sum ${cls}" id="fxSum">${txt}</span>`;
+}
+const shareHint = w => { const tot = w.beneficiaries.reduce((s, b) => s + (+b.shares || 0), 0);
+  return (tot ? `แบ่งเป็น ${tot} ส่วน: ${w.beneficiaries.map(b => `${esc(b.name || "?")} ${+b.shares || 0}/${tot}`).join(" · ")}`
+              : "ถ้าไม่ระบุจำนวนส่วน ทุกคนจะได้รับเท่ากัน")
+       + (w.beneficiaries.length > 4 ? " · เกิน 4 คน ระบบจะพิมพ์แบบฟอร์มเป็น 2 แผ่น" : ""); };
 const newWef = e => ({
   title: ["นาย", "นาง", "นางสาว"].includes(e.title) ? e.title : e.gender === "Male" ? "นาย" : "",
   age: ageFrom(e.dob), is_thai: true, nationality: "ไทย",
@@ -129,7 +147,6 @@ function relSelect(prefix, i, b) {
 
 function pvdForm() {
   const p = S.pvd, need = pvdNeeds(p), apply = p.requests.includes("apply");
-  const tot = p.beneficiaries.reduce((s, b) => s + (+b.percent || 0), 0);
   return `${stepper()}
   <div class="fx-card">
     <h1>กองทุนสำรองเลี้ยงชีพ</h1>
@@ -142,12 +159,13 @@ function pvdForm() {
     </div>
 
     ${need.ben ? `<div class="fx-sec"><div class="fx-sec-t">ผู้รับผลประโยชน์ <span class="fx-muted">(สูงสุด 3 คน)</span>
-        <span class="fx-sum ${tot === 100 ? "ok" : "bad"}">รวม ${tot}%</span></div>
+        ${sumBadge(pctTotal(p))}</div>
+      ${p.beneficiaries.length > 1 ? `<button class="fx-btn fx-link" data-act="split" type="button" style="padding-top:4px;">แบ่งเท่ากันทุกคน</button>` : ""}
       ${p.beneficiaries.map((b, i) => `<div class="fx-person">
         <div class="fx-person-h">คนที่ ${i + 1}${p.beneficiaries.length > 1 ? `<button class="fx-x" data-act="delben" data-i="${i}" type="button">ลบ</button>` : ""}</div>
         <label class="fx-l">ชื่อ-นามสกุล<input class="fx-i" data-f="pben.${i}.name" value="${esc(b.name)}"></label>
         <div class="fx-row"><label class="fx-l">ความสัมพันธ์${relSelect("pben", i, b)}</label>
-          <label class="fx-l fx-w30">ร้อยละ<input class="fx-i" type="number" inputmode="numeric" min="1" max="100" data-f="pben.${i}.percent" value="${esc(b.percent)}"></label></div>
+          <label class="fx-l fx-w30">ร้อยละ<input class="fx-i" inputmode="numeric" maxlength="3" autocomplete="off" data-f="pben.${i}.percent" value="${esc(b.percent)}"></label></div>
       </div>`).join("")}
       ${p.beneficiaries.length < 3 ? `<button class="fx-btn fx-ghost" data-act="addben" type="button">+ เพิ่มผู้รับผลประโยชน์</button>` : ""}
     </div>` : ""}
@@ -172,7 +190,6 @@ function pvdForm() {
 function wefForm() {
   const w = S.wef, a = w.addr, e = S.emp;
   const idOk = !w.id_card || (validThaiId(w.id_card) && w.id_card.endsWith(S.cred.last5));
-  const shareTot = w.beneficiaries.reduce((s, b) => s + (+b.shares || 0), 0);
   const inp = (label, f, v, extra = "") => `<label class="fx-l">${label}<input class="fx-i" data-f="${f}" value="${esc(v)}" ${extra}></label>`;
   return `${stepper()}
   <div class="fx-card">
@@ -203,15 +220,14 @@ function wefForm() {
         <div class="fx-person-h">คนที่ ${i + 1}${w.beneficiaries.length > 1 ? `<button class="fx-x" data-act="delwben" data-i="${i}" type="button">ลบ</button>` : ""}</div>
         ${inp("ชื่อ-สกุล", `wben.${i}.name`, b.name)}
         <div class="fx-row"><label class="fx-l">เกี่ยวข้องเป็น${relSelect("wben", i, b)}</label>
-          <label class="fx-l fx-w30">ได้รับ (ส่วน)<input class="fx-i" type="number" inputmode="numeric" min="1" data-f="wben.${i}.shares" value="${esc(b.shares)}" placeholder="เท่ากัน"></label></div>
+          <label class="fx-l fx-w30">ได้รับ (ส่วน)<input class="fx-i" inputmode="numeric" maxlength="3" autocomplete="off" data-f="wben.${i}.shares" value="${esc(b.shares)}" placeholder="เท่ากัน"></label></div>
         <label class="fx-l">เลขประจำตัวประชาชน (ต้องระบุ)<input class="fx-i ${ok ? "" : "bad"}" data-f="wben.${i}.id_card" value="${esc(b.id_card)}" inputmode="numeric" maxlength="13"></label>
         ${ok ? "" : `<div class="fx-bad">เลขบัตรไม่ถูกต้อง</div>`}
         <label class="fx-chk"><input type="checkbox" data-act="sameaddr" data-i="${i}" ${b.sameAddr ? "checked" : ""}><span>ที่อยู่เดียวกับข้าพเจ้า</span></label>
         ${b.sameAddr ? "" : `<label class="fx-l">ที่อยู่ปัจจุบัน/ที่ติดต่อ<textarea class="fx-i" rows="2" data-f="wben.${i}.address">${esc(b.address)}</textarea></label>`}
       </div>`; }).join("")}
       ${w.beneficiaries.length < 8 ? `<button class="fx-btn fx-ghost" data-act="addwben" type="button">+ เพิ่มผู้รับประโยชน์</button>` : ""}
-      <div class="fx-hint">${shareTot ? `แบ่งเป็น ${shareTot} ส่วน: ${w.beneficiaries.map(b => `${esc(b.name || "?")} ${+b.shares || 0}/${shareTot}`).join(" · ")}`
-        : "ถ้าไม่ระบุจำนวนส่วน ทุกคนจะได้รับเท่ากัน"}${w.beneficiaries.length > 4 ? " · เกิน 4 คน ระบบจะพิมพ์แบบฟอร์มเป็น 2 แผ่น" : ""}</div>
+      <div class="fx-hint" id="fxShareHint">${shareHint(w)}</div>
     </div>
 
     ${errBox()}
@@ -362,7 +378,16 @@ $app.addEventListener("input", e => {
   const f = e.target.dataset.f; if (!f) return;
   setField(f, e.target.value);
   // เฉพาะช่องที่ต้องแสดงผลใหม่ (ยอดรวม / เลขบัตรผิด) — ช่องพิมพ์ทั่วไปไม่ render เพื่อไม่ให้เคอร์เซอร์หลุด
-  if (/percent|shares/.test(f) || (/id_card/.test(f) && e.target.value.length >= 13)) rerenderKeepFocus(e.target);
+  // ร้อยละ / จำนวนส่วน: อัปเดตแค่ยอดรวม ไม่ render ทั้งหน้า (render ทำให้เคอร์เซอร์กระโดด พิมพ์ลำบาก)
+  if (/percent|shares/.test(f)) {
+    const clean = f.endsWith("percent") ? String(Math.min(100, +digits(e.target.value) || 0) || "") : digits(e.target.value);
+    if (e.target.value !== clean) e.target.value = clean;
+    setField(f, clean);
+    if (f.endsWith("percent")) { S.pvd.autoPct = false; $app.querySelector("#fxSum").outerHTML = sumBadge(pctTotal(S.pvd)); }
+    else $app.querySelector("#fxShareHint").innerHTML = shareHint(S.wef);
+    return;
+  }
+  if (/id_card/.test(f) && e.target.value.length >= 13) rerenderKeepFocus(e.target);
 });
 $app.addEventListener("change", e => {
   const t = e.target, f = t.dataset.f;
@@ -394,8 +419,10 @@ $app.addEventListener("click", e => {
   else if (act === "back") go("choose");
   else if (act === "edit") go(S.form);
   else if (act === "toreview") { const [, err] = build(); if (err) { S.err = err; render(); return; } go("review"); }
-  else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" }); render(); }
-  else if (act === "delben") { S.pvd.beneficiaries.splice(i, 1); render(); }
+  else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" });
+    if (S.pvd.autoPct) splitEven(S.pvd.beneficiaries); render(); }
+  else if (act === "delben") { S.pvd.beneficiaries.splice(i, 1); if (S.pvd.autoPct) splitEven(S.pvd.beneficiaries); render(); }
+  else if (act === "split") { S.pvd.autoPct = true; splitEven(S.pvd.beneficiaries); render(); }
   else if (act === "addwben") { S.wef.beneficiaries.push({ name: "", relation: "", other: "", id_card: "", address: "", sameAddr: false, shares: "" }); render(); }
   else if (act === "delwben") { S.wef.beneficiaries.splice(i, 1); render(); }
   else if (act === "preview") { const [p] = build(); printSubmission(subOf(p)); }
