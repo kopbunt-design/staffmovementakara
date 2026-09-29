@@ -98,7 +98,6 @@ input,select,textarea,button{font-family:inherit;font-size:16px}  /* 16px กั
 .fx-mt td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
 .fx-mt td:last-child{text-align:right;white-space:nowrap}
 .fx-mt tr.on td{background:var(--green-light);color:var(--green);font-weight:600}
-.fx-cmp-btn{margin-top:4px;border-color:var(--blue);color:var(--blue-dark);background:var(--blue-light)}
 .fx-cmp{margin-top:12px;border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:14px}
 .fx-cmp-h{display:none}
 .fx-cmp-r{padding:10px 12px;border-top:1px solid var(--border)}.fx-cmp-r:first-of-type{border-top:none}
