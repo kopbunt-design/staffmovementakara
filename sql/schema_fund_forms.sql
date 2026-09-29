@@ -197,11 +197,11 @@ begin
   inv := fund_verify_invite(p_token, p_emp_code, p_last5);
   if inv.id is null then raise exception 'VERIFY_FAILED'; end if;
   if not (p_form_type = any(inv.forms)) then raise exception 'FORM_NOT_ALLOWED'; end if;
-  -- HR รับเรื่องฉบับล่าสุดไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (status = rejected)
+  -- ส่งแล้ว (หรือ HR รับเรื่องแล้ว) → ส่งใหม่ไม่ได้ ต้องติดต่อ HR ให้ยกเลิกก่อน (status = rejected)
   if (select s.status from fund_form_submission s
        where s.emp_code = inv.emp_code and s.status <> 'cancelled'
-       order by s.submitted_at desc limit 1) in ('accepted','received','approved','sent') then
-    raise exception 'ALREADY_RECEIVED';
+       order by s.submitted_at desc limit 1) in ('submitted','accepted','received','approved','sent') then
+    raise exception 'ALREADY_SUBMITTED';
   end if;
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then raise exception 'BAD_PAYLOAD'; end if;
   if coalesce((p_payload->>'consent')::boolean, false) is not true then raise exception 'NO_CONSENT'; end if;

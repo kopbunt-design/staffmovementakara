@@ -19,7 +19,7 @@ const NAT_TH = { Thai: "ไทย", Lao: "ลาว", Australian: "ออสเ�
 const STATUS_TH = { submitted: "ส่งแล้ว รอ HR รับเรื่อง", accepted: "HR รับเรื่องแล้ว", received: "HR รับเอกสารตัวจริงแล้ว", approved: "อนุมัติแล้ว",
                     sent: "ส่งหน่วยงานแล้ว", rejected: "ส่งกลับให้แก้ไข", cancelled: "ยกเลิก" };
 const ERR_TH = {
-  ALREADY_RECEIVED: "HR รับเรื่องของท่านแล้ว จึงส่งใหม่ไม่ได้ — ถ้าต้องการแก้ไข กรุณาติดต่อ HR",
+  ALREADY_SUBMITTED: "ท่านส่งแบบฟอร์มแล้ว แก้ไขเองไม่ได้ — ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR",
   VERIFY_FAILED: "ยืนยันตัวตนไม่ผ่าน กรุณาเริ่มใหม่",
   LOCKED: "กรอกผิดหลายครั้งเกินไป ระบบล็อกลิงก์นี้ไว้ 30 นาที — ถ้ามั่นใจว่าข้อมูลถูก ติดต่อ HR",
   EXPIRED: "ลิงก์นี้หมดอายุแล้ว กรุณาติดต่อ HR เพื่อขอลิงก์ใหม่",
@@ -83,7 +83,8 @@ const newWef = e => ({
 // ฉบับล่าสุดของคนนี้ (ฟอร์มใดก็ได้) — ได้สองกองทุนก็ต้องเลือกอย่างเดียว ส่งแบบใหม่ = แทนฉบับเดิม
 const latestAny = () => (S.emp?.history || []).find(x => x.status !== "cancelled");
 // HR รับเรื่องไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (DB กันซ้ำอีกชั้น)
-const locked = () => ["accepted", "received", "approved", "sent"].includes(latestAny()?.status);
+// ส่งแล้ว = ล็อกทันที แก้เองไม่ได้ ต้องให้ HR ยกเลิกให้ก่อน (status = rejected จึงกรอกใหม่ได้)
+const locked = () => ["submitted", "accepted", "received", "approved", "sent"].includes(latestAny()?.status);
 const latestOf = f => (S.emp?.history || []).find(x => x.form_type === f && x.status !== "cancelled");
 const relIn = r => RELATIONS.includes(r) ? { relation: r, other: "" } : { relation: r ? "อื่น ๆ" : "", other: r || "" };
 function pvdFromDraft(d) {
@@ -177,10 +178,10 @@ function choose() {
   return `${stepper()}
   <div class="fx-card">
     <div class="fx-hello">สวัสดีคุณ ${esc(e.name)}<span>${esc(e.emp_code)} · ${esc(e.department || "-")}</span></div>
-    ${locked() ? `<div class="fx-hint" style="margin-top:12px;"><b>HR รับเรื่องของท่านแล้ว</b> (${esc(FORM_NAME[latestAny().form_type])} #${latestAny().id})
-      <div class="fx-small">ไม่ต้องส่งเพิ่ม · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div>
+    ${locked() ? `<div class="fx-hint" style="margin-top:12px;"><b>${latestAny().status === "submitted" ? "ท่านส่งแบบฟอร์มแล้ว" : "HR รับเรื่องของท่านแล้ว"}</b> (${esc(FORM_NAME[latestAny().form_type])} #${latestAny().id})
+      <div class="fx-small">แก้ไขเองไม่ได้ · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div>
       ${S.emp.latest ? `<button class="fx-btn fx-primary fx-block" data-act="dl" type="button" style="margin-top:10px;">⬇ ดาวน์โหลด PDF ฉบับที่ส่งไว้</button>` : ""}</div>` : `
-    <p class="fx-muted">${forms.length > 1 ? "ท่านเลือกได้ <b>1 แบบ</b> — ถ้าส่งแล้วเปลี่ยนใจ ส่งแบบใหม่ได้ HR จะใช้ฉบับล่าสุดแทนฉบับเดิม" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
+    <p class="fx-muted">${forms.length > 1 ? "ท่านเลือกได้ <b>1 แบบ</b> — ส่งแล้วแก้ไขเองไม่ได้ ถ้าต้องการเปลี่ยนภายหลัง ต้องติดต่อ HR" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
     ${forms.length > 1 ? `<button class="fx-btn fx-ghost fx-block fx-cmp-btn" data-act="compare" type="button">📊 เปรียบเทียบก่อนเลือก — สองกองทุนต่างกันอย่างไร</button>` : ""}
     <div class="fx-choices">
       ${forms.includes("pvd") ? card("pvd", "กองทุนสำรองเลี้ยงชีพ", "สมัครสมาชิก · เปลี่ยนผู้รับผลประโยชน์ · เปลี่ยนอัตราเงินสะสม · เปลี่ยนนโยบายการลงทุน", "แบบฟอร์ม AKR-OHR-FM-020") : ""}
@@ -195,7 +196,7 @@ function choose() {
       <span class="fx-tag st-${old ? "cancelled" : x.status}">${old ? "ยกเลิก · ใช้ฉบับล่าสุดแทน" : STATUS_TH[x.status] || x.status}</span>
       ${!old && S.emp.latest?.id === x.id && x.status !== "rejected" ? `<button class="fx-btn fx-dl" data-act="dl" type="button">⬇ ดาวน์โหลด PDF</button>` : ""}
       ${!old && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
-      ${locked() ? "" : `<div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div>`}</div>` : ""}
+</div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
   </div>`;
 }
@@ -244,7 +245,13 @@ function compare() {
       <div class="fx-small fx-muted" style="margin-top:6px;">กองทุนสำรองเลี้ยงชีพ: ยอดจริงขึ้นกับอัตราที่ท่านเลือกและผลการลงทุน · ตัวอย่างนี้ใช้เพดานสมทบ${tier ? "ตามอายุงานของท่าน" : "ขั้นแรก"}</div></div>
     <p class="fx-small fx-muted" style="margin-top:14px;">ข้อมูลกองทุนสงเคราะห์ลูกจ้างจากกรมสวัสดิการและคุ้มครองแรงงาน (ewf.labour.go.th) ·
       กองทุนสำรองเลี้ยงชีพตามระเบียบบริษัท ข้อ 14.2 · ข้อมูล ณ ก.ย. 2569 · สงสัยสอบถาม HR</p>
-    <button class="fx-btn fx-primary fx-block" data-act="back" type="button">กลับไปเลือกแบบฟอร์ม</button>
+    <div class="fx-sec"><div class="fx-sec-t">เลือกกองทุนของท่าน</div>
+      <div class="fx-pick">
+        <button class="fx-btn w" data-act="pick" data-form="wef" type="button">กองทุนสงเคราะห์ลูกจ้าง<small>กรอกแบบ สกล.5</small></button>
+        <button class="fx-btn p" data-act="pick" data-form="pvd" type="button">กองทุนสำรองเลี้ยงชีพ<small>สมัครสมาชิก · เลือกอัตราสะสมและแผนลงทุน</small></button>
+      </div></div>
+    ${(S.emp?.history || []).length ? `<button class="fx-btn fx-link" data-act="back" type="button">ดูคำขอที่เคยส่ง</button>` : ""}
+    <button class="fx-btn fx-link" data-act="logout" type="button">ไม่ใช่ฉัน / ออก</button>
   </div>`;
 }
 
@@ -436,6 +443,8 @@ function review() {
       <span>ข้าพเจ้ายืนยันว่าข้อมูลถูกต้อง และยินยอมให้บริษัทเก็บและใช้ข้อมูลนี้ รวมถึงข้อมูลของผู้รับประโยชน์
       เพื่อดำเนินการเรื่องกองทุนเท่านั้น${S.form === "wef" ? " และส่งให้กรมสวัสดิการและคุ้มครองแรงงาน" : " และส่งให้บริษัทจัดการกองทุน"}
       ทั้งนี้ข้าพเจ้าได้แจ้งผู้รับประโยชน์แล้ว</span></label>
+    <div class="fx-err" style="background:var(--amber-light);color:#92400E;"><b>ตรวจให้ครบก่อนส่ง</b> — ส่งแล้วแก้ไขเองไม่ได้
+      ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุนภายหลัง ต้องติดต่อ HR</div>
     ${errBox()}
     <div class="fx-nav"><button class="fx-btn fx-ghost" data-act="edit">แก้ไข</button>
       <button class="fx-btn fx-primary" data-act="submit" ${f.consent && !S.busy ? "" : "disabled"}>${S.busy ? "กำลังส่ง…" : "ส่งแบบฟอร์ม"}</button></div>
@@ -473,6 +482,9 @@ async function doVerify(form) {
   // เปิดให้ฟอร์มเดียวและยังไม่ได้ส่ง (หรือถูกส่งกลับ) → เข้าฟอร์มเลย · ส่งไปแล้วให้เห็นสถานะที่หน้าเลือกก่อน
   const only = (data.forms || []).length === 1 && data.forms[0];
   if (only && !locked() && (!latestOf(only) || latestOf(only).status === "rejected")) { startForm(only); return; }
+  // เลือกได้สองกองทุนและยังไม่เคยส่ง → เริ่มที่หน้าเปรียบเทียบ เลือกกองทุนได้จากหน้านั้นเลย
+  // (เคยส่งแล้วให้เห็นสถานะ / ดาวน์โหลด PDF ที่หน้าแรกก่อน)
+  if ((data.forms || []).length > 1 && !locked() && !latestAny()) { go("compare"); return; }
   go("choose");
 }
 
