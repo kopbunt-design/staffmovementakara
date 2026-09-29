@@ -22,6 +22,25 @@ export const PVD_POLICIES = [
   { key: "PF2103", label: "ตราสารหนี้ แผน DIY", risk: "กำหนดสัดส่วนการลงทุนเองได้ 0–100%",
     note: "จัดสัดส่วนการลงทุนด้วยตนเองผ่านแอปพลิเคชัน" },
 ];
+// เงินสมทบของบริษัท (ระเบียบข้อ 14.2.2): เท่ากับเงินสะสมของพนักงาน แต่ไม่เกินเพดานตามอายุงาน
+// เรียงจากอายุงานน้อยไปมาก — ถ้าระเบียบเปลี่ยน แก้ตารางนี้ที่เดียว
+export const PVD_MATCH = [
+  { fromYears: 0,  cap: 5,  label: "พ้นทดลองงาน แต่อายุงานไม่ถึง 3 ปี" },
+  { fromYears: 3,  cap: 7,  label: "อายุงานตั้งแต่ 3 ปี แต่ไม่ถึง 6 ปี" },
+  { fromYears: 6,  cap: 10, label: "อายุงานตั้งแต่ 6 ปี แต่ไม่ถึง 10 ปี" },
+  { fromYears: 10, cap: 12, label: "อายุงานตั้งแต่ 10 ปีขึ้นไป" },
+];
+// อายุงานเต็มปี ณ วันที่กำหนด (ไม่ปัดขึ้น — ครบ 3 ปีวันไหนก็ขยับขั้นวันนั้น)
+export function serviceYears(joinDate, at = new Date()) {
+  if (!joinDate) return null;
+  const j = new Date(joinDate); if (isNaN(j)) return null;
+  let y = at.getFullYear() - j.getFullYear();
+  if (at.getMonth() < j.getMonth() || (at.getMonth() === j.getMonth() && at.getDate() < j.getDate())) y--;
+  return Math.max(0, y);
+}
+export const matchTier = years => years == null ? null : [...PVD_MATCH].reverse().find(t => years >= t.fromYears);
+export const employerMatch = (rate, years) => { const t = matchTier(years); return t && rate ? Math.min(+rate, t.cap) : null; };
+
 export const FORM_NAME = { pvd: "กองทุนสำรองเลี้ยงชีพ", wef: "กองทุนสงเคราะห์ลูกจ้าง (สกล.5)" };
 
 const TH_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",

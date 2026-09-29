@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-print.js";
+import { PVD_REQUESTS, PVD_POLICIES, PVD_MATCH, FORM_NAME, printSubmission, serviceYears, matchTier, employerMatch } from "./fund-print.js";
 
 // ============================================================================
 // หน้าพนักงานกรอกแบบฟอร์มกองทุน (fund.html?t=<token>) — ไม่ต้อง login
@@ -200,6 +200,23 @@ function choose() {
 }
 
 // ---------------------------------------------------------- PVD form
+// บอกพนักงานว่าบริษัทสมทบให้เท่าไร ตามอัตราที่เลือกและอายุงาน (ระเบียบข้อ 14.2.2)
+function matchBox(rate) {
+  const yrs = serviceYears(S.emp?.join_date), tier = matchTier(yrs), er = employerMatch(rate, yrs);
+  const table = `<table class="fx-mt">${PVD_MATCH.map(t => `<tr class="${t === tier ? "on" : ""}"><td>${t.label}</td>
+      <td>สมทบเท่าเงินสะสม ไม่เกิน <b>${t.cap}%</b></td></tr>`).join("")}</table>`;
+  let head;
+  if (tier && er != null)
+    head = `บริษัทสมทบให้ท่าน <b>${er}%</b> ของเงินเดือน · รวมเข้ากองทุนเดือนละ <b>${+rate + er}%</b>
+      ${+rate > tier.cap ? `<div class="fx-small">ส่วนที่สะสมเกิน ${tier.cap}% บริษัทไม่สมทบเพิ่ม แต่ยังเป็นเงินออมของท่านเอง</div>` : ""}`;
+  else if (tier)
+    head = `อายุงานของท่าน ${yrs} ปี — บริษัทสมทบเท่ากับที่ท่านสะสม ไม่เกิน <b>${tier.cap}%</b> ของเงินเดือน`;
+  else head = "บริษัทสมทบเท่ากับเงินสะสมของท่าน แต่ไม่เกินเพดานตามอายุงานด้านล่าง";
+  return `<div class="fx-hint fx-match">${head}
+    ${tier ? `<div class="fx-small">อายุงาน ${yrs} ปี · เพดานเพิ่มขึ้นเองเมื่ออายุงานถึงขั้นถัดไป</div>` : ""}
+    ${table}
+    <div class="fx-small">เลือกได้ 2–15% ของเงินเดือน · เปลี่ยนอัตราเงินสะสมได้ปีละ 1 ครั้ง ตามที่บริษัทประกาศ</div></div>`;
+}
 const pvdNeeds = p => { const r = new Set(p.requests), a = r.has("apply");
   return { ben: a || r.has("beneficiary"), rate: a || r.has("rate"), pol: a || r.has("policy") }; };
 
@@ -237,7 +254,7 @@ function pvdForm() {
     ${need.rate ? `<div class="fx-sec"><div class="fx-sec-t">อัตราเงินสะสม</div>
       <label class="fx-l">หักจากเงินเดือนร้อยละ<select class="fx-i fx-w30" data-f="rate"><option value="">—</option>
         ${Array.from({ length: 14 }, (_, k) => k + 2).map(n => `<option value="${n}" ${+p.rate === n ? "selected" : ""}>${n}%</option>`).join("")}</select></label>
-      <div class="fx-hint">เลือกได้ 2–15% ของเงินเดือน · เงินสมทบของบริษัทเป็นไปตามระเบียบกองทุน</div></div>` : ""}
+      ${matchBox(p.rate)}</div>` : ""}
 
     ${need.pol ? `<div class="fx-sec"><div class="fx-sec-t">นโยบายการลงทุน</div>
       ${PVD_POLICIES.map(x => `<label class="fx-radio"><input type="radio" name="pol" data-f="policy" value="${x.key}" ${p.policy === x.key ? "checked" : ""}>

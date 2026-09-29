@@ -93,3 +93,8 @@ input,select,textarea,button{font-family:inherit;font-size:16px}  /* 16px กั
 .fx-pad{display:block;width:100%;height:150px;margin-top:8px;background:#fff;border:1.5px dashed var(--border2);border-radius:10px;touch-action:none;cursor:crosshair}
 .fx-dl{min-height:auto;padding:4px 10px;font-size:13px;background:var(--blue-light);color:var(--blue-dark);border-radius:99px;flex-basis:100%;margin-top:4px}
 @media(min-width:520px){.fx-dl{flex-basis:auto;margin-top:0}}
+.fx-match b{color:var(--navy)}
+.fx-mt{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:13px;background:#fff;border-radius:8px;overflow:hidden}
+.fx-mt td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
+.fx-mt td:last-child{text-align:right;white-space:nowrap}
+.fx-mt tr.on td{background:var(--green-light);color:var(--green);font-weight:600}

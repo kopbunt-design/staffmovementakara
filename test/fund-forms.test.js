@@ -59,4 +59,20 @@ eq(r.dups, [], "ไม่มีรหัสซ้ำ");
   eq(msg.includes("เงื่อนไข"), true, "ไม่มีคอลัมน์เงื่อนไข ต้องไม่เดาว่าได้ทุกฟอร์ม");
 }
 
+// ---------- เงินสมทบบริษัท (ระเบียบข้อ 14.2.2) ----------
+{
+  const PR = new Function("fetch", read(`${ROOT}/js/fund-print.js`).replace(/^export /gm, "")
+    + "\nreturn { serviceYears, matchTier, employerMatch };")(() => Promise.reject());
+  const at = new Date(2026, 8, 29);   // 29 ก.ย. 2026
+  eq(PR.serviceYears("2023-09-29", at), 3, "ครบ 3 ปีวันนี้พอดี = 3 ปี");
+  eq(PR.serviceYears("2023-09-30", at), 2, "ขาดอีก 1 วัน ยังเป็น 2 ปี");
+  eq(PR.serviceYears(null, at), null, "ไม่มีวันเริ่มงาน = ไม่รู้ ไม่เดา");
+  eq([0, 2, 3, 5, 6, 9, 10, 25].map(y => PR.matchTier(y).cap), [5, 5, 7, 7, 10, 10, 12, 12], "เพดานตามช่วงอายุงาน");
+  eq(PR.employerMatch(3, 1), 3, "สะสม 3% อายุงาน 1 ปี → บริษัทสมทบ 3% (เท่ากับที่สะสม)");
+  eq(PR.employerMatch(8, 1), 5, "สะสม 8% อายุงาน 1 ปี → สมทบแค่เพดาน 5%");
+  eq(PR.employerMatch(15, 12), 12, "สะสม 15% อายุงาน 12 ปี → สมทบเพดาน 12%");
+  eq(PR.employerMatch(10, 7), 10, "สะสม 10% อายุงาน 7 ปี → 10% พอดีเพดาน");
+  eq(PR.employerMatch(5, null), null, "ไม่รู้อายุงาน = ไม่บอกตัวเลข");
+}
+
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
