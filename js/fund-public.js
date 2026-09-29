@@ -118,7 +118,7 @@ function go(step) { S.step = step; S.err = ""; render(); window.scrollTo({ top: 
 
 // ---------------------------------------------------------------- render
 function render() {
-  const v = { verify, choose, pvd: pvdForm, wef: wefForm, review, done }[S.step];
+  const v = { verify, choose, guide, pvd: pvdForm, wef: wefForm, review, done }[S.step];
   $app.innerHTML = v();
   if (S.step === "review") initPad();
 }
@@ -149,7 +149,7 @@ function initPad() {
 }
 
 const stepper = () => {
-  const i = { choose: 0, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
+  const i = { choose: 0, guide: 1, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
   return `<ol class="fx-steps">${["เลือกแบบฟอร์ม", "กรอกข้อมูล", "ตรวจทาน", "ส่งแล้ว"]
     .map((t, k) => `<li class="${k < i ? "done" : k === i ? "on" : ""}"><b>${k + 1}</b><span>${t}</span></li>`).join("")}</ol>`;
 };
@@ -212,7 +212,8 @@ function choose() {
 // ข้อมูลกองทุนสงเคราะห์ลูกจ้าง: พ.ร.บ.คุ้มครองแรงงาน 2541 หมวด 13 + ประกาศเริ่มจัดเก็บ 1 ต.ค. 2569
 // (กรมสวัสดิการและคุ้มครองแรงงาน ewf.labour.go.th) — เหมือนกันทุกบริษัท
 // ข้อมูลกองทุนสำรองเลี้ยงชีพ: ระเบียบบริษัทข้อ 14.2 (อัตราสมทบตาม PVD_MATCH) — ถ้าระเบียบเปลี่ยน แก้ PVD_MATCH ที่เดียว
-function compare() {
+// ข้อเท็จจริงของสองกองทุน — ใช้ทั้งหน้าเปรียบเทียบ (สองคอลัมน์) และคู่มือกองทุนเดียว
+function fundFacts() {
   const yrs = serviceYears(S.emp?.join_date), tier = matchTier(yrs);
   const caps = PVD_MATCH.map(t => `${t.cap}%`).join(" / ");
   const rows = [
@@ -234,6 +235,11 @@ function compare() {
   // ตัวอย่างเงินเดือน 20,000 บาท — ใช้เพดานของท่านถ้ารู้อายุงาน ไม่งั้นใช้ขั้นแรก
   const cap = (tier || PVD_MATCH[0]).cap, sal = 20000, fmt = n => n.toLocaleString("th-TH");
   const wef = sal * 0.0025, pvd = sal * cap / 100;
+  return { rows, tier, cap, sal, fmt, wef, pvd };
+}
+
+function compare() {
+  const { rows, tier, cap, sal, fmt, wef, pvd } = fundFacts();
   return `${stepper()}
   <div class="fx-card">
     <div class="fx-hello">สวัสดีคุณ ${esc(S.emp.name)}<span>${esc(S.emp.emp_code)} · ${esc(S.emp.department || "-")}</span></div>
@@ -264,6 +270,30 @@ function compare() {
   </div>`;
 }
 
+// คู่มือเฉพาะกองทุนที่ท่านมีสิทธิ์ (คนที่เลือกได้กองทุนเดียว) — ข้อมูลชุดเดียวกับหน้าเปรียบเทียบ
+function guide() {
+  const f = S.form, { rows, tier, cap, sal, fmt, wef, pvd } = fundFacts();
+  const col = f === "wef" ? 1 : 2, name = f === "wef" ? "กองทุนสงเคราะห์ลูกจ้าง" : "กองทุนสำรองเลี้ยงชีพ";
+  const ex = f === "wef"
+    ? `ท่าน ${fmt(wef)} + บริษัท ${fmt(wef)} <em>= ${fmt(wef * 2)} บาท/เดือน</em>`
+    : `สะสม ${cap}% · ท่าน ${fmt(pvd)} + บริษัท ${fmt(pvd)} <em>= ${fmt(pvd * 2)} บาท/เดือน</em>`;
+  return `${stepper()}
+  <div class="fx-card">
+    <h1>คู่มือ${name}</h1>
+    <p class="fx-muted">${f === "wef" ? "สรุปสิ่งที่ท่านควรรู้ ก่อนกรอกแบบ สกล.5" : "สรุปสิ่งที่ท่านควรรู้ ก่อนสมัครกองทุนสำรองเลี้ยงชีพ"}</p>
+    <div class="fx-cmp fx-guide ${f === "wef" ? "w" : "p"}">
+      ${rows.map(r => `<div class="fx-g-r"><b>${r[0]}</b><div>${r[col]}</div></div>`).join("")}
+    </div>
+    <div class="fx-sec"><div class="fx-sec-t">ตัวอย่าง เงินเดือน ${fmt(sal)} บาท</div>
+      <div class="fx-ex1 ${f === "wef" ? "w" : "p"}">${ex}</div>
+      ${f === "pvd" ? `<div class="fx-small fx-muted" style="margin-top:6px;">ยอดจริงขึ้นกับอัตราที่ท่านเลือกและผลการลงทุน · ตัวอย่างใช้เพดานสมทบ${tier ? "ตามอายุงานของท่าน" : "ขั้นแรก"}</div>` : ""}</div>
+    <p class="fx-small fx-muted" style="margin-top:14px;">${f === "wef" ? "ข้อมูลจากกรมสวัสดิการและคุ้มครองแรงงาน (ewf.labour.go.th)" : "ตามระเบียบบริษัท ข้อ 14.2"} · ข้อมูล ณ ก.ย. 2569 · สงสัยสอบถาม HR</p>
+    <button class="fx-btn fx-primary fx-block" data-act="formback" type="button">กลับไปกรอกแบบฟอร์ม</button>
+  </div>`;
+}
+const guideBtn = f => (S.emp?.forms || []).length === 1
+  ? `<button class="fx-btn fx-ghost fx-block fx-guide-btn" data-act="guide" type="button">📘 คู่มือ${f === "wef" ? "กองทุนสงเคราะห์ลูกจ้าง" : "กองทุนสำรองเลี้ยงชีพ"} — อ่านก่อนกรอก</button>` : "";
+
 // ---------------------------------------------------------- PVD form
 // บอกแค่ว่าพนักงานสะสมเท่าไร บริษัทสมทบเท่าไร (ระเบียบข้อ 14.2.2 — เพดานตามอายุงานใน PVD_MATCH)
 // ตารางเพดานเต็มอยู่ในหน้าเปรียบเทียบแล้ว ตรงนี้ผู้ใช้ขอให้สั้นที่สุด
@@ -286,6 +316,7 @@ function pvdForm() {
   return `${stepper()}
   <div class="fx-card">
     <h1>กองทุนสำรองเลี้ยงชีพ</h1>
+    ${guideBtn("pvd")}
     ${rejectBox("pvd")}
     <div class="fx-sec"><div class="fx-sec-t">เรื่องที่ขอ <span class="fx-muted">(เลือกได้มากกว่า 1 ข้อ)</span></div>
       ${PVD_REQUESTS.map(r => { const dis = apply && r.key !== "apply";
@@ -330,6 +361,7 @@ function wefForm() {
   return `${stepper()}
   <div class="fx-card">
     <h1>กองทุนสงเคราะห์ลูกจ้าง <span class="fx-muted fx-small">แบบ สกล.5</span></h1>
+    ${guideBtn("wef")}
     ${rejectBox("wef")}
     <p class="fx-muted">ระบุผู้ที่จะได้รับเงินจากกองทุน หากท่านเสียชีวิต</p>
 
@@ -564,6 +596,8 @@ $app.addEventListener("click", e => {
   if (act === "pick") startForm(b.dataset.form);
   else if (act === "logout") { Object.assign(S, { emp: null, pvd: null, wef: null, cred: { code: "", last5: "" } }); go("verify"); }
   else if (act === "back") go("choose");
+  else if (act === "guide") go("guide");
+  else if (act === "formback") go(S.form);
   else if (act === "edit") go(S.form);
   else if (act === "toreview") { const [, err] = build(); if (err) { S.err = err; render(); return; } go("review"); }
   else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" }); render(); }

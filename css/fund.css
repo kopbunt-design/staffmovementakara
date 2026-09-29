@@ -123,3 +123,9 @@ input,select,textarea,button{font-family:inherit;font-size:16px}  /* 16px กั
 .fx-pick small{font-weight:400;font-size:12.5px;opacity:.9}
 .fx-pick .w{background:#C2410C}.fx-pick .p{background:var(--blue)}
 @media(max-width:420px){.fx-pick{grid-template-columns:1fr}}
+.fx-guide-btn{margin-top:10px;border-color:var(--blue);color:var(--blue-dark);background:var(--blue-light)}
+.fx-g-r{display:grid;grid-template-columns:34% 1fr;border-top:1px solid var(--border)}.fx-g-r:first-child{border-top:none}
+.fx-g-r>b{padding:10px 12px;color:var(--navy);background:#F8FAFC}.fx-g-r>div{padding:10px 12px}
+.fx-guide.w .fx-g-r>div{background:#FFF7ED}.fx-guide.p .fx-g-r>div{background:var(--blue-light)}
+.fx-ex1{border-radius:10px;padding:12px;margin-top:8px;font-size:15px}.fx-ex1.w{background:#FFF7ED}.fx-ex1.p{background:var(--blue-light)}
+.fx-ex1 em{font-style:normal;font-weight:700;color:var(--navy);margin-left:4px}
