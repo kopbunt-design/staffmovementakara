@@ -117,7 +117,7 @@ function go(step) { S.step = step; S.err = ""; render(); window.scrollTo({ top: 
 
 // ---------------------------------------------------------------- render
 function render() {
-  const v = { verify, choose, pvd: pvdForm, wef: wefForm, review, done }[S.step];
+  const v = { verify, choose, compare, pvd: pvdForm, wef: wefForm, review, done }[S.step];
   $app.innerHTML = v();
   if (S.step === "review") initPad();
 }
@@ -148,7 +148,7 @@ function initPad() {
 }
 
 const stepper = () => {
-  const i = { choose: 0, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
+  const i = { choose: 0, compare: 0, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
   return `<ol class="fx-steps">${["เลือกแบบฟอร์ม", "กรอกข้อมูล", "ตรวจทาน", "ส่งแล้ว"]
     .map((t, k) => `<li class="${k < i ? "done" : k === i ? "on" : ""}"><b>${k + 1}</b><span>${t}</span></li>`).join("")}</ol>`;
 };
@@ -181,6 +181,7 @@ function choose() {
       <div class="fx-small">ไม่ต้องส่งเพิ่ม · ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR</div>
       ${S.emp.latest ? `<button class="fx-btn fx-primary fx-block" data-act="dl" type="button" style="margin-top:10px;">⬇ ดาวน์โหลด PDF ฉบับที่ส่งไว้</button>` : ""}</div>` : `
     <p class="fx-muted">${forms.length > 1 ? "ท่านเลือกได้ <b>1 แบบ</b> — ถ้าส่งแล้วเปลี่ยนใจ ส่งแบบใหม่ได้ HR จะใช้ฉบับล่าสุดแทนฉบับเดิม" : "แบบฟอร์มที่ HR เปิดให้ท่านกรอก"}</p>
+    ${forms.length > 1 ? `<button class="fx-btn fx-ghost fx-block fx-cmp-btn" data-act="compare" type="button">📊 เปรียบเทียบก่อนเลือก — สองกองทุนต่างกันอย่างไร</button>` : ""}
     <div class="fx-choices">
       ${forms.includes("pvd") ? card("pvd", "กองทุนสำรองเลี้ยงชีพ", "สมัครสมาชิก · เปลี่ยนผู้รับผลประโยชน์ · เปลี่ยนอัตราเงินสะสม · เปลี่ยนนโยบายการลงทุน", "แบบฟอร์ม AKR-OHR-FM-020") : ""}
       ${forms.includes("wef") ? card("wef", "กองทุนสงเคราะห์ลูกจ้าง", "ระบุผู้รับประโยชน์ กรณีลูกจ้างเสียชีวิต (ส่งกรมสวัสดิการและคุ้มครองแรงงาน)", "แบบ สกล.5") : ""}
@@ -196,6 +197,54 @@ function choose() {
       ${!old && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
       ${locked() ? "" : `<div class="fx-muted fx-small">ถ้าส่งใหม่ HR จะใช้ฉบับล่าสุด</div>`}</div>` : ""}
     <button class="fx-btn fx-link" data-act="logout">ไม่ใช่ฉัน / ออก</button>
+  </div>`;
+}
+
+// ------------------------------------------------ เปรียบเทียบสองกองทุน
+// ข้อมูลกองทุนสงเคราะห์ลูกจ้าง: พ.ร.บ.คุ้มครองแรงงาน 2541 หมวด 13 + ประกาศเริ่มจัดเก็บ 1 ต.ค. 2569
+// (กรมสวัสดิการและคุ้มครองแรงงาน ewf.labour.go.th) — เหมือนกันทุกบริษัท
+// ข้อมูลกองทุนสำรองเลี้ยงชีพ: ระเบียบบริษัทข้อ 14.2 (อัตราสมทบตาม PVD_MATCH) — ถ้าระเบียบเปลี่ยน แก้ PVD_MATCH ที่เดียว
+function compare() {
+  const yrs = serviceYears(S.emp?.join_date), tier = matchTier(yrs);
+  const caps = PVD_MATCH.map(t => `${t.cap}%`).join(" / ");
+  const rows = [
+    ["ลักษณะ", "ภาคบังคับตามกฎหมาย สำหรับพนักงานที่ไม่ได้เป็นสมาชิกกองทุนสำรองเลี้ยงชีพ", "สมัครใจ — เป็นสวัสดิการที่บริษัทจัดให้"],
+    ["กฎหมายอ้างอิง", "พ.ร.บ.คุ้มครองแรงงาน พ.ศ. 2541 หมวด 13", "พ.ร.บ.กองทุนสำรองเลี้ยงชีพ พ.ศ. 2530"],
+    ["ผู้บริหารกองทุน", "กรมสวัสดิการและคุ้มครองแรงงาน", "บริษัทจัดการกองทุน (บลจ.) — เค มาสเตอร์ พูล ฟันด์"],
+    ["วัตถุประสงค์", "หลักประกันเมื่อออกจากงานหรือเสียชีวิต และคุ้มครองกรณีนายจ้างไม่จ่ายเงินตามกฎหมาย", "ออมเงินระยะยาวเพื่อเกษียณ"],
+    ["ท่านจ่าย (เงินสะสม)", "0.25% ของค่าจ้าง (เพิ่มเป็น 0.50% ตั้งแต่ 1 ต.ค. 2574)", "เลือกเองได้ 2%–15% ของเงินเดือน"],
+    ["บริษัทจ่ายให้ (เงินสมทบ)", "0.25% ของค่าจ้าง (เพิ่มเป็น 0.50% ตั้งแต่ 1 ต.ค. 2574)",
+      `เท่ากับที่ท่านสะสม ไม่เกินเพดานตามอายุงาน ${caps}${tier ? ` — อายุงานท่าน ${yrs} ปี เพดาน <b>${tier.cap}%</b>` : ""}`],
+    ["เลือกการลงทุน", "ไม่ได้ — กองทุนเป็นผู้ดูแล", `เลือกได้ ${PVD_POLICIES.length} แผน รวมแผน DIY จัดสัดส่วนเองในแอปฯ`],
+    ["สิทธิลดหย่อนภาษี", "ไม่มี", "เงินสะสมของท่านลดหย่อนภาษีได้ตามที่จ่ายจริง (ตามเงื่อนไขกฎหมาย)"],
+    ["ได้เงินคืนเมื่อไร", "เมื่อออกจากงานไม่ว่ากรณีใด (ลาออก ถูกเลิกจ้าง เกษียณ) — ได้เงินสะสม + เงินสมทบ + ดอกผล",
+      "เมื่อลาออก / เกษียณ — ได้เงินสะสม + เงินสมทบ + ผลประโยชน์ ตามข้อบังคับกองทุน"],
+    ["กรณีเสียชีวิต", "จ่ายให้ผู้รับประโยชน์ตามแบบ สกล.5 (ไม่ระบุ = แบ่งเท่ากันให้บุตร คู่สมรส บิดา มารดา)",
+      "จ่ายให้ผู้รับผลประโยชน์ที่ระบุในแบบฟอร์ม (ส่วนที่ 2)"],
+    ["เปลี่ยนแปลงภายหลัง", "แจ้งเปลี่ยนผู้รับประโยชน์ได้ ด้วยแบบ สกล.5 ฉบับใหม่", "เปลี่ยนอัตราเงินสะสมได้ปีละ 1 ครั้ง · เปลี่ยนแผนลงทุน / ผู้รับผลประโยชน์ได้"],
+  ];
+  // ตัวอย่างเงินเดือน 20,000 บาท — ใช้เพดานของท่านถ้ารู้อายุงาน ไม่งั้นใช้ขั้นแรก
+  const cap = (tier || PVD_MATCH[0]).cap, sal = 20000, fmt = n => n.toLocaleString("th-TH");
+  const wef = sal * 0.0025, pvd = sal * cap / 100;
+  return `${stepper()}
+  <div class="fx-card">
+    <h1>เปรียบเทียบสองกองทุน</h1>
+    <p class="fx-muted">ท่านเข้าได้ <b>อย่างใดอย่างหนึ่ง</b> — ถ้าเป็นสมาชิกกองทุนสำรองเลี้ยงชีพ ไม่ต้องจ่ายกองทุนสงเคราะห์ลูกจ้าง
+      ถ้าไม่สมัครกองทุนสำรองเลี้ยงชีพ กฎหมายกำหนดให้เข้ากองทุนสงเคราะห์ลูกจ้าง (เริ่มหักเงิน 1 ต.ค. 2569)</p>
+    <div class="fx-cmp">
+      <div class="fx-cmp-h"><span></span><span class="w">กองทุนสงเคราะห์ลูกจ้าง</span><span class="p">กองทุนสำรองเลี้ยงชีพ</span></div>
+      ${rows.map(([k, w, p]) => `<div class="fx-cmp-r"><b>${k}</b>
+        <div class="w"><i>สงเคราะห์ลูกจ้าง</i>${w}</div><div class="p"><i>สำรองเลี้ยงชีพ</i>${p}</div></div>`).join("")}
+    </div>
+    <div class="fx-sec"><div class="fx-sec-t">ตัวอย่าง เงินเดือน ${fmt(sal)} บาท</div>
+      <div class="fx-ex">
+        <div class="w"><b>กองทุนสงเคราะห์ลูกจ้าง</b><span>ท่าน ${fmt(wef)} + บริษัท ${fmt(wef)}</span><em>= ${fmt(wef * 2)} บาท/เดือน</em></div>
+        <div class="p"><b>กองทุนสำรองเลี้ยงชีพ (สะสม ${cap}%)</b><span>ท่าน ${fmt(pvd)} + บริษัท ${fmt(pvd)}</span><em>= ${fmt(pvd * 2)} บาท/เดือน</em></div>
+      </div>
+      <div class="fx-small fx-muted" style="margin-top:6px;">กองทุนสำรองเลี้ยงชีพ: ยอดจริงขึ้นกับอัตราที่ท่านเลือกและผลการลงทุน · ตัวอย่างนี้ใช้เพดานสมทบ${tier ? "ตามอายุงานของท่าน" : "ขั้นแรก"}</div></div>
+    <p class="fx-small fx-muted" style="margin-top:14px;">ข้อมูลกองทุนสงเคราะห์ลูกจ้างจากกรมสวัสดิการและคุ้มครองแรงงาน (ewf.labour.go.th) ·
+      กองทุนสำรองเลี้ยงชีพตามระเบียบบริษัท ข้อ 14.2 · ข้อมูล ณ ก.ย. 2569 · สงสัยสอบถาม HR</p>
+    <button class="fx-btn fx-primary fx-block" data-act="back" type="button">กลับไปเลือกแบบฟอร์ม</button>
   </div>`;
 }
 
@@ -507,6 +556,7 @@ $app.addEventListener("click", e => {
   if (act === "pick") startForm(b.dataset.form);
   else if (act === "logout") { Object.assign(S, { emp: null, pvd: null, wef: null, cred: { code: "", last5: "" } }); go("verify"); }
   else if (act === "back") go("choose");
+  else if (act === "compare") go("compare");
   else if (act === "edit") go(S.form);
   else if (act === "toreview") { const [, err] = build(); if (err) { S.err = err; render(); return; } go("review"); }
   else if (act === "addben") { S.pvd.beneficiaries.push({ name: "", relation: "", other: "", percent: "" }); render(); }
