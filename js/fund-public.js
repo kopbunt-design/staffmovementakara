@@ -149,7 +149,9 @@ function initPad() {
 }
 
 const stepper = () => {
-  const i = { choose: 0, guide: 1, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
+  // หน้าแรกของคนที่ส่งไปแล้ว (ล็อก) = อยู่ขั้น "ส่งแล้ว" ไม่ใช่ขั้นเลือกแบบฟอร์ม
+  const i = S.step === "choose" && locked() ? 3
+          : { choose: 0, guide: 1, pvd: 1, wef: 1, review: 2, done: 3 }[S.step] ?? 0;
   return `<ol class="fx-steps">${["เลือกแบบฟอร์ม", "กรอกข้อมูล", "ตรวจทาน", "ส่งแล้ว"]
     .map((t, k) => `<li class="${k < i ? "done" : k === i ? "on" : ""}"><b>${k + 1}</b><span>${t}</span></li>`).join("")}</ol>`;
 };
