@@ -33,6 +33,10 @@ let signers = (() => {
 })();
 const saveSigners = () => { try { localStorage.setItem(SIGN_KEY, JSON.stringify(signers)); } catch {} };
 
+
+// ประกันสังคมฝั่งนายจ้างรายแผนก — เดือนที่บันทึกไว้ก่อนเพิ่มบรรทัดนี้ มียอดรวมทั้งบริษัทแต่ไม่มียอดรายแผนก
+// ถ้าแสดงเป็น 0 จะดูเหมือนไม่มีเงินสมทบ จึงขึ้น "—" แทน (เหมือนรายการหักของเดือนเก่า)
+const ssoKnown = rep => !(rep.ded?.ssoEmployer) || [...rep.cells.keys()].some(k => k.startsWith("ded|ssoEmployer|"));
 function load() {
   try { return JSON.parse(localStorage.getItem(ASSIGN_KEY)) || {}; } catch { return {}; }
 }
@@ -604,8 +608,8 @@ async function exportExcel() {
       const r = ws.addRow([label, "", ...sh.depts.map(() => ""), ""]);
       r.eachCell(c => { c.fill = fill(BAND); c.font = { bold:true, size:10 }; });
     };
-    const dedRow = (label, code, fn, style) => {
-      const known = rep.dedByDept !== false;
+    const dedRow = (label, code, fn, style, knownIf = true) => {
+      const known = rep.dedByDept !== false && knownIf;
       const vals = sh.depts.map(d => known ? fn(d) : "—");
       const r = ws.addRow([label, code || "", ...vals, known ? vals.reduce((a, b) => a + b, 0) : "—"]);
       r.eachCell((c, i) => {
@@ -627,6 +631,9 @@ async function exportExcel() {
     ws.addRow([]);
     secRow("PROVIDENT FUND : K MASTER POOL FUND");
     dedRow("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"));
+    ws.addRow([]);
+    secRow("SOCIAL SECURITY");
+    dedRow("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), undefined, ssoKnown(rep));
     setup(ws, sh.depts.length + 3);
   }
 
@@ -704,18 +711,21 @@ function printReport() {
   // รายการหักแยกรายแผนก — ต้นฉบับแสดงแบบนี้ในทุกคอลัมน์แผนก
   const dedRows = depts => {
     const known = rep.dedByDept !== false;
-    const row = (label, code, fn, cls = "") => {
+    const row = (label, code, fn, cls = "", knownIf = true) => {
+      const ok = known && knownIf;
       const vals = depts.map(fn);
       return `<tr class="${cls}"><td class="l">${esc(label)}</td><td class="cc c">${esc(code || "")}</td>
-        ${vals.map(v => `<td class="n">${known ? fmt(v) : "—"}</td>`).join("")}
-        <td class="n b">${known ? fmt(vals.reduce((a, b) => a + b, 0)) : "—"}</td></tr>`;
+        ${vals.map(v => `<td class="n">${ok ? fmt(v) : "—"}</td>`).join("")}
+        <td class="n b">${ok ? fmt(vals.reduce((a, b) => a + b, 0)) : "—"}</td></tr>`;
     };
     return `<tr class="sec"><td class="l" colspan="2">DEDUCTION — STAFF EXPENSES</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
       ${PB.DED_LINES.map(([k, l]) => row(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k))).join("")}
       ${row("GRAND TOTAL — DEDUCTION", "", d => PB.deptDeduction(rep, d), "tot")}
       ${row("NET SALARY", "", d => PB.deptNet(rep, d), "gt")}
       <tr class="sec"><td class="l" colspan="2">PROVIDENT FUND : K MASTER POOL FUND</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
-      ${row("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"))}`;
+      ${row("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"))}
+      <tr class="sec"><td class="l" colspan="2">SOCIAL SECURITY</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
+      ${row("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), "", ssoKnown(rep))}`;
   };
 
   const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + PB.groupHc(rep, s, g), 0);
