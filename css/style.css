@@ -1021,3 +1021,44 @@ textarea.form-control{resize:vertical;min-height:72px;}
 [data-tone="slate"] {--tone:#475569;--tone-soft:#EEF1F5;--tone-soft-2:#CBD5E1}
 @media(max-width:640px){.hm{padding:18px 14px 36px}.hm-grid{grid-template-columns:1fr 1fr;gap:10px}
   .hm-tile{gap:10px;padding:16px 10px 14px}.hm-ic{width:46px;height:46px}.hm-d{display:none}}
+
+/* หมวดบนหน้าแรก (การ์ดโฟลเดอร์) — กดแล้วขยายเป็นแผงเมนูย่อย */
+.hm-folders{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:16px;margin-top:8px}
+.hm-folder{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:6px;
+  min-height:236px;padding:20px 18px 18px;border-radius:20px;border:1px solid var(--tone-soft-2);cursor:pointer;font:inherit;color:var(--text);
+  background:linear-gradient(160deg,#fff 0%,#fff 45%,var(--tone-soft) 100%);box-shadow:var(--shadow-card);
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s;animation:hmUp .5s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i) * 60ms)}
+.hm-folder:hover{transform:translateY(-4px);box-shadow:var(--shadow-card-lg),0 0 0 3px var(--tone-soft)}
+.hm-folder:focus-visible{outline:2px solid var(--tone);outline-offset:3px}
+.hm-fdeco{position:absolute;right:-26px;bottom:-30px;width:150px;height:150px;color:var(--tone);opacity:.07;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.hm-folder:hover .hm-fdeco{transform:rotate(-8deg) scale(1.08)}
+.hm-fdeco svg{width:100%;height:100%}
+.hm-fi{width:54px;height:54px;border-radius:15px;display:grid;place-items:center;background:var(--tone);color:#fff;
+  box-shadow:0 8px 18px -8px var(--tone);margin-bottom:8px;flex:none}
+.hm-fi svg{width:27px;height:27px}
+.hm-ft{font-size:17px;font-weight:700;color:var(--navy)}
+.hm-fd{font-size:12.5px;color:var(--muted);line-height:1.45}
+.hm-prev{display:flex;align-items:center;gap:5px;margin-top:auto;padding-top:12px;flex-wrap:wrap}
+.hm-prev .hm-ic.sm{width:28px;height:28px;border-radius:8px;background:#fff;border:1px solid var(--tone-soft-2)}
+.hm-prev .hm-ic.sm svg{width:15px;height:15px}
+.hm-more{font-size:12px;font-weight:700;color:var(--tone)}
+.hm-fc{font-size:12.5px;font-weight:700;color:var(--tone);margin-top:10px}
+.hm-fc b{display:inline-block;transition:transform .2s}.hm-folder:hover .hm-fc b{transform:translateX(4px)}
+.hm-folder .hm-badge{top:16px;right:16px}
+
+.hm-ov{position:fixed;inset:0;z-index:900;display:grid;place-items:center;padding:24px}
+.hm-back{position:absolute;inset:0;background:rgba(15,28,77,.38);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.hm-panel{position:relative;outline:none;width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;border-radius:22px;padding:24px;
+  background:linear-gradient(170deg,#fff 0%,#fff 55%,var(--tone-soft) 100%);box-shadow:0 30px 70px -20px rgba(15,28,77,.45);transform-origin:top left}
+.hm-ph{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.hm-ph .hm-fi{margin:0}
+.hm-pt{font-size:20px;font-weight:700;color:var(--navy)}
+.hm-pd{font-size:13px;color:var(--muted)}
+.hm-x{margin-left:auto;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;color:var(--muted);font-size:14px}
+.hm-x:hover{color:var(--text);border-color:var(--border2)}
+.hm-pgrid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.hm-in{animation:hmUp .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(120ms + var(--k) * 45ms)}
+@keyframes hmUp{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.hm-folder,.hm-in{animation:none}.hm-folder,.hm-fdeco,.hm-fc b{transition:none}}
+@media(max-width:640px){.hm-folders{grid-template-columns:1fr 1fr;gap:12px}.hm-folder{min-height:170px;padding:16px}
+  .hm-fd,.hm-fdeco{display:none}.hm-ft{font-size:15px}.hm-fi{width:46px;height:46px}.hm-panel{padding:18px}.hm-pgrid{grid-template-columns:1fr 1fr}}
