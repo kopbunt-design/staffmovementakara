@@ -1077,3 +1077,20 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .nav-item.nav-fold{display:none !important}
 .nav-section.open + .nav-sub{animation:navIn .2s ease-out}
 @keyframes navIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+
+/* ===== ออกหนังสือ HR (js/hr-letters.js) — ฟอร์มซ้าย · ตัวอย่างหนังสือขวา ===== */
+.lt-modal{width:min(1240px,96vw);max-width:none;max-height:94vh;display:flex;flex-direction:column}
+.lt-body{display:grid;grid-template-columns:400px 1fr;min-height:0;flex:1;overflow:hidden}
+.lt-form{overflow:auto;padding:16px 18px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.lt-preview{background:#E9EDF3;overflow:auto;display:flex;justify-content:center;padding:14px}
+.lt-preview iframe{width:794px;height:1123px;border:none;background:#fff;box-shadow:0 8px 24px -10px rgba(15,28,77,.35);
+  transform:scale(.72);transform-origin:top center;margin-bottom:-314px;flex:none}
+.lt-f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);font-weight:600;margin-top:8px}
+.lt-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lt-sub{font-size:12.5px;font-weight:700;color:var(--navy);margin-top:14px}
+.lt-hint{font-size:11.5px;color:var(--muted);background:var(--blue-light);border-radius:8px;padding:6px 10px;margin-top:8px}
+.lt-inc{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;margin-top:6px;font-size:13px}
+.lt-inc label{display:flex;gap:8px;align-items:center}
+.lt-srow{display:grid;grid-template-columns:130px 1fr 34px;gap:6px;margin-top:6px;align-items:start}
+.lt-srow textarea{font-size:12px}
+@media(max-width:900px){.lt-body{grid-template-columns:1fr}.lt-preview{display:none}}
