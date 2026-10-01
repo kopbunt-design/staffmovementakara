@@ -56,140 +56,177 @@ export const OFFER_SCHEDULE = [
 ];
 
 // ---------------------------------------------------------------- หน้าตาหนังสือ (pure — มีเทส)
-const FOOT = `<div class="lt-foot"><div>บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน) เลขที่ 99 ม.9 ต.เขาเจ็ดลูก อ.ทับคล้อ จ.พิจิตร 66230</div>
-  <div>Akara Resources Public Company Limited No.99 Moo 9, Khao Chet Luk, Thap Khlo, Phichit 66230</div>
-  <div>Tel +66 5661 4500 www.akararesources.com</div></div>`;
-const head = logo => `<div class="lt-head"><img src="${logo}" alt="AKARA RESOURCES"><span>Chatree Gold Mine</span></div>`;
-
-// signer: { name_th, title_th, name_en, title_en } · art: { signature, seal } (data URL) — ไม่มี = ยังไม่อนุมัติ
-function sign(lang, signer, art, offer) {
-  const sig = art?.signature ? `<img class="lt-sig" src="${art.signature}" alt="">` : `<div class="lt-sig-gap"></div>`;
-  const seal = art?.seal ? `<img class="lt-seal" src="${art.seal}" alt="">` : "";
-  if (offer) return `<div class="lt-sign">${seal}<div>Yours sincerely,</div>${sig}
-    <div>(${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")})</div><div>On behalf of Akara Resources Public Company Limited.</div></div>`;
-  return lang === "th"
-    ? `<div class="lt-sign th">${seal}${sig}<div>${esc(signer?.name_th || "นายศุภโชค พันธุมิตร")}</div><div>${esc(signer?.title_th || "ผู้จัดการฝ่ายทรัพยากรบุคคล")}</div></div>`
-    : `<div class="lt-sign">${seal}<div>Yours sincerely,</div>${sig}<div>${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</div><div>${esc(signer?.title_en || "Human Resources Manager")}</div></div>`;
-}
+// จัดตามไฟล์จริงของ HR (HR-113-2026 / HR-110-2026 / Offer HR-097-2026) ด้วยพิกัดที่วัดจาก PDF ต้นฉบับ (หน่วย มม.)
+//   หนังสือรับรอง = กระดาษ US Letter 215.9×279.4 · Offer Letter = A4 210×297
+//   หัว/ท้ายกระดาษเป็นรูปที่ตัดจากต้นฉบับ (assets/letter/) — โลโก้ เส้น ที่อยู่ จึงเหมือนเดิมทุกจุด
+//   ฟอนต์ตามต้นฉบับ: ไทย TH Sarabun New 15pt · อังกฤษ Arial (9.3pt หนังสือรับรอง / 11pt Offer)
+//   แต่ละบรรทัดตั้ง line-height = ความสูงตัวอักษรจริง ตำแหน่งบนสุดจึงเท่ากับพิกัดในต้นฉบับพอดี
+export const LETTER_IMG = { headLetter: "assets/letter/head-letter.png", footLetter: "assets/letter/foot-letter.png",
+                            headA4: "assets/letter/head-a4.png", footA4: "assets/letter/foot-a4.png" };
+const pageOf = kind => kind === "offer_en" ? "a4" : "letter";
 
 const incomeTH = l => `${money(l.amount)} (${bahtText(l.amount)})`;
 const incomeEN = l => `THB ${money(l.amount)} per month`;
+const img = (src, cls) => src ? `<img class="${cls}" src="${src}" alt="">` : "";
 
 export function letterPages(kind, d, opts = {}) {
-  const { docNo = "", logo = "assets/logo.png", signer = null, art = null, draft = true } = opts;
+  const { docNo = "", signer = null, art = null, draft = true } = opts;
+  const I = { ...LETTER_IMG, ...(opts.img || {}) };
   const K = KINDS[kind]; if (!K) return "";
   const wm = draft ? `<div class="lt-wm">${K.lang === "th" ? "ร่าง · รออนุมัติ" : "DRAFT"}</div>` : "";
-  const no = docNo || (K.lang === "th" ? "HR-___-____" : "HR-___-____");
+  const no = docNo || "HR-___-____";
   const inc = (d.incomes || []).filter(x => x && x.on !== false && Number(x.amount) > 0);
+  const sig = art?.signature, seal = art?.seal;
+  const frame = (size, body) => `<section class="lt-page ${size} ${K.lang}">${wm}
+    <img class="lt-head" src="${size === "a4" ? I.headA4 : I.headLetter}" alt="">${body}
+    <img class="lt-foot" src="${size === "a4" ? I.footA4 : I.footLetter}" alt=""></section>`;
 
   if (kind === "cert_th" || kind === "salary_th") {
     const rows = [["ชื่อ - นามสกุล", d.name_th], ["เลขบัตรประชาชน", d.id_card], ["ตำแหน่ง", d.position_th], ["ฝ่าย", d.division_th],
       ["แผนก", d.department_th], ["ระยะเวลาการปฏิบัติงาน", `${thDate(d.period_from)} ถึง${d.period_to ? ` ${thDate(d.period_to)}` : "ปัจจุบัน"}`],
       ...inc.map(l => [l.label_th, incomeTH(l)])].filter(([, v]) => String(v ?? "").trim());
-    return `<section class="lt-page th">${wm}${head(logo)}
-      <div class="lt-no">${esc(no)}</div><h1 class="lt-h-th">${esc(K.title)}</h1>
-      <p class="lt-intro">หนังสือรับรองฉบับนี้โดย บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน) ออกให้เพื่อเป็นการรับรองรายละเอียดต่อไปนี้</p>
-      <table class="lt-kv th">${rows.map(([k, v]) => `<tr><th>${esc(k)}:</th><td>${esc(v)}</td></tr>`).join("")}</table>
-      <p class="lt-close">จึงออกหนังสือรับรองฉบับนี้ไว้เพื่อเป็นหลักฐาน</p>
-      <div class="lt-date-th">ออกให้ ณ วันที่ ${esc(thDate(d.issue_date))}</div>
-      ${sign("th", signer, art)}
-      <div class="lt-remark"><b>หมายเหตุ:</b> เอกสารฉบับนี้จัดทำและออกในรูปแบบอิเล็กทรอนิกส์ จึงไม่จำเป็นต้องมีลายมือชื่อผู้มีอำนาจลงนามกำกับ</div>
-      ${FOOT}</section>`;
+    return frame("letter", `
+      <div class="lt-a th-no">${esc(no)}</div>
+      <div class="lt-a th-title">${esc(K.title)}</div>
+      <div class="lt-a th-intro">หนังสือรับรองฉบับนี้โดย บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน) ออกให้เพื่อเป็นการรับรองรายละเอียดต่อไปนี้</div>
+      <div class="lt-a th-flow">
+        ${rows.map(([k, v]) => `<div class="th-row"><b>${esc(k)}:</b><span>${esc(v)}</span></div>`).join("")}
+        <div class="th-close">จึงออกหนังสือรับรองฉบับนี้ไว้เพื่อเป็นหลักฐาน</div>
+        <div class="th-sign"><div class="th-date">ออกให้ ณ วันที่ ${esc(thDate(d.issue_date))}</div>
+          <div class="th-name">${img(sig, "th-sig")}${img(seal, "th-seal")}${esc(signer?.name_th || "นายศุภโชค  พันธุมิตร")}</div>
+          <div class="th-title2">${esc(signer?.title_th || "ผู้จัดการฝ่ายทรัพยากรบุคคล")}</div></div>
+      </div>
+      <div class="lt-a th-remark"><b>หมายเหตุ:</b> เอกสารฉบับนี้จัดทำและออกในรูปแบบอิเล็กทรอนิกส์ จึงไม่จำเป็นต้องมีลายมือชื่อผู้มีอำนาจลงนามกำกับ</div>`);
   }
   if (kind === "cert_en" || kind === "salary_en") {
     const rows = [["Position", d.position], ["Division", d.division], ["Department", d.department], ["Section", d.section],
       ["Period of Employment", `${enDate(d.period_from)} - ${d.period_to ? enDate(d.period_to) : "Present"}`],
       ...inc.map(l => [l.label_en, incomeEN(l)])].filter(([, v]) => String(v ?? "").trim());
-    return `<section class="lt-page en">${wm}${head(logo)}
-      <div class="lt-ref">Ref. No. ${esc(no)}<br>Date&nbsp;&nbsp; ${esc(enDate(d.issue_date))}</div>
-      <h1 class="lt-h-en">${esc(K.title)}</h1><h2 class="lt-twimc">TO WHOM IT MAY CONCERN</h2>
-      <p>This is to certify that <b>${esc(d.name_en)}</b>${d.id_card ? `(National ID No.: ${esc(d.id_card)})` : ""} is employed by
-        <b>Akara Resources Public Company Limited</b>, a subsidiary of <b>Kingsgate Consolidated Limited, Australia</b>.</p>
-      <p>The employment details are as follows:</p>
-      <table class="lt-kv en">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>
-      <p>This certificate has been issued at the employee's request for official purposes.</p>
-      ${sign("en", signer, art)}
-      <div class="lt-remark"><b>Remark</b> - This document is digitally issued and does not require a handwritten signature.</div>
-      ${FOOT}</section>`;
+    return frame("letter", `
+      <div class="lt-a en-ref">Ref. No. ${esc(no)}<br>Date&nbsp;&nbsp; ${esc(enDate(d.issue_date))}</div>
+      <div class="lt-a en-title">${esc(K.title)}</div>
+      <div class="lt-a en-twimc">TO WHOM IT MAY CONCERN</div>
+      <div class="lt-a en-flow">
+        <p class="en-p">This is to certify that <b>${esc(d.name_en)}</b>${d.id_card ? `(National ID No.: ${esc(d.id_card)})` : ""} is employed by <b>Akara Resources Public Company Limited</b>, a subsidiary of <b>Kingsgate Consolidated Limited, Australia</b>.</p>
+        <p class="en-p en-p2">The employment details are as follows:</p>
+        <div class="en-rows">${rows.map(([k, v]) => `<div class="en-row"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
+        <p class="en-p en-issued">This certificate has been issued at the employee's request for official purposes.</p>
+        <p class="en-p en-yours">Yours sincerely,</p>
+        <div class="en-name">${img(sig, "en-sig")}${img(seal, "en-seal")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</div>
+        <div class="en-name2">${esc(signer?.title_en || "Human Resources Manager")}</div>
+      </div>
+      <div class="lt-a en-remark"><b>Remark</b> - This document is digitally issued and does not require a handwritten signature.</div>`);
   }
-  // Offer Letter — 2 หน้า (จดหมาย + Schedule 1)
+  // Offer Letter — A4 2 หน้า (จดหมาย + Schedule 1)
   const sched = [["Position Title", d.position], ["Monthly Base Salary", d.salary ? `THB ${money(d.salary)} per month` : ""],
     ["Commencement Date", d.commencement ? `${enDate(d.commencement)}, or as otherwise agreed between the parties` : ""],
     ["Probation Period", d.probation_days ? `${d.probation_days} days` : ""], ...(d.schedule || [])]
     .filter(([k, v]) => String(k || "").trim() && String(v ?? "").trim());
   const nm = `${d.title_en ? d.title_en + " " : ""}${d.name_en || ""}`.trim();
-  return `<section class="lt-page en offer">${wm}${head(logo)}
-    <div class="lt-row"><span>${esc(no)}</span><span>${esc(usDate(d.issue_date))}</span></div>
-    <h1 class="lt-h-offer">Offer of Employment</h1>
-    <p>Dear ${esc(nm)},</p>
-    <p>Akara Resources Public Company Limited is pleased to offer you the position of <b>${esc(d.position)}.</b></p>
-    <p class="j">Your salary, benefits, and leave entitlements are outlined in Schedule 1 and are subject to applicable laws and the Company's policies and regulations, as amended from time to time.</p>
-    <p class="j">Please note that this offer is conditional upon the satisfactory completion of pre-employment requirements, including a medical examination and background verification. Should the results of the medical examination or background verification be deemed unsatisfactory, the Company reserves the right to withdraw this offer of employment.</p>
-    <p class="j">We are confident that you will find this opportunity both challenging and rewarding, and we are delighted to welcome you to Akara Resources Public Company Limited.</p>
-    <p class="j">To indicate your acceptance of this offer, please sign below and return a scanned copy to Akara's HR team at <span class="lt-mail">${esc(d.contact_email || "")}</span>.</p>
-    <p>We look forward to working with you and achieving success together.</p>
-    ${sign("en", signer, art, true)}
-    <div class="lt-stars">*********************</div>
-    <p>I acknowledge and accept the terms and conditions of this Offer of Employment.</p>
-    <div class="lt-accept"><div>Signed: ____________________________</div><div>${esc(nm)}</div><div>Date: __________________________</div></div>
-    ${FOOT}</section>
-  <section class="lt-page en offer">${wm}${head(logo)}
-    <h2 class="lt-sched-h">Schedule 1: Salary, Benefits and Leave Entitlements</h2>
-    <table class="lt-sched">${sched.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>
-    <p class="j">All benefits and leave entitlements are subject to the Company's Work Rules and Regulations and Welfare and Benefits Regulations, as amended from time to time.</p>
-    ${art?.signature ? `<img class="lt-initial" src="${art.signature}" alt="">` : ""}
-    ${FOOT}</section>`;
+  return frame("a4", `
+      <div class="lt-a of-top"><span>${esc(no)}</span><span>${esc(usDate(d.issue_date))}</span></div>
+      <div class="lt-a of-title">Offer of Employment</div>
+      <div class="lt-a of-flow">
+        <p class="of-p">Dear ${esc(nm)},</p>
+        <p class="of-p g1">Akara Resources Public Company Limited is pleased to offer you the position of <b>${esc(d.position)}.</b></p>
+        <p class="of-p j g2">Your salary, benefits, and leave entitlements are outlined in Schedule 1 and are subject to applicable laws and the Company's policies and regulations, as amended from time to time.</p>
+        <p class="of-p j g3">Please note that this offer is conditional upon the satisfactory completion of pre-employment requirements, including a medical examination and background verification. Should the results of the medical examination or background verification be deemed unsatisfactory, the Company reserves the right to withdraw this offer of employment.</p>
+        <p class="of-p j g3">We are confident that you will find this opportunity both challenging and rewarding, and we are delighted to welcome you to Akara Resources Public Company Limited.</p>
+        <p class="of-p j g2">To indicate your acceptance of this offer, please sign below and return a scanned copy to Akara's HR team at <span class="of-mail">${esc(d.contact_email || "")}</span>.</p>
+        <p class="of-p g4">We look forward to working with you and achieving success together.</p>
+        <p class="of-p g4">Yours sincerely,</p>
+        <p class="of-p of-name">${img(sig, "of-sig")}${img(seal, "of-seal")}(${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")})</p>
+        <p class="of-p g5">On behalf of Akara Resources Public Company Limited.</p>
+        <p class="of-p of-stars">*********************</p>
+        <p class="of-p g6">I acknowledge and accept the terms and conditions of this Offer of Employment.</p>
+        <p class="of-p of-signed">Signed: ____________________________</p>
+        <p class="of-p g7">${esc(nm)}</p>
+        <p class="of-p g8">Date: __________________________</p>
+      </div>`)
+  + frame("a4", `
+      <div class="lt-a of-sched-h">Schedule 1: Salary, Benefits and Leave Entitlements</div>
+      <div class="lt-a of-sched-wrap"><table class="of-sched">${sched.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>
+        <p class="of-after">All benefits and leave entitlements are subject to the Company's Work Rules and Regulations and Welfare and Benefits Regulations, as amended from time to time.</p></div>
+      ${img(sig, "of-initial")}`);
 }
 
+const CDN_TH = "https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts";
 export const LETTER_CSS = `
-@page{size:A4;margin:0}
+@font-face{font-family:"THSarabunNewWeb";src:url(${CDN_TH}/THSarabunNew-webfont.woff) format("woff");font-weight:400}
+@font-face{font-family:"THSarabunNewWeb";src:url(${CDN_TH}/THSarabunNew_bold-webfont.woff) format("woff");font-weight:700}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#e9edf3}
-.lt-page{position:relative;width:210mm;height:297mm;overflow:hidden;background:#fff;margin:0 auto 8mm;padding:14mm 20mm 34mm;color:#111;page-break-after:always}
+.lt-page{position:relative;overflow:hidden;background:#fff;margin:0 auto 8mm;color:#000;page-break-after:always}
 .lt-page:last-child{page-break-after:auto}
-.lt-page.th{font-family:'Sarabun',sans-serif;font-size:15px;line-height:1.75}
-.lt-page.en{font-family:Arial,Helvetica,sans-serif;font-size:13.2px;line-height:1.55}
-.lt-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #2160C4;padding-bottom:3px;margin:0 -6mm 9mm}
-.lt-head img{height:16mm}.lt-head span{font-family:'Sarabun',sans-serif;font-size:12.5px;color:#555}
-.lt-no{font-size:14px;margin-bottom:6mm}
-.lt-h-th{text-align:center;font-size:20px;font-weight:700;margin-bottom:6mm}
-.lt-intro{margin-bottom:6mm;text-align:center;white-space:nowrap;font-size:14.4px}
-.lt-kv{border-collapse:collapse;margin:0 0 6mm 10mm}
-.lt-kv.th th{text-align:left;font-weight:700;padding:3px 30px 3px 0;white-space:nowrap;vertical-align:top}
-.lt-kv.th td{padding:3px 0}
-.lt-kv.en{margin:2mm 0 6mm}.lt-kv.en th{text-align:left;font-weight:700;padding:3px 40px 3px 0;white-space:nowrap;vertical-align:top}
-.lt-close{margin:2mm 0 14mm 0}
-.lt-date-th{text-align:center;margin-left:40%;margin-bottom:2mm}
-.lt-sign{position:relative;margin-top:4mm}
-.lt-sign.th{text-align:center;margin-left:40%}
-.lt-sig{height:17mm;display:block;margin:2mm 0 1mm}.lt-sign.th .lt-sig{margin:2mm auto 1mm}
-.lt-sig-gap{height:20mm}
-.lt-seal{position:absolute;height:34mm;opacity:.9;left:62mm;top:-4mm}
-.lt-sign.th .lt-seal{left:auto;right:-6mm;top:-2mm}
-.lt-remark{position:absolute;left:20mm;right:20mm;bottom:40mm;font-size:12.5px}
-.lt-ref{margin-bottom:8mm}
-.lt-h-en{font-size:22px;font-weight:700;color:#333;margin-bottom:4mm}
-.lt-twimc{font-size:15px;font-weight:700;margin-bottom:4mm}
-.lt-page.en p{margin-bottom:4mm}.lt-page .j{text-align:justify}
-.lt-row{display:flex;justify-content:space-between;margin-bottom:8mm;font-size:14px}
-.lt-h-offer{text-align:center;font-size:19px;font-weight:700;margin-bottom:7mm}
-.lt-mail{color:#2160C4}
-.lt-stars{margin:6mm 0 4mm}
-.lt-accept div{margin-top:7mm}
-.lt-sched-h{font-size:16px;font-weight:700;margin:2mm 0 7mm}
-.lt-sched{border-collapse:collapse;width:100%;font-size:12px;line-height:1.4;margin-bottom:7mm}
-.lt-sched td{border:1px solid #333;padding:7px 8px;vertical-align:middle}
-.lt-sched td:first-child{width:34%}
-.lt-initial{position:absolute;right:8mm;bottom:4mm;height:8mm}
-.lt-foot{position:absolute;left:14mm;right:14mm;bottom:9mm;border-top:3px solid #2160C4;padding-top:3mm;text-align:center;font-family:'Sarabun',sans-serif;font-size:11px;line-height:1.7;color:#222}
-.lt-wm{position:absolute;inset:0;display:grid;place-items:center;font:700 88px 'Sarabun',sans-serif;color:rgba(192,57,43,.09);transform:rotate(-28deg);pointer-events:none;z-index:5}
+.lt-page.letter{width:215.9mm;height:279.4mm}.lt-page.a4{width:210mm;height:297mm}
+.lt-head{position:absolute;left:0;top:0;width:100%}
+.lt-page.letter .lt-foot{position:absolute;left:0;top:255mm;width:100%}
+.lt-page.a4 .lt-foot{position:absolute;left:0;top:271mm;width:100%}
+.lt-a{position:absolute;z-index:2}
+/* ไฟล์ฟอนต์บนเว็บสเกลใหญ่กว่าฟอนต์ที่ติดเครื่อง 1.52 เท่า (วัดจากความกว้างทุกบรรทัดเทียบต้นฉบับ) — 9.85pt ที่นี่ = 15pt ใน Word */
+.lt-page.th{font-family:"THSarabunNewWeb",sans-serif;font-size:9.85pt;line-height:6.9mm}
+.lt-page.en{font-family:Arial,Helvetica,sans-serif}
+/* ---- หนังสือรับรอง ภาษาไทย (Letter) ---- */
+.th-no{left:27.9mm;top:28.4mm}
+.th-title{left:0;right:0;top:37.6mm;text-align:center;font-size:12.35pt;font-weight:700;line-height:8.6mm}
+.th-intro{left:36.5mm;top:54.1mm;white-space:nowrap}
+.th-flow{left:0;right:0;top:67.07mm}
+.th-row{display:flex;line-height:8.97mm;padding-left:52.9mm}.th-row b{width:44.6mm;flex:none}
+.th-close{margin:6.44mm 0 0 39.9mm}
+.th-sign{position:relative;margin-left:83.8mm;width:80mm;text-align:center}
+.th-date{margin-top:17.2mm}
+.th-name{position:relative;left:-2.3mm;margin-top:23.85mm;line-height:8mm;white-space:pre}
+.th-title2{position:relative;left:-2.6mm;line-height:8mm}
+.th-sig{position:absolute;left:24.3mm;top:-12.4mm;height:12.5mm}
+.th-seal{position:absolute;left:62.2mm;top:-24.1mm;height:35.5mm}
+.th-remark{left:27.9mm;top:229.4mm;white-space:nowrap}
+/* ---- หนังสือรับรอง ภาษาอังกฤษ (Letter) ---- */
+.lt-page.letter.en{font-size:9.3pt;line-height:3.7mm}
+.en-ref{left:27.9mm;top:28.4mm;line-height:5.3mm;margin-top:-0.8mm}
+.en-title{left:27.9mm;top:46.5mm;font-size:15pt;font-weight:700;line-height:5.9mm;color:#3c3c3c}
+.en-twimc{left:27.9mm;top:57.7mm;font-size:11.3pt;font-weight:700;line-height:4.4mm}
+.en-flow{left:27.9mm;width:158mm;top:67.2mm}
+.en-p{line-height:5.7mm}
+.en-p2{margin-top:4.3mm}
+.en-rows{margin-top:5.1mm;padding-left:.3mm}
+.en-row{display:flex;line-height:6.7mm}.en-row b{width:56.3mm;flex:none}
+.en-issued{margin-top:5.5mm}
+.en-yours{margin-top:7.3mm}
+.en-name{position:relative;margin-top:15.05mm;line-height:5mm}
+.en-name2{line-height:5mm}
+.en-sig{position:absolute;left:.8mm;top:-13.2mm;height:12mm}
+.en-seal{position:absolute;left:48.2mm;top:-25.7mm;height:35mm}
+.en-remark{left:27.9mm;top:241.8mm;white-space:nowrap}
+/* ---- Offer Letter (A4) ---- */
+.lt-page.a4.en{font-size:11pt;line-height:4.3mm}
+.of-top{left:20mm;right:17.4mm;top:30.1mm;display:flex;justify-content:space-between}
+.of-title{left:20mm;right:17.4mm;top:44.7mm;text-align:center;font-size:14pt;font-weight:700;line-height:5.5mm}
+/* Word จัดคำในบรรทัดแน่นกว่า Chrome เล็กน้อย — กว้างกว่าขอบจริง 1.4 มม. บรรทัดจึงตัดคำตรงกับต้นฉบับ */
+.of-flow{left:20mm;right:16mm;top:61.4mm}
+.of-p{line-height:5.1mm}.of-p.j{text-align:justify}
+.of-p.g1{margin-top:5.1mm;letter-spacing:-.13px}.of-p.g2{margin-top:2.4mm}.of-p.g3{margin-top:2.9mm}.of-p.g4{margin-top:5.3mm}
+.of-name{position:relative;margin-top:24.7mm}.of-p.g5{margin-top:2.1mm}
+.of-stars{font-size:10pt;margin-top:6.9mm}.of-p.g6{margin-top:6.4mm}
+.of-signed{margin-top:15.8mm}.of-p.g7{margin-top:9mm}.of-p.g8{margin-top:2.8mm}
+.of-mail{color:#0563C1}
+.of-sig{position:absolute;left:1mm;top:-10.8mm;height:11mm}
+.of-seal{position:absolute;left:45.8mm;top:-32.3mm;height:32mm}
+.of-sched-h{left:20mm;top:30.2mm;font-size:12pt;font-weight:700;line-height:4.7mm}
+.of-sched-wrap{left:20mm;right:17.4mm;top:43.5mm}
+.of-sched{border-collapse:collapse;width:100%;font-size:9pt;line-height:3.7mm}
+.of-sched tr{height:10.35mm}
+.of-sched td{border:.75pt solid #000;padding:0 2mm;vertical-align:middle}
+.of-sched td:first-child{width:46mm}
+.of-after{margin-top:7.6mm;font-size:10pt;line-height:4.6mm;text-align:justify}
+.of-initial{position:absolute;left:187mm;top:286.5mm;height:8mm;z-index:3}
+.lt-wm{position:absolute;inset:0;display:grid;place-items:center;font:700 88px "THSarabunNewWeb",sans-serif;color:rgba(192,57,43,.10);transform:rotate(-28deg);pointer-events:none;z-index:5}
 @media print{body{background:#fff}.lt-page{margin:0}}
 `;
 
 export function letterDocument(kind, d, opts) {
+  const size = pageOf(kind) === "a4" ? "A4" : "letter";
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(opts?.docNo || KINDS[kind]?.label || "")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>${LETTER_CSS}</style></head><body>${letterPages(kind, d, opts)}</body></html>`;
+    <style>@page{size:${size};margin:0}${LETTER_CSS}</style></head><body>${letterPages(kind, d, opts)}</body></html>`;
 }
 
 // ---------------------------------------------------------------- ข้อมูลตั้งต้นจากทะเบียนพนักงาน
@@ -212,8 +249,44 @@ export function draftFrom(kind, e, incomeItems = []) {
   return d;
 }
 
+// ---------------------------------------------------------------- อีเมล (แบบ + ไฟล์ .eml สำหรับ Outlook)
+const KIND_MAIL = { cert_th: "หนังสือรับรองการทำงาน (ภาษาไทย)", cert_en: "Certificate of Employment (EN)",
+  salary_th: "หนังสือรับรองเงินเดือน (ภาษาไทย)", salary_en: "Salary Certificate (EN)", offer_en: "Offer Letter" };
+// แบบตั้งต้น (ใช้ตอนยังไม่ได้รัน SQL ส่วนแบบอีเมล) — แบบจริงแก้ได้ในหน้าตั้งค่า เก็บในตาราง mail_templates
+const DEFAULT_MAIL = [
+  { key: "request", label: "ขออนุมัติหนังสือ", subject: "[ขออนุมัติ] {{doc_no}} {{kind}} — {{person}}",
+    html: `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b"><p><b>มีหนังสือรอการอนุมัติจากท่าน</b></p><p>เลขที่ <b>{{doc_no}}</b> · {{kind}} · {{person}} {{emp_code}}</p><p><a href="{{link}}">เปิดหนังสือเพื่ออนุมัติ</a></p></div>` },
+  { key: "approved", label: "แจ้งอนุมัติแล้ว", subject: "[อนุมัติแล้ว] {{doc_no}} — {{person}}",
+    html: `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px"><p><b>หนังสือได้รับการอนุมัติแล้ว</b></p><p>{{doc_no}} · {{kind}} · {{person}}</p><p><a href="{{link}}">เปิดหนังสือ</a></p></div>` },
+  { key: "rejected", label: "แจ้งส่งกลับแก้ไข", subject: "[ส่งกลับแก้ไข] {{doc_no}} — {{person}}",
+    html: `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px"><p><b>หนังสือถูกส่งกลับให้แก้ไข</b></p><p>{{doc_no}} · {{kind}} · {{person}}</p><p>เหตุผล: {{reason}}</p><p><a href="{{link}}">เปิดหนังสือ</a></p></div>` },
+];
+// แทนค่า {{ตัวแปร}} — ค่าจากข้อมูล escape ก่อนลง HTML เสมอ (กันชื่อคนแปลก ๆ กลายเป็นโค้ดในเมล)
+export function renderMail(tpl, vars, html) {
+  return String(tpl || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => html ? esc(vars[k] ?? "") : String(vars[k] ?? ""));
+}
+function mailFor(action, row, extra = {}) {
+  const t = mailTpl.find(x => x.key === action); if (!t) return null;
+  const v = { doc_no: row.doc_no || "", kind: KIND_MAIL[row.kind] || row.kind, person: row.person_name || "",
+              emp_code: row.emp_code ? `(${row.emp_code})` : "", link: `${location.origin}/?letter=${row.id}`,
+              reason: row.reject_reason || "-", requester: extra.requester || "", approver: extra.approver || "" };
+  return { subject: renderMail(t.subject, v, false), html: renderMail(t.html, v, true) };
+}
+const b64 = s => btoa(unescape(encodeURIComponent(s)));
+// ไฟล์ .eml ที่มี X-Unsent: 1 — Outlook เปิดเป็นเมลใหม่ที่ยังไม่ส่ง (แก้ได้ กด Send ได้) พร้อมรูปแบบ HTML ครบ
+export function emlText(to, subject, html) {
+  const body = b64(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${html}</body></html>`).replace(/.{76}/g, "$&\r\n");
+  return [`To: ${to}`, `Subject: =?UTF-8?B?${b64(subject)}?=`, "X-Unsent: 1", "MIME-Version: 1.0",
+          "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body].join("\r\n");
+}
+function downloadEml(to, subject, html, name) {
+  const url = URL.createObjectURL(new Blob([emlText(to, subject, html)], { type: "message/rfc822" }));
+  const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 // ---------------------------------------------------------------- state
-let letters = [], incomeItems = [], signers = [], settings = {}, tab = "mine", search = "";
+let letters = [], incomeItems = [], signers = [], settings = {}, mailCfg = { mode: "outlook" }, mailTpl = [], tab = "mine", search = "";
 
 export function renderLetters() { boot(); }
 
@@ -234,11 +307,33 @@ async function boot() {
     return;
   }
   letters = l.data || []; incomeItems = i.data || []; signers = s.data || []; settings = st.data || {};
+  // ตั้งค่าอีเมล/แบบอีเมล — ถ้ายังไม่ได้รัน SQL ส่วนนี้ ใช้โหมด Outlook กับแบบตั้งต้นไปก่อน
+  const [mc, mt] = await Promise.all([supabase.from("mail_settings").select("*").eq("id", 1).maybeSingle(),
+                                      supabase.from("mail_templates").select("*")]);
+  if (!mc.error && mc.data) mailCfg = mc.data;
+  mailTpl = !mt.error && mt.data?.length ? mt.data : DEFAULT_MAIL;
   if (!canWrite() && canApprove()) tab = "approve";
   draw();
   // เปิดจากลิงก์ในเมล (?letter=ID)
   const deep = +new URLSearchParams(location.search).get("letter");
   if (deep) { history.replaceState(null, "", location.pathname); const x = letters.find(r => r.id === deep); if (x) openLetter(x); }
+  // มาจากปุ่ม "สร้างหนังสือ" ในทะเบียนเลขที่เอกสาร
+  let fromDoc = null; try { fromDoc = JSON.parse(sessionStorage.getItem("letter_from_doc") || "null"); sessionStorage.removeItem("letter_from_doc"); } catch {}
+  if (fromDoc && canWrite()) {
+    const { data, error } = await supabase.rpc("letter_from_doc", { p_doc_id: fromDoc.doc_id, p_kind: fromDoc.kind });
+    if (error) { toast("สร้างหนังสือจากเลขที่ไม่สำเร็จ: " + error.message, "error"); return; }
+    let x = letters.find(r => r.id === data.id);
+    if (!x) {
+      // ฉบับใหม่: เติมข้อมูลตั้งต้นจากทะเบียนพนักงาน (ถ้าเลขนี้ออกให้พนักงาน) แล้วบันทึกเป็นร่าง
+      const emp = allEmployees.find(e => e.emp_code === data.emp_code) || null;
+      const d = draftFrom(data.kind, emp, incomeItems);
+      if (emp) d.emp_code = emp.emp_code; else if (data.person_name) { d.name_th = data.person_name; d.name_en = data.person_name; }
+      d.contact_email = settings.hr_contact_email || "";
+      const u = await supabase.from("hr_letters").update({ data: d }).eq("id", data.id).select().single();
+      x = u.data || data; letters.unshift(x); draw();
+    }
+    openLetter(x);
+  }
 }
 
 function draw() {
@@ -275,7 +370,7 @@ function draw() {
   if (s) s.oninput = () => { search = s.value; const p = s.selectionStart; draw(); const n = document.getElementById("ltSearch"); n.focus(); n.setSelectionRange(p, p); };
   pg.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openLetter(letters.find(r => r.id === +b.dataset.open)));
   pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printLetter(letters.find(r => r.id === +b.dataset.print)));
-  if (tab === "settings") wireSettings();
+  if (tab === "settings") { wireSettings(); wireMail(); }
 }
 
 // ---------------------------------------------------------------- ลายเซ็น/ตรา (private storage → data URL)
@@ -285,16 +380,20 @@ async function assetData(path) {
   if (error || !data) return "";
   return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(data); });
 }
-let logoData = "";
-async function logo() {
-  if (logoData) return logoData;
-  try { const b = await (await fetch("assets/logo.png")).blob(); logoData = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
-  catch { logoData = new URL("assets/logo.png", location.href).href; }
-  return logoData;
+// หัว/ท้ายกระดาษ → data URL ครั้งเดียว (หน้าต่างพิมพ์เป็น about:blank อ่าน path แบบ relative ไม่ได้)
+let imgCache = null;
+async function letterImgs() {
+  if (imgCache) return imgCache;
+  const out = {};
+  for (const [k, path] of Object.entries(LETTER_IMG)) {
+    try { const b = await (await fetch(path)).blob(); out[k] = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
+    catch { out[k] = new URL(path, location.href).href; }
+  }
+  return (imgCache = out);
 }
 async function optsFor(r) {
   const approved = r.status === "approved" && r.signer;
-  return { docNo: r.doc_no || "", logo: await logo(), draft: !approved, signer: approved ? r.signer : null,
+  return { docNo: r.doc_no || "", img: await letterImgs(), draft: !approved, signer: approved ? r.signer : null,
            art: approved ? { signature: await assetData(r.signer.signature_path), seal: await assetData(r.signer.seal_path) } : null };
 }
 
@@ -327,12 +426,12 @@ function openLetter(r) {
   let rendering = 0;
   const preview = async () => {
     const my = ++rendering;
-    const o = r ? await optsFor({ ...r, data: d }) : { docNo: "", logo: await logo(), draft: true };
+    const o = r ? await optsFor({ ...r, data: d }) : { docNo: "", img: await letterImgs(), draft: true };
     if (my !== rendering) return;
     const fr = $("#ltFrame");
     // ความสูงกรอบตามจำนวนหน้า (Offer Letter 2 หน้า) — ไม่มีแถบเลื่อนซ้อนในกรอบ
     fr.onload = () => { const h = fr.contentDocument?.documentElement.scrollHeight || 1123;
-      fr.style.height = h + "px"; fr.style.marginBottom = `${-Math.round(h * 0.28)}px`; };
+      fr.style.height = h + "px"; fr.style.width = (kind === "offer_en" ? 794 : 816) + "px"; fr.style.marginBottom = `${-Math.round(h * 0.28)}px`; };
     fr.srcdoc = letterDocument(kind, d, o);
   };
 
@@ -393,7 +492,7 @@ function openLetter(r) {
 
   const personOf = () => KINDS[kind].lang === "th" ? d.name_th : `${kind === "offer_en" && d.title_en ? d.title_en + " " : ""}${d.name_en || ""}`.trim();
   const save = async () => {
-    const row = { kind, data: d, emp_code: d.emp_code || null, person_name: personOf() || null };
+    const row = { kind, data: d, emp_code: d.emp_code || null, person_name: personOf() || null, requested_email: currentUser?.email || null };
     if (r) {
       const { data, error } = await supabase.from("hr_letters").update({ ...row, status: "draft" }).eq("id", r.id).select().single();
       if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return null; }
@@ -404,12 +503,23 @@ function openLetter(r) {
     if (!letters.some(x => x.id === data.id)) letters.unshift(data);
     r = data; return r;
   };
+  // โหมดอัตโนมัติ: ส่งจากอีเมลกลาง (Edge Function) · โหมด Outlook หรือส่งอัตโนมัติไม่ผ่าน: ดาวน์โหลดไฟล์เมลให้เปิดใน Outlook
   const sendMail = async (row, action) => {
-    try {
-      const { data, error } = await supabase.functions.invoke("letter-notify", { body: { letter_id: row.id, action } });
-      if (error) throw error;
-      return data?.sent ? `ส่งอีเมลถึง ${data.to} แล้ว` : "แจ้งในระบบแล้ว (อีเมลอัตโนมัติยังไม่ได้ตั้งค่า)";
-    } catch { return "แจ้งในระบบแล้ว (ส่งอีเมลไม่สำเร็จ)"; }
+    if (mailCfg.mode === "auto") {
+      try {
+        const { data, error } = await supabase.functions.invoke("letter-notify", { body: { letter_id: row.id, action } });
+        if (error) throw error;
+        if (data?.sent) return `ส่งอีเมลถึง ${data.to} แล้ว`;
+      } catch { /* ตกไปใช้ไฟล์เมลด้านล่าง */ }
+    }
+    const appr = signers.find(x => x.user_id === (row.approver_id || row.approved_by)) || {};
+    const me = signers.find(x => x.user_id === currentUser?.id) || {};
+    const to = action === "request" ? appr.email : row.requested_email;
+    const m = mailFor(action, row, { requester: action === "request" ? (me.name_th || currentUser?.email || "") : (row.requested_email || ""),
+                                     approver: action === "request" ? (appr.name_th || "") : (me.name_th || me.name_en || "") });
+    if (!m) return "แจ้งในระบบแล้ว";
+    downloadEml(to || "", m.subject, m.html, `${row.doc_no || "letter"} ${action === "request" ? "ขออนุมัติ" : action === "approved" ? "อนุมัติแล้ว" : "ส่งกลับแก้ไข"}.eml`);
+    return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดไฟล์ Outlook จะขึ้นเมลที่เขียนไว้แล้ว กด Send ได้เลย";
   };
 
   const foot = () => {
@@ -502,7 +612,77 @@ function settingsHTML() {
         <td style="text-align:center;"><input type="checkbox" data-iact="${esc(i.key)}" ${i.is_active ? "checked" : ""}></td></tr>`).join("")}</tbody></table>
       <div class="lt-2" style="margin-top:10px;"><input class="form-control" id="inTh" placeholder="ชื่อไทย เช่น ค่าตำแหน่ง"><input class="form-control" id="inEn" placeholder="English e.g. Position Allowance"></div>
       <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-secondary" id="inAdd">+ เพิ่มรายการ</button><button class="btn btn-primary" id="inSave">บันทึก</button></div>
-    </div></div>` : ""}</div>`;
+    </div></div>` : ""}
+    ${canApprove() ? mailSettingsHTML() : ""}</div>`;
+}
+
+// ---- การส่งอีเมล (ตั้งค่าแบบเดียวกับ TigerSoft) + แบบอีเมลที่แก้ HTML ได้
+let tplKey = "request";
+function mailSettingsHTML() {
+  const t = mailTpl.find(x => x.key === tplKey) || mailTpl[0] || {};
+  return `<div class="card" style="grid-column:1/-1;"><div class="card-body">
+    <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">การส่งอีเมล</div>
+    <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ส่งอัตโนมัติจากอีเมลกลางผ่าน Microsoft 365 — ใช้ค่าเดียวกับที่ตั้งใน TigerSoft ได้ (Tenant ID / Client ID / Client Secret / อีเมลผู้ส่ง)</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:13.5px;">
+      <label style="display:flex;gap:6px;align-items:center;"><input type="radio" name="mlMode" value="outlook" ${mailCfg.mode !== "auto" ? "checked" : ""}> เปิดใน Outlook (ส่งจากเมลของคนที่กด)</label>
+      <label style="display:flex;gap:6px;align-items:center;"><input type="radio" name="mlMode" value="auto" ${mailCfg.mode === "auto" ? "checked" : ""}> ส่งอัตโนมัติจากอีเมลกลาง</label></div>
+    <div class="lt-2"><label class="lt-f"><span>Tenant ID</span><input class="form-control" id="mlTenant" value="${esc(mailCfg.tenant_id || "")}" autocomplete="off"></label>
+      <label class="lt-f"><span>Client ID</span><input class="form-control" id="mlClient" value="${esc(mailCfg.client_id || "")}" autocomplete="off"></label></div>
+    <div class="lt-2"><label class="lt-f"><span>Client Secret ${mailCfg.has_secret ? `<b style="color:var(--green);">✓ ตั้งไว้แล้ว</b>` : ""}</span>
+        <input class="form-control" id="mlSecret" type="password" placeholder="${mailCfg.has_secret ? "เว้นว่าง = ใช้ค่าเดิม" : "วางค่า Client Secret"}" autocomplete="new-password"></label>
+      <label class="lt-f"><span>อีเมลผู้ส่ง (From)</span><input class="form-control" id="mlSender" value="${esc(mailCfg.sender || "")}" placeholder="hr.online@akararesources.com"></label></div>
+    <div class="lt-hint">Client Secret เก็บแยกในระบบ อ่านกลับออกมาไม่ได้ (แม้ผู้ดูแล) ใช้ได้เฉพาะตอนส่งเมล · ต้อง deploy ฟังก์ชัน letter-notify ใน Supabase หนึ่งครั้งก่อนใช้โหมดอัตโนมัติ</div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="btn btn-primary" id="mlSave">บันทึกการตั้งค่า</button><button class="btn btn-secondary" id="mlTest">ทดสอบส่งเมล (ถึงตัวเอง)</button></div>
+    <hr style="margin:18px 0;border:none;border-top:1px solid var(--border);">
+    <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">แบบอีเมล</div>
+    <div class="text-muted" style="font-size:12.5px;margin-bottom:8px;">ใส่โค้ด HTML ได้ · ตัวแปร: <code>{{doc_no}}</code> <code>{{kind}}</code> <code>{{person}}</code> <code>{{emp_code}}</code> <code>{{link}}</code> <code>{{reason}}</code> <code>{{requester}}</code> <code>{{approver}}</code></div>
+    <div class="lt-mail-ed"><div>
+      <select class="form-control" id="mtKey" style="max-width:260px;">${mailTpl.map(x => `<option value="${x.key}" ${x.key === t.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select>
+      <label class="lt-f"><span>หัวเรื่อง</span><input class="form-control" id="mtSubject" value="${esc(t.subject || "")}"></label>
+      <label class="lt-f"><span>เนื้อหา (HTML)</span><textarea class="form-control" id="mtHtml" rows="14" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;">${esc(t.html || "")}</textarea></label>
+      <button class="btn btn-primary" id="mtSave" style="margin-top:8px;">บันทึกแบบอีเมล</button></div>
+      <div><div class="lt-f"><span>ตัวอย่าง</span></div><div class="lt-mail-subj" id="mtPrevSubj"></div><iframe id="mtPrev" title="ตัวอย่างอีเมล"></iframe></div></div>
+  </div></div>`;
+}
+const SAMPLE_MAIL = { doc_no: "HR-115-2026", kind: "หนังสือรับรองเงินเดือน (ภาษาไทย)", person: "นางสาวตัวอย่าง ทดสอบ", emp_code: "(AKR00000001)",
+  link: "#", reason: "แก้ตำแหน่งให้ตรงกับทะเบียน", requester: "ผู้ออกหนังสือ", approver: "นายศุภโชค พันธุมิตร" };
+function wireMail() {
+  const pg = document.getElementById("pageLetters"), $ = s => pg.querySelector(s);
+  if (!$("#mtKey")) return;
+  const prev = () => { $("#mtPrevSubj").textContent = renderMail($("#mtSubject").value, SAMPLE_MAIL, false);
+    $("#mtPrev").srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:12px">${renderMail($("#mtHtml").value, SAMPLE_MAIL, true)}</body></html>`; };
+  prev();
+  $("#mtSubject").oninput = prev; $("#mtHtml").oninput = prev;
+  $("#mtKey").onchange = e => { tplKey = e.target.value; draw(); };
+  $("#mtSave").onclick = async () => {
+    const upd = { subject: $("#mtSubject").value, html: $("#mtHtml").value, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from("mail_templates").update(upd).eq("key", tplKey);
+    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(mailTpl.find(x => x.key === tplKey), upd); toast("บันทึกแบบอีเมลแล้ว", "success");
+  };
+  $("#mlSave").onclick = async () => {
+    const upd = { mode: pg.querySelector('input[name="mlMode"]:checked')?.value || "outlook", tenant_id: $("#mlTenant").value.trim() || null,
+                  client_id: $("#mlClient").value.trim() || null, sender: $("#mlSender").value.trim() || null, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from("mail_settings").update(upd).eq("id", 1);
+    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+    const secret = $("#mlSecret").value.trim();
+    if (secret) {
+      const r = await supabase.rpc("mail_set_secret", { p_secret: secret });
+      if (r.error) { toast("บันทึก Client Secret ไม่สำเร็จ: " + r.error.message, "error"); return; }
+      upd.has_secret = true;
+    }
+    Object.assign(mailCfg, upd); toast("บันทึกการตั้งค่าอีเมลแล้ว", "success"); draw();
+  };
+  $("#mlTest").onclick = async e => {
+    e.target.disabled = true; e.target.textContent = "กำลังส่ง…";
+    try {
+      const { data, error } = await supabase.functions.invoke("letter-notify", { body: { action: "test" } });
+      if (error) throw error;
+      if (data?.sent) toast(`ส่งเมลทดสอบถึง ${data.to} แล้ว — ตรวจกล่องจดหมาย`, "success");
+      else toast(`ส่งไม่สำเร็จ: ${{ not_configured: "ยังกรอกค่าไม่ครบ", auth_error: "Tenant/Client ID/Secret ไม่ถูกต้อง", graph_error: "อีเมลผู้ส่งไม่ถูกต้อง หรือแอปไม่มีสิทธิ์ Mail.Send" }[data?.reason] || data?.reason}${data?.detail ? ` (${String(data.detail).slice(0, 120)})` : ""}`, "error");
+    } catch (err) { toast("เรียกฟังก์ชันส่งเมลไม่ได้ — ต้อง deploy letter-notify ใน Supabase ก่อน", "error"); }
+    e.target.disabled = false; e.target.textContent = "ทดสอบส่งเมล (ถึงตัวเอง)";
+  };
 }
 
 function wireSettings() {

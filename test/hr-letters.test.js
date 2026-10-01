@@ -8,10 +8,13 @@ const strip = s => s.split("\n").filter(l => !/^\s*import\s/.test(l)).join("\n")
 // เอาแค่ bahtText จาก contract-docs.js (ไฟล์นั้นมีตัวแปรชื่อซ้ำกับไฟล์หนังสือ)
 const cd = strip(read(`${ROOT}/js/contract-docs.js`));
 const baht = cd.slice(cd.indexOf("function bahtText"), cd.indexOf("\n}\n", cd.indexOf("function bahtText")) + 3);
-const M = new Function(`${baht}\nconst escText = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// JXA ไม่มี btoa/atob — ใช้ของ Foundation แทน (เทียบเท่าในเบราว์เซอร์)
+const btoa = s => $.NSString.alloc.initWithString(s).dataUsingEncoding($.NSISOLatin1StringEncoding).base64EncodedStringWithOptions(0).js;
+const atob = s => $.NSString.alloc.initWithDataEncoding($.NSData.alloc.initWithBase64EncodedStringOptions(s, 0), $.NSISOLatin1StringEncoding).js;
+const M = new Function("btoa", `${baht}\nconst escText = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const can = () => true, toast = () => {}, notify = () => {}, allEmployees = [], currentUser = {}, supabase = {};
   ${strip(read(`${ROOT}/js/hr-letters.js`)).replace(/const esc = v => escText/, "const esc = v => escText")}
-  return { letterPages, thDate, enDate, usDate, draftFrom, KINDS };`)();
+  return { letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText };`)(btoa);
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -67,5 +70,18 @@ const d = M.draftFrom("salary_th", { firstname_th: "หนึ่ง", lastname_t
 eq([d.name_th, d.period_from, d.incomes.length, d.incomes[0].on, d.incomes[0].amount], ["นายหนึ่ง ทดสอบ", "2024-01-01", 1, true, 30000],
    "หนังสือรับรองเงินเดือน ติ๊กเงินเดือนให้ · รายการที่ปิดใช้ไม่โผล่");
 eq(M.draftFrom("cert_th", null, items).incomes[0].on, false, "หนังสือรับรองการทำงาน ไม่ติ๊กเงินเดือนตั้งต้น");
+
+// ---------- อีเมล ----------
+eq(M.renderMail("[ขออนุมัติ] {{doc_no}} — {{ person }}", { doc_no: "HR-115-2026", person: "ก & ข" }, false), "[ขออนุมัติ] HR-115-2026 — ก & ข", "หัวเรื่อง: แทนค่า ไม่ escape");
+eq(M.renderMail("<b>{{person}}</b>{{missing}}", { person: "<img onerror=x>" }, true), "<b>&lt;img onerror=x&gt;</b>", "เนื้อหา HTML: ค่าจากข้อมูลถูก escape · ตัวแปรที่ไม่มีเป็นว่าง");
+{
+  const e = M.emlText("mgr@x.com", "ขออนุมัติ HR-1", "<p>สวัสดี</p>");
+  has(e, "X-Unsent: 1", "Outlook เปิดเป็นเมลใหม่ที่ยังไม่ส่ง");
+  has(e, "To: mgr@x.com", "ผู้รับ");
+  has(e, "Content-Type: text/html; charset=UTF-8", "เป็น HTML");
+  has(e, "Subject: =?UTF-8?B?", "หัวเรื่องภาษาไทยเข้ารหัสถูกแบบ");
+  const body = e.split("\r\n\r\n")[1].replace(/\r\n/g, "");
+  eq(decodeURIComponent(escape(atob(body))).includes("<p>สวัสดี</p>"), true, "เนื้อหาถอดกลับได้ครบ");
+}
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

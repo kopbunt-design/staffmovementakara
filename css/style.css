@@ -1094,3 +1094,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .lt-srow{display:grid;grid-template-columns:130px 1fr 34px;gap:6px;margin-top:6px;align-items:start}
 .lt-srow textarea{font-size:12px}
 @media(max-width:900px){.lt-body{grid-template-columns:1fr}.lt-preview{display:none}}
+.lt-mail-ed{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.lt-mail-ed iframe{width:100%;height:330px;border:1px solid var(--border);border-radius:10px;background:#fff}
+.lt-mail-subj{font-weight:700;font-size:13.5px;margin:4px 0 6px;color:var(--navy)}
+@media(max-width:900px){.lt-mail-ed{grid-template-columns:1fr}}

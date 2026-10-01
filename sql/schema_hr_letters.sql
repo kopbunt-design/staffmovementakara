@@ -226,3 +226,134 @@ on conflict do nothing;
 insert into role_permissions (role_key, perm_key)
 select 'admin', 'data.letters.approve' from app_roles where key = 'admin'
 on conflict do nothing;
+
+-- ============================================================================
+-- 8. การส่งอีเมล (ตั้งค่าเองในเว็บได้ แบบ TigerSoft) + แบบอีเมล (แก้ HTML ได้)
+--    mode = 'outlook' → เว็บสร้างไฟล์เมล (.eml) ให้เปิดใน Outlook แล้วกดส่งเอง
+--    mode = 'auto'    → ส่งอัตโนมัติจากอีเมลกลางผ่าน Microsoft Graph (แอปเดียวกับที่ TigerSoft ใช้ได้)
+-- ⚠️ Client Secret เก็บแยกตาราง mail_secret ที่ไม่มี policy เลย — หน้าเว็บอ่านไม่ได้
+--    เขียนได้ทางเดียวผ่าน mail_set_secret() · อ่านได้เฉพาะ Edge Function (service role) ตอนส่งเมล
+-- ============================================================================
+create table if not exists mail_settings (
+  id         int primary key default 1 check (id = 1),
+  mode       text not null default 'outlook' check (mode in ('outlook','auto')),
+  tenant_id  text, client_id text, sender text,
+  has_secret boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+insert into mail_settings (id) values (1) on conflict do nothing;
+create table if not exists mail_secret (id int primary key default 1 check (id = 1), client_secret text);
+alter table mail_settings enable row level security;
+alter table mail_secret   enable row level security;     -- ไม่มี policy = ไม่มีใครอ่าน/เขียนตรงได้
+drop policy if exists "ms_read"  on mail_settings;
+drop policy if exists "ms_write" on mail_settings;
+create policy "ms_read"  on mail_settings for select using (has_perm('page.letters'));
+create policy "ms_write" on mail_settings for update using (has_perm('data.letters.approve'));
+
+create or replace function mail_set_secret(p_secret text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not has_perm('data.letters.approve') then raise exception 'ไม่มีสิทธิ์ตั้งค่าอีเมล'; end if;
+  insert into mail_secret (id, client_secret) values (1, nullif(trim(p_secret), ''))
+  on conflict (id) do update set client_secret = excluded.client_secret;
+  update mail_settings set has_secret = nullif(trim(p_secret), '') is not null, updated_at = now() where id = 1;
+end $$;
+revoke all on function mail_set_secret(text) from public, anon;
+grant execute on function mail_set_secret(text) to authenticated;
+
+-- แบบอีเมล — ตัวแปร: {{doc_no}} {{kind}} {{person}} {{emp_code}} {{link}} {{reason}} {{requester}} {{approver}}
+create table if not exists mail_templates (
+  key        text primary key check (key in ('request','approved','rejected')),
+  label      text not null,
+  subject    text not null,
+  html       text not null,
+  updated_at timestamptz not null default now()
+);
+alter table mail_templates enable row level security;
+drop policy if exists "mt_read"  on mail_templates;
+drop policy if exists "mt_write" on mail_templates;
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters'));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve'));
+insert into mail_templates (key, label, subject, html) values
+('request', 'ขออนุมัติหนังสือ', '[ขออนุมัติ] {{doc_no}} {{kind}} — {{person}}',
+$h$<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b;max-width:560px">
+  <div style="border-top:4px solid #2160C4;padding:18px 0 4px"><b style="font-size:16px;color:#0F1C4D">มีหนังสือรอการอนุมัติจากท่าน</b></div>
+  <table style="border-collapse:collapse;margin:12px 0;font-size:14px">
+    <tr><td style="padding:5px 18px 5px 0;color:#64748b">เลขที่</td><td><b>{{doc_no}}</b></td></tr>
+    <tr><td style="padding:5px 18px 5px 0;color:#64748b">ประเภท</td><td>{{kind}}</td></tr>
+    <tr><td style="padding:5px 18px 5px 0;color:#64748b">ออกให้</td><td>{{person}} {{emp_code}}</td></tr>
+    <tr><td style="padding:5px 18px 5px 0;color:#64748b">ผู้ขอ</td><td>{{requester}}</td></tr>
+  </table>
+  <a href="{{link}}" style="display:inline-block;background:#2B5AC7;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:bold">เปิดหนังสือเพื่ออนุมัติ</a>
+  <p style="color:#94a3b8;font-size:12px;margin-top:22px">ส่งจากระบบ HR · รายละเอียดหนังสือดูได้ในระบบเท่านั้น</p></div>$h$),
+('approved', 'แจ้งอนุมัติแล้ว', '[อนุมัติแล้ว] {{doc_no}} — {{person}}',
+$h$<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b;max-width:560px">
+  <div style="border-top:4px solid #0D7C4B;padding:18px 0 4px"><b style="font-size:16px;color:#0D7C4B">หนังสือได้รับการอนุมัติแล้ว</b></div>
+  <p>{{doc_no}} · {{kind}} · {{person}} — อนุมัติโดย {{approver}} พิมพ์/บันทึก PDF ได้ในระบบ</p>
+  <a href="{{link}}" style="display:inline-block;background:#0D7C4B;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:bold">เปิดหนังสือ</a>
+  <p style="color:#94a3b8;font-size:12px;margin-top:22px">ส่งจากระบบ HR</p></div>$h$),
+('rejected', 'แจ้งส่งกลับแก้ไข', '[ส่งกลับแก้ไข] {{doc_no}} — {{person}}',
+$h$<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b;max-width:560px">
+  <div style="border-top:4px solid #C0392B;padding:18px 0 4px"><b style="font-size:16px;color:#C0392B">หนังสือถูกส่งกลับให้แก้ไข</b></div>
+  <p>{{doc_no}} · {{kind}} · {{person}}</p>
+  <p style="background:#FDECEA;border-radius:8px;padding:10px 14px">เหตุผล: {{reason}}</p>
+  <a href="{{link}}" style="display:inline-block;background:#2B5AC7;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:bold">เปิดหนังสือเพื่อแก้ไข</a>
+  <p style="color:#94a3b8;font-size:12px;margin-top:22px">ส่งจากระบบ HR</p></div>$h$)
+on conflict (key) do nothing;
+
+-- อีเมลของคนส่งขออนุมัติ (ไว้ส่งผลกลับในโหมด Outlook — หน้าเว็บอ่านอีเมลจาก auth.users ไม่ได้)
+alter table hr_letters add column if not exists requested_email text;
+
+-- ============================================================================
+-- 9. สร้างหนังสือจากเลขที่ที่ออกในทะเบียนแล้ว (ปุ่ม "สร้างหนังสือ" ในทะเบียนเลขที่เอกสาร)
+--    หนึ่งเลขที่ผูกได้หนังสือเดียว (ไม่นับฉบับที่ยกเลิก) — กดซ้ำจะได้ฉบับเดิม
+-- ============================================================================
+create unique index if not exists hr_letters_doc_live_idx on hr_letters (doc_id) where status <> 'cancelled' and doc_id is not null;
+
+create or replace function hr_letters_guard() returns trigger language plpgsql as $$
+declare approving boolean := current_setting('hr_letters.approving', true) = 'on';
+        fromdoc   boolean := current_setting('hr_letters.fromdoc', true) = 'on';
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' or new.signer is not null or new.approved_by is not null
+       or (new.doc_id is not null and not fromdoc) then
+      raise exception 'หนังสือใหม่ต้องเริ่มจากร่าง';
+    end if;
+    return new;
+  end if;
+  if not approving and (new.signer is distinct from old.signer or new.approved_by is distinct from old.approved_by
+                        or (new.status = 'approved' and old.status <> 'approved')) then
+    raise exception 'อนุมัติและใส่ลายเซ็นได้ผ่านปุ่มอนุมัติของผู้อนุมัติเท่านั้น';
+  end if;
+  if new.doc_id is distinct from old.doc_id and old.doc_id is not null then
+    raise exception 'เลขที่หนังสือเปลี่ยนไม่ได้';
+  end if;
+  if old.status = 'pending' and new.status = 'pending' and (new.data is distinct from old.data or new.kind <> old.kind) then
+    raise exception 'หนังสือรออนุมัติอยู่ — ดึงกลับเป็นร่างก่อนแก้ไข';
+  end if;
+  if old.status = 'approved' and (new.data is distinct from old.data or new.kind <> old.kind
+       or new.signer is distinct from old.signer or new.status not in ('approved','cancelled')) then
+    raise exception 'หนังสือที่อนุมัติแล้วแก้ไขไม่ได้ — ถ้าต้องแก้ให้ยกเลิกแล้วออกฉบับใหม่';
+  end if;
+  if old.status = 'cancelled' and new.status <> 'cancelled' then
+    raise exception 'หนังสือที่ยกเลิกแล้วนำกลับมาใช้ไม่ได้';
+  end if;
+  return new;
+end $$;
+
+create or replace function letter_from_doc(p_doc_id bigint, p_kind text)
+returns hr_letters language plpgsql security definer set search_path = public as $$
+declare d doc_register; l hr_letters;
+begin
+  if not has_perm('data.letters.write') then raise exception 'ไม่มีสิทธิ์ออกหนังสือ'; end if;
+  select * into l from hr_letters where doc_id = p_doc_id and status <> 'cancelled' limit 1;
+  if l.id is not null then return l; end if;                     -- มีหนังสือของเลขนี้แล้ว → เปิดฉบับเดิม
+  select * into d from doc_register where id = p_doc_id;
+  if d.id is null or d.status <> 'active' then raise exception 'เลขที่นี้ใช้ไม่ได้ (ไม่พบ หรือถูกยกเลิกแล้ว)'; end if;
+  perform set_config('hr_letters.fromdoc', 'on', true);
+  insert into hr_letters (kind, emp_code, person_name, doc_id, doc_no, created_by)
+  values (p_kind, d.emp_code, d.person_name, d.id, d.doc_no, auth.uid()) returning * into l;
+  return l;
+end $$;
+revoke all on function letter_from_doc(bigint, text) from public, anon;
+grant execute on function letter_from_doc(bigint, text) to authenticated;

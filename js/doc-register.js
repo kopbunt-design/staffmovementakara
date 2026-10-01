@@ -1,11 +1,11 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, can, esc as escText, toast, currentUser } from "./app.js";
+import { allEmployees, can, esc as escText, toast, currentUser, navigate } from "./app.js";
 
 // ============================================================================
 // ทะเบียนเลขที่เอกสาร (หมวด "งานเอกสาร HR") — แทนไฟล์ "01 ลำดับเอกสาร HR.xlsx"
 //   ออกเลขผ่าน doc_issue() ใน DB เท่านั้น (ล็อกกันเลขซ้ำ) · เลขที่ออกแล้วลบไม่ได้ ยกเลิกได้
 //   นำเข้าประวัติจาก Excel เดิมผ่าน doc_import() — นำเข้าซ้ำได้ เลขที่มีแล้วข้าม
-//   เผื่อเฟสถัดไป: doc_types.template_key → ปุ่ม "สร้างเอกสาร" (ลงทะเบียนแบบใน TEMPLATES)
+//   เลขที่ของหนังสือรับรอง/Offer Letter มีปุ่ม "สร้างหนังสือ" ส่งต่อไปหน้าออกหนังสือ HR
 // ============================================================================
 
 const esc = v => escText(v == null ? "" : String(v));
@@ -16,8 +16,13 @@ const thDate = iso => { if (!iso) return "-"; const d = new Date(iso + "T00:00:0
 const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const empName = e => [e.firstname_th, e.lastname_th].filter(Boolean).join(" ");
 
-// แบบเอกสารสำหรับเฟสถัดไป — key ตรงกับ doc_types.template_key · ยังว่าง = ยังไม่มีปุ่มสร้างเอกสาร
-const TEMPLATES = {};
+// ประเภทในทะเบียนที่ระบบ "ออกหนังสือ HR" สร้างตัวหนังสือให้ได้ → ปุ่ม "สร้างหนังสือ" ที่แถวเลขที่
+const LETTER_KIND = {
+  "หนังสือรับรองการทำงาน (ภาษาไทย)": "cert_th", "หนังสือรับรองการทำงาน (ภาษาอังกฤษ)": "cert_en",
+  "หนังสือรับรองเงินเดือน (ภาษาไทย)": "salary_th", "หนังสือรับรองเงินเดือน (ภาษาอังกฤษ)": "salary_en",
+  "Offer Letter (จดหมายจ้างงาน)": "offer_en",
+};
+let linked = new Set();   // เลขที่ที่มีหนังสือในระบบแล้ว (ปุ่มเป็น "เปิดหนังสือ")
 
 // ---------------------------------------------------------------- อ่านไฟล์ Excel เดิม (pure — มีเทส)
 const TH_MONTH_IDX = Object.fromEntries(TH_MONTHS.map((m, i) => [m, i]));
@@ -114,6 +119,10 @@ async function boot() {
     return;
   }
   series = s.data || []; types = t.data || []; rows = r.data || [];
+  if (can("data.letters.write")) {
+    const hl = await supabase.from("hr_letters").select("doc_id,status").not("doc_id", "is", null);
+    linked = new Set((hl.data || []).filter(x => x.status !== "cancelled").map(x => x.doc_id));
+  }
   if (!fYear) fYear = String(new Date().getFullYear());
   draw();
 }
@@ -174,7 +183,8 @@ function draw() {
       <td style="max-width:300px;">${esc(r.subject || "")}${r.note ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.note)}</div>` : ""}</td>
       <td>${esc(r.person_name || "")}${r.emp_code ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.emp_code)}</div>` : ""}</td>
       <td style="white-space:nowrap;">${esc(r.ref_doc_no || "")}</td>
-      <td style="white-space:nowrap;"><button class="btn btn-sm btn-secondary" data-copy="${esc(r.doc_no)}">คัดลอก</button>
+      <td style="white-space:nowrap;">${LETTER_KIND[r.type_label] && r.status !== "void" && can("data.letters.write")
+          ? `<button class="btn btn-sm btn-primary" data-letter="${r.id}">${linked.has(r.id) ? "เปิดหนังสือ" : "สร้างหนังสือ"}</button> ` : ""}<button class="btn btn-sm btn-secondary" data-copy="${esc(r.doc_no)}">คัดลอก</button>
         ${canWrite() && r.status !== "void" ? `<button class="btn btn-sm btn-secondary" data-edit="${r.id}">แก้ไข</button>` : ""}</td></tr>`).join("")}</tbody></table>`
     : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">${rows.length ? "ไม่มีรายการตามตัวกรอง" : "ยังไม่มีเลขในทะเบียน"}</div>
        <div class="empty-sub">${rows.length ? "" : "กด “นำเข้าจาก Excel เดิม” เพื่อนำประวัติจากไฟล์ 01 ลำดับเอกสาร HR เข้ามา แล้วค่อยเริ่มออกเลข"}</div></div>`}
@@ -196,6 +206,12 @@ function wire() {
   const imp = pg.querySelector("#drImport");
   if (imp) imp.onchange = () => { const f = imp.files[0]; imp.value = ""; if (f) importFile(f); };
   pg.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => copy(b.dataset.copy));
+  // ส่งต่อไปหน้าออกหนังสือ — หน้านั้นสร้างร่างผูกกับเลขนี้ (หรือเปิดฉบับเดิมถ้ามีแล้ว)
+  pg.querySelectorAll("[data-letter]").forEach(b => b.onclick = () => {
+    const r = rows.find(x => x.id === +b.dataset.letter);
+    try { sessionStorage.setItem("letter_from_doc", JSON.stringify({ doc_id: r.id, kind: LETTER_KIND[r.type_label] })); } catch {}
+    navigate("letters");
+  });
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editForm(rows.find(r => r.id === +b.dataset.edit)));
 }
 
