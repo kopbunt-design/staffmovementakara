@@ -361,7 +361,11 @@ function applyLang(lang) {
   document.documentElement.lang = lang;
 }
 document.querySelectorAll("#langToggle .lang-btn").forEach(b =>
-  b.addEventListener("click", () => applyLang(b.dataset.lang)));
+  b.addEventListener("click", () => {
+    applyLang(b.dataset.lang);
+    // หน้าหลักวาดข้อความเอง (คำอธิบาย/คำทักทาย) — ต้องวาดใหม่ ไม่งั้นค้างภาษาเดิม
+    if (currentPage === "home") import("./launcher.js").then(m => m.renderHome());
+  }));
 applyLang(appLang);
 
 // ===== DATA LOADING =====

@@ -1,4 +1,4 @@
-import { esc, navigate } from "./app.js";
+import { esc, navigate, appLang } from "./app.js";
 
 // ============================================================================
 // หน้าหลัก — รวมทุกระบบเป็นการ์ด จัดเป็นกลุ่มตามแถบเมนูข้าง
@@ -32,6 +32,34 @@ const META = {
   users:           ["บัญชีผู้ใช้และสิทธิ์การเข้าถึง", '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.4 3.4-5.5 7-5.5s6.3 2.1 7 5.5"/>'],
   settings:        ["ข้อมูลหลัก: ฝ่าย แผนก ตำแหน่ง ระดับ", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>'],
 };
+// คำอธิบายภาษาอังกฤษ (ปุ่ม EN) — ชื่อเมนูแปลจากแถบข้างอยู่แล้ว ตรงนี้แปลเฉพาะส่วนที่หน้าหลักมีเอง
+const META_EN = {
+  dashboard: "Workforce snapshot and latest movements", employees: "Employee records and profiles",
+  movements: "Record and approve joiners, leavers, transfers", uniform: "Stock in, issue out, balances",
+  fundforms: "PVD / WEF invitations and requests", shiftallow: "Calculate shift pay from timesheets",
+  shiftcompare: "Compare shift pay between two months", payroll: "Monthly payroll report",
+  payrollexp: "Payroll cost history", payrollbuild: "Build the register from raw payroll files",
+  payrollapproval: "Summary for payroll approval", contractpay: "Consultant / contractor pay runs, 3% WHT",
+  headcount: "Monthly headcount by unit", movreport: "Joiners, leavers and turnover",
+  workforce: "Executive workforce overview", analytics: "In-depth workforce analysis",
+  vacancy: "Position quotas and vacancies", users: "User accounts and access",
+  settings: "Master data: divisions, departments, positions, levels",
+};
+const GROUP_EN = {
+  "grp.records": "People, movements and benefits", "grp.pay": "Shift pay, payroll, approvals, contract pay",
+  "grp.reports": "Dashboard, headcount, movement, analytics", "grp.plan": "Position quotas and vacancies",
+  "grp.system": "Users, access and master data",
+};
+const UI = {
+  th: { hello: "สวัสดี", you: "คุณ", search: "ค้นหาเมนู เช่น ค่ากะ, กองทุน, headcount", recent: "ใช้ล่าสุด",
+        menus: n => `${n} เมนู`, none: q => `ไม่พบเมนูที่ตรงกับ “${q}”`, close: "ปิด", locale: "th-TH" },
+  en: { hello: "Hello", you: "", search: "Search menus, e.g. shift, fund, headcount", recent: "Recent",
+        menus: n => `${n} menu${n === 1 ? "" : "s"}`, none: q => `No menu matches “${q}”`, close: "Close", locale: "en-GB" },
+};
+const en = () => appLang === "en";
+const ui = () => UI[en() ? "en" : "th"];
+const desc = page => en() ? (META_EN[page] || "") : ((META[page] || [])[0] || "");
+const gDesc = g => en() ? (GROUP_EN[g.key] || "") : ((GROUP_META[g.key] || [])[0] || "");
 const FALLBACK_ICON = '<rect x="4" y="4" width="16" height="16" rx="3"/>';
 // สีประจำกลุ่ม ตามลำดับกลุ่มในแถบข้าง — ไล่สีให้แต่ละกลุ่มแยกด้วยตาได้ทันที
 const TONES = ["blue", "green", "purple", "teal", "slate"];
@@ -79,7 +107,7 @@ function tile(it, tone) {
   return `<button class="hm-tile" data-go="${esc(it.page)}" data-tone="${tone}">
     <span class="hm-ic">${icon(it.page)}</span>
     <span class="hm-tx"><span class="hm-t">${esc(it.label)}</span>
-      <span class="hm-d">${esc((META[it.page] || [])[0] || "")}</span></span>
+      <span class="hm-d">${esc(desc(it.page))}</span></span>
     ${it.badge ? `<span class="hm-badge${it.alert ? " alert" : ""}">${esc(it.badge)}</span>` : ""}
   </button>`;
 }
@@ -103,10 +131,10 @@ function folder(g, i) {
     ${alerts ? `<span class="hm-badge alert">${alerts}</span>` : ""}
     <span class="hm-fi">${gIcon(g)}</span>
     <span class="hm-ft">${esc(g.name)}</span>
-    <span class="hm-fd">${esc((GROUP_META[g.key] || [])[0] || "")}</span>
+    <span class="hm-fd">${esc(gDesc(g))}</span>
     <span class="hm-prev">${g.items.slice(0, 4).map(it => `<span class="hm-ic sm" title="${esc(it.label)}">${icon(it.page)}</span>`).join("")}
       ${g.items.length > 4 ? `<span class="hm-more">+${g.items.length - 4}</span>` : ""}</span>
-    <span class="hm-fc">${g.items.length} เมนู <b>→</b></span>
+    <span class="hm-fc">${ui().menus(g.items.length)} <b>→</b></span>
   </button>`;
 }
 
@@ -117,22 +145,23 @@ function draw() {
   const groups = groupsCache = readNav().map((g, i) => ({ ...g, tone: TONES[i % TONES.length] }));
   const q = query.trim().toLowerCase();
   const shown = groups.map(g => ({ ...g, items: g.items.filter(it =>
-      !q || [it.label, (META[it.page] || [])[0], g.name].join(" ").toLowerCase().includes(q)) }))
+      // ค้นได้ทั้งไทยและอังกฤษ ไม่ว่าจะเปิดภาษาไหนอยู่
+      !q || [it.label, (META[it.page] || [])[0], META_EN[it.page], g.name].join(" ").toLowerCase().includes(q)) }))
     .filter(g => g.items.length);
   const all = groups.flatMap(g => g.items.map(it => ({ ...it, tone: g.tone })));
   const rec = recent().map(p => all.find(it => it.page === p)).filter(Boolean);
   const name = (document.getElementById("sidebarName")?.textContent || "").trim();
-  const today = new Date().toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const today = new Date().toLocaleDateString(ui().locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   pg.innerHTML = `
   <div class="hm">
     <div class="hm-head">
-      <div><div class="hm-hello">สวัสดี${name ? `คุณ${esc(name.split(" ")[0])}` : ""}</div>
+      <div><div class="hm-hello">${ui().hello}${name ? `${en() ? " " : ""}${ui().you}${esc(name.split(" ")[0])}` : ""}</div>
         <div class="hm-date">${esc(today)}</div></div>
       <label class="hm-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-        <input id="hmQ" placeholder="ค้นหาเมนู เช่น ค่ากะ, กองทุน, headcount" value="${esc(query)}" autocomplete="off"></label>
+        <input id="hmQ" placeholder="${ui().search}" value="${esc(query)}" autocomplete="off"></label>
     </div>
-    ${!q && rec.length ? `<div class="hm-recent"><span class="hm-recent-l">ใช้ล่าสุด</span>
+    ${!q && rec.length ? `<div class="hm-recent"><span class="hm-recent-l">${ui().recent}</span>
       ${rec.map(it => `<button class="hm-chip" data-go="${esc(it.page)}" data-tone="${it.tone}"><span class="hm-ic sm">${icon(it.page)}</span>${esc(it.label)}</button>`).join("")}</div>` : ""}
     ${!q ? `<div class="hm-folders">${groups.map(folder).join("")}</div>`
       // ค้นหา: แสดงเมนูย่อยทุกหมวดที่ตรงคำค้นเลย ไม่ต้องเปิดทีละหมวด
@@ -141,7 +170,7 @@ function draw() {
         <div class="hm-gh" data-tone="${g.tone}"><span></span>${esc(g.name)}<em>${g.items.length}</em></div>
         <div class="hm-grid">${g.items.map(it => tile(it, g.tone)).join("")}</div>
       </section>`).join("")
-      : `<div class="hm-empty">ไม่พบเมนูที่ตรงกับ “${esc(query)}”</div>`}
+      : `<div class="hm-empty">${esc(ui().none(query))}</div>`}
   </div>`;
 
   pg.querySelectorAll("[data-go]").forEach(b => b.onclick = () => navigate(b.dataset.go));
@@ -162,8 +191,8 @@ function openFolder(idx, fromEl) {
     <div class="hm-panel" tabindex="-1" data-tone="${g.tone}" role="dialog" aria-label="${esc(g.name)}">
       <div class="hm-ph">
         <span class="hm-fi">${gIcon(g)}</span>
-        <div><div class="hm-pt">${esc(g.name)}</div><div class="hm-pd">${esc((GROUP_META[g.key] || [])[0] || "")} · ${g.items.length} เมนู</div></div>
-        <button class="hm-x" aria-label="ปิด">✕</button>
+        <div><div class="hm-pt">${esc(g.name)}</div><div class="hm-pd">${esc(gDesc(g))} · ${ui().menus(g.items.length)}</div></div>
+        <button class="hm-x" aria-label="${ui().close}">✕</button>
       </div>
       <div class="hm-grid hm-pgrid">${g.items.map((it, k) => tile(it, g.tone).replace('class="hm-tile"', `class="hm-tile hm-in" style="--k:${k}"`)).join("")}</div>
     </div>`;
