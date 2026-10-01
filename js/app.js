@@ -224,7 +224,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","docregister","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
@@ -326,6 +326,7 @@ async function renderPage(page) {
   else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
   else if(page==="uniform") (await import("./uniform.js")).renderUniform();
   else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
+  else if(page==="docregister") (await import("./doc-register.js")).renderDocRegister();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="shiftcompare") (await import("./shift-compare.js")).renderShiftCompare();
   else if(page==="users") (await import("./users.js")).renderUsers();
@@ -342,10 +343,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
-        "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
+        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
-        "grp.plan":"Headcount Planning", "grp.system":"System" },
+        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
 function applyLang(lang) {

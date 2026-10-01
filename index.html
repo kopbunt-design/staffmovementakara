@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v= คือเลขเวอร์ชันสำหรับล้าง cache — เบราว์เซอร์ (โดยเฉพาะ Safari) จำ CSS เดิมไว้แม้กด hard refresh
      ถ้าแก้ style.css แล้วหน้าเว็บยังหน้าตาเดิม ให้บวกเลขนี้ขึ้น 1 -->
-<link rel="stylesheet" href="css/style.css?v=31">
+<link rel="stylesheet" href="css/style.css?v=32">
 </head>
 <body>
 
@@ -141,6 +141,14 @@
         <span>Position Quota</span>
       </a>
 
+      <div class="nav-section">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+        <span data-i18n="grp.docs">งานเอกสาร HR</span>
+      </div>
+      <a class="nav-item nav-sub" data-page="docregister">
+        <span data-i18n="nav.docregister">ทะเบียนเลขที่เอกสาร</span>
+      </a>
+
       <div class="nav-section" id="adminNavSection" style="display:none;">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="14" cy="8" r="2.5"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="16" r="2.5"/></svg>
         <span data-i18n="grp.system">ระบบ</span>
@@ -189,6 +197,7 @@
     <div id="pageContractpay" class="page"></div>
     <div id="pageUniform" class="page"></div>
     <div id="pageFundforms" class="page"></div>
+    <div id="pageDocregister" class="page"></div>
     <div id="pageShiftallow" class="page"></div>
     <div id="pageShiftcompare" class="page"></div>
     <div id="pageUsers"     class="page"></div>

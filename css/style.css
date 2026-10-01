@@ -1018,6 +1018,7 @@ textarea.form-control{resize:vertical;min-height:72px;}
 [data-tone="green"] {--tone:#0D7C4B;--tone-soft:#E6F5EE;--tone-soft-2:#A9DCC2}
 [data-tone="purple"]{--tone:#6D28D9;--tone-soft:#F0EBFD;--tone-soft-2:#CDBDF6}
 [data-tone="teal"]  {--tone:#0E7490;--tone-soft:#E3F4F8;--tone-soft-2:#A5D8E6}
+[data-tone="amber"] {--tone:#B45309;--tone-soft:#FEF3E2;--tone-soft-2:#F5CF98}
 [data-tone="slate"] {--tone:#475569;--tone-soft:#EEF1F5;--tone-soft-2:#CBD5E1}
 @media(max-width:640px){.hm{padding:18px 14px 36px}.hm-grid{grid-template-columns:1fr 1fr;gap:10px}
   .hm-tile{gap:10px;padding:16px 10px 14px}.hm-ic{width:46px;height:46px}.hm-d{display:none}}
