@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v= คือเลขเวอร์ชันสำหรับล้าง cache — เบราว์เซอร์ (โดยเฉพาะ Safari) จำ CSS เดิมไว้แม้กด hard refresh
      ถ้าแก้ style.css แล้วหน้าเว็บยังหน้าตาเดิม ให้บวกเลขนี้ขึ้น 1 -->
-<link rel="stylesheet" href="css/style.css?v=30">
+<link rel="stylesheet" href="css/style.css?v=31">
 </head>
 <body>
 
@@ -59,16 +59,13 @@
       <div class="sidebar-product">HR SYSTEM</div>
     </div>
     <nav class="sidebar-nav">
-      <!-- เมนู 6 กลุ่มตามงานจริงของ HR (ดีไซน์ตกลงกันใน Figma 2026-08-29)
+      <!-- เมนูตามงานจริงของ HR (ดีไซน์ตกลงกันใน Figma 2026-08-29)
+           หมวดหุบไว้ เหลือหัวหมวด · กางเฉพาะหมวดของหน้าที่เปิดอยู่ (foldNav ใน app.js) — ทางหลักคือหน้าหลักแบบไอคอน
            หัวกลุ่ม (.nav-section) มีไอคอน · รายการลูก (.nav-sub) เยื้องเข้า ไม่มีไอคอนซ้ำ
            data-i18n = ป้ายที่สลับ ไทย/EN ได้ (dict อยู่ใน app.js) -->
       <a class="nav-item" data-page="home">
         <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/></svg>
         <span data-i18n="nav.home">หน้าหลัก</span>
-      </a>
-      <a class="nav-item" data-page="dashboard">
-        <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span data-i18n="nav.dashboard">ภาพรวม</span>
       </a>
 
       <div class="nav-section">
@@ -120,6 +117,9 @@
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
         <span data-i18n="grp.reports">รายงานกำลังคน</span>
       </div>
+      <a class="nav-item nav-sub" data-page="dashboard">
+        <span data-i18n="nav.dashboard">ภาพรวม</span>
+      </a>
       <a class="nav-item nav-sub" data-page="headcount">
         <span>Headcount Report</span>
       </a>

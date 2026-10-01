@@ -229,13 +229,48 @@ let currentPage = "home";
 
 export function navigate(page) {
   currentPage = page;
+  navOpen = null;
   import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
   pages.forEach(p => {
     document.getElementById(`page${p[0].toUpperCase()+p.slice(1)}`)?.classList.toggle("active", p===page);
     document.querySelectorAll(`.nav-item[data-page="${p}"]`).forEach(el=>el.classList.toggle("active", p===page));
   });
+  foldNav();
   renderPage(page);
 }
+
+// ===== แถบเมนูข้างแบบหุบ =====
+// ทางหลักในการเลือกเมนูคือหน้าหลัก (การ์ดหมวด) — แถบข้างจึงเหลือแค่หัวหมวด
+// กางเฉพาะหมวดของหน้าที่เปิดอยู่ หรือหมวดที่ผู้ใช้กดกางเอง (ทีละหมวด)
+// หมวดที่หุบ ถ้ามีงานค้าง (.nav-badge) โชว์ผลรวมที่หัวหมวด ไม่ให้งานค้างหายไปกับการหุบ
+let navOpen = null;      // null = ตามหน้าปัจจุบัน · "none" = ผู้ใช้หุบหมด · element = หมวดที่ผู้ใช้กางเอง
+const sectionItems = sec => { const out = []; let n = sec.nextElementSibling;
+  while (n && !n.classList.contains("nav-section")) { if (n.matches?.(".nav-item")) out.push(n); n = n.nextElementSibling; }
+  return out; };
+function foldNav() {
+  document.querySelectorAll(".sidebar-nav .nav-section").forEach(sec => {
+    const items = sectionItems(sec);
+    const open = sec === navOpen || (navOpen === null && items.some(i => i.dataset.page === currentPage));
+    sec.classList.toggle("open", open);
+    items.forEach(i => i.classList.toggle("nav-fold", !open));
+    const pending = items.reduce((t, i) => { const b = i.querySelector(".nav-badge");
+      return t + (b && b.style.display !== "none" ? (+b.textContent || 0) : 0); }, 0);
+    let tag = sec.querySelector(".nav-sec-badge");
+    if (!tag) { tag = document.createElement("span"); tag.className = "nav-sec-badge"; sec.appendChild(tag); }
+    const show = !open && pending ? "" : "none", txt = String(pending);
+    if (tag.textContent !== txt) tag.textContent = txt;
+    if (tag.style.display !== show) tag.style.display = show;
+  });
+}
+document.querySelectorAll(".sidebar-nav .nav-section").forEach(sec => sec.addEventListener("click", () => {
+  navOpen = sec.classList.contains("open") ? "none" : sec;
+  foldNav();
+}));
+// ป้ายงานค้างอัปเดตจาก realtime — หัวหมวดต้องอัปเดตตาม
+// เฝ้าเฉพาะป้ายในเมนู ไม่เฝ้าทั้งแถบ ไม่งั้น foldNav ที่แก้ป้ายหัวหมวดจะปลุกตัวเองวนไม่จบ
+const badgeWatch = new MutationObserver(() => foldNav());
+document.querySelectorAll(".sidebar-nav .nav-badge").forEach(b =>
+  badgeWatch.observe(b, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["style"] }));
 
 // หน้าที่ไม่มี permission key ของตัวเอง ใช้สิทธิ์ของหน้าที่เป็นทางเข้าแทน
 // ⚠️ ต้องใช้ตารางนี้ทั้งตอนซ่อนเมนูและตอนกันเข้าหน้า ไม่งั้นเมนูหายแต่ router ปล่อยผ่าน (หรือกลับกัน)

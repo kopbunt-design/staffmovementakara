@@ -1062,3 +1062,17 @@ textarea.form-control{resize:vertical;min-height:72px;}
 @media (prefers-reduced-motion:reduce){.hm-folder,.hm-in{animation:none}.hm-folder,.hm-fdeco,.hm-fc b{transition:none}}
 @media(max-width:640px){.hm-folders{grid-template-columns:1fr 1fr;gap:12px}.hm-folder{min-height:170px;padding:16px}
   .hm-fd,.hm-fdeco{display:none}.hm-ft{font-size:15px}.hm-fi{width:46px;height:46px}.hm-panel{padding:18px}.hm-pgrid{grid-template-columns:1fr 1fr}}
+
+/* แถบข้างแบบหุบ (foldNav ใน app.js) — เหลือหัวหมวด กางเฉพาะหมวดของหน้าที่เปิดอยู่ */
+.sidebar-nav .nav-section{cursor:pointer;border-radius:9px;margin-top:4px;padding:9px 10px;transition:background .15s,color .15s;user-select:none}
+.sidebar-nav .nav-section:hover{background:#F1F4F9;color:#1E2430}
+.sidebar-nav .nav-section::after{content:"";margin-left:auto;width:7px;height:7px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:rotate(-45deg);opacity:.55;transition:transform .2s}
+.sidebar-nav .nav-section.open{color:var(--navy)}
+.sidebar-nav .nav-section.open::after{transform:rotate(45deg) translate(-2px,-2px)}
+.nav-sec-badge{margin-left:auto;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px}
+.nav-sec-badge + *{margin-left:6px}
+.sidebar-nav .nav-section:has(.nav-sec-badge:not([style*="none"]))::after{margin-left:6px}
+.nav-item.nav-fold{display:none !important}
+.nav-section.open + .nav-sub{animation:navIn .2s ease-out}
+@keyframes navIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
