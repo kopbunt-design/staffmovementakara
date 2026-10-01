@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, navigate } from "./app.js";
+import { comboHTML, bindCombo } from "./combobox.js";
 
 // ============================================================================
 // ทะเบียนเลขที่เอกสาร (หมวด "งานเอกสาร HR") — แทนไฟล์ "01 ลำดับเอกสาร HR.xlsx"
@@ -230,11 +231,16 @@ function modal(title, body, foot) {
   return el;
 }
 
-const empList = () => `<datalist id="drEmpList">${allEmployees.filter(e => e.emp_code)
-  .map(e => `<option value="${esc(e.emp_code)} · ${esc(empName(e))}"></option>`).join("")}</datalist>`;
-// ช่องผู้รับรับได้ทั้ง "รหัส · ชื่อ" (เลือกจากรายการ) และชื่อคนนอกที่พิมพ์เอง
+// ช่องค้นหาพนักงาน: พิมพ์ชื่อไทย ชื่ออังกฤษ หรือรหัสก็เจอ (ช่อง datalist ของเบราว์เซอร์ค้นได้แค่ต้นข้อความ
+// ใน Safari พิมพ์ชื่อแล้วไม่เจอ) · คนนอก (ผู้สมัคร มหาวิทยาลัย) พิมพ์ชื่อเองได้ — allowFree
+export const empItems = () => allEmployees.filter(e => e.emp_code).map(e => ({ value: e.emp_code, label: empName(e) || e.emp_code,
+  sub: [e.emp_code, [e.firstname_en, e.lastname_en].filter(Boolean).join(" "), e.department].filter(Boolean).join(" · ") }));
+const PERSON_PH = "พิมพ์ชื่อไทย/อังกฤษ หรือรหัส · คนนอกพิมพ์ชื่อได้เลย";
+// ค่าจากช่องผู้รับ: รหัสพนักงาน (เลือกจากรายการ) · "รหัส · ชื่อ" (บรรทัดในรายชื่อ) · หรือชื่อคนนอกที่พิมพ์เอง
 function personOf(text) {
   const t = String(text || "").trim(); if (!t) return {};
+  const byCode = allEmployees.find(x => x.emp_code === t);
+  if (byCode) return { emp_code: byCode.emp_code, person_name: empName(byCode) };
   const m = t.match(/^(\S+)\s*·\s*(.+)$/);
   const e = m && allEmployees.find(x => x.emp_code === m[1]);
   return e ? { emp_code: e.emp_code, person_name: empName(e) } : { person_name: t };
@@ -255,7 +261,7 @@ function issueForm() {
       <div class="form-group"><label class="form-label">วันที่ออก</label><input type="date" class="form-control" id="isDate" value="${todayISO()}"></div>
       <div class="form-group"><label class="form-label">จำนวนเลข</label><input type="number" class="form-control" id="isCount" min="1" max="500" value="1"></div>
       <div class="form-group" id="isOneWrap" style="grid-column:1/-1;"><label class="form-label">ออกให้ <span class="text-muted">(พิมพ์รหัส/ชื่อพนักงาน หรือชื่อคนนอก)</span></label>
-        <input class="form-control" id="isPerson" list="drEmpList" autocomplete="off">${empList()}</div>
+        ${comboHTML("isPerson", [], "", PERSON_PH)}</div>
       <div class="form-group" id="isManyWrap" style="grid-column:1/-1;display:none;"><label class="form-label">รายชื่อ <span class="text-muted">(ไม่บังคับ · บรรทัดละ 1 คน เรียงตามเลข · ใส่รหัสพนักงานได้)</span></label>
         <textarea class="form-control" id="isPeople" rows="5"></textarea></div>
       <div class="form-group"><label class="form-label">อ้างอิงเลขที่ <span class="text-muted">(ไม่บังคับ)</span></label><input class="form-control" id="isRef" placeholder="เช่น HR-018-2025"></div>
@@ -263,6 +269,7 @@ function issueForm() {
     </div>
     <div class="uni-alert" style="margin-top:6px;"><b id="isPreview"></b><span>เลขจริงออกตอนกดยืนยัน — ถ้ามีคนออกเลขก่อนหน้าในเวลาเดียวกัน จะได้เลขถัดไป</span></div>`,
     `<button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok>ออกเลข</button>`);
+  bindCombo("isPerson", empItems(), null, { allowFree: true });
   const g = id => el.querySelector("#" + id);
   const preview = () => {
     const n = Math.max(1, Math.min(500, +g("isCount").value || 1)), y = +(g("isDate").value || "").slice(0, 4) || cur;
@@ -307,13 +314,18 @@ function editForm(r) {
       <div class="form-group"><label class="form-label">วันที่ออก</label><input type="date" class="form-control" id="edDate" value="${esc(r.issued_date || "")}"></div>
       <div class="form-group" style="grid-column:1/-1;"><label class="form-label">เรื่อง / รายละเอียด</label><input class="form-control" id="edSubject" value="${esc(r.subject || "")}"></div>
       <div class="form-group" style="grid-column:1/-1;"><label class="form-label">ออกให้</label>
-        <input class="form-control" id="edPerson" list="drEmpList" autocomplete="off" value="${esc(r.emp_code ? `${r.emp_code} · ${r.person_name || ""}` : r.person_name || "")}">${empList()}</div>
+        ${comboHTML("edPerson", [], "", PERSON_PH)}</div>
       <div class="form-group"><label class="form-label">อ้างอิงเลขที่</label><input class="form-control" id="edRef" value="${esc(r.ref_doc_no || "")}"></div>
       <div class="form-group"><label class="form-label">หมายเหตุ</label><input class="form-control" id="edNote" value="${esc(r.note || "")}"></div>
     </div>
     <div class="text-muted" style="font-size:12px;">เลขที่ ${esc(r.doc_no)} แก้ไม่ได้ — ถ้าออกผิดเลข ให้ยกเลิกแล้วออกเลขใหม่</div>`,
     `<button class="btn btn-danger" data-void style="margin-right:auto;">ยกเลิกเลขนี้</button>
      <button class="btn btn-secondary" data-x>ปิด</button><button class="btn btn-primary" data-ok>บันทึก</button>`);
+  bindCombo("edPerson", empItems(), null, { allowFree: true });
+  { // ค่าเดิม: พนักงาน = รหัส · คนนอก = ชื่อที่พิมพ์ไว้
+    const e = r.emp_code && allEmployees.find(x => x.emp_code === r.emp_code);
+    el.querySelector("#edPerson").value = e ? e.emp_code : (r.person_name || "");
+    el.querySelector("#edPerson_txt").value = e ? empName(e) : (r.person_name || ""); }
   const g = id => el.querySelector("#" + id);
   el.querySelector("[data-ok]").onclick = async () => {
     const t = types.find(x => x.id === +g("edType").value), p = personOf(g("edPerson").value);

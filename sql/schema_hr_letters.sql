@@ -357,3 +357,10 @@ begin
 end $$;
 revoke all on function letter_from_doc(bigint, text) from public, anon;
 grant execute on function letter_from_doc(bigint, text) to authenticated;
+
+-- ============================================================================
+-- 10. ผู้รับเพิ่มเติมของแต่ละแบบอีเมล (แก้ได้ในหน้าตั้งค่า) — ผู้รับหลักยังใส่ให้อัตโนมัติ
+--     to_extra / cc: อีเมลคั่นด้วยจุลภาค
+-- ============================================================================
+alter table mail_templates add column if not exists to_extra text;
+alter table mail_templates add column if not exists cc text;

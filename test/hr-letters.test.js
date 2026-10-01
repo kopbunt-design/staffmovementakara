@@ -14,7 +14,7 @@ const atob = s => $.NSString.alloc.initWithDataEncoding($.NSData.alloc.initWithB
 const M = new Function("btoa", `${baht}\nconst escText = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const can = () => true, toast = () => {}, notify = () => {}, allEmployees = [], currentUser = {}, supabase = {};
   ${strip(read(`${ROOT}/js/hr-letters.js`)).replace(/const esc = v => escText/, "const esc = v => escText")}
-  return { letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText };`)(btoa);
+  return { letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -83,5 +83,8 @@ eq(M.renderMail("<b>{{person}}</b>{{missing}}", { person: "<img onerror=x>" }, t
   const body = e.split("\r\n\r\n")[1].replace(/\r\n/g, "");
   eq(decodeURIComponent(escape(atob(body))).includes("<p>สวัสดี</p>"), true, "เนื้อหาถอดกลับได้ครบ");
 }
+
+eq(M.mailList("A@x.com; b@y.co , a@x.com", "not-an-email", "\nc@z.org"), "a@x.com, b@y.co, c@z.org", "รวมอีเมล: คั่นได้หลายแบบ ตัดซ้ำ ตัดค่าที่ไม่ใช่อีเมล");
+has(M.emlText("a@x.com", "s", "<p>x</p>", "b@y.co"), "Cc: b@y.co", "ไฟล์เมลมี CC");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

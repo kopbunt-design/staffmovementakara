@@ -26,6 +26,9 @@ const KIND: Record<string, string> = {
 };
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 // แทนค่า {{ตัวแปร}} — ค่าที่มาจากข้อมูลถูก escape ก่อนใส่ HTML เสมอ
+// อีเมลคั่นด้วย , ; หรือช่องว่าง → รายการที่ถูกรูปแบบ ไม่ซ้ำ
+const list = (s: string | null | undefined) =>
+  [...new Set(String(s || "").split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))];
 const fill = (tpl: string, v: Record<string, string>, html: boolean) =>
   tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => html ? esc(v[k] ?? "") : (v[k] ?? ""));
 
@@ -51,7 +54,7 @@ Deno.serve(async (req) => {
     if (action !== "test" && ms?.mode !== "auto") return json({ sent: false, reason: "outlook_mode" });
     if (!cfg.tenant || !cfg.client || !cfg.secret || !cfg.sender) return json({ sent: false, reason: "not_configured" });
 
-    let to = "", subject = "", html = "";
+    let to = "", subject = "", html = "", extraTo: string[] = [], cc: string[] = [];
     const appUrl = (Deno.env.get("APP_URL") || req.headers.get("origin") || "").replace(/\/$/, "");
     if (action === "test") {
       to = user.email || "";
@@ -74,14 +77,16 @@ Deno.serve(async (req) => {
       } else if (action === "approved" || action === "rejected") {
         to = l.requested_email || req_.email;
       } else return json({ error: "action ไม่ถูกต้อง" }, 400);
-      const { data: t } = await admin.from("mail_templates").select("subject,html").eq("key", action).maybeSingle();
+      const { data: t } = await admin.from("mail_templates").select("subject,html,to_extra,cc").eq("key", action).maybeSingle();
       if (!t) return json({ sent: false, reason: "no_template" });
       const v = { doc_no: l.doc_no || "", kind: KIND[l.kind] || l.kind, person: l.person_name || "",
                   emp_code: l.emp_code ? `(${l.emp_code})` : "", link: `${appUrl}/?letter=${l.id}`,
                   reason: l.reject_reason || "-", requester: req_.name, approver: appr.name };
       subject = fill(t.subject, v, false); html = fill(t.html, v, true);
+      extraTo = list(t.to_extra); cc = list(t.cc);
     }
-    if (!to) return json({ sent: false, reason: "no_recipient" });
+    const toAll = [...new Set([...list(to), ...extraTo])];
+    if (!toAll.length) return json({ sent: false, reason: "no_recipient" });
 
     const tok = await fetch(`https://login.microsoftonline.com/${cfg.tenant}/oauth2/v2.0/token`, {
       method: "POST",
@@ -94,10 +99,12 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${tj.access_token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ message: { subject, body: { contentType: "HTML", content: html },
-                                        toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: true }),
+                                        toRecipients: toAll.map(address => ({ emailAddress: { address } })),
+                                        ccRecipients: cc.filter(x => !toAll.includes(x)).map(address => ({ emailAddress: { address } })) },
+                             saveToSentItems: true }),
     });
     if (!r.ok) return json({ sent: false, reason: "graph_error", detail: await r.text() });
-    return json({ sent: true, to });
+    return json({ sent: true, to: toAll.join(", ") + (cc.length ? ` (cc ${cc.join(", ")})` : "") });
   } catch (e) {
     return json({ error: String((e as Error).message || e) }, 500);
   }

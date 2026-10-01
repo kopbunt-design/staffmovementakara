@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, notify } from "./app.js";
 import { bahtText } from "./contract-docs.js";
+import { comboHTML, bindCombo } from "./combobox.js";
 
 // ============================================================================
 // ออกหนังสือ HR (หมวด "งานเอกสาร HR")
@@ -270,17 +271,19 @@ function mailFor(action, row, extra = {}) {
   const v = { doc_no: row.doc_no || "", kind: KIND_MAIL[row.kind] || row.kind, person: row.person_name || "",
               emp_code: row.emp_code ? `(${row.emp_code})` : "", link: `${location.origin}/?letter=${row.id}`,
               reason: row.reject_reason || "-", requester: extra.requester || "", approver: extra.approver || "" };
-  return { subject: renderMail(t.subject, v, false), html: renderMail(t.html, v, true) };
+  return { subject: renderMail(t.subject, v, false), html: renderMail(t.html, v, true), toExtra: t.to_extra || "", cc: t.cc || "" };
 }
 const b64 = s => btoa(unescape(encodeURIComponent(s)));
+// รวมรายชื่ออีเมล (คั่นด้วย , ; หรือขึ้นบรรทัด) ตัดซ้ำ ตัดค่าที่ไม่ใช่อีเมล
+export const mailList = (...parts) => [...new Set(parts.join(",").split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].join(", ");
 // ไฟล์ .eml ที่มี X-Unsent: 1 — Outlook เปิดเป็นเมลใหม่ที่ยังไม่ส่ง (แก้ได้ กด Send ได้) พร้อมรูปแบบ HTML ครบ
-export function emlText(to, subject, html) {
+export function emlText(to, subject, html, cc = "") {
   const body = b64(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${html}</body></html>`).replace(/.{76}/g, "$&\r\n");
-  return [`To: ${to}`, `Subject: =?UTF-8?B?${b64(subject)}?=`, "X-Unsent: 1", "MIME-Version: 1.0",
+  return [`To: ${to}`, ...(cc ? [`Cc: ${cc}`] : []), `Subject: =?UTF-8?B?${b64(subject)}?=`, "X-Unsent: 1", "MIME-Version: 1.0",
           "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body].join("\r\n");
 }
-function downloadEml(to, subject, html, name) {
-  const url = URL.createObjectURL(new Blob([emlText(to, subject, html)], { type: "message/rfc822" }));
+function downloadEml(to, subject, html, name, cc = "") {
+  const url = URL.createObjectURL(new Blob([emlText(to, subject, html, cc)], { type: "message/rfc822" }));
   const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
@@ -442,8 +445,7 @@ function openLetter(r) {
     $("#ltForm").innerHTML = `
       ${editable ? `<label class="lt-f"><span>ประเภทหนังสือ</span><select class="form-control" id="ltKind">${Object.entries(KINDS).map(([k, v]) =>
         `<option value="${k}" ${k === kind ? "selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
-      <label class="lt-f"><span>ดึงข้อมูลจากทะเบียนพนักงาน</span><input class="form-control" id="ltEmp" list="ltEmpList" placeholder="พิมพ์รหัสหรือชื่อ" autocomplete="off">
-        <datalist id="ltEmpList">${allEmployees.filter(e => e.emp_code).map(e => `<option value="${esc(e.emp_code)} · ${esc(empName(e))}"></option>`).join("")}</datalist></label>
+      <div class="lt-f"><span>ดึงข้อมูลจากทะเบียนพนักงาน</span>${comboHTML("ltEmp", [], d.emp_code || "", "พิมพ์ชื่อไทย/อังกฤษ หรือรหัส")}</div>
       <div class="lt-hint">ทุกช่องแก้ได้ · ${offer ? "ผู้สมัครยังไม่อยู่ในทะเบียน พิมพ์เองได้เลย" : "ชื่อ/ตำแหน่ง/สังกัดในทะเบียนเป็นภาษาอังกฤษ — หนังสือภาษาไทยแก้เป็นไทยก่อนส่ง"}</div>` : ""}
       ${f("issue_date", "วันที่ออกหนังสือ", "date")}
       ${offer ? `<div class="lt-2">${f("title_en", "คำนำหน้า (Mr./Ms./Miss)")}${f("name_en", "ชื่อ-นามสกุล (อังกฤษ)")}</div>
@@ -475,13 +477,15 @@ function openLetter(r) {
       d.contact_email = keep.contact_email || settings.hr_contact_email || "";
       form(); preview();
     });
-    $("#ltEmp")?.addEventListener("change", e => {
-      const code = e.target.value.split("·")[0].trim(), emp = allEmployees.find(x => x.emp_code === code);
+    if ($("#ltEmp")) bindCombo("ltEmp", allEmployees.filter(e => e.emp_code).map(e => ({ value: e.emp_code, label: empName(e) || e.emp_code,
+      sub: [e.emp_code, [e.firstname_en, e.lastname_en].filter(Boolean).join(" "), e.department].filter(Boolean).join(" · ") })), code => {
+      const emp = allEmployees.find(x => x.emp_code === code);
       if (!emp) return;
       const issue = d.issue_date, email = d.contact_email; d = draftFrom(kind, emp, incomeItems); d.emp_code = emp.emp_code;
       d.issue_date = issue || d.issue_date; d.contact_email = email || settings.hr_contact_email || "";
       form(); preview();
     });
+    if (d.emp_code && $("#ltEmp_txt")) { const e = allEmployees.find(x => x.emp_code === d.emp_code); if (e) $("#ltEmp_txt").value = empName(e); }
     el.querySelectorAll("[data-k]").forEach(i => i.oninput = () => { d[i.dataset.k] = i.value; preview(); });
     el.querySelectorAll("[data-ion]").forEach(i => i.onchange = () => { d.incomes[+i.dataset.ion].on = i.checked; preview(); });
     el.querySelectorAll("[data-iam]").forEach(i => i.oninput = () => { d.incomes[+i.dataset.iam].amount = i.value; preview(); });
@@ -518,7 +522,8 @@ function openLetter(r) {
     const m = mailFor(action, row, { requester: action === "request" ? (me.name_th || currentUser?.email || "") : (row.requested_email || ""),
                                      approver: action === "request" ? (appr.name_th || "") : (me.name_th || me.name_en || "") });
     if (!m) return "แจ้งในระบบแล้ว";
-    downloadEml(to || "", m.subject, m.html, `${row.doc_no || "letter"} ${action === "request" ? "ขออนุมัติ" : action === "approved" ? "อนุมัติแล้ว" : "ส่งกลับแก้ไข"}.eml`);
+    downloadEml(mailList(to, m.toExtra), m.subject, m.html,
+      `${row.doc_no || "letter"} ${action === "request" ? "ขออนุมัติ" : action === "approved" ? "อนุมัติแล้ว" : "ส่งกลับแก้ไข"}.eml`, mailList(m.cc));
     return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดไฟล์ Outlook จะขึ้นเมลที่เขียนไว้แล้ว กด Send ได้เลย";
   };
 
@@ -638,6 +643,9 @@ function mailSettingsHTML() {
     <div class="text-muted" style="font-size:12.5px;margin-bottom:8px;">ใส่โค้ด HTML ได้ · ตัวแปร: <code>{{doc_no}}</code> <code>{{kind}}</code> <code>{{person}}</code> <code>{{emp_code}}</code> <code>{{link}}</code> <code>{{reason}}</code> <code>{{requester}}</code> <code>{{approver}}</code></div>
     <div class="lt-mail-ed"><div>
       <select class="form-control" id="mtKey" style="max-width:260px;">${mailTpl.map(x => `<option value="${x.key}" ${x.key === t.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select>
+      <div class="lt-hint" style="margin-top:8px;">ผู้รับหลักใส่ให้อัตโนมัติ: ${tplKey === "request" ? "ผู้อนุมัติที่เลือกตอนส่ง" : "HR คนที่ส่งขออนุมัติฉบับนั้น"} · ใส่เพิ่มได้ด้านล่าง คั่นด้วยจุลภาค</div>
+      <label class="lt-f"><span>ส่งถึงเพิ่มเติม (To)</span><input class="form-control" id="mtTo" value="${esc(t.to_extra || "")}" placeholder="เช่น hr.team@akararesources.com"></label>
+      <label class="lt-f"><span>สำเนาถึง (CC)</span><input class="form-control" id="mtCc" value="${esc(t.cc || "")}" placeholder="เช่น chalita@akararesources.com, kopbun@akararesources.com"></label>
       <label class="lt-f"><span>หัวเรื่อง</span><input class="form-control" id="mtSubject" value="${esc(t.subject || "")}"></label>
       <label class="lt-f"><span>เนื้อหา (HTML)</span><textarea class="form-control" id="mtHtml" rows="14" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;">${esc(t.html || "")}</textarea></label>
       <button class="btn btn-primary" id="mtSave" style="margin-top:8px;">บันทึกแบบอีเมล</button></div>
@@ -655,7 +663,10 @@ function wireMail() {
   $("#mtSubject").oninput = prev; $("#mtHtml").oninput = prev;
   $("#mtKey").onchange = e => { tplKey = e.target.value; draw(); };
   $("#mtSave").onclick = async () => {
-    const upd = { subject: $("#mtSubject").value, html: $("#mtHtml").value, updated_at: new Date().toISOString() };
+    const to_extra = mailList($("#mtTo").value), cc = mailList($("#mtCc").value);
+    const bad = [$("#mtTo").value, $("#mtCc").value].join(",").split(/[,;\s]+/).filter(x => x.trim() && !mailList(x));
+    if (bad.length) { toast(`อีเมลไม่ถูกต้อง: ${bad.join(", ")}`, "error"); return; }
+    const upd = { subject: $("#mtSubject").value, html: $("#mtHtml").value, to_extra: to_extra || null, cc: cc || null, updated_at: new Date().toISOString() };
     const { error } = await supabase.from("mail_templates").update(upd).eq("key", tplKey);
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
     Object.assign(mailTpl.find(x => x.key === tplKey), upd); toast("บันทึกแบบอีเมลแล้ว", "success");
