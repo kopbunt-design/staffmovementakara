@@ -36,7 +36,7 @@ const FALLBACK_ICON = '<rect x="4" y="4" width="16" height="16" rx="3"/>';
 // สีประจำกลุ่ม ตามลำดับกลุ่มในแถบข้าง — ไล่สีให้แต่ละกลุ่มแยกด้วยตาได้ทันที
 const TONES = ["blue", "green", "purple", "teal", "slate"];
 // เมนูที่ไม่อยู่ใต้หัวกลุ่มใด (ตอนนี้คือ "ภาพรวม") ไปอยู่หน้าสุดของกลุ่มรายงาน — การ์ดเดี่ยวกลุ่มเดียวดูโหรง
-const LOOSE_INTO = "รายงานกำลังคน";
+const LOOSE_INTO = "grp.reports";
 
 // อ่านกลุ่มและเมนูจากแถบข้าง เฉพาะเมนูที่มองเห็น (ผ่านการเช็กสิทธิ์แล้ว)
 function readNav() {
@@ -45,7 +45,9 @@ function readNav() {
   for (const el of document.querySelectorAll(".sidebar-nav > *")) {
     if (el.classList.contains("nav-section")) {
       if (cur.items.length) groups.push(cur);
-      cur = { name: el.textContent.trim(), items: [] };
+      // อ่านเฉพาะป้ายชื่อหมวด — หัวหมวดมีป้ายงานค้าง (.nav-sec-badge) ต่อท้ายด้วย ถ้าใช้ textContent ทั้งก้อนจะได้ "ชื่อ 0"
+      const lab = el.querySelector("[data-i18n]") || el.querySelector("span");
+      cur = { key: lab?.dataset.i18n || "", name: (lab?.textContent || el.textContent).trim(), items: [] };
     } else if (el.matches(".nav-item[data-page]") && el.style.display !== "none" && el.dataset.page !== "home") {
       const label = el.querySelector("span")?.textContent.trim() || el.dataset.page;
       const badge = el.querySelector(".nav-badge, .nav-count");
@@ -55,7 +57,7 @@ function readNav() {
   }
   if (cur.items.length) groups.push(cur);
   const loose = groups[0]?.name === "เริ่มต้น" ? groups.shift() : null;
-  const host = loose && (groups.find(g => g.name === LOOSE_INTO) || groups[0]);
+  const host = loose && (groups.find(g => g.key === LOOSE_INTO) || groups[0]);
   if (host) host.items.unshift(...loose.items); else if (loose) groups.unshift(loose);
   return groups;
 }
@@ -82,15 +84,16 @@ function tile(it, tone) {
   </button>`;
 }
 
-// หมวดบนหน้าแรก — กดแล้วขยายเป็นแผงเมนูย่อย (แบบเปิดโฟลเดอร์) · ชื่อหมวดตรงกับหัวกลุ่มในแถบข้าง
+// หมวดบนหน้าแรก — กดแล้วขยายเป็นแผงเมนูย่อย (แบบเปิดโฟลเดอร์)
+// ผูกด้วย key ของหัวหมวดในแถบข้าง (data-i18n) ไม่ใช่ชื่อ — ชื่อเปลี่ยนตามภาษา ไทย/EN
 const GROUP_META = {
-  "ทะเบียนพนักงาน":       ["ข้อมูลพนักงาน ความเคลื่อนไหว สวัสดิการ", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
-  "เงินเดือน · ค่าตอบแทน": ["ค่ากะ เงินเดือน ใบอนุมัติ ค่าจ้างเหมา", '<rect x="2.5" y="6" width="19" height="12.5" rx="2.5"/><circle cx="12" cy="12.25" r="2.75"/><path d="M6 9.5v.01M18 15v.01"/>'],
-  "รายงานกำลังคน":        ["ภาพรวม headcount movement วิเคราะห์", '<path d="M3 3v18h18"/><path d="M7.5 16v-4M12 16V8M16.5 16v-6"/>'],
-  "วางแผนอัตรากำลัง":     ["โควตาตำแหน่งและอัตราว่าง", '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'],
-  "ระบบ":                 ["ผู้ใช้ สิทธิ์ และข้อมูลหลัก", META.settings[1]],
+  "grp.records":       ["ข้อมูลพนักงาน ความเคลื่อนไหว สวัสดิการ", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
+  "grp.pay": ["ค่ากะ เงินเดือน ใบอนุมัติ ค่าจ้างเหมา", '<rect x="2.5" y="6" width="19" height="12.5" rx="2.5"/><circle cx="12" cy="12.25" r="2.75"/><path d="M6 9.5v.01M18 15v.01"/>'],
+  "grp.reports":        ["ภาพรวม headcount movement วิเคราะห์", '<path d="M3 3v18h18"/><path d="M7.5 16v-4M12 16V8M16.5 16v-6"/>'],
+  "grp.plan":     ["โควตาตำแหน่งและอัตราว่าง", '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'],
+  "grp.system":           ["ผู้ใช้ สิทธิ์ และข้อมูลหลัก", META.settings[1]],
 };
-const gIcon = g => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${(GROUP_META[g.name] || [])[1] || FALLBACK_ICON}</svg>`;
+const gIcon = g => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${(GROUP_META[g.key] || [])[1] || FALLBACK_ICON}</svg>`;
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 function folder(g, i) {
@@ -100,7 +103,7 @@ function folder(g, i) {
     ${alerts ? `<span class="hm-badge alert">${alerts}</span>` : ""}
     <span class="hm-fi">${gIcon(g)}</span>
     <span class="hm-ft">${esc(g.name)}</span>
-    <span class="hm-fd">${esc((GROUP_META[g.name] || [])[0] || "")}</span>
+    <span class="hm-fd">${esc((GROUP_META[g.key] || [])[0] || "")}</span>
     <span class="hm-prev">${g.items.slice(0, 4).map(it => `<span class="hm-ic sm" title="${esc(it.label)}">${icon(it.page)}</span>`).join("")}
       ${g.items.length > 4 ? `<span class="hm-more">+${g.items.length - 4}</span>` : ""}</span>
     <span class="hm-fc">${g.items.length} เมนู <b>→</b></span>
@@ -159,7 +162,7 @@ function openFolder(idx, fromEl) {
     <div class="hm-panel" tabindex="-1" data-tone="${g.tone}" role="dialog" aria-label="${esc(g.name)}">
       <div class="hm-ph">
         <span class="hm-fi">${gIcon(g)}</span>
-        <div><div class="hm-pt">${esc(g.name)}</div><div class="hm-pd">${esc((GROUP_META[g.name] || [])[0] || "")} · ${g.items.length} เมนู</div></div>
+        <div><div class="hm-pt">${esc(g.name)}</div><div class="hm-pd">${esc((GROUP_META[g.key] || [])[0] || "")} · ${g.items.length} เมนู</div></div>
         <button class="hm-x" aria-label="ปิด">✕</button>
       </div>
       <div class="hm-grid hm-pgrid">${g.items.map((it, k) => tile(it, g.tone).replace('class="hm-tile"', `class="hm-tile hm-in" style="--k:${k}"`)).join("")}</div>
