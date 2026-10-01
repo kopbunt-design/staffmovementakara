@@ -224,11 +224,12 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","users","settings"];
-let currentPage = "dashboard";
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","users","settings"];
+let currentPage = "home";
 
 export function navigate(page) {
   currentPage = page;
+  import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
   pages.forEach(p => {
     document.getElementById(`page${p[0].toUpperCase()+p.slice(1)}`)?.classList.toggle("active", p===page);
     document.querySelectorAll(`.nav-item[data-page="${p}"]`).forEach(el=>el.classList.toggle("active", p===page));
@@ -242,11 +243,14 @@ const PERM_ALIAS = { empprofile: "page.employees", shiftcompare: "page.shiftallo
                      payrollapproval: "page.payrollexp",
                      payrollbuild: "page.payrollexp" };
 const pagePerm = page => PERM_ALIAS[page] || "page." + page;
+// หน้าหลักเป็นแค่สารบัญ — ทุกคนที่ login เข้าได้ การ์ดข้างในกรองตามสิทธิ์อยู่แล้ว
+const OPEN_PAGES = new Set(["home"]);
+const canPage = page => OPEN_PAGES.has(page) || can(pagePerm(page));
 
 // ซ่อน/แสดงเมนูตามสิทธิ์ · หัวข้อกลุ่มจะซ่อนเองถ้าไม่เหลือเมนูในกลุ่ม
 function applyNavPermissions() {
   document.querySelectorAll(".nav-item[data-page]").forEach(el => {
-    el.style.display = can(pagePerm(el.dataset.page)) ? "flex" : "none";
+    el.style.display = canPage(el.dataset.page) ? "flex" : "none";
   });
   // หัวข้อกลุ่ม (.nav-section) คุมเมนูที่อยู่ถัดจากมันจนถึงหัวข้อถัดไป
   document.querySelectorAll(".sidebar-nav .nav-section").forEach(sec => {
@@ -269,8 +273,9 @@ function denyPage(page, label) {
 
 async function renderPage(page) {
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
-  if (!can(pagePerm(page))) { denyPage(page); return; }
-  if(page==="dashboard") renderDashboard();
+  if (!canPage(page)) { denyPage(page); return; }
+  if(page==="home") (await import("./launcher.js")).renderHome();
+  else if(page==="dashboard") renderDashboard();
   else if(page==="employees") (await import("./employees.js")).renderEmployees();
   else if(page==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
   else if(page==="movements") renderMovements();
@@ -300,10 +305,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ตอนนี้แปลเฉพาะเปลือกแอป (ป้ายเมนู/หัวกลุ่มที่ติด data-i18n) — เนื้อหาในหน้ายังเป็นไทย
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
-  th: { "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
+  th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.system":"ระบบ" },
-  en: { "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
+  en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.system":"System" },
 };
@@ -505,7 +510,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 
   await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications(), loadPosQuota()]);
   startRealtime();
-  navigate("dashboard");
+  navigate("home");
 });
 
 document.getElementById("logoutBtn")?.addEventListener("click", logout);

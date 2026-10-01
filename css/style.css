@@ -974,3 +974,50 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .pb-find .form-label{font-size:11px;color:var(--muted);display:block;margin-bottom:5px;}
 .pb-tbl .filter-select{width:100%;min-width:150px;font-size:12px;}
 .pb-tbl td:nth-last-child(2) .filter-select{min-width:230px;}
+
+/* ===== หน้าหลัก (js/launcher.js) — การ์ดรวมระบบ จัดกลุ่มตามแถบเมนูข้าง ===== */
+.hm{max-width:1180px;margin:0 auto;padding:28px 28px 48px}
+.hm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.hm-hello{font-size:24px;font-weight:700;color:var(--navy);letter-spacing:-.2px}
+.hm-date{font-size:13px;color:var(--muted);margin-top:2px}
+.hm-search{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:12px;
+  padding:0 14px;height:44px;width:min(420px,100%);box-shadow:var(--shadow)}
+.hm-search:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,90,199,.12)}
+.hm-search svg{width:18px;height:18px;color:var(--muted2);flex:none}
+.hm-search input{border:none;outline:none;flex:1;font:inherit;font-size:14px;background:none;color:var(--text)}
+.hm-recent{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+.hm-recent-l{font-size:12px;font-weight:600;color:var(--muted);margin-right:2px}
+.hm-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fff;border-radius:99px;
+  padding:5px 12px 5px 6px;font:inherit;font-size:13px;color:var(--text);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.hm-chip:hover{border-color:var(--border2);box-shadow:var(--shadow-md)}
+.hm-group{margin-top:22px}
+.hm-gh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--navy);text-transform:none;margin-bottom:10px}
+.hm-gh span{width:4px;height:14px;border-radius:2px;background:var(--tone)}
+.hm-gh em{font-style:normal;font-weight:600;font-size:11.5px;color:var(--muted);background:#fff;border:1px solid var(--border);
+  border-radius:99px;padding:0 8px;line-height:18px}
+/* การ์ดแนวตั้ง ไอคอนกลาง (ตามแบบที่ผู้ใช้เลือก) แต่คงสไตล์เว็บ: พื้นขาว ขอบบาง เงาอ่อน สีตามกลุ่ม */
+.hm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px}
+.hm-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:#fff;
+  border:1px solid var(--border);border-radius:16px;padding:22px 14px 18px;font:inherit;color:var(--text);cursor:pointer;
+  box-shadow:var(--shadow-card);transition:transform .15s,box-shadow .15s,border-color .15s;overflow:hidden}
+.hm-tile::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--tone);opacity:0;transition:opacity .15s}
+.hm-tile:hover::before{opacity:1}
+.hm-tile:hover{transform:translateY(-2px);box-shadow:var(--shadow-card-lg);border-color:var(--tone-soft-2)}
+.hm-tile:focus-visible,.hm-chip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.hm-ic{width:52px;height:52px;border-radius:14px;flex:none;display:grid;place-items:center;background:var(--tone-soft);color:var(--tone)}
+.hm-ic svg{width:25px;height:25px}
+.hm-ic.sm{width:24px;height:24px;border-radius:7px}.hm-ic.sm svg{width:14px;height:14px}
+.hm-tx{display:flex;flex-direction:column;gap:4px;min-width:0;align-items:center}
+.hm-t{font-size:14.5px;font-weight:700;color:var(--navy);line-height:1.3}
+.hm-d{font-size:12px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hm-badge{position:absolute;top:10px;right:10px;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:99px;
+  background:var(--bg);color:var(--muted)}
+.hm-badge.alert{background:var(--red);color:#fff}
+.hm-empty{padding:60px 0;text-align:center;color:var(--muted)}
+[data-tone="blue"]  {--tone:#2B5AC7;--tone-soft:#EAF0FB;--tone-soft-2:#BFD0F2}
+[data-tone="green"] {--tone:#0D7C4B;--tone-soft:#E6F5EE;--tone-soft-2:#A9DCC2}
+[data-tone="purple"]{--tone:#6D28D9;--tone-soft:#F0EBFD;--tone-soft-2:#CDBDF6}
+[data-tone="teal"]  {--tone:#0E7490;--tone-soft:#E3F4F8;--tone-soft-2:#A5D8E6}
+[data-tone="slate"] {--tone:#475569;--tone-soft:#EEF1F5;--tone-soft-2:#CBD5E1}
+@media(max-width:640px){.hm{padding:18px 14px 36px}.hm-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .hm-tile{gap:10px;padding:16px 10px 14px}.hm-ic{width:46px;height:46px}.hm-d{display:none}}

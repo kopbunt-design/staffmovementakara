@@ -40,8 +40,14 @@ t("อ่านเมนูจาก index.html ได้", navPages.length > 5,
 t("อ่าน PERM_ALIAS จาก app.js ได้", Object.keys(ALIAS).length > 0);
 t("อ่าน permission key จาก sql/ ได้", seeded.size > 10, `เจอ ${seeded.size} key`);
 
+// หน้าที่เปิดให้ทุกคน (OPEN_PAGES ใน app.js) ไม่ต้องมี permission key
+const openSrc = (app.match(/const OPEN_PAGES = new Set\(\[([^\]]*)\]\)/) || [])[1] || "";
+const OPEN = new Set([...openSrc.matchAll(/"([a-z]+)"/g)].map(m => m[1]));
+t("อ่าน OPEN_PAGES ได้ และมีหน้าหลัก", OPEN.has("home"));
+t("การเช็กสิทธิ์ทุกจุดผ่าน canPage (เมนู + router ใช้กติกาเดียวกัน)", !/can\(pagePerm\(/.test(app.replace(/const canPage[^\n]*/, "")));
+
 // ข้อหลัก: ทุกเมนูต้องมีสิทธิ์ที่มีอยู่จริง ไม่งั้นเมนูจะถูกซ่อนจากทุกคน
-for (const page of navPages) {
+for (const page of navPages.filter(p => !OPEN.has(p))) {
   const key = ALIAS[page] || `page.${page}`;
   t(`เมนู "${page}" มีสิทธิ์รองรับ (${key})`, seeded.has(key),
     ALIAS[page] ? `alias ชี้ไป ${key} ซึ่งไม่มีใน sql/` : `ต้อง seed '${key}' ใน sql/ หรือใส่ alias ใน PERM_ALIAS`);
