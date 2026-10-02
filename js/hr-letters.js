@@ -36,7 +36,8 @@ const TH_M = ["มกราคม","กุมภาพันธ์","มีน�
 const EN_M = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const dt = iso => { const d = new Date(String(iso) + "T00:00:00"); return isNaN(d) ? null : d; };
 // แบบหนังสือไทยของบริษัทใช้เดือนไทย + ปี ค.ศ. เช่น "30 กันยายน 2026"
-export const thDate = iso => { const d = dt(iso); return d ? `${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()}` : ""; };
+// หนังสือภาษาไทยใช้ปี พ.ศ. · ภาษาอังกฤษใช้ ค.ศ. (ต้นฉบับเดิมใช้ ค.ศ. ในหนังสือไทยซึ่งผิด — แก้ตามที่ผู้ใช้ยืนยัน 2026-10-02)
+export const thDate = iso => { const d = dt(iso); return d ? `${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear() + 543}` : ""; };
 export const enDate = iso => { const d = dt(iso); return d ? `${d.getDate()} ${EN_M[d.getMonth()]} ${d.getFullYear()}` : ""; };
 export const usDate = iso => { const d = dt(iso); return d ? `${EN_M[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}` : ""; };
 const money = n => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
