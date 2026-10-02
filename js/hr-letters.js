@@ -547,7 +547,9 @@ function openLetter(r) {
       <button class="btn btn-primary" data-submit ${appr.length ? "" : "disabled"}>ส่งขออนุมัติ</button>`
     : st === "pending" && canApprove() ? `
       <button class="btn btn-danger" data-reject style="margin-right:auto;">ส่งกลับแก้ไข</button>
-      <button class="btn btn-primary" data-approve>✓ อนุมัติและลงลายเซ็น</button>`
+      ${signers.find(x => x.user_id === currentUser?.id)?.signature_path ? `<button class="btn btn-primary" data-approve>✓ อนุมัติและลงลายเซ็น</button>`
+        : `<span class="text-muted" style="font-size:12.5px;">บัญชีนี้ (${esc(currentUser?.email || "")}) ยังไม่มีลายเซ็น</span>
+           <button class="btn btn-primary" data-gosig>ไปตั้งลายเซ็น</button>`}`
     : st === "pending" && canWrite() ? `<span class="text-muted" style="margin-right:auto;">รอ HR Manager อนุมัติ</span>
       <button class="btn btn-secondary" data-recall>ดึงกลับมาแก้ไข</button>`
     : st === "approved" ? `${canWrite() ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกหนังสือ</button>` : ""}
@@ -585,6 +587,7 @@ function openLetter(r) {
       Object.assign(r, data); close(); openLetter(r); draw();
     });
     $("[data-print]")?.addEventListener("click", () => printLetter(r));
+    $("[data-gosig]")?.addEventListener("click", () => { close(); tab = "settings"; sgFor = currentUser?.id; draw(); });
     $("[data-cancel]")?.addEventListener("click", () => cancelLetter(r, () => { close(); draw(); }));
   };
   form(); foot(); preview();
