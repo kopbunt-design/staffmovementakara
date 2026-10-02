@@ -29,26 +29,38 @@ const round2 = v => Math.round((Number(v)||0) * 100) / 100;
 // ---------------------------------------------------------------------------
 // ตรรกะคำนวณ — ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM/DB เพื่อให้เทสได้ตรง ๆ
 //
-// ฐานภาษี = ค่าจ้างประจำ + รายได้เพิ่มที่ติดธง taxable เท่านั้น
-//   (รายได้เพิ่มบางอย่างไม่ต้องเสียภาษี เช่นเบิกค่าเดินทางคืน)
-// รายการหักไม่ลดฐานภาษี — หักหลังคำนวณภาษีแล้ว
-// สุทธิ = ค่าจ้าง + ได้เพิ่มทั้งหมด − ภาษี − หัก
+// ฐานภาษี = ค่าจ้างประจำ + รายได้ที่เข้าฐานภาษี (taxable) − รายหักที่ลดฐานภาษี (cuts_tax_base เช่นหักขาดงาน)
+//   รายได้บางอย่างไม่ต้องเสียภาษี เช่นเบิกค่าใช้จ่ายคืน · รายหักส่วนใหญ่ (บังคับคดี เบิกล่วงหน้า) ไม่ลดฐาน
+// สุทธิ = ค่าจ้าง + ได้เพิ่มทั้งหมด − ภาษี − หักทั้งหมด
 // ---------------------------------------------------------------------------
 export function calcItem(worker, adjusts = []) {
+  const sum = list => list.reduce((s,a) => s + Number(a.amount||0), 0);
   const base    = round2(worker.monthly_rate);
   const earn    = adjusts.filter(a => a.kind === "earning");
   const deduct  = adjusts.filter(a => a.kind === "deduction");
-  const extra   = round2(earn.reduce((s,a) => s + Number(a.amount||0), 0));
-  const deducted= round2(deduct.reduce((s,a) => s + Number(a.amount||0), 0));
+  const extra   = round2(sum(earn));
+  const deducted= round2(sum(deduct));
 
-  const taxBase = round2(base + earn.filter(a => a.taxable !== false)
-                                    .reduce((s,a) => s + Number(a.amount||0), 0));
+  const taxBase = Math.max(0, round2(base + sum(earn.filter(a => a.taxable !== false))
+                                          - sum(deduct.filter(a => a.cuts_tax_base))));
   const pct     = worker.wht_apply ? Number(worker.wht_percent ?? 3) : 0;
   const wht     = round2(taxBase * pct / 100);
   const net     = round2(base + extra - wht - deducted);
 
-  return { base_amount:base, extra_amount:extra, deduct_amount:deducted,
+  return { base_amount:base, extra_amount:extra, deduct_amount:deducted, tax_base:taxBase,
            wht_percent:pct, wht_amount:wht, net_amount:net };
+}
+
+// รายการประจำที่ใช้กับงวดนี้: เปิดใช้งาน และงวดอยู่ในช่วง start..end (end ว่าง = ไม่มีกำหนด)
+export function recurringFor(items = [], period) {
+  return items.filter(i => i.is_active !== false && i.start_period <= period && (!i.end_period || i.end_period >= period));
+}
+// แปลงรายการประจำเป็นแถวรายการของงวด — คัดลอกชื่อและผลทางภาษีจากตั้งค่ารายการ ณ ตอนคำนวณ
+export function adjustFromRecurring(item, code, runId) {
+  const earning = code.kind === "earning";
+  return { run_id: runId, worker_id: item.worker_id, kind: code.kind, label: code.name_th, amount: round2(item.amount),
+           code_id: code.id, source: "recurring", worker_item_id: item.id, remark: item.note || null,
+           taxable: earning ? code.tax_effect !== false : true, cuts_tax_base: !earning && !!code.tax_effect };
 }
 
 // รวมยอดทั้งงวด ไว้โชว์หัวงวดและกระทบยอดกับรายงาน
@@ -62,6 +74,10 @@ export function runTotals(items = []) {
 // state
 // ---------------------------------------------------------------------------
 let workers = [], runs = [], curRun = null, items = [], adjusts = [], tab = "runs";
+// ตั้งค่ารายการ + รายการประจำรายคน (schema_contract_items.sql) — ยังไม่ได้รันไฟล์นั้น หน้าเดิมยังใช้ได้ แค่ไม่มีรายการให้เลือก
+let codes = [], wItems = [], itemsReady = true;
+const codeOf = id => codes.find(c => c.id === id);
+const activeCodes = kind => codes.filter(c => c.is_active && (!kind || c.kind === kind)).sort((a,b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
 
 async function loadAll() {
   const [w, r] = await Promise.all([
@@ -70,6 +86,12 @@ async function loadAll() {
   ]);
   if (w.error || r.error) throw new Error((w.error || r.error).message);
   workers = w.data || []; runs = r.data || [];
+  const [c, wi] = await Promise.all([
+    supabase.from("contract_pay_codes").select("*").order("sort_order"),
+    supabase.from("contract_worker_items").select("*").order("start_period"),
+  ]);
+  itemsReady = !c.error && !wi.error;
+  codes = c.data || []; wItems = wi.data || [];
 }
 async function loadRun(id) {
   const [i, a] = await Promise.all([
@@ -121,9 +143,12 @@ function draw() {
     <div class="cp-tabs">
       <button class="cp-tab${tab==="runs"?" on":""}"    onclick="window._cpTab('runs')">งวดจ่าย</button>
       <button class="cp-tab${tab==="workers"?" on":""}" onclick="window._cpTab('workers')">รายชื่อ (${workers.filter(w=>w.is_active).length})</button>
+      <button class="cp-tab${tab==="codes"?" on":""}" onclick="window._cpTab('codes')">ตั้งค่ารายการได้ / หัก</button>
     </div>
   </div>
-  ${tab==="runs" ? (curRun ? runDetailHTML() : runListHTML()) : workerListHTML()}
+  ${!itemsReady ? `<div class="section" style="padding-bottom:0;"><div class="cp-warn">ยังไม่ได้ตั้งระบบรายการรายได้/รายหัก —
+    รัน <code>sql/schema_contract_items.sql</code> ใน Supabase ก่อน (หน้านี้ยังใช้งานแบบเดิมได้)</div></div>` : ""}
+  ${tab==="runs" ? (curRun ? runDetailHTML() : runListHTML()) : tab==="codes" ? codesHTML() : workerListHTML()}
   <div class="pb-4"></div>`;
   wire();
 }
@@ -134,7 +159,7 @@ function workerListHTML() {
   return `<div class="section mt-4"><div class="card"><div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th>แผนก</th><th>Cost Code</th>
-        <th class="num">ค่าจ้าง/เดือน</th><th>หัก ณ ที่จ่าย</th><th>สถานะ</th>${canEdit()?"<th></th>":""}</tr></thead>
+        <th class="num">ค่าจ้าง/เดือน</th><th>หัก ณ ที่จ่าย</th><th>รายการประจำ</th><th>สถานะ</th>${canEdit()?"<th></th>":""}</tr></thead>
       <tbody>${workers.map(w=>`<tr>
         <td><b style="color:var(--blue);font-size:12px;">${esc(w.worker_code)}</b></td>
         <td>${esc(w.name_th)}${w.name_en?`<div class="text-sm text-muted">${esc(w.name_en)}</div>`:""}</td>
@@ -145,12 +170,24 @@ function workerListHTML() {
         <td>${w.wht_apply
           ? `<span class="badge" style="color:var(--gold-dark);background:var(--gold-light);">${w.wht_percent}%</span>`
           : `<span class="text-muted">ไม่หัก</span>`}</td>
+        <td>${recurChips(w.id)}</td>
         <td>${w.is_active?`<span class="badge" style="color:var(--green);background:var(--green-light);">ใช้งาน</span>`
                          :`<span class="badge badge-gray">ปิด</span>`}</td>
-        ${canEdit()?`<td><button class="btn btn-secondary btn-sm" onclick="window._cwEdit(${w.id})">แก้ไข</button></td>`:""}
+        ${canEdit()?`<td style="white-space:nowrap;"><button class="btn btn-secondary btn-sm" onclick="window._cwEdit(${w.id})">แก้ไข</button>
+          ${itemsReady?`<button class="btn btn-secondary btn-sm" onclick="window._cwRec(${w.id})">รายการประจำ</button>`:""}</td>`:""}
       </tr>`).join("")}</tbody>
     </table>
   </div></div></div>`;
+}
+
+// รายการประจำที่ยังมีผล (ไม่หมดอายุ) ของคนนี้ — โชว์เป็นป้ายสั้น ๆ ในรายชื่อ
+function recurChips(wid) {
+  const now = new Date(), ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const mine = wItems.filter(i => i.worker_id === wid && i.is_active && (!i.end_period || i.end_period >= ym));
+  if(!mine.length) return `<span class="text-muted">–</span>`;
+  return mine.map(i => { const c = codeOf(i.code_id) || {};
+    return `<span class="cp-chip ${c.kind||""}" title="${esc(c.name_th||"")} ${money(i.amount)} · ${esc(thMonth(i.start_period))}${i.end_period?` – ${esc(thMonth(i.end_period))}`:" เป็นต้นไป"}">
+      ${c.kind==="deduction"?"−":"+"}${esc(c.name_th||"?")} ${money(i.amount)}</span>`; }).join(" ");
 }
 
 // ---------- รายการงวด ----------
@@ -223,21 +260,20 @@ function runDetailHTML() {
     <table class="data-table">
       <thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="num">ค่าจ้าง</th>
         <th class="num">ได้เพิ่ม</th><th class="num">หัก</th><th class="num">ภาษี</th>
-        <th class="num">สุทธิ</th>${editable&&canEdit()?"<th></th>":""}</tr></thead>
+        <th class="num">สุทธิ</th><th></th></tr></thead>
       <tbody>${items.map(it=>{
         const ad = adjusts.filter(a=>a.worker_id===it.worker_id);
-        return `<tr>
+        return `<tr class="cp-row" onclick="window._cpAdj(${it.worker_id})">
         <td><b style="color:var(--blue);font-size:12px;">${esc(it.worker_code)}</b></td>
         <td>${esc(it.name_th)}${ad.length?`<div class="text-sm text-muted">${ad.map(a=>
-          `${a.kind==="earning"?"+":"−"}${money(a.amount)} ${esc(a.label)}`).join(" · ")}</div>`:""}</td>
+          `${a.source==="recurring"?"↻ ":""}${a.kind==="earning"?"+":"−"}${money(a.amount)} ${esc(a.label)}`).join(" · ")}</div>`:""}</td>
         <td>${badge(TYPE,it.worker_type)}</td>
         <td class="num">${money(it.base_amount)}</td>
         <td class="num">${it.extra_amount?money(it.extra_amount):"–"}</td>
         <td class="num">${it.deduct_amount?money(it.deduct_amount):"–"}</td>
         <td class="num">${it.wht_amount?`${money(it.wht_amount)}<div class="text-sm text-muted">${it.wht_percent}%</div>`:"–"}</td>
         <td class="num"><b>${money(it.net_amount)}</b></td>
-        ${editable&&canEdit()?`<td><button class="btn btn-secondary btn-sm"
-          onclick="window._cpAdj(${it.worker_id})">รายการ</button></td>`:""}
+        <td class="cp-open">${editable&&canEdit()?"รายการ ›":"ดู ›"}</td>
       </tr>`;}).join("")}</tbody>
     </table>
   </div></div></div>`}`;
@@ -299,7 +335,8 @@ function wire() {
   // ผูก tax_id/bank เข้ากับ item ตอนออกเอกสาร (item เก็บสำเนาตัวเลข ส่วนเลขภาษีอยู่ที่ทะเบียนคน)
   const enrich = () => items.map(it => {
     const w = workers.find(x => x.id === it.worker_id) || {};
-    return { ...it, tax_id: it.tax_id ?? w.tax_id,
+    const lines = adjusts.filter(a => a.worker_id === it.worker_id);
+    return { ...it, lines: lines.length ? lines : null, tax_id: it.tax_id ?? w.tax_id,
              bank_name: it.bank_name ?? w.bank_name, bank_account: it.bank_account ?? w.bank_account };
   });
   window._docSlip = async () => (await docs()).payslips(curRun, enrich());
@@ -309,8 +346,14 @@ function wire() {
 
   window._cwNew  = () => workerForm(null);
   window._cwEdit = id => workerForm(workers.find(w=>w.id===id));
-  window._cpAdj  = wid => adjustForm(wid);
+  window._cpAdj  = wid => workerPanel(wid);
+  window._cwRec  = wid => recurringForm(wid);
+  window._cdNew  = kind => codeForm(null, kind);
+  window._cdEdit = id => codeForm(codeOf(id));
 }
+
+// คอลัมน์ tax_base มีเมื่อรัน schema_contract_items.sql แล้ว — ยังไม่รันก็บันทึกได้โดยไม่ส่งคอลัมน์นี้
+const withoutTaxBase = r => { if(itemsReady) return r; const { tax_base, ...rest } = r; return rest; };
 
 // คำนวณงวด — ดึงคนที่ใช้งานอยู่เข้ามา แล้วเขียนตัวเลขลง contract_pay_item
 // เขียนทับของเดิมในงวดนี้เสมอ เพื่อให้กด "คำนวณ" ซ้ำได้หลังแก้รายการ
@@ -318,6 +361,18 @@ async function calculateRun() {
   const active = workers.filter(w => w.is_active);
   if(!active.length) throw new Error("ไม่มีรายชื่อที่ใช้งานอยู่ ให้เพิ่มคนก่อน");
 
+  // รายการประจำ → คัดลอกลงงวดใหม่ทุกครั้งที่คำนวณ (ลบชุดเดิมของงวดนี้ก่อน กันซ้ำ) · รายการครั้งเดียวไม่แตะ
+  if(itemsReady) {
+    const activeIds = new Set(active.map(w => w.id));
+    const rec = recurringFor(wItems, curRun.period).filter(i => activeIds.has(i.worker_id) && codeOf(i.code_id));
+    const delR = await supabase.from("contract_pay_adjust").delete().eq("run_id", curRun.id).eq("source", "recurring");
+    if(delR.error) throw new Error(delR.error.message);
+    if(rec.length) {
+      const insR = await supabase.from("contract_pay_adjust")
+        .insert(rec.map(i => ({ ...adjustFromRecurring(i, codeOf(i.code_id), curRun.id), created_by: currentUser?.id||null })));
+      if(insR.error) throw new Error(insR.error.message);
+    }
+  }
   const { data: adj } = await supabase.from("contract_pay_adjust")
     .select("*").eq("run_id", curRun.id);
   const byWorker = {};
@@ -328,7 +383,7 @@ async function calculateRun() {
     worker_code: w.worker_code, name_th: w.name_th, worker_type: w.worker_type,
     department: w.department, cost_code: w.cost_code,
     bank_name: w.bank_name, bank_account: w.bank_account,
-    ...calcItem(w, byWorker[w.id] || []),
+    ...withoutTaxBase(calcItem(w, byWorker[w.id] || [])),
   }));
 
   const del = await supabase.from("contract_pay_item").delete().eq("run_id", curRun.id);
@@ -427,67 +482,234 @@ function workerForm(w) {
   };
 }
 
-// ---------- รายการเพิ่ม/หักครั้งเดียว ----------
-function adjustForm(workerId) {
-  const w = workers.find(x=>x.id===workerId);
-  const mine = adjusts.filter(a=>a.worker_id===workerId);
+// ---------- แผงรายละเอียดรายคนในงวด ----------
+// กดแถวในงวดแล้วแผงเลื่อนออกจากขวา: รายได้ / รายหัก แยกตาราง พร้อมยอดสุทธิ
+// เพิ่ม/ลบรายการครั้งเดียวได้ในแผงเลย และตัวเลขของคนนั้นคำนวณใหม่ทันที (ไม่ต้องกดคำนวณทั้งงวดซ้ำ)
+function workerPanel(workerId) {
+  const w = workers.find(x => x.id === workerId) || {};
+  const it = items.find(x => x.worker_id === workerId);
+  const editable = (curRun.status === "draft" || curRun.status === "calculated") && canEdit();
+  const mine = adjusts.filter(a => a.worker_id === workerId);
+  // ฐานคำนวณ: ใช้ตัวเลขที่บันทึกในงวด (ค่าจ้าง/อัตราภาษี ณ ตอนคำนวณ) ถ้ายังไม่คำนวณใช้ข้อมูลคนปัจจุบัน
+  const basis = it ? { monthly_rate: it.base_amount, wht_apply: Number(it.wht_percent) > 0, wht_percent: it.wht_percent } : w;
+  const r = calcItem(basis, mine);
+  const earn = mine.filter(a => a.kind === "earning"), ded = mine.filter(a => a.kind === "deduction");
+  const tag = a => [a.source === "recurring" ? `<span class="wp-tag rec" title="รายการประจำ — แก้ที่ รายชื่อ → รายการประจำ">↻ ประจำ</span>` : "",
+    a.kind === "earning" && a.taxable === false ? `<span class="wp-tag">ไม่คิดภาษี</span>` : "",
+    a.kind === "deduction" && a.cuts_tax_base ? `<span class="wp-tag">ลดฐานภาษี</span>` : ""].join("");
+  const line = a => `<tr><td>${esc(a.label)} ${tag(a)}${a.remark?`<div class="wp-note">${esc(a.remark)}</div>`:""}</td>
+    <td class="num">${money(a.amount)}</td>
+    <td class="wp-x">${editable && a.source !== "recurring" ? `<button class="adj-del" data-del="${a.id}" title="ลบ">✕</button>` : ""}</td></tr>`;
+  const opts = kind => activeCodes(kind).map(c => `<option value="${c.id}">${esc(c.code)} · ${esc(c.name_th)}</option>`).join("");
+
+  document.getElementById("wpPanel")?.remove();
   const el = document.createElement("div");
-  el.className = "modal-overlay"; el.id = "adjModal";
-  el.innerHTML = `<div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">รายการครั้งเดียว — ${esc(w?.name_th||"")}</div>
-      <button class="modal-close" onclick="document.getElementById('adjModal').remove()">✕</button>
-    </div>
+  el.id = "wpPanel"; el.className = "wp-ov";
+  el.innerHTML = `<div class="wp-back"></div><aside class="wp" role="dialog" aria-label="รายการของ ${esc(w.name_th||"")}">
+    <header class="wp-h">
+      <div><div class="wp-code">${esc(w.worker_code||it?.worker_code||"")} · ${badge(TYPE, w.worker_type||it?.worker_type)}</div>
+        <div class="wp-name">${esc(w.name_th||it?.name_th||"")}</div>
+        <div class="wp-sub">งวด ${esc(thMonth(curRun.period))} · ${Number(basis.wht_percent) && basis.wht_apply !== false ? `หัก ณ ที่จ่าย ${basis.wht_percent}%` : "ไม่หัก ณ ที่จ่าย"}</div></div>
+      <button class="modal-close" data-close>✕</button>
+    </header>
+    <div class="wp-body">
+      <div class="wp-cols">
+        <section class="wp-card earn"><div class="wp-ct">รายได้</div>
+          <table class="wp-t"><tr><td>ค่าจ้างเหมาประจำงวด</td><td class="num">${money(r.base_amount)}</td><td></td></tr>
+            ${earn.map(line).join("")}
+            <tr class="wp-tot"><td>รวมรายได้</td><td class="num">${money(r.base_amount + r.extra_amount)}</td><td></td></tr></table></section>
+        <section class="wp-card ded"><div class="wp-ct">รายหัก</div>
+          <table class="wp-t">${r.wht_amount ? `<tr><td>ภาษีหัก ณ ที่จ่าย ${r.wht_percent}% <span class="wp-tag">ฐาน ${money(r.tax_base)}</span></td><td class="num">${money(r.wht_amount)}</td><td></td></tr>` : ""}
+            ${ded.map(line).join("")}
+            ${!r.wht_amount && !ded.length ? `<tr><td class="text-muted">ไม่มีรายการหัก</td><td></td><td></td></tr>` : ""}
+            <tr class="wp-tot"><td>รวมรายหัก</td><td class="num">${money(r.wht_amount + r.deduct_amount)}</td><td></td></tr></table></section>
+      </div>
+      <div class="wp-net"><span>ยอดโอนสุทธิ</span><b>${money(r.net_amount)}</b><em>บาท</em></div>
+      ${editable ? (itemsReady && codes.length ? `
+      <div class="wp-add"><div class="wp-ct">เพิ่มรายการเฉพาะงวดนี้</div>
+        <div class="wp-addrow">
+          <select id="wpCode" class="form-control"><optgroup label="รายได้">${opts("earning")}</optgroup><optgroup label="รายหัก">${opts("deduction")}</optgroup></select>
+          <input id="wpAmt" type="number" step="0.01" min="0" class="form-control" placeholder="จำนวนเงิน">
+        </div>
+        <input id="wpNote" class="form-control" placeholder="หมายเหตุ (ไม่บังคับ) เช่น OT 12 ชม. / ค่าอุปกรณ์ชำรุด" style="margin-top:8px;">
+        <div class="wp-hint" id="wpHint"></div>
+        <button class="btn btn-primary" id="wpAddBtn" style="margin-top:10px;width:100%;">+ เพิ่มรายการ</button>
+        <div class="wp-foot">รายการที่เกิดทุกเดือน (เช่น บังคับคดี) ตั้งเป็น “รายการประจำ” ที่หน้ารายชื่อ ระบบจะใส่ให้ทุกงวดเอง</div>
+      </div>` : `<div class="cp-warn" style="margin-top:14px;">ยังไม่มีรายการให้เลือก — รัน sql/schema_contract_items.sql ก่อน</div>`)
+      : `<div class="wp-foot" style="margin-top:14px;">${curRun.status === "locked" ? "🔒 งวดนี้ล็อกแล้ว แก้ไขไม่ได้" : "งวดนี้อนุมัติแล้ว แก้รายการไม่ได้"}</div>`}
+    </div></aside>`;
+  document.getElementById("modalPortal").appendChild(el);
+  const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = e => { if(e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  el.querySelector(".wp-back").onclick = close;
+  el.querySelector("[data-close]").onclick = close;
+
+  // บอกผลทางภาษีของรายการที่เลือก ก่อนกดเพิ่ม
+  const hint = () => { const c = codeOf(+el.querySelector("#wpCode")?.value); const h = el.querySelector("#wpHint"); if(!c || !h) return;
+    h.textContent = c.kind === "earning" ? (c.tax_effect ? "รายได้ · คิดภาษีหัก ณ ที่จ่าย" : "รายได้ · ไม่คิดภาษี (เช่นเบิกคืน)")
+                                         : (c.tax_effect ? "รายหัก · ลดฐานภาษีด้วย" : "รายหัก · หักหลังคำนวณภาษี ไม่ลดฐาน"); };
+  el.querySelector("#wpCode")?.addEventListener("change", hint); hint();
+
+  // บันทึกแล้วคำนวณคนนี้ใหม่ทันที (ถ้างวดคำนวณแล้วและมีแถวของคนนี้อยู่)
+  const refresh = async () => {
+    await loadRun(curRun.id);
+    const it2 = items.find(x => x.worker_id === workerId);
+    if(it2) {
+      const b = { monthly_rate: it2.base_amount, wht_apply: Number(it2.wht_percent) > 0, wht_percent: it2.wht_percent };
+      const { error } = await supabase.from("contract_pay_item")
+        .update(withoutTaxBase(calcItem(b, adjusts.filter(a => a.worker_id === workerId)))).eq("id", it2.id);
+      if(error) toast("คำนวณใหม่ไม่สำเร็จ: " + error.message, "error");
+      await loadRun(curRun.id);
+    }
+    draw(); workerPanel(workerId);
+  };
+  el.querySelector("#wpAddBtn")?.addEventListener("click", async () => {
+    const c = codeOf(+el.querySelector("#wpCode").value), amt = Number(el.querySelector("#wpAmt").value);
+    if(!c){ toast("เลือกรายการก่อน","error"); return; }
+    if(!(amt > 0)){ toast("จำนวนเงินต้องมากกว่า 0","error"); return; }
+    const earning = c.kind === "earning";
+    const { error } = await supabase.from("contract_pay_adjust").insert({
+      run_id: curRun.id, worker_id: workerId, kind: c.kind, label: c.name_th, amount: amt, code_id: c.id, source: "once",
+      taxable: earning ? !!c.tax_effect : true, cuts_tax_base: !earning && !!c.tax_effect,
+      remark: el.querySelector("#wpNote").value.trim() || null, created_by: currentUser?.id || null });
+    if(error){ toast("เพิ่มไม่สำเร็จ: "+error.message,"error"); return; }
+    toast(`เพิ่ม ${c.name_th} ${money(amt)} แล้ว`, "success"); refresh();
+  });
+  el.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    const { error } = await supabase.from("contract_pay_adjust").delete().eq("id", +b.dataset.del);
+    if(error){ toast("ลบไม่สำเร็จ: "+error.message,"error"); return; }
+    refresh();
+  });
+}
+
+// ---------- รายการประจำรายคน ----------
+const monthInput = (id, v) => `<input id="${id}" type="month" class="form-control" value="${esc(v||"")}">`;
+function recurringForm(workerId) {
+  const w = workers.find(x => x.id === workerId) || {};
+  const now = new Date(), ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const mine = wItems.filter(i => i.worker_id === workerId).sort((a,b) => (b.is_active - a.is_active) || a.start_period.localeCompare(b.start_period));
+  const state = i => !i.is_active ? ["ปิดแล้ว","off"] : i.end_period && i.end_period < ym ? ["สิ้นสุดแล้ว","off"] : i.start_period > ym ? ["ยังไม่เริ่ม","wait"] : ["มีผล","on"];
+  const opts = kind => activeCodes(kind).map(c => `<option value="${c.id}">${esc(c.code)} · ${esc(c.name_th)}</option>`).join("");
+  document.getElementById("recModal")?.remove();
+  const el = document.createElement("div");
+  el.className = "modal-overlay"; el.id = "recModal";
+  el.innerHTML = `<div class="modal modal-lg">
+    <div class="modal-header"><div class="modal-title">รายการประจำ — ${esc(w.name_th||"")}</div>
+      <button class="modal-close" data-x>✕</button></div>
     <div class="modal-body">
-      <div class="text-muted" style="font-size:12px;margin-bottom:12px;">
-        เฉพาะงวด ${esc(thMonth(curRun.period))} เท่านั้น ไม่ยกไปงวดหน้า ·
-        <b>ต้องกด “คำนวณงวดนี้” อีกครั้ง</b>หลังเพิ่มรายการ ตัวเลขถึงจะอัปเดต
+      <div class="text-muted" style="font-size:12.5px;margin-bottom:12px;">ใส่ครั้งเดียว ระบบเติมให้ทุกงวดในช่วงที่กำหนดตอนกด “คำนวณงวด” ·
+        งวดที่ล็อกแล้วไม่เปลี่ยนตาม · ค่าจ้างเหมาประจำ (${money(w.monthly_rate)}) ตั้งที่ข้อมูลคน ไม่ต้องใส่ที่นี่</div>
+      ${mine.length ? `<table class="data-table"><thead><tr><th>รายการ</th><th class="num">ต่องวด</th><th>ช่วงงวด</th><th>สถานะ</th><th></th></tr></thead><tbody>
+        ${mine.map(i => { const c = codeOf(i.code_id) || {}, [st, cls] = state(i);
+          return `<tr><td><span class="cp-chip ${c.kind||""}">${c.kind==="deduction"?"รายหัก":"รายได้"}</span> ${esc(c.name_th||"?")}${i.note?`<div class="text-sm text-muted">${esc(i.note)}</div>`:""}</td>
+          <td class="num">${money(i.amount)}</td>
+          <td style="white-space:nowrap;">${esc(thMonth(i.start_period))} – ${i.end_period ? esc(thMonth(i.end_period)) : "ไม่กำหนด"}</td>
+          <td><span class="rec-st ${cls}">${st}</span></td>
+          <td style="white-space:nowrap;">${i.is_active ? `<button class="btn btn-secondary btn-sm" data-stop="${i.id}">หยุด</button>` : ""}
+            <button class="btn btn-secondary btn-sm" data-rdel="${i.id}" style="color:var(--red);">ลบ</button></td></tr>`; }).join("")}
+      </tbody></table>` : `<div class="text-muted" style="padding:6px 0 4px;font-size:13px;">ยังไม่มีรายการประจำ</div>`}
+      <div class="rec-new">
+        <div class="wp-ct" style="margin-bottom:8px;">เพิ่มรายการประจำ</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">รายการ</label>
+            <select id="rc_code" class="form-control"><optgroup label="รายหัก">${opts("deduction")}</optgroup><optgroup label="รายได้">${opts("earning")}</optgroup></select></div>
+          <div class="form-group"><label class="form-label">จำนวนเงินต่องวด (บาท)</label>
+            <input id="rc_amt" type="number" step="0.01" min="0" class="form-control"></div>
+          <div class="form-group"><label class="form-label">เริ่มงวด</label>${monthInput("rc_start", ym)}</div>
+          <div class="form-group"><label class="form-label">ถึงงวด <span class="text-muted">(ว่าง = ไม่มีกำหนด)</span></label>${monthInput("rc_end", "")}</div>
+          <div class="form-group col-span-2"><label class="form-label">หมายเหตุ</label>
+            <input id="rc_note" class="form-control" placeholder="เช่น คดีหมายเลขแดง … / เบิกล่วงหน้า 12,000 ผ่อน 4 งวด"></div>
+        </div>
       </div>
-      ${mine.length?`<div class="adj-list">${mine.map(a=>`
-        <div class="adj-row">
-          <span class="adj-kind ${a.kind}">${a.kind==="earning"?"+ ได้เพิ่ม":"− หัก"}</span>
-          <span class="adj-label">${esc(a.label)}</span>
-          ${a.kind==="earning"&&!a.taxable?`<span class="adj-tax">ไม่คิดภาษี</span>`:""}
-          <span class="adj-amt">${money(a.amount)}</span>
-          <button class="adj-del" onclick="window._adjDel(${a.id})" title="ลบ">✕</button>
-        </div>`).join("")}</div>`:`<div class="text-muted" style="font-size:12.5px;padding:10px 0;">ยังไม่มีรายการ</div>`}
-      <div class="adj-new">
-        <select id="aj_kind" class="form-control" style="max-width:120px;">
-          <option value="earning">ได้เพิ่ม</option><option value="deduction">หัก</option></select>
-        <input id="aj_label" class="form-control" placeholder="เช่น โบนัส / หักค่าอุปกรณ์">
-        <input id="aj_amt" type="number" step="0.01" class="form-control" placeholder="จำนวนเงิน" style="max-width:140px;">
-        <button class="btn btn-primary" onclick="window._adjAdd(${workerId})">เพิ่ม</button>
-      </div>
-      <label style="display:flex;align-items:center;gap:7px;margin-top:9px;font-size:12px;cursor:pointer;">
-        <input id="aj_taxable" type="checkbox" checked style="width:auto;margin:0;">
-        นำไปคิดภาษีหัก ณ ที่จ่ายด้วย <span class="text-muted">(ปิดถ้าเป็นการเบิกเงินคืน)</span>
-      </label>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="document.getElementById('adjModal').remove()">ปิด</button>
-    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-x>ปิด</button><button class="btn btn-primary" id="rcAdd">+ เพิ่มรายการประจำ</button></div>
   </div>`;
   document.getElementById("modalPortal").appendChild(el);
-
-  const reopen = async () => {
-    await loadRun(curRun.id);
-    document.getElementById("adjModal")?.remove();
-    draw(); adjustForm(workerId);
-  };
-  window._adjAdd = async wid => {
-    const g = i => document.getElementById(i);
-    const label = g("aj_label").value.trim(), amt = Number(g("aj_amt").value);
-    if(!label){ toast("กรุณาใส่ชื่อรายการ","error"); return; }
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
+  const again = async () => { await loadAll(); draw(); recurringForm(workerId); };
+  el.querySelector("#rcAdd").onclick = async () => {
+    const g = id => el.querySelector("#"+id).value.trim();
+    const amt = Number(g("rc_amt")), start = g("rc_start"), end = g("rc_end");
     if(!(amt > 0)){ toast("จำนวนเงินต้องมากกว่า 0","error"); return; }
-    const { error } = await supabase.from("contract_pay_adjust").insert({
-      run_id:curRun.id, worker_id:wid, kind:g("aj_kind").value, label, amount:amt,
-      taxable:g("aj_taxable").checked, created_by:currentUser?.id||null });
+    if(!/^\d{4}-\d{2}$/.test(start)){ toast("เลือกงวดเริ่ม","error"); return; }
+    if(end && end < start){ toast("งวดสิ้นสุดต้องไม่ก่อนงวดเริ่ม","error"); return; }
+    const { error } = await supabase.from("contract_worker_items").insert({ worker_id: workerId, code_id: +g("rc_code"), amount: amt,
+      start_period: start, end_period: end || null, note: g("rc_note") || null, created_by: currentUser?.id || null });
     if(error){ toast("เพิ่มไม่สำเร็จ: "+error.message,"error"); return; }
-    reopen();
+    toast("เพิ่มรายการประจำแล้ว — มีผลตอนคำนวณงวด","success"); again();
   };
-  window._adjDel = async id => {
-    const { error } = await supabase.from("contract_pay_adjust").delete().eq("id", id);
+  el.querySelectorAll("[data-stop]").forEach(b => b.onclick = async () => {
+    const { error } = await supabase.from("contract_worker_items").update({ is_active:false }).eq("id", +b.dataset.stop);
+    if(error){ toast("ไม่สำเร็จ: "+error.message,"error"); return; }
+    again();
+  });
+  el.querySelectorAll("[data-rdel]").forEach(b => b.onclick = async () => {
+    if(!confirm("ลบรายการประจำนี้? งวดที่คำนวณไปแล้วยังเก็บตัวเลขเดิมไว้")) return;
+    const { error } = await supabase.from("contract_worker_items").delete().eq("id", +b.dataset.rdel);
     if(error){ toast("ลบไม่สำเร็จ: "+error.message,"error"); return; }
-    reopen();
+    again();
+  });
+}
+
+// ---------- ตั้งค่ารายการได้ / หัก ----------
+function codesHTML() {
+  if(!itemsReady) return empty("ยังไม่ได้ตั้งระบบรายการ", "รัน sql/schema_contract_items.sql ใน Supabase แล้วเปิดหน้านี้ใหม่");
+  const used = id => wItems.some(i => i.code_id === id);
+  const card = (kind, title, effect) => {
+    const list = codes.filter(c => c.kind === kind).sort((a,b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+    return `<div class="card cd-card ${kind}"><div class="cd-h"><div><div class="cd-t">${title}</div>
+        <div class="text-muted" style="font-size:12px;">${list.filter(c=>c.is_active).length} รายการที่ใช้งาน</div></div>
+      ${canEdit()?`<button class="btn btn-secondary btn-sm" onclick="window._cdNew('${kind}')">+ เพิ่มรายการ</button>`:""}</div>
+      <table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>${effect}</th><th></th></tr></thead><tbody>
+      ${list.map(c => `<tr style="${c.is_active?"":"opacity:.5;"}">
+        <td><b style="font-size:12px;color:var(--blue);">${esc(c.code)}</b></td>
+        <td>${esc(c.name_th)}${c.name_en?`<div class="text-sm text-muted">${esc(c.name_en)}</div>`:""}${!c.is_active?` <span class="badge badge-gray">ปิด</span>`:""}</td>
+        <td>${c.tax_effect ? `<span class="cd-yes">✓ ${kind==="earning"?"คิดภาษี":"ลดฐานภาษี"}</span>` : `<span class="text-muted">${kind==="earning"?"ไม่คิดภาษี":"ไม่ลดฐาน"}</span>`}</td>
+        <td>${canEdit()?`<button class="btn btn-secondary btn-sm" onclick="window._cdEdit(${c.id})">แก้ไข</button>`:""}${used(c.id)?`<div class="text-sm text-muted" style="margin-top:2px;">มีรายการประจำใช้อยู่</div>`:""}</td>
+      </tr>`).join("") || `<tr><td colspan="4" class="text-muted" style="padding:20px;text-align:center;">ยังไม่มีรายการ</td></tr>`}
+      </tbody></table></div>`;
+  };
+  return `<div class="section mt-4">
+    <div class="cd-intro">รายการที่ใช้ได้ในงวดค่าจ้างเหมา · เพิ่มรายการใหม่ได้เองไม่ต้องแก้ระบบ ·
+      <b>คิดภาษี</b> = นำไปรวมฐานภาษีหัก ณ ที่จ่าย · <b>ลดฐานภาษี</b> = รายหักที่ทำให้ค่าจ้างจริงลดลง เช่นขาดงาน</div>
+    <div class="cd-grid">${card("earning","รายได้","ภาษี 3%")}${card("deduction","รายหัก","ผลต่อภาษี")}</div></div>`;
+}
+
+function codeForm(c, kindNew) {
+  const kind = c?.kind || kindNew, earning = kind === "earning";
+  const next = () => { const n = codes.filter(x => x.kind === kind).map(x => +String(x.code).slice(1)).filter(n => n && n < 99);
+    return `${earning?"E":"D"}${String((n.length ? Math.max(...n) : 0) + 1).padStart(2,"0")}`; };
+  document.getElementById("cdModal")?.remove();
+  const el = document.createElement("div");
+  el.className = "modal-overlay"; el.id = "cdModal";
+  el.innerHTML = `<div class="modal" style="max-width:480px;">
+    <div class="modal-header"><div class="modal-title">${c ? "แก้ไขรายการ" : earning ? "เพิ่มรายการรายได้" : "เพิ่มรายการรายหัก"}</div>
+      <button class="modal-close" data-x>✕</button></div>
+    <div class="modal-body"><div class="form-grid">
+      <div class="form-group"><label class="form-label">รหัส</label><input id="cd_code" class="form-control" value="${esc(c?.code || next())}" ${c?"readonly":""}></div>
+      <div class="form-group"><label class="form-label">ลำดับแสดง</label><input id="cd_sort" type="number" class="form-control" value="${c?.sort_order ?? 50}"></div>
+      <div class="form-group col-span-2"><label class="form-label">ชื่อ (ไทย) *</label><input id="cd_th" class="form-control" value="${esc(c?.name_th||"")}"></div>
+      <div class="form-group col-span-2"><label class="form-label">ชื่อ (อังกฤษ)</label><input id="cd_en" class="form-control" value="${esc(c?.name_en||"")}"></div>
+      <label class="cd-opt col-span-2"><input id="cd_tax" type="checkbox" ${c ? (c.tax_effect?"checked":"") : (earning?"checked":"")}>
+        <span><b>${earning ? "นำไปคิดภาษีหัก ณ ที่จ่าย" : "ลดฐานภาษี"}</b><span class="text-muted">${earning
+          ? "ปิดสำหรับเงินที่ไม่ใช่ค่าจ้าง เช่น เบิกคืนค่าใช้จ่าย"
+          : "เปิดเมื่อเป็นค่าจ้างที่ไม่ได้จ่ายจริง เช่น หักขาดงาน · ปิดสำหรับ บังคับคดี เบิกล่วงหน้า ค่าปรับ"}</span></span></label>
+      ${c ? `<label class="cd-opt col-span-2"><input id="cd_active" type="checkbox" ${c.is_active?"checked":""}>
+        <span><b>ใช้งาน</b><span class="text-muted">ปิดแล้วจะไม่มีให้เลือกในงวดใหม่ — งวดเก่าและรายการประจำที่มีอยู่ไม่เปลี่ยน</span></span></label>` : ""}
+    </div></div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" id="cdSave">บันทึก</button></div></div>`;
+  document.getElementById("modalPortal").appendChild(el);
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
+  el.querySelector("#cdSave").onclick = async () => {
+    const g = id => el.querySelector("#"+id)?.value.trim() || "";
+    if(!g("cd_code") || !g("cd_th")){ toast("ใส่รหัสและชื่อภาษาไทย","error"); return; }
+    const row = { name_th: g("cd_th"), name_en: g("cd_en") || null, sort_order: Number(g("cd_sort")) || 50,
+      tax_effect: el.querySelector("#cd_tax").checked, updated_at: new Date().toISOString(),
+      ...(c ? { is_active: el.querySelector("#cd_active").checked } : { code: g("cd_code"), kind }) };
+    const { error } = c ? await supabase.from("contract_pay_codes").update(row).eq("id", c.id)
+                        : await supabase.from("contract_pay_codes").insert(row);
+    if(error){ toast(/duplicate/.test(error.message) ? `มีรหัส ${g("cd_code")} อยู่แล้ว` : "บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
+    el.remove(); await loadAll(); draw(); toast("บันทึกแล้ว","success");
   };
 }

@@ -631,6 +631,66 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .cp-stat.net b{color:var(--green);}
 @media (max-width:1200px){.cp-sum{grid-template-columns:repeat(3,1fr);}}
 
+/* ค่าจ้างเหมา: รายการรายได้/รายหัก */
+.cp-warn{background:var(--amber-light);color:#92400e;border-radius:10px;padding:10px 14px;font-size:12.5px}
+.cp-chip{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin:1px 0;white-space:nowrap;background:var(--blue-light);color:var(--blue)}
+.cp-chip.earning{background:var(--green-light);color:var(--green)}
+.cp-chip.deduction{background:var(--red-light);color:var(--red)}
+.cp-row{cursor:pointer}
+.cp-row:hover td{background:#F8FAFD}
+.cp-open{font-size:12px;font-weight:600;color:var(--blue);white-space:nowrap;text-align:right}
+/* แผงรายคน (เลื่อนออกจากขวา) */
+.wp-ov{position:fixed;inset:0;z-index:9000}
+.wp-back{position:absolute;inset:0;background:rgba(15,28,77,.28);animation:wp-fade .2s ease}
+.wp{position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);box-shadow:-12px 0 32px rgba(15,28,77,.18);
+  display:flex;flex-direction:column;animation:wp-in .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes wp-in{from{transform:translateX(40px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes wp-fade{from{opacity:0}to{opacity:1}}
+.wp-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 22px;background:#fff;border-bottom:1px solid var(--border)}
+.wp-code{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.wp-name{font-size:19px;font-weight:700;color:var(--navy);margin-top:4px}
+.wp-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.wp-body{flex:1;overflow-y:auto;padding:18px 22px 28px}
+.wp-cols{display:grid;gap:12px}
+.wp-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px 6px;border-top:3px solid var(--green)}
+.wp-card.ded{border-top-color:var(--red)}
+.wp-ct{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;margin-bottom:6px}
+.wp-t{width:100%;border-collapse:collapse;font-size:13.5px}
+.wp-t td{padding:8px 0;border-top:1px solid var(--border);vertical-align:top}
+.wp-t tr:first-child td{border-top:none}
+.wp-t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px}
+.wp-t .wp-x{width:26px;text-align:right}
+.wp-tot td{font-weight:700;color:var(--navy);border-top:1.5px solid var(--border2)!important}
+.wp-tag{display:inline-block;font-size:10.5px;font-weight:600;color:var(--muted);background:var(--bg);border-radius:5px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.wp-tag.rec{color:var(--purple);background:var(--purple-light)}
+.wp-note{font-size:11.5px;color:var(--muted2);margin-top:1px}
+.wp-net{display:flex;align-items:baseline;gap:10px;margin-top:12px;padding:14px 16px;border-radius:14px;
+  background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff}
+.wp-net span{font-size:13px;opacity:.85;flex:1}
+.wp-net b{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.wp-net em{font-style:normal;font-size:12px;opacity:.8}
+.wp-add{margin-top:14px;background:#fff;border:1px dashed var(--border2);border-radius:14px;padding:14px}
+.wp-addrow{display:grid;grid-template-columns:1fr 140px;gap:8px}
+.wp-hint{font-size:11.5px;color:var(--blue);margin-top:6px;min-height:15px}
+.wp-foot{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.55}
+/* รายการประจำ */
+.rec-st{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px}
+.rec-st.on{background:var(--green-light);color:var(--green)}
+.rec-st.wait{background:var(--blue-light);color:var(--blue)}
+.rec-st.off{background:#f1f5f9;color:var(--muted)}
+.rec-new{margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+/* ตั้งค่ารายการ */
+.cd-intro{font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.6}
+.cd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+.cd-card{overflow:hidden;border-top:3px solid var(--green)}
+.cd-card.deduction{border-top-color:var(--red)}
+.cd-h{display:flex;justify-content:space-between;align-items:center;padding:14px 16px}
+.cd-t{font-size:15px;font-weight:700;color:var(--navy)}
+.cd-yes{font-size:12px;font-weight:600;color:var(--green)}
+.cd-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-top:4px}
+.cd-opt input{margin-top:4px;width:auto}
+.cd-opt>span{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.cd-opt .text-muted{font-size:12px;line-height:1.5}
 .adj-list{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:14px;}
 .adj-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);
   font-size:12.5px;}

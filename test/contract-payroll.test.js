@@ -5,7 +5,7 @@ const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8St
 const src  = read('js/contract-payroll.js');
 const body = src.slice(src.indexOf('const round2 ='), src.indexOf('// ---------------------------------------------------------------------------\n// state'))
   .replace(/^export /gm, '');
-const { calcItem, runTotals } = new Function(`${body}; return { calcItem, runTotals };`)();
+const { calcItem, runTotals, recurringFor, adjustFromRecurring } = new Function(`${body}; return { calcItem, runTotals, recurringFor, adjustFromRecurring };`)();
 
 let P=0,F=0;
 const t=(n,got,want)=>{ if(JSON.stringify(got)===JSON.stringify(want)) P++;
@@ -49,6 +49,31 @@ t("ผสม: ฐานภาษี = 50,000+10,000 → 1,800", m.wht_amount, 18
 t("ผสม: ได้เพิ่มรวม 15,000", m.extra_amount, 15000);
 t("ผสม: หัก 3,000", m.deduct_amount, 3000);
 t("ผสม: สุทธิ 50,000+15,000−1,800−3,000", m.net_amount, 60200);
+
+// ===== รายหักที่ลดฐานภาษี (หักขาดงาน) =====
+const absent = [{kind:"deduction", amount:5000, cuts_tax_base:true}];
+t("หักขาดงานลดฐานภาษี → 3% ของ 45,000", calcItem(W(50000), absent).wht_amount, 1350);
+t("หักขาดงาน: สุทธิ 50,000−1,350−5,000", calcItem(W(50000), absent).net_amount, 43650);
+t("ฐานภาษีเก็บไว้ในผล", calcItem(W(50000), absent).tax_base, 45000);
+t("ฐานภาษีไม่ติดลบ", calcItem(W(1000), [{kind:"deduction", amount:5000, cuts_tax_base:true}]).tax_base, 0);
+t("รายการหักแบบเก่า (ไม่มีธง) ไม่ลดฐาน", calcItem(W(50000), [{kind:"deduction", amount:2000, taxable:true}]).wht_amount, 1500);
+
+// ===== รายการประจำ =====
+const rec = [{id:1, worker_id:9, amount:3000, start_period:"2026-09", end_period:"2026-12", is_active:true},
+             {id:2, worker_id:9, amount:500,  start_period:"2026-11", end_period:null,      is_active:true},
+             {id:3, worker_id:9, amount:700,  start_period:"2026-01", end_period:null,      is_active:false}];
+t("ประจำ: ก.ย. ได้เฉพาะรายการที่เริ่มแล้ว", recurringFor(rec, "2026-09").map(i=>i.id), [1]);
+t("ประจำ: พ.ย. ได้ทั้งสอง", recurringFor(rec, "2026-11").map(i=>i.id), [1,2]);
+t("ประจำ: ม.ค. ปีหน้า รายการที่หมดแล้วไม่มา", recurringFor(rec, "2027-01").map(i=>i.id), [2]);
+t("ประจำ: ปิดใช้งานไม่มา", recurringFor(rec, "2026-06").map(i=>i.id), []);
+const led = adjustFromRecurring(rec[0], {id:7, kind:"deduction", name_th:"บังคับคดี (LED)", tax_effect:false}, 55);
+t("ประจำ→งวด: บังคับคดี", [led.kind, led.label, led.amount, led.source, led.cuts_tax_base, led.run_id], ["deduction","บังคับคดี (LED)",3000,"recurring",false,55]);
+const ot = adjustFromRecurring(rec[1], {id:8, kind:"earning", name_th:"ค่าเดินทาง", tax_effect:true}, 55);
+t("ประจำ→งวด: รายได้เข้าฐานภาษี", [ot.taxable, ot.cuts_tax_base], [true, false]);
+const re = adjustFromRecurring(rec[1], {id:8, kind:"earning", name_th:"เบิกคืน", tax_effect:false}, 55);
+t("ประจำ→งวด: เบิกคืนไม่เข้าฐาน", calcItem(W(50000), [re]).wht_amount, 1500);
+const ab = adjustFromRecurring(rec[1], {id:8, kind:"deduction", name_th:"หักขาดงาน", tax_effect:true}, 55);
+t("ประจำ→งวด: หักขาดงานลดฐาน", calcItem(W(50000), [ab]).wht_amount, 1485);
 
 // ===== ปัดเศษ =====
 t("ปัด 2 ตำแหน่ง", calcItem(W(33333.33)).wht_amount, 1000);

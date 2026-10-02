@@ -102,6 +102,10 @@ const head = (sub, period) => `<div class="hd">
   <div class="r"><span>งวด</span><b>${esc2(thMonth(period))}</b></div>
 </div>`;
 
+// เงินได้ที่ใช้คิดภาษี — งวดที่คำนวณหลังมีระบบรายการเก็บ tax_base ไว้ (ไม่รวมเบิกคืน หักขาดงานแล้ว)
+// งวดเก่าก่อนหน้านั้นไม่มี → ใช้ค่าจ้าง + ได้เพิ่ม ตามเดิม
+const taxBaseOf = it => it.tax_base != null ? Number(it.tax_base) : Number(it.base_amount) + Number(it.extra_amount);
+
 // ---------------------------------------------------------------- สลิป
 export function payslips(run, items) {
   if(!items.length){ alert("งวดนี้ยังไม่มีรายการ"); return; }
@@ -117,10 +121,12 @@ export function payslips(run, items) {
     <table class="gr">
       <tr><th>รายการ</th><th class="num" style="width:38mm;">จำนวนเงิน (บาท)</th></tr>
       <tr><td>ค่าจ้างเหมาประจำงวด</td><td class="num">${B(it.base_amount)}</td></tr>
-      ${Number(it.extra_amount)?`<tr><td>รายได้เพิ่มเติม</td><td class="num">${B(it.extra_amount)}</td></tr>`:""}
+      ${it.lines ? it.lines.filter(l => l.kind === "earning").map(l => `<tr><td>${esc2(l.label)}${l.taxable === false ? " <small>(ไม่คิดภาษี)</small>" : ""}</td><td class="num">${B(l.amount)}</td></tr>`).join("")
+        : Number(it.extra_amount)?`<tr><td>รายได้เพิ่มเติม</td><td class="num">${B(it.extra_amount)}</td></tr>`:""}
       <tr class="tot"><td>รวมเงินได้</td><td class="num">${B(Number(it.base_amount)+Number(it.extra_amount))}</td></tr>
       ${Number(it.wht_amount)?`<tr><td>หัก ภาษี ณ ที่จ่าย ${it.wht_percent}%</td><td class="num">−${B(it.wht_amount)}</td></tr>`:""}
-      ${Number(it.deduct_amount)?`<tr><td>รายการหักอื่น ๆ</td><td class="num">−${B(it.deduct_amount)}</td></tr>`:""}
+      ${it.lines ? it.lines.filter(l => l.kind === "deduction").map(l => `<tr><td>${esc2(l.label)}</td><td class="num">−${B(l.amount)}</td></tr>`).join("")
+        : Number(it.deduct_amount)?`<tr><td>รายการหักอื่น ๆ</td><td class="num">−${B(it.deduct_amount)}</td></tr>`:""}
       <tr class="net"><td>ยอดโอนสุทธิ</td><td class="num">${B(it.net_amount)}</td></tr>
     </table>
     <div class="note">เอกสารนี้ออกจากระบบ HR SYSTEM · ${esc2(today())}
@@ -149,7 +155,7 @@ export function wht50(run, items) {
     </table>
     <table class="gr">
       <tr><th>รายการ</th><th class="num" style="width:38mm;">จำนวนเงิน (บาท)</th></tr>
-      <tr><td>จำนวนเงินที่จ่าย</td><td class="num">${B(Number(it.base_amount)+Number(it.extra_amount))}</td></tr>
+      <tr><td>จำนวนเงินที่จ่าย (ฐานภาษี)</td><td class="num">${B(taxBaseOf(it))}</td></tr>
       <tr class="tot"><td>ภาษีที่หักและนำส่ง (${it.wht_percent}%)</td><td class="num">${B(it.wht_amount)}</td></tr>
     </table>
     <table class="kv" style="margin-top:4mm;">
@@ -206,7 +212,7 @@ export function pnd3(run, items) {
     "ชื่อผู้มีเงินได้": i.name_th,
     "วันที่จ่าย": `${run.period}-31`,
     "ประเภทเงินได้": "ค่าจ้างทำของ/ค่าบริการ",
-    "จำนวนเงินที่จ่าย": Number(i.base_amount) + Number(i.extra_amount),
+    "จำนวนเงินที่จ่าย": taxBaseOf(i),
     "อัตราภาษี (%)": Number(i.wht_percent),
     "ภาษีที่หัก": Number(i.wht_amount),
   }));
