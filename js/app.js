@@ -326,7 +326,32 @@ function denyPage(page, label) {
       ติดต่อผู้ดูแลระบบถ้าคิดว่าควรเข้าได้</div></div>`;
 }
 
+// ===== ตรวจว่ามีเวอร์ชันใหม่ขึ้นเว็บแล้ว =====
+// แท็บที่เปิดค้างไว้ข้ามการ deploy: หน้าย่อยโหลดโค้ดใหม่ (import ตอนเปิดหน้า) แต่ CSS ยังเป็นของเก่า → หน้าเพี้ยน
+// เช็ก index.html ทุกครั้งที่เปลี่ยนหน้า (ห่างกันอย่างน้อย 2 นาที) ถ้าเลขเวอร์ชัน CSS เปลี่ยน:
+// เปลี่ยน CSS ให้ทันที + แถบแจ้งให้รีเฟรช (app.js ที่อยู่ในหน่วยความจำยังเป็นตัวเก่า)
+const cssLink = () => document.querySelector('link[rel="stylesheet"][href*="css/style.css"]');
+const cssVer = href => (String(href || "").match(/style\.css\?v=(\d+)/) || [])[1] || "";
+let verCheckedAt = 0;
+async function checkNewVersion() {
+  if (Date.now() - verCheckedAt < 120000) return;
+  verCheckedAt = Date.now();
+  try {
+    const html = await (await fetch("/", { cache: "no-store" })).text();
+    const live = cssVer(html), link = cssLink();
+    if (!live || !link || live === cssVer(link.getAttribute("href"))) return;
+    link.setAttribute("href", `css/style.css?v=${live}`);
+    if (document.getElementById("updBar")) return;
+    const bar = document.createElement("div");
+    bar.id = "updBar"; bar.className = "upd-bar";
+    bar.innerHTML = `<span>มีระบบเวอร์ชันใหม่ — รีเฟรชเพื่อใช้งานเต็มรูปแบบ</span><button class="btn btn-primary btn-sm">รีเฟรช</button>`;
+    bar.querySelector("button").onclick = () => location.reload();
+    document.body.appendChild(bar);
+  } catch {}
+}
+
 async function renderPage(page) {
+  checkNewVersion();
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
   if (!canPage(page)) { denyPage(page); return; }
   if(page==="home") (await import("./launcher.js")).renderHome();
