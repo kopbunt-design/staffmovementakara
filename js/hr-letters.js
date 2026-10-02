@@ -14,6 +14,7 @@ import { comboHTML, bindCombo } from "./combobox.js";
 const esc = v => escText(v == null ? "" : String(v));
 const canWrite = () => can("data.letters.write");
 const canApprove = () => can("data.letters.approve");
+const signerName = uid => { const s = signers.find(x => x.user_id === uid); return s?.name_th || s?.name_en || s?.email || "ผู้อนุมัติ"; };
 
 export const KINDS = {
   cert_th:   { label: "หนังสือรับรองการทำงาน (ภาษาไทย)",     lang: "th", title: "หนังสือรับรองการทำงาน", docType: "หนังสือรับรองการทำงาน (ภาษาไทย)", income: [] },
@@ -351,7 +352,8 @@ async function boot() {
 
 function draw() {
   const pg = document.getElementById("pageLetters");
-  const pend = letters.filter(r => r.status === "pending" && (r.approver_id === currentUser?.id || canApprove()));
+  // รออนุมัติ = เฉพาะฉบับที่ส่งถึงฉัน (คนอื่นอนุมัติแทนไม่ได้ — ล็อกใน letter_approve ด้วย)
+  const pend = letters.filter(r => r.status === "pending" && r.approver_id === currentUser?.id);
   const q = search.trim().toLowerCase();
   const list = (tab === "approve" ? pend : letters).filter(r => !q || [r.doc_no, r.person_name, r.emp_code, KINDS[r.kind]?.label].join(" ").toLowerCase().includes(q));
   pg.innerHTML = `
@@ -370,7 +372,7 @@ function draw() {
     <tbody>${list.map(r => `<tr>
       <td style="white-space:nowrap;"><b>${esc(r.doc_no || "—")}</b></td><td>${esc(KINDS[r.kind]?.label || r.kind)}</td>
       <td>${esc(r.person_name || "")}${r.emp_code ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.emp_code)}</div>` : ""}</td>
-      <td>${badge(r.status)}${r.status === "rejected" && r.reject_reason ? `<div style="font-size:11.5px;color:var(--red);">${esc(r.reject_reason)}</div>` : ""}${r.status === "cancelled" && r.cancel_reason ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.cancel_reason)}</div>` : ""}</td>
+      <td>${badge(r.status)}${r.status === "rejected" && r.reject_reason ? `<div style="font-size:11.5px;color:var(--red);">${esc(r.reject_reason)}</div>` : ""}${r.status === "pending" ? `<div class="text-muted" style="font-size:11.5px;">ถึง ${esc(signerName(r.approver_id))}</div>` : ""}${r.status === "cancelled" && r.cancel_reason ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.cancel_reason)}</div>` : ""}</td>
       <td style="white-space:nowrap;">${new Date(r.updated_at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm ${tab === "approve" ? "btn-primary" : "btn-secondary"}" data-open="${r.id}">${tab === "approve" ? "เปิดดู / อนุมัติ" : r.status === "draft" || r.status === "rejected" ? "แก้ไข" : "เปิด"}</button>
         ${r.status === "approved" ? `<button class="btn btn-sm btn-primary" data-print="${r.id}">พิมพ์ / PDF</button>` : ""}</td></tr>`).join("")}</tbody></table>`
@@ -546,13 +548,13 @@ function openLetter(r) {
       <select class="form-control" id="ltAppr" style="max-width:240px;">${appr.length ? appr.map(s => `<option value="${s.user_id}">ผู้อนุมัติ: ${esc(s.name_th || s.name_en || s.email)}</option>`).join("")
         : `<option value="">ยังไม่มีผู้อนุมัติที่ตั้งลายเซ็น</option>`}</select>
       <button class="btn btn-primary" data-submit ${appr.length ? "" : "disabled"}>ส่งขออนุมัติ</button>`
-    : st === "pending" && canApprove() ? `
+    : st === "pending" && r.approver_id === currentUser?.id && canApprove() ? `
       <button class="btn btn-danger" data-reject style="margin-right:auto;">ส่งกลับแก้ไข</button>
       ${signers.find(x => x.user_id === currentUser?.id)?.signature_path ? `<button class="btn btn-primary" data-approve>✓ อนุมัติและลงลายเซ็น</button>`
         : `<span class="text-muted" style="font-size:12.5px;">บัญชีนี้ (${esc(currentUser?.email || "")}) ยังไม่มีลายเซ็น</span>
            <button class="btn btn-primary" data-gosig>ไปตั้งลายเซ็น</button>`}`
-    : st === "pending" && canWrite() ? `<span class="text-muted" style="margin-right:auto;">รอ HR Manager อนุมัติ</span>
-      <button class="btn btn-secondary" data-recall>ดึงกลับมาแก้ไข</button>`
+    : st === "pending" ? `<span class="text-muted" style="margin-right:auto;">รอ ${esc(signerName(r.approver_id))} อนุมัติ${canWrite() ? " · ถ้าไม่อยู่ ดึงกลับแล้วส่งใหม่ถึงคนอื่น" : ""}</span>
+      ${canWrite() ? `<button class="btn btn-secondary" data-recall>ดึงกลับมาแก้ไข</button>` : `<button class="btn btn-secondary" data-x>ปิด</button>`}`
     : st === "approved" ? `${canWrite() ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกหนังสือ</button>` : ""}
       <span class="text-muted">อนุมัติ ${r.approved_at ? new Date(r.approved_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : ""}</span>
       <button class="btn btn-primary" data-print>พิมพ์ / บันทึก PDF</button>` : `<button class="btn btn-secondary" data-x>ปิด</button>`;

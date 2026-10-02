@@ -433,3 +433,100 @@ create policy "la_update" on storage.objects for update using (bucket_id = 'lett
 create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and has_perm('data.letters.approve')
   and ((storage.foldername(name))[1] = 'seal' or ((storage.foldername(name))[1] = 'signatures'
        and ((storage.foldername(name))[2] = auth.uid()::text or get_my_role() = 'admin'))));
+
+-- ============================================================================
+-- 13. อนุมัติ / ส่งกลับ ได้เฉพาะผู้อนุมัติที่ถูกเลือกตอนส่ง (ยืนยันกับผู้ใช้ 2026-10-02)
+--     ผู้อนุมัติคนอื่นเห็นหนังสือได้แต่กดไม่ได้ · ถ้าคนที่เลือกไม่อยู่ ให้ผู้ส่งดึงกลับแล้วส่งใหม่ถึงอีกคน
+--     ส่งกลับ (rejected) ก็ต้องผ่านฟังก์ชันเท่านั้น — กันการแก้สถานะตรงในตาราง
+-- ============================================================================
+create or replace function letter_submit(p_id bigint, p_approver uuid, p_type_label text)
+returns hr_letters language plpgsql security definer set search_path = public as $$
+declare l hr_letters; d doc_register; tid bigint;
+begin
+  if not has_perm('data.letters.write') then raise exception 'ไม่มีสิทธิ์ออกหนังสือ'; end if;
+  if p_approver is null or not exists (select 1 from letter_signers where user_id = p_approver and signature_path is not null) then
+    raise exception 'เลือกผู้อนุมัติที่ตั้งลายเซ็นไว้แล้ว';
+  end if;
+  select * into l from hr_letters where id = p_id for update;
+  if l.id is null then raise exception 'ไม่พบหนังสือ'; end if;
+  if l.status not in ('draft','rejected') then raise exception 'หนังสือนี้ส่งไปแล้ว'; end if;
+  if l.doc_id is null then
+    select id into tid from doc_types where series_code = 'HR' and label = p_type_label;
+    select * into d from doc_issue('HR', 1, tid, null, current_date, null, 'ออกจากระบบออกหนังสือ',
+                                   jsonb_build_array(jsonb_build_object('emp_code', l.emp_code, 'person_name', l.person_name)));
+    l.doc_id := d.id; l.doc_no := d.doc_no;
+  end if;
+  update hr_letters set status = 'pending', doc_id = l.doc_id, doc_no = l.doc_no, approver_id = p_approver,
+         requested_by = auth.uid(), requested_at = now(), reject_reason = null
+   where id = p_id returning * into l;
+  return l;
+end $$;
+
+create or replace function letter_approve(p_id bigint)
+returns hr_letters language plpgsql security definer set search_path = public as $$
+declare l hr_letters; s letter_signers; st letter_settings;
+begin
+  if not has_perm('data.letters.approve') then raise exception 'ไม่มีสิทธิ์อนุมัติหนังสือ'; end if;
+  select * into l from hr_letters where id = p_id for update;
+  if l.status <> 'pending' then raise exception 'หนังสือนี้ไม่ได้อยู่ในสถานะรออนุมัติ'; end if;
+  if l.approver_id is distinct from auth.uid() then raise exception 'หนังสือนี้ส่งถึงผู้อนุมัติคนอื่น — อนุมัติได้เฉพาะคนที่ถูกเลือก'; end if;
+  select * into s from letter_signers where user_id = auth.uid();
+  if s.signature_path is null then raise exception 'ยังไม่ได้อัปโหลดลายเซ็น — ตั้งค่าที่ “ลายเซ็นของฉัน” ก่อน'; end if;
+  select * into st from letter_settings where id = 1;
+  perform set_config('hr_letters.approving', 'on', true);
+  update hr_letters set status = 'approved', approved_by = auth.uid(), approved_at = now(),
+         signer = jsonb_build_object('name_th', s.name_th, 'title_th', s.title_th, 'name_en', s.name_en, 'title_en', s.title_en,
+                                     'signature_path', s.signature_path, 'seal_path', st.seal_path)
+   where id = p_id returning * into l;
+  return l;
+end $$;
+
+create or replace function letter_reject(p_id bigint, p_reason text)
+returns hr_letters language plpgsql security definer set search_path = public as $$
+declare l hr_letters;
+begin
+  if not has_perm('data.letters.approve') then raise exception 'ไม่มีสิทธิ์อนุมัติหนังสือ'; end if;
+  select * into l from hr_letters where id = p_id for update;
+  if l.status is distinct from 'pending' then raise exception 'หนังสือนี้ไม่ได้อยู่ในสถานะรออนุมัติ'; end if;
+  if l.approver_id is distinct from auth.uid() then raise exception 'หนังสือนี้ส่งถึงผู้อนุมัติคนอื่น — ส่งกลับได้เฉพาะคนที่ถูกเลือก'; end if;
+  perform set_config('hr_letters.approving', 'on', true);
+  update hr_letters set status = 'rejected', reject_reason = nullif(trim(p_reason), '')
+   where id = p_id returning * into l;
+  return l;
+end $$;
+
+create or replace function hr_letters_guard() returns trigger language plpgsql as $$
+declare approving boolean := current_setting('hr_letters.approving', true) = 'on';
+        fromdoc   boolean := current_setting('hr_letters.fromdoc', true) = 'on';
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' or new.signer is not null or new.approved_by is not null
+       or (new.doc_id is not null and not fromdoc) then
+      raise exception 'หนังสือใหม่ต้องเริ่มจากร่าง';
+    end if;
+    return new;
+  end if;
+  if not approving and (new.signer is distinct from old.signer or new.approved_by is distinct from old.approved_by
+                        or (new.status = 'approved' and old.status <> 'approved')
+                        or (new.status = 'rejected' and old.status <> 'rejected')) then
+    raise exception 'อนุมัติ / ส่งกลับ ได้ผ่านปุ่มของผู้อนุมัติที่ถูกเลือกเท่านั้น';
+  end if;
+  -- ผู้อนุมัติเปลี่ยนได้ตอนส่ง (letter_submit) เท่านั้น ไม่ใช่ระหว่างรออนุมัติ
+  if old.status = 'pending' and new.status = 'pending' and new.approver_id is distinct from old.approver_id then
+    raise exception 'เปลี่ยนผู้อนุมัติไม่ได้ระหว่างรอ — ดึงกลับแล้วส่งใหม่';
+  end if;
+  if new.doc_id is distinct from old.doc_id and old.doc_id is not null then
+    raise exception 'เลขที่หนังสือเปลี่ยนไม่ได้';
+  end if;
+  if old.status = 'pending' and new.status = 'pending' and (new.data is distinct from old.data or new.kind <> old.kind) then
+    raise exception 'หนังสือรออนุมัติอยู่ — ดึงกลับเป็นร่างก่อนแก้ไข';
+  end if;
+  if old.status = 'approved' and (new.data is distinct from old.data or new.kind <> old.kind
+       or new.signer is distinct from old.signer or new.status not in ('approved','cancelled')) then
+    raise exception 'หนังสือที่อนุมัติแล้วแก้ไขไม่ได้ — ถ้าต้องแก้ให้ยกเลิกแล้วออกฉบับใหม่';
+  end if;
+  if old.status = 'cancelled' and new.status <> 'cancelled' then
+    raise exception 'หนังสือที่ยกเลิกแล้วนำกลับมาใช้ไม่ได้';
+  end if;
+  return new;
+end $$;
