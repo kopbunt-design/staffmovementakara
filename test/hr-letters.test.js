@@ -16,7 +16,7 @@ const M = new Function("btoa", `${baht}\nconst escText = s => String(s ?? "").re
   const masterDivisions = [{ name: "Operations", name_th: "ปฏิบัติการ" }], masterDepartments = [{ name: "Human Resources", name_th: "ทรัพยากรบุคคล" }],
         masterSections = [{ name: "HRIS", name_th: "ระบบสารสนเทศบุคคล" }], masterTeams = [], masterPositions = [{ name: "HRIS Supervisor", name_th: "หัวหน้างานระบบสารสนเทศบุคคล" }];
   ${strip(read(`${ROOT}/js/hr-letters.js`)).replace(/const esc = v => escText/, "const esc = v => escText")}
-  return { letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
+  return { withTitle, letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -109,4 +109,11 @@ has(M.emlText("a@x.com", "s", "<p>x</p>", "b@y.co"), "Cc: b@y.co", "ไฟล์
   not(he, "ปฏิบัติการ", "อังกฤษ: ไม่มีชื่อไทย");
   not(M.letterPages("cert_th", { ...dt, team_th: "" }, {}), "ทีม:", "ระดับว่างไม่แสดง");
 }
+// คำนำหน้าไม่ซ้ำ
+eq(M.withTitle("Ms.", "Ms. Chalita Kongpradab"), "Ms. Chalita Kongpradab", "Offer: ชื่อมีคำนำหน้าแล้ว ไม่ใส่ซ้ำ");
+eq(M.withTitle("Ms.", "Chalita Kongpradab"), "Ms. Chalita Kongpradab", "Offer: ใส่คำนำหน้าให้");
+eq(M.withTitle("", "Chalita Kongpradab"), "Chalita Kongpradab", "Offer: ไม่มีคำนำหน้า");
+eq(M.withTitle("Miss", "miss Chalita"), "miss Chalita", "Offer: ไม่สนตัวพิมพ์");
+{ const of2 = M.letterPages("offer_en", { ...M.draftFrom("offer_en", null, []), title_en: "Ms.", name_en: "Ms. Chalita Kongpradab" }, {});
+  not(of2, "Ms. Ms.", "Offer: ไม่มี Ms. Ms. ในหนังสือ"); }
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

@@ -127,7 +127,7 @@ export function letterPages(kind, d, opts = {}) {
     ["Commencement Date", d.commencement ? `${enDate(d.commencement)}, or as otherwise agreed between the parties` : ""],
     ["Probation Period", d.probation_days ? `${d.probation_days} days` : ""], ...(d.schedule || [])]
     .filter(([k, v]) => String(k || "").trim() && String(v ?? "").trim());
-  const nm = `${d.title_en ? d.title_en + " " : ""}${d.name_en || ""}`.trim();
+  const nm = withTitle(d.title_en, d.name_en);
   return frame("a4", `
       <div class="lt-a of-top"><span>${esc(no)}</span><span>${esc(usDate(d.issue_date))}</span></div>
       <div class="lt-a of-title">Offer of Employment</div>
@@ -244,6 +244,13 @@ const thName = (list, en) => {
 // หนังสือไทย: แถวข้อมูล + ลายเซ็นต้องจบก่อนบรรทัด "หมายเหตุ" ที่ตำแหน่งตายตัว (top 229.4mm)
 // แบบต้นฉบับพอดีราว 9 แถว — แถวมากกว่านั้น (สังกัด 4 ระดับ + เงินได้หลายรายการ) ลดช่องว่างเหนือวันที่ก่อน แล้วค่อยบีบระยะบรรทัด
 // พื้นที่: 229.4 − 2 (ระยะห่าง) − 67.07 (จุดเริ่ม) = 160.3mm · ส่วนท้าย (ปิดท้าย+วันที่+ลายเซ็น) 79.49mm, แบบกระชับ 70.29mm
+// Offer Letter มีช่องคำนำหน้าแยก แต่ชื่ออังกฤษอาจมีคำนำหน้าติดมาแล้ว (สลับมาจากหนังสือรับรอง หรือพิมพ์เอง)
+// → ถ้าชื่อขึ้นต้นด้วยคำนำหน้าอยู่แล้ว ไม่ใส่ซ้ำ ("Ms. Ms. Chalita" เคยเกิดจริง)
+const TITLE_RE = /^(mr|mrs|ms|miss|dr)\.?\s+/i;
+export const withTitle = (title, name) => {
+  const n = String(name || "").trim(), t = String(title || "").trim();
+  return !t || TITLE_RE.test(n) ? n : `${t} ${n}`;
+};
 export function fitTH(n) {
   if (n * 8.97 + 79.49 <= 160.3) return "";
   const rh = Math.max(6.2, Math.min(8.97, (160.3 - 70.29) / n));
@@ -508,6 +515,7 @@ function openLetter(r) {
       // เปลี่ยนประเภทแล้วข้อมูลคนเดิมยังอยู่
       for (const k of ["issue_date","id_card","name_th","name_en","title_en","position_th","division_th","department_th","section_th","team_th","position","division","department","section","team","period_from","period_to"]) if (keep[k]) d[k] = keep[k];
       d.contact_email = keep.contact_email || settings.hr_contact_email || "";
+      if (kind === "offer_en") { const m = String(d.name_en || "").match(TITLE_RE); if (m) { d.title_en = d.title_en || m[0].trim(); d.name_en = d.name_en.slice(m[0].length); } }
       form(); preview();
     });
     if ($("#ltEmp")) bindCombo("ltEmp", allEmployees.filter(e => e.emp_code).map(e => ({ value: e.emp_code, label: empName(e) || e.emp_code,
@@ -527,7 +535,7 @@ function openLetter(r) {
     $("#ltSAdd")?.addEventListener("click", () => { d.schedule.push(["", ""]); form(); preview(); });
   };
 
-  const personOf = () => KINDS[kind].lang === "th" ? d.name_th : `${kind === "offer_en" && d.title_en ? d.title_en + " " : ""}${d.name_en || ""}`.trim();
+  const personOf = () => KINDS[kind].lang === "th" ? d.name_th : kind === "offer_en" ? withTitle(d.title_en, d.name_en) : (d.name_en || "").trim();
   const save = async () => {
     const row = { kind, data: d, emp_code: d.emp_code || null, person_name: personOf() || null, requested_email: currentUser?.email || null };
     if (r) {
