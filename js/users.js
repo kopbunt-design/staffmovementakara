@@ -5,6 +5,17 @@ let unsubUsers = null;
 // รายชื่อ role ดึงจากตาราง app_roles ไม่ hardcode — ไม่งั้น role ที่แอดมินสร้างเองจะเลือกไม่ได้
 let appRoles = [];
 
+// Edge Function ตอบ non-2xx → supabase-js บอกแค่ "Edge Function returned a non-2xx status code"
+// สาเหตุจริงอยู่ใน body ของ response — ดึงมาแสดง และแปลข้อความที่เจอบ่อยเป็นไทย
+async function fnError(data, error) {
+  let msg = data?.error || error?.message || "";
+  try { const b = await error.context.json(); msg = b.error || b.message || msg; } catch {}
+  if (/already.*registered|already exists/i.test(msg)) return "อีเมลนี้มีบัญชีในระบบอยู่แล้ว (อาจเคยลบออกจากรายชื่อแต่บัญชียังอยู่ — ใช้ปุ่มรีเซ็ตรหัสผ่าน หรือให้เขาเข้าด้วย Google)";
+  if (/weak|pwned|leaked|characters|password should/i.test(msg)) return "รหัสผ่านไม่ผ่านเกณฑ์ความปลอดภัยของ Supabase (" + msg + ") — ลองกด 🎲 สุ่มรหัส";
+  if (/requested function was not found|NOT_FOUND/i.test(msg)) return "ยังไม่ได้ deploy ฟังก์ชันนี้ใน Supabase";
+  return msg || "ไม่ทราบสาเหตุ";
+}
+
 export async function renderUsers() {
   const pg = document.getElementById("pageUsers");
   if (!can("page.users")) {
@@ -73,12 +84,7 @@ export async function renderUsers() {
   window._resetPw = async(uid,name)=>{
     if(!confirm(`รีเซ็ตรหัสผ่านของ "${name}"?\n\nรหัสเดิมจะใช้ไม่ได้ทันที ระบบจะสร้างรหัสชั่วคราวให้แจ้งเจ้าตัว และเจ้าตัวต้องตั้งรหัสใหม่เองตอนเข้าระบบ`)) return;
     const {data,error}=await supabase.functions.invoke("admin-reset-password",{body:{user_id:uid}});
-    if(error||data?.error){
-      let msg=data?.error||error.message;
-      try{ msg=(await error.context.json()).error||msg; }catch{}
-      if(/not found|404|Failed to send/i.test(msg)) msg="ยังไม่ได้ deploy ฟังก์ชัน admin-reset-password ใน Supabase";
-      toast("รีเซ็ตไม่สำเร็จ: "+msg,"error"); return;
-    }
+    if(error||data?.error){ toast("รีเซ็ตไม่สำเร็จ: "+await fnError(data,error),"error"); return; }
     showCredentials(name,data.email,data.password,true);
   };
   window._openAddUser = ()=>{
@@ -124,7 +130,7 @@ export async function renderUsers() {
       btn.disabled=true; btn.textContent="กำลังสร้าง...";
       const {data,error}=await supabase.functions.invoke("admin-create-user",{body:{email,password,name,role}});
       btn.disabled=false; btn.textContent="สร้างผู้ใช้";
-      if(error||data?.error){ errEl.textContent="ไม่สำเร็จ: "+(data?.error||error.message); return; }
+      if(error||data?.error){ errEl.textContent="ไม่สำเร็จ: "+await fnError(data,error); return; }
       showCredentials(name,email,password);
     };
   };
