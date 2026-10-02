@@ -328,9 +328,13 @@ async function boot() {
   mailTpl = !mt.error && mt.data?.length ? mt.data : DEFAULT_MAIL;
   if (!canWrite() && canApprove()) tab = "approve";
   draw();
-  // เปิดจากลิงก์ในเมล (?letter=ID)
-  const deep = +new URLSearchParams(location.search).get("letter");
-  if (deep) { history.replaceState(null, "", location.pathname); const x = letters.find(r => r.id === deep); if (x) openLetter(x); }
+  // เปิดจากลิงก์ในเมล / กระดิ่ง / งานค้างหน้าหลัก (?letter=ID) · แจ้งเตือนรุ่นเก่าส่งเลขที่มาแทน (?letter_no=HR-122-2026)
+  const qp = new URLSearchParams(location.search), deep = +qp.get("letter"), deepNo = qp.get("letter_no");
+  if (deep || deepNo) {
+    history.replaceState(null, "", location.pathname);
+    const x = deep ? letters.find(r => r.id === deep) : letters.find(r => r.doc_no === deepNo && r.status !== "cancelled");
+    if (x) openLetter(x); else toast("ไม่พบหนังสือฉบับนี้ (อาจถูกยกเลิก หรือไม่มีสิทธิ์ดู)", "info");
+  }
   // มาจากปุ่ม "สร้างหนังสือ" ในทะเบียนเลขที่เอกสาร
   let fromDoc = null; try { fromDoc = JSON.parse(sessionStorage.getItem("letter_from_doc") || "null"); sessionStorage.removeItem("letter_from_doc"); } catch {}
   if (fromDoc && canWrite()) {
@@ -568,7 +572,7 @@ function openLetter(r) {
       const { data, error } = await supabase.rpc("letter_submit", { p_id: saved.id, p_approver: $("#ltAppr").value, p_type_label: KINDS[kind].docType });
       if (error) { toast("ส่งไม่สำเร็จ: " + error.message, "error"); e.target.disabled = false; return; }
       Object.assign(r, data);
-      notify("มีหนังสือ HR รออนุมัติ", `${data.doc_no}`, { category: "default", silent: true });
+      notify("มีหนังสือ HR รออนุมัติ", `${data.doc_no}`, { category: "default", silent: true, link: `letters?letter=${data.id}` });
       toast(`${data.doc_no} ส่งขออนุมัติแล้ว · ${await sendMail(data, "request")}`, "success");
       close(); draw();
     });

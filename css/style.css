@@ -69,6 +69,9 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .notif-clear{border:none;background:none;color:var(--blue);font-size:11px;font-weight:600;cursor:pointer;}
 .notif-clear:hover{text-decoration:underline;}
 .notif-list{overflow-y:auto;}
+.notif-go{cursor:pointer;transition:background .15s}
+.notif-go:hover{background:#F5F8FD}
+.notif-chev{align-self:center;margin-left:auto;color:var(--muted2);font-size:18px;line-height:1;padding-left:6px}
 .notif-empty{padding:28px 14px;text-align:center;font-size:12px;color:var(--muted2);}
 .notif-item{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--bg);}
 .notif-item:last-child{border-bottom:none;}
@@ -985,6 +988,34 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .hm-search:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,90,199,.12)}
 .hm-search svg{width:18px;height:18px;color:var(--muted2);flex:none}
 .hm-search input{border:none;outline:none;flex:1;font:inherit;font-size:14px;background:none;color:var(--text)}
+/* งานที่รอคุณดำเนินการ (js/tasks.js) */
+.hm-tasks{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-card);margin-bottom:20px;overflow:hidden}
+.hm-tasks-h{display:flex;align-items:center;gap:9px;padding:13px 18px;font-size:14px;font-weight:700;color:var(--navy);
+  background:linear-gradient(90deg,var(--red-light),#fff 70%);border-bottom:1px solid var(--border)}
+.hm-tasks-h em{font-style:normal;background:var(--red);color:#fff;font-size:11.5px;min-width:22px;height:22px;border-radius:11px;
+  display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+.hm-tasks-dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 rgba(192,57,43,.5);animation:hm-pulse 1.8s infinite}
+@keyframes hm-pulse{70%{box-shadow:0 0 0 7px rgba(192,57,43,0)}100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}}
+.hm-tasks-list{max-height:300px;overflow-y:auto}
+.hm-task{display:flex;align-items:center;gap:12px;width:100%;border:none;border-top:1px solid var(--border);background:#fff;
+  padding:11px 18px;font:inherit;text-align:left;cursor:pointer;transition:background .15s}
+.hm-task:first-child{border-top:none}
+.hm-task:hover{background:#F8FAFD}
+.hm-task-ic{flex:none;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:var(--blue-light);color:var(--blue)}
+.hm-task[data-kind="fix"] .hm-task-ic{background:var(--amber-light);color:var(--amber)}
+.hm-task[data-kind="fund"] .hm-task-ic{background:var(--green-light);color:var(--green)}
+.hm-task-ic svg{width:18px;height:18px}
+.hm-task-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.hm-task-b b{font-size:13.5px;color:var(--text);font-weight:600}
+.hm-task-b span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm-task-t{flex:none;font-size:11.5px;color:var(--muted2)}
+.hm-task-go{flex:none;font-size:12.5px;font-weight:600;color:var(--blue);opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s}
+.hm-task:hover .hm-task-go,.hm-task:focus-visible .hm-task-go{opacity:1;transform:none}
+.hm-tasks-ok{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--green);background:var(--green-light);
+  border-radius:99px;padding:5px 12px;margin-bottom:16px}
+.hm-tasks-ok svg{width:14px;height:14px}
+@media (max-width:640px){.hm-task-t{display:none}.hm-task-go{opacity:1;transform:none}}
 .hm-recent{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:22px}
 .hm-recent-l{font-size:12px;font-weight:600;color:var(--muted);margin-right:2px}
 .hm-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fff;border-radius:99px;

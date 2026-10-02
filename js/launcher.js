@@ -1,4 +1,5 @@
-import { esc, navigate, appLang } from "./app.js";
+import { esc, navigate, appLang, openLink } from "./app.js";
+import { myTasks } from "./tasks.js";
 
 // ============================================================================
 // หน้าหลัก — รวมทุกระบบเป็นการ์ด จัดเป็นกลุ่มตามแถบเมนูข้าง
@@ -55,9 +56,13 @@ const GROUP_EN = {
 };
 const UI = {
   th: { hello: "สวัสดี", you: "คุณ", search: "ค้นหาเมนู เช่น ค่ากะ, กองทุน, headcount", recent: "ใช้ล่าสุด",
-        menus: n => `${n} เมนู`, none: q => `ไม่พบเมนูที่ตรงกับ “${q}”`, close: "ปิด", locale: "th-TH" },
+        menus: n => `${n} เมนู`, none: q => `ไม่พบเมนูที่ตรงกับ “${q}”`, close: "ปิด", locale: "th-TH",
+        tasks: "รอคุณดำเนินการ", noTasks: "ไม่มีงานค้าง — เรียบร้อยดี", open: "เปิด",
+        ago: s => s < 3600 ? `${Math.max(1, Math.floor(s / 60))} นาทีที่แล้ว` : s < 86400 ? `${Math.floor(s / 3600)} ชม.ที่แล้ว` : `${Math.floor(s / 86400)} วันที่แล้ว` },
   en: { hello: "Hello", you: "", search: "Search menus, e.g. shift, fund, headcount", recent: "Recent",
-        menus: n => `${n} menu${n === 1 ? "" : "s"}`, none: q => `No menu matches “${q}”`, close: "Close", locale: "en-GB" },
+        menus: n => `${n} menu${n === 1 ? "" : "s"}`, none: q => `No menu matches “${q}”`, close: "Close", locale: "en-GB",
+        tasks: "Waiting on you", noTasks: "Nothing waiting — all clear", open: "Open",
+        ago: s => s < 3600 ? `${Math.max(1, Math.floor(s / 60))} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86400)} d ago` },
 };
 const en = () => appLang === "en";
 const ui = () => UI[en() ? "en" : "th"];
@@ -165,6 +170,7 @@ function draw() {
       <label class="hm-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
         <input id="hmQ" placeholder="${ui().search}" value="${esc(query)}" autocomplete="off"></label>
     </div>
+    ${!q ? `<div id="hmTasks">${tasksHTML()}</div>` : ""}
     ${!q && rec.length ? `<div class="hm-recent"><span class="hm-recent-l">${ui().recent}</span>
       ${rec.map(it => `<button class="hm-chip" data-go="${esc(it.page)}" data-tone="${it.tone}"><span class="hm-ic sm">${icon(it.page)}</span>${esc(it.label)}</button>`).join("")}</div>` : ""}
     ${!q ? `<div class="hm-folders">${groups.map(folder).join("")}</div>`
@@ -178,6 +184,7 @@ function draw() {
   </div>`;
 
   pg.querySelectorAll("[data-go]").forEach(b => b.onclick = () => navigate(b.dataset.go));
+  wireTasks(pg);
   pg.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => openFolder(+b.dataset.cat, b));
   const inp = pg.querySelector("#hmQ");
   inp.oninput = () => { query = inp.value; const pos = inp.selectionStart; draw();
@@ -238,4 +245,37 @@ function openFolder(idx, fromEl) {
   panel.focus({ preventScroll: true });
 }
 
-export function renderHome() { draw(); }
+export function renderHome() { draw(); refreshTasks(); }
+
+// ---------- งานที่รอคุณดำเนินการ ----------
+// tasks: undefined = ยังโหลดไม่เสร็จ · null = ไม่มีสิทธิ์งานแบบไหนเลย (ไม่แสดงกล่อง) · [] = ไม่มีงานค้าง
+let tasks;
+const TASK_IC = {
+  approve: '<path d="M9 12.5 11 14.5 15.5 10"/><path d="M5 4h14v16H5z"/>',
+  fix:     '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  fund:    '<path d="M12 3 4 6.5V12c0 4.4 3.3 8 8 9 4.7-1 8-4.6 8-9V6.5Z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/>',
+};
+function tasksHTML() {
+  if (tasks === undefined || tasks === null) return "";
+  if (!tasks.length) return `<div class="hm-tasks-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${esc(ui().noTasks)}</div>`;
+  const now = Date.now();
+  return `<section class="hm-tasks">
+    <div class="hm-tasks-h"><span class="hm-tasks-dot"></span>${esc(ui().tasks)}<em>${tasks.length}</em></div>
+    <div class="hm-tasks-list">${tasks.map(t => `
+      <button class="hm-task" data-kind="${esc(t.kind)}" data-link="${esc(t.link)}">
+        <span class="hm-task-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${TASK_IC[t.kind] || TASK_IC.approve}</svg></span>
+        <span class="hm-task-b"><b>${esc(t.title)}</b>${t.sub ? `<span>${esc(t.sub)}</span>` : ""}</span>
+        ${t.at ? `<span class="hm-task-t">${esc(ui().ago(Math.max(0, (now - new Date(t.at)) / 1000)))}</span>` : ""}
+        <span class="hm-task-go">${esc(ui().open)} →</span>
+      </button>`).join("")}</div>
+  </section>`;
+}
+function wireTasks(root) {
+  root.querySelectorAll(".hm-task").forEach(b => b.onclick = () => openLink(b.dataset.link));
+}
+// โหลดใหม่ทุกครั้งที่เข้าหน้าหลัก และเมื่อมีแจ้งเตือนใหม่ (app.js เรียกตอน realtime) — วาดเฉพาะกล่องงาน ไม่วาดทั้งหน้า
+export async function refreshTasks() {
+  try { tasks = await myTasks(appLang); } catch { tasks = null; }
+  const box = document.getElementById("hmTasks");
+  if (box) { box.innerHTML = tasksHTML(); wireTasks(box); }
+}

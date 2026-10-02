@@ -26,3 +26,7 @@ do $$ begin
   alter publication supabase_realtime add table notifications;
 exception when duplicate_object then null;
 end $$;
+
+-- ปลายทางเมื่อกดรายการในกระดิ่ง: "page" หรือ "page?key=value" เช่น letters?letter=12
+-- รายการเก่าที่ไม่มีค่านี้ หน้าเว็บเดาปลายทางจากหมวดเอง
+alter table notifications add column if not exists link text;

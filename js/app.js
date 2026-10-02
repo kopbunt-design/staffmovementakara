@@ -126,9 +126,10 @@ const NOTIF_ICON = {
 // บันทึกแจ้งเตือนลงกระดิ่ง (shared ทุกคนผ่าน Supabase) + toast ให้ตัวเองทันที (ใช้เมื่อ "เพิ่ม" รายการใหม่)
 // dedupKey: ใส่เมื่อไม่อยากให้เกิดแถวซ้ำถ้าหลายเครื่องคำนวณเจอ alert เดียวกันพร้อมกัน (unique constraint ที่ DB)
 export async function notify(title, detail = "", opts = {}) {
-  const { type = "success", category = "default", toastMsg, silent = false, dedupKey = null } = opts;
+  const { type = "success", category = "default", toastMsg, silent = false, dedupKey = null, link = null } = opts;
   if (!silent) toast(toastMsg || (detail ? `${title} — ${detail}` : title), type);
-  const row = { title, detail, category, dedup_key: dedupKey, created_by: currentUser?.id || null };
+  // link = ปลายทางเมื่อกดรายการในกระดิ่ง ("page" หรือ "page?key=value") — ส่งเฉพาะเมื่อมี เผื่อยังไม่ได้รัน SQL เพิ่มคอลัมน์
+  const row = { title, detail, category, dedup_key: dedupKey, created_by: currentUser?.id || null, ...(link ? { link } : {}) };
   const { error } = dedupKey
     ? await supabase.from("notifications").upsert(row, { onConflict: "dedup_key" })
     : await supabase.from("notifications").insert(row);
@@ -169,14 +170,33 @@ function renderNotifPanel() {
     return;
   }
   list.innerHTML = notifItems.map(n => `
-    <div class="notif-item">
+    <div class="notif-item${notifLink(n) ? " notif-go" : ""}" data-link="${esc(notifLink(n) || "")}">
       <div class="notif-ic notif-ic-${esc(n.category)}">${NOTIF_ICON[n.category] || NOTIF_ICON.default}</div>
       <div class="notif-body">
         <div class="notif-title">${esc(n.title)}</div>
         ${n.detail ? `<div class="notif-detail">${esc(n.detail)}</div>` : ""}
         <div class="notif-time">${timeAgo(n.created_at)}</div>
       </div>
+      ${notifLink(n) ? `<span class="notif-chev">›</span>` : ""}
     </div>`).join("");
+  list.querySelectorAll(".notif-go").forEach(el => el.onclick = () => { toggleNotifPanel(false); openLink(el.dataset.link); });
+}
+
+// ปลายทางของแจ้งเตือน: ใช้ link ที่บันทึกไว้ · รายการเก่าที่ไม่มี link เดาจากหมวด
+// (แจ้งหนังสือรออนุมัติรุ่นเก่ามีเลขที่ใน detail → เปิดฉบับนั้นจากเลขที่)
+const NOTIF_PAGE = { employee: "employees", movement: "movements", quota: "vacancy", master: "settings", alert: "employees" };
+function notifLink(n) {
+  if (n.link) return n.link;
+  if (/หนังสือ HR/.test(n.title || "") && /^[\w-]+$/.test(n.detail || "")) return `letters?letter_no=${encodeURIComponent(n.detail)}`;
+  return NOTIF_PAGE[n.category] || "";
+}
+
+// เปิดหน้าตามลิงก์ "page" หรือ "page?key=value" — หน้าที่รับ query (เช่น letters?letter=12) อ่านเองจาก location.search
+export function openLink(link) {
+  const [page, qs] = String(link || "").split("?");
+  if (!pages.includes(page)) return;
+  history.replaceState(null, "", qs ? `${location.pathname}?${qs}` : location.pathname);
+  navigate(page);
 }
 
 function toggleNotifPanel(force) {
@@ -504,6 +524,7 @@ function startRealtime() {
     })
     .on("postgres_changes", {event:"INSERT", schema:"public", table:"notifications"}, (payload) => {
       pushNotification(payload.new); // เฉพาะ INSERT — upsert ซ้ำ dedup_key เดิมจะเป็น UPDATE ซึ่งไม่ต้องเด้งซ้ำ
+      if (currentPage === "home") import("./launcher.js").then(m => m.refreshTasks()).catch(() => {});
     })
     .subscribe();
 }
