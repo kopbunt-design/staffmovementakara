@@ -360,7 +360,7 @@ function draw() {
     <tbody>${list.map(r => `<tr>
       <td style="white-space:nowrap;"><b>${esc(r.doc_no || "—")}</b></td><td>${esc(KINDS[r.kind]?.label || r.kind)}</td>
       <td>${esc(r.person_name || "")}${r.emp_code ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.emp_code)}</div>` : ""}</td>
-      <td>${badge(r.status)}${r.status === "rejected" && r.reject_reason ? `<div style="font-size:11.5px;color:var(--red);">${esc(r.reject_reason)}</div>` : ""}</td>
+      <td>${badge(r.status)}${r.status === "rejected" && r.reject_reason ? `<div style="font-size:11.5px;color:var(--red);">${esc(r.reject_reason)}</div>` : ""}${r.status === "cancelled" && r.cancel_reason ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.cancel_reason)}</div>` : ""}</td>
       <td style="white-space:nowrap;">${new Date(r.updated_at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm ${tab === "approve" ? "btn-primary" : "btn-secondary"}" data-open="${r.id}">${tab === "approve" ? "เปิดดู / อนุมัติ" : r.status === "draft" || r.status === "rejected" ? "แก้ไข" : "เปิด"}</button>
         ${r.status === "approved" ? `<button class="btn btn-sm btn-primary" data-print="${r.id}">พิมพ์ / PDF</button>` : ""}</td></tr>`).join("")}</tbody></table>`
@@ -576,16 +576,40 @@ function openLetter(r) {
       Object.assign(r, data); close(); openLetter(r); draw();
     });
     $("[data-print]")?.addEventListener("click", () => printLetter(r));
-    $("[data-cancel]")?.addEventListener("click", async () => {
-      if (!confirm(`ยกเลิกหนังสือ${r.doc_no ? ` ${r.doc_no}` : ""}? ${r.doc_no ? "เลขที่นี้จะถูกยกเลิกในทะเบียนด้วย ไม่นำกลับมาใช้" : ""}`)) return;
-      const { error } = await supabase.from("hr_letters").update({ status: "cancelled" }).eq("id", r.id);
-      if (error) { toast("ยกเลิกไม่สำเร็จ: " + error.message, "error"); return; }
-      if (r.doc_id) await supabase.from("doc_register").update({ status: "void", void_reason: "ยกเลิกหนังสือในระบบออกหนังสือ",
-        voided_at: new Date().toISOString(), voided_by: currentUser?.id || null }).eq("id", r.doc_id);
-      r.status = "cancelled"; toast("ยกเลิกแล้ว", "success"); close(); draw();
-    });
+    $("[data-cancel]")?.addEventListener("click", () => cancelLetter(r, () => { close(); draw(); }));
   };
   form(); foot(); preview();
+}
+
+// ยกเลิกหนังสือ — ถ้ามีเลขที่แล้ว ให้เลือกว่าจะยกเลิกเลขด้วย หรือเก็บเลขไว้ออกฉบับใหม่ในเลขเดิม
+// ทั้งสองแบบมีประวัติ: หนังสือที่ยกเลิกยังอยู่พร้อมเหตุผล และทะเบียนแสดงว่าเลขนั้นเคยยกเลิกหนังสือกี่ฉบับ
+function cancelLetter(r, done) {
+  const el = document.createElement("div");
+  el.className = "modal-overlay";
+  const opt = (v, title, sub, on) => `<label class="lt-cancel-opt"><input type="radio" name="ltCxl" value="${v}" ${on ? "checked" : ""}>
+    <span><b>${title}</b><span class="text-muted">${sub}</span></span></label>`;
+  el.innerHTML = `<div class="modal" style="max-width:480px;"><div class="modal-header"><div class="modal-title">ยกเลิกหนังสือ${r.doc_no ? ` ${esc(r.doc_no)}` : ""}</div>
+    <button class="modal-close" data-x>✕</button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
+      ${r.doc_no ? `<div class="form-label" style="margin:0;">เลขที่ ${esc(r.doc_no)} จะทำอย่างไร</div>
+        ${opt("void", "ยกเลิกเลขที่ด้วย", "เลขนี้ขีดฆ่าในทะเบียน ไม่นำกลับมาใช้ — เหมาะกับหนังสือที่ส่งให้พนักงานไปแล้ว", r.status === "approved")}
+        ${opt("keep", "เก็บเลขไว้ ออกหนังสือฉบับใหม่ในเลขเดิม", "ทะเบียนบันทึกว่าเลขนี้มีหนังสือยกเลิก 1 ฉบับ แล้วกด “สร้างหนังสือ” ที่เลขเดิมได้ — เหมาะกับกรณีกรอกผิดก่อนส่งออก", r.status !== "approved")}` : ""}
+      <label class="form-label" style="margin:0;">เหตุผล<input class="form-control" id="ltCxlWhy" placeholder="เช่น ชื่อสะกดผิด / พนักงานขอเปลี่ยนเป็นภาษาอังกฤษ"></label>
+      <div class="text-muted" style="font-size:12px;">หนังสือที่ยกเลิกนำกลับมาใช้ไม่ได้ แต่ยังเปิดดูย้อนหลังได้</div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-x>ไม่ยกเลิก</button><button class="btn btn-danger" data-ok>ยกเลิกหนังสือ</button></div></div>`;
+  document.getElementById("modalPortal").appendChild(el);
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
+  el.querySelector("#ltCxlWhy").focus();
+  el.querySelector("[data-ok]").onclick = async () => {
+    const voidNo = !!r.doc_id && el.querySelector("input[name=ltCxl]:checked")?.value === "void";
+    const ok = el.querySelector("[data-ok]"); ok.disabled = true;
+    const { data, error } = await supabase.rpc("letter_cancel", { p_id: r.id, p_reason: el.querySelector("#ltCxlWhy").value, p_void_number: voidNo });
+    if (error) { ok.disabled = false; toast("ยกเลิกไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(r, data); el.remove();
+    toast(!r.doc_no ? "ยกเลิกแล้ว" : voidNo ? `ยกเลิกหนังสือและเลข ${r.doc_no} แล้ว` : `ยกเลิกหนังสือแล้ว — เลข ${r.doc_no} ยังใช้ออกฉบับใหม่ได้`, "success");
+    done();
+  };
 }
 
 // ---------------------------------------------------------------- ตั้งค่า

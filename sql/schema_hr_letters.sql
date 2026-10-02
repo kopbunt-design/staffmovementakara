@@ -364,3 +364,47 @@ grant execute on function letter_from_doc(bigint, text) to authenticated;
 -- ============================================================================
 alter table mail_templates add column if not exists to_extra text;
 alter table mail_templates add column if not exists cc text;
+
+-- ============================================================================
+-- 11. ยกเลิกหนังสือ — เลือกได้ว่าจะยกเลิกเลขที่ด้วย หรือเก็บเลขไว้ออกฉบับใหม่ในเลขเดิม
+--     ทั้งสองแบบเก็บประวัติไว้: หนังสือที่ยกเลิกยังอยู่ในตาราง (สถานะ cancelled + เหตุผล)
+--     และทะเบียนแสดงว่าเลขนี้เคยมีหนังสือยกเลิกกี่ฉบับ
+-- ============================================================================
+alter table hr_letters add column if not exists cancel_reason text;
+alter table hr_letters add column if not exists cancelled_at  timestamptz;
+alter table hr_letters add column if not exists cancelled_by  uuid;
+
+create or replace function letter_cancel(p_id bigint, p_reason text, p_void_number boolean)
+returns hr_letters language plpgsql security definer set search_path = public as $$
+declare l hr_letters;
+begin
+  if not has_perm('data.letters.write') then raise exception 'ไม่มีสิทธิ์ยกเลิกหนังสือ'; end if;
+  select * into l from hr_letters where id = p_id for update;
+  if l.id is null then raise exception 'ไม่พบหนังสือ'; end if;
+  if l.status = 'cancelled' then raise exception 'หนังสือนี้ยกเลิกไปแล้ว'; end if;
+  update hr_letters set status = 'cancelled', cancel_reason = nullif(trim(p_reason), ''),
+         cancelled_at = now(), cancelled_by = auth.uid()
+   where id = p_id returning * into l;
+  if p_void_number and l.doc_id is not null then
+    update doc_register set status = 'void', voided_at = now(), voided_by = auth.uid(),
+           void_reason = 'ยกเลิกหนังสือ' || coalesce(': ' || nullif(trim(p_reason), ''), '')
+     where id = l.doc_id and status <> 'void';
+  end if;
+  return l;
+end $$;
+revoke all on function letter_cancel(bigint, text, boolean) from public, anon;
+grant execute on function letter_cancel(bigint, text, boolean) to authenticated;
+
+-- ยกเลิกเลขในทะเบียน → หนังสือที่ผูกกับเลขนั้นถูกยกเลิกตาม (เลขที่ยกเลิกแล้วจะมีหนังสือที่ใช้งานอยู่ไม่ได้)
+create or replace function doc_void_cascade() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'void' and old.status <> 'void' then
+    update hr_letters set status = 'cancelled', cancelled_at = now(), cancelled_by = auth.uid(),
+           cancel_reason = coalesce(cancel_reason, 'ยกเลิกเลขในทะเบียน' || coalesce(': ' || new.void_reason, ''))
+     where doc_id = new.id and status <> 'cancelled';
+  end if;
+  return new;
+end $$;
+drop trigger if exists doc_void_cascade on doc_register;
+create trigger doc_void_cascade after update on doc_register
+  for each row execute function doc_void_cascade();

@@ -14,6 +14,13 @@ const canWrite = () => can("data.docregister.write");
 const TH_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const thDate = iso => { if (!iso) return "-"; const d = new Date(iso + "T00:00:00");
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()].slice(0, 3)}. ${d.getFullYear() + 543}`; };
+// วันที่ออกในตาราง: วันที่ตัวใหญ่ + เดือนปี และวันในสัปดาห์ (อ่านไล่ตาได้เร็วกว่าข้อความยาว)
+const TH_DAYS = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
+const dateCell = iso => {
+  if (!iso) return `<span class="dr-date-none">ไม่ระบุ</span>`;
+  const d = new Date(iso + "T00:00:00");
+  return `<div class="dr-date"><b>${d.getDate()}</b><span>${TH_MONTHS[d.getMonth()].slice(0, 3)}. ${d.getFullYear() + 543}<small>วัน${TH_DAYS[d.getDay()]}</small></span></div>`;
+};
 const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const empName = e => [e.firstname_th, e.lastname_th].filter(Boolean).join(" ");
 
@@ -24,6 +31,7 @@ const LETTER_KIND = {
   "Offer Letter (จดหมายจ้างงาน)": "offer_en",
 };
 let linked = new Set();   // เลขที่ที่มีหนังสือในระบบแล้ว (ปุ่มเป็น "เปิดหนังสือ")
+let cancelled = new Map(); // เลขที่ → เหตุผลของหนังสือที่ยกเลิกแล้วแต่เก็บเลขไว้ (ประวัติในทะเบียน)
 
 // ---------------------------------------------------------------- อ่านไฟล์ Excel เดิม (pure — มีเทส)
 const TH_MONTH_IDX = Object.fromEntries(TH_MONTHS.map((m, i) => [m, i]));
@@ -121,8 +129,11 @@ async function boot() {
   }
   series = s.data || []; types = t.data || []; rows = r.data || [];
   if (can("data.letters.write")) {
-    const hl = await supabase.from("hr_letters").select("doc_id,status").not("doc_id", "is", null);
+    const hl = await supabase.from("hr_letters").select("doc_id,status,cancel_reason,cancelled_at").not("doc_id", "is", null).order("cancelled_at");
     linked = new Set((hl.data || []).filter(x => x.status !== "cancelled").map(x => x.doc_id));
+    cancelled = new Map();
+    for (const x of hl.data || []) if (x.status === "cancelled")
+      cancelled.set(x.doc_id, [...(cancelled.get(x.doc_id) || []), x.cancel_reason || "ไม่ระบุเหตุผล"]);
   }
   if (!fYear) fYear = String(new Date().getFullYear());
   draw();
@@ -178,8 +189,9 @@ function draw() {
     <tbody>${list.map(r => `<tr style="${r.status === "void" ? "opacity:.55;" : ""}">
       <td style="white-space:nowrap;"><b ${r.status === "void" ? 'style="text-decoration:line-through;"' : ""}>${esc(r.doc_no)}</b>
         ${r.status === "void" ? `<div style="font-size:11px;color:var(--red);">ยกเลิก${r.void_reason ? `: ${esc(r.void_reason)}` : ""}</div>` : ""}
-        ${r.batch_id ? `<div class="text-muted" style="font-size:11px;">ออกเป็นชุด</div>` : ""}</td>
-      <td style="white-space:nowrap;">${thDate(r.issued_date)}</td>
+        ${r.batch_id ? `<div class="text-muted" style="font-size:11px;">ออกเป็นชุด</div>` : ""}
+        ${r.status !== "void" && cancelled.has(r.id) ? `<div class="dr-cxl" title="${esc(cancelled.get(r.id).map((w, i) => `${i + 1}. ${w}`).join("\n"))}">ยกเลิกหนังสือ ${cancelled.get(r.id).length} ฉบับ · ใช้เลขเดิม</div>` : ""}</td>
+      <td style="white-space:nowrap;">${dateCell(r.issued_date)}</td>
       <td>${esc(r.type_label || "-")}</td>
       <td style="max-width:300px;">${esc(r.subject || "")}${r.note ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.note)}</div>` : ""}</td>
       <td>${esc(r.person_name || "")}${r.emp_code ? `<div class="text-muted" style="font-size:11.5px;">${esc(r.emp_code)}</div>` : ""}</td>
@@ -337,12 +349,12 @@ function editForm(r) {
     Object.assign(r, upd); el.remove(); draw(); toast("บันทึกแล้ว", "success");
   };
   el.querySelector("[data-void]").onclick = async () => {
-    const why = prompt(`ยกเลิกเลข ${r.doc_no}? เลขนี้จะไม่ถูกนำกลับมาใช้อีก\nเหตุผล:`, "");
+    const why = prompt(`ยกเลิกเลข ${r.doc_no}? เลขนี้จะไม่ถูกนำกลับมาใช้อีก${linked.has(r.id) ? "\n⚠️ เลขนี้มีหนังสือในระบบออกหนังสือ — หนังสือฉบับนั้นจะถูกยกเลิกด้วย" : ""}\nเหตุผล:`, "");
     if (why === null) return;
     const upd = { status: "void", void_reason: why.trim() || null, voided_at: new Date().toISOString(), voided_by: currentUser?.id || null };
     const { error } = await supabase.from("doc_register").update(upd).eq("id", r.id);
     if (error) { toast("ยกเลิกไม่สำเร็จ: " + error.message, "error"); return; }
-    Object.assign(r, upd); el.remove(); draw(); toast(`ยกเลิก ${r.doc_no} แล้ว`, "success");
+    Object.assign(r, upd); linked.delete(r.id); el.remove(); draw(); toast(`ยกเลิก ${r.doc_no} แล้ว`, "success");
   };
 }
 
@@ -419,7 +431,8 @@ function exportExcel() {
   if (!list.length) { toast("ไม่มีรายการให้ export"); return; }
   const data = list.map(r => ({ "เลขที่เอกสาร": r.doc_no, "ปี": r.year, "ลำดับ": r.seq, "วันที่ออก": r.issued_date || "",
     "ประเภท": r.type_label || "", "เรื่อง / รายละเอียด": r.subject || "", "รหัสพนักงาน": r.emp_code || "", "ออกให้": r.person_name || "",
-    "อ้างอิงเลขที่": r.ref_doc_no || "", "หมายเหตุ": r.note || "", "สถานะ": r.status === "void" ? `ยกเลิก${r.void_reason ? ": " + r.void_reason : ""}` : "ใช้งาน" }));
+    "อ้างอิงเลขที่": r.ref_doc_no || "", "หมายเหตุ": r.note || "", "สถานะ": r.status === "void" ? `ยกเลิก${r.void_reason ? ": " + r.void_reason : ""}` : "ใช้งาน",
+    "หนังสือที่ยกเลิก (ใช้เลขเดิม)": r.status !== "void" && cancelled.has(r.id) ? cancelled.get(r.id).join(" / ") : "" }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), fSeries === "MEMO" ? "Memo" : "HR");
   XLSX.writeFile(wb, `ทะเบียนเลขที่เอกสาร_${fSeries}_${fYear || "ทุกปี"}.xlsx`);
