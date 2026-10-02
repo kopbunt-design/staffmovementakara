@@ -18,7 +18,7 @@ const TYPE = {
 };
 const STATUS = {
   draft:      { label:"ร่าง",       color:"var(--muted)",     bg:"#f1f5f9" },
-  calculated: { label:"คำนวณแล้ว",  color:"var(--blue)",      bg:"var(--blue-light)" },
+  calculated: { label:"ประมวลผลแล้ว",  color:"var(--blue)",      bg:"var(--blue-light)" },
   approved:   { label:"อนุมัติแล้ว",color:"var(--gold-dark)", bg:"var(--gold-light)" },
   locked:     { label:"ล็อกแล้ว",   color:"var(--green)",     bg:"var(--green-light)" },
 };
@@ -209,13 +209,35 @@ function runListHTML() {
 }
 
 // ---------- รายละเอียดงวด ----------
-function runDetailHTML() {
-  const t = runTotals(items);
-  const st = curRun.status;
-  const nx = NEXT[st];
-  const nxLabel = { calculated:"คำนวณงวดนี้", approved:"อนุมัติงวด", locked:"ล็อกงวด (แก้ไม่ได้อีก)" }[nx];
-  const editable = st === "draft" || st === "calculated";
+// ลำดับงานเหมือนโปรแกรมเงินเดือน: ① กรอกข้อมูลก่อนประมวลผล (ทุกคนขึ้นมาทันทีที่เปิดงวด) → ประมวลผล → ② ตรวจผล → อนุมัติ → ล็อก
+let runTab = "input";            // input = ข้อมูลก่อนประมวลผล · result = ผลการประมวลผล
+const gridEdits = new Map();     // "workerId:codeId" → จำนวนเงินที่แก้ในตารางแต่ยังไม่บันทึก
+const isEditable = () => curRun && (curRun.status === "draft" || curRun.status === "calculated") && canEdit();
 
+// รายการประจำของงวดนี้ ตามนิยามปัจจุบัน (ยังไม่บันทึกลงงวด — บันทึกตอนประมวลผล)
+const virtualRec = wid => !itemsReady ? [] : recurringFor(wItems.filter(i => i.worker_id === wid), curRun.period)
+  .filter(i => codeOf(i.code_id)).map(i => adjustFromRecurring(i, codeOf(i.code_id), curRun.id));
+// รายการทั้งหมดของคนนี้ในงวด: ระหว่างแก้ไขได้ ใช้รายการประจำตามนิยามปัจจุบัน · หลังอนุมัติ ใช้ที่บันทึกไว้ในงวด
+const linesFor = wid => [...adjusts.filter(a => a.worker_id === wid && a.source !== "recurring"),
+  ...(isEditable() || !items.length ? virtualRec(wid) : adjusts.filter(a => a.worker_id === wid && a.source === "recurring"))];
+const onceOf = (wid, cid) => adjusts.filter(a => a.worker_id === wid && a.code_id === cid && a.source !== "recurring");
+// คนที่อยู่ในตารางกรอก: งวดที่ยังแก้ได้ = คนที่ใช้งานอยู่ทั้งหมด · งวดที่อนุมัติแล้ว = คนที่อยู่ในผลประมวลผล
+const gridWorkers = () => isEditable() || !items.length ? workers.filter(w => w.is_active)
+  : workers.filter(w => items.some(i => i.worker_id === w.id));
+// ตัวเลขประมาณการก่อนประมวลผล (ใช้ค่าที่กำลังแก้ในตารางด้วย)
+function previewOf(w) {
+  const lines = linesFor(w.id).filter(a => !(a.code_id && gridEdits.has(`${w.id}:${a.code_id}`) && a.source !== "recurring"));
+  for (const [k, v] of gridEdits) { const [wid, cid] = k.split(":").map(Number); if (wid !== w.id || !(v > 0)) continue;
+    const c = codeOf(cid); if (c) lines.push({ kind: c.kind, amount: v, taxable: c.kind === "earning" ? !!c.tax_effect : true, cuts_tax_base: c.kind === "deduction" && !!c.tax_effect }); }
+  return calcItem(w, lines);
+}
+
+function runDetailHTML() {
+  const st = curRun.status, nx = NEXT[st], editable = isEditable();
+  const processed = items.length > 0;
+  const nxLabel = { calculated:"ประมวลผล", approved:"อนุมัติงวด", locked:"ล็อกงวด (แก้ไม่ได้อีก)" }[nx];
+  const tab = runTab === "result" && processed ? "result" : runTab === "result" && !processed ? "input" : runTab;
+  const t = tab === "result" ? runTotals(items) : runTotals(gridWorkers().map(previewOf));
   return `
   <div class="section mt-4">
     <div class="card"><div class="card-body cp-runhead">
@@ -230,12 +252,13 @@ function runDetailHTML() {
       </div>
       <div class="cp-actions">
         ${st==="locked"?`<span class="cp-locked">🔒 งวดนี้ล็อกแล้ว แก้ไขไม่ได้</span>`:""}
+        ${st==="calculated"&&canEdit()?`<button class="btn btn-secondary" onclick="window._crReprocess()">ประมวลผลใหม่</button>`:""}
         ${nx&&canEdit()?`<button class="btn ${nx==="locked"?"btn-gold":"btn-primary"}" onclick="window._crAdvance('${nx}')">${nxLabel}</button>`:""}
       </div>
     </div></div>
   </div>
 
-  ${(curRun.status==="approved"||curRun.status==="locked")&&items.length?`
+  ${(st==="approved"||st==="locked")&&processed?`
   <div class="section" style="padding-bottom:0;">
     <div class="cp-docs">
       <span class="cp-docs-t">เอกสารของงวดนี้</span>
@@ -246,17 +269,73 @@ function runDetailHTML() {
     </div>
   </div>`:""}
 
+  <div class="section" style="padding-bottom:0;">
+    <div class="cp-subtabs">
+      <button class="cp-subtab${tab==="input"?" on":""}" onclick="window._crTab('input')"><b>1</b>ข้อมูลก่อนประมวลผล</button>
+      <span class="cp-subarrow">→</span>
+      <button class="cp-subtab${tab==="result"?" on":""}${processed?"":" off"}" onclick="window._crTab('result')"><b>2</b>ผลการประมวลผล${processed?` (${items.length})`:""}</button>
+    </div>
+  </div>
+
   <div class="section cp-sum">
     ${[["จำนวนคน",t.count,"คน"],["ยอดจ้างรวม",money(t.base),"บาท"],
        ["ได้เพิ่ม",money(t.extra),"บาท"],["รายการหัก",money(t.deduct),"บาท"],
-       ["ภาษีหัก ณ ที่จ่าย",money(t.wht),"บาท"],["จ่ายสุทธิ",money(t.net),"บาท"]]
+       ["ภาษีหัก ณ ที่จ่าย",money(t.wht),"บาท"],["จ่ายสุทธิ",money(t.net),tab==="input"?"บาท · ประมาณการ":"บาท"]]
       .map(([l,v,u],i)=>`<div class="cp-stat${i===5?" net":""}">
         <span>${l}</span><b>${v}</b><em>${u}</em></div>`).join("")}
   </div>
 
-  ${!items.length ? empty("งวดนี้ยังไม่มีรายการ",
-      st==="draft" ? "กด “คำนวณงวดนี้” เพื่อดึงรายชื่อที่ใช้งานอยู่เข้ามาคำนวณ" : "ไม่มีข้อมูล")
-  : `<div class="section"><div class="card"><div class="table-wrap">
+  ${tab === "input" ? inputHTML(editable) : resultHTML(editable)}`;
+}
+
+// ---------- ① ข้อมูลก่อนประมวลผล: ตารางกรอก คน × รายการ ----------
+function inputHTML(editable) {
+  const ws = gridWorkers();
+  if(!ws.length) return empty("ยังไม่มีรายชื่อที่ใช้งานอยู่", "เพิ่มคนที่แท็บ “รายชื่อ” ก่อน");
+  if(!itemsReady || !codes.length) return empty("ยังไม่มีรายการรายได้/รายหัก", "รัน sql/schema_contract_items.sql แล้วเปิดหน้านี้ใหม่");
+  const E = activeCodes("earning"), D = activeCodes("deduction");
+  const cell = (w, c) => {
+    const k = `${w.id}:${c.id}`, ex = onceOf(w.id, c.id);
+    if(ex.length > 1) return `<td class="cp-gc multi" title="มี ${ex.length} รายการ — แก้ในแผงรายคน (กดที่ชื่อ)">${money(ex.reduce((s,a)=>s+Number(a.amount),0))}</td>`;
+    const v = gridEdits.has(k) ? gridEdits.get(k) : ex[0]?.amount;
+    return `<td class="cp-gc ${c.kind}${gridEdits.has(k)?" dirty":""}">${editable
+      ? `<input class="cp-in" type="number" step="0.01" min="0" data-k="${k}" value="${v ? Number(v) : ""}" placeholder="–">`
+      : (v ? money(v) : `<span class="text-muted">–</span>`)}</td>`;
+  };
+  const recs = w => linesFor(w.id).filter(a => a.source === "recurring")
+    .map(a => `<span class="cp-chip ${a.kind}">${a.kind==="deduction"?"−":"+"}${esc(a.label)} ${money(a.amount)}</span>`).join(" ");
+  return `<div class="section">
+    <div class="cp-gridbar">
+      <div class="cp-gridhelp">${editable
+        ? `กรอกจำนวนเงินของงวดนี้ (เว้นว่าง = ไม่มี) แล้วกด <b>บันทึก</b> · รายการที่เกิดทุกเดือนตั้งเป็น “รายการประจำ” ที่หน้ารายชื่อ · กดที่ชื่อเพื่อดูรายละเอียดรายคน`
+        : "งวดนี้อนุมัติแล้ว แก้ข้อมูลไม่ได้"}</div>
+      <div class="cp-gridact">
+        <button class="btn btn-secondary btn-sm" onclick="window._gxTemplate()">⬇ ${editable?"แบบฟอร์ม Excel":"Export Excel"}</button>
+        ${editable?`<label class="btn btn-secondary btn-sm" style="cursor:pointer;">⬆ นำเข้า Excel<input type="file" id="gxFile" accept=".xlsx,.xls" hidden></label>
+        <button class="btn btn-primary btn-sm" id="gxSave" ${gridEdits.size?"":"disabled"}>บันทึก${gridEdits.size?` (${gridEdits.size})`:""}</button>`:""}
+      </div>
+    </div>
+    <div class="card"><div class="table-wrap cp-gridwrap">
+    <table class="data-table cp-grid">
+      <thead>
+        <tr class="cp-gh"><th rowspan="2" class="cp-sticky">ชื่อ</th><th rowspan="2" class="num">ค่าจ้างเหมา</th>
+          ${E.length?`<th colspan="${E.length}" class="cp-gh-e">รายได้</th>`:""}${D.length?`<th colspan="${D.length}" class="cp-gh-d">รายหัก</th>`:""}
+          <th rowspan="2">รายการประจำงวดนี้</th><th rowspan="2" class="num">สุทธิ (ประมาณ)</th></tr>
+        <tr>${[...E, ...D].map(c => `<th class="num cp-gch" title="${esc(c.code)} · ${c.kind==="earning"?(c.tax_effect?"คิดภาษี":"ไม่คิดภาษี"):(c.tax_effect?"ลดฐานภาษี":"ไม่ลดฐานภาษี")}">${esc(c.name_th)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>${ws.map(w => `<tr data-w="${w.id}">
+        <td class="cp-sticky"><button class="cp-name" onclick="window._cpAdj(${w.id})"><b>${esc(w.worker_code)}</b>${esc(w.name_th)}</button></td>
+        <td class="num">${money(w.monthly_rate)}</td>
+        ${[...E, ...D].map(c => cell(w, c)).join("")}
+        <td class="cp-recs">${recs(w) || `<span class="text-muted">–</span>`}</td>
+        <td class="num"><b data-net="${w.id}">${money(previewOf(w).net_amount)}</b></td></tr>`).join("")}</tbody>
+    </table></div></div></div>`;
+}
+
+// ---------- ② ผลการประมวลผล ----------
+function resultHTML(editable) {
+  if(!items.length) return empty("ยังไม่ได้ประมวลผล", "กรอกข้อมูลที่แท็บ ① แล้วกด “ประมวลผล”");
+  return `<div class="section"><div class="card"><div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="num">ค่าจ้าง</th>
         <th class="num">ได้เพิ่ม</th><th class="num">หัก</th><th class="num">ภาษี</th>
@@ -273,10 +352,10 @@ function runDetailHTML() {
         <td class="num">${it.deduct_amount?money(it.deduct_amount):"–"}</td>
         <td class="num">${it.wht_amount?`${money(it.wht_amount)}<div class="text-sm text-muted">${it.wht_percent}%</div>`:"–"}</td>
         <td class="num"><b>${money(it.net_amount)}</b></td>
-        <td class="cp-open">${editable&&canEdit()?"รายการ ›":"ดู ›"}</td>
+        <td class="cp-open">${editable?"รายการ ›":"ดู ›"}</td>
       </tr>`;}).join("")}</tbody>
     </table>
-  </div></div></div>`}`;
+  </div></div></div>`;
 }
 
 const empty = (t,s) => `<div class="section mt-4"><div class="card"><div class="card-body"
@@ -290,9 +369,18 @@ const thMonth = p => { const [y,m]=String(p).split("-");
 // การกระทำ
 // ---------------------------------------------------------------------------
 function wire() {
-  window._cpTab   = t => { tab = t; curRun = null; draw(); };
-  window._crBack  = () => { curRun = null; draw(); };
-  window._crOpen  = async id => { await loadRun(id); draw(); };
+  const leaveOk = () => !gridEdits.size || confirm(`มีตัวเลขที่ยังไม่บันทึก ${gridEdits.size} ช่อง — ออกโดยไม่บันทึก?`);
+  window._cpTab   = t => { if(!leaveOk()) return; gridEdits.clear(); tab = t; curRun = null; draw(); };
+  window._crBack  = () => { if(!leaveOk()) return; gridEdits.clear(); curRun = null; draw(); };
+  window._crOpen  = async id => { gridEdits.clear(); await loadRun(id);
+    runTab = curRun && (curRun.status === "draft" || !items.length) ? "input" : "result"; draw(); };
+  window._crTab   = t => { if(t === "result" && !items.length){ toast("ยังไม่ได้ประมวลผล — กด “ประมวลผล” ก่อน","info"); return; } runTab = t; draw(); };
+  window._crReprocess = async () => {
+    try { if(gridEdits.size) await saveGrid(true); await calculateRun(); await loadAll(); await loadRun(curRun.id);
+      runTab = "result"; draw(); toast("ประมวลผลใหม่แล้ว","success"); }
+    catch(e){ toast("ไม่สำเร็จ: "+e.message,"error"); }
+  };
+  wireGrid();
 
   // เปิดงวดใหม่ — เดือนถัดจากงวดล่าสุด
   window._crNew = async () => {
@@ -318,7 +406,7 @@ function wire() {
       `ล็อกงวด ${thMonth(curRun.period)}?\n\nล็อกแล้วแก้ไขไม่ได้อีก และปลดล็อกไม่ได้\nถ้าต้องแก้ทีหลังต้องเปิดงวดแก้ไขใหม่`)) return;
 
     try {
-      if(next==="calculated") await calculateRun();
+      if(next==="calculated") { if(gridEdits.size) await saveGrid(true); await calculateRun(); runTab = "result"; }
       const stamp = { calculated:{calculated_at:new Date().toISOString(), calculated_by:currentUser?.id||null},
                       approved:  {approved_at:new Date().toISOString(),   approved_by:currentUser?.id||null},
                       locked:    {locked_at:new Date().toISOString(),     locked_by:currentUser?.id||null} }[next];
@@ -326,7 +414,7 @@ function wire() {
         .update({ status:next, ...stamp }).eq("id", curRun.id);
       if(error) throw new Error(error.message);
       await loadAll(); await loadRun(curRun.id); draw();
-      toast({calculated:"คำนวณงวดเรียบร้อย", approved:"อนุมัติงวดแล้ว", locked:"ล็อกงวดแล้ว"}[next],"success");
+      toast({calculated:"ประมวลผลงวดเรียบร้อย", approved:"อนุมัติงวดแล้ว", locked:"ล็อกงวดแล้ว"}[next],"success");
     } catch(e){ toast("ไม่สำเร็จ: "+e.message,"error"); }
   };
 
@@ -482,16 +570,114 @@ function workerForm(w) {
   };
 }
 
+// ---------- ตารางกรอก: บันทึก / Excel ----------
+// บันทึกช่องที่แก้: ค่า > 0 = เพิ่มหรือแก้ · ว่าง/0 = ลบ — แตะเฉพาะรายการครั้งเดียว (รายการประจำไม่อยู่ในตาราง)
+async function saveCells(cells) {
+  const ins = [], upd = [], del = [], skipped = [];
+  for (const { wid, cid, amount } of cells) {
+    const c = codeOf(cid); if (!c) continue;
+    const ex = onceOf(wid, cid);
+    if (ex.length > 1) { skipped.push(`${workers.find(w=>w.id===wid)?.worker_code} ${c.name_th}`); continue; }
+    if (amount > 0) {
+      if (ex.length) { if (Number(ex[0].amount) !== round2(amount)) upd.push({ id: ex[0].id, amount: round2(amount) }); }
+      else ins.push({ run_id: curRun.id, worker_id: wid, kind: c.kind, label: c.name_th, amount: round2(amount), code_id: c.id, source: "once",
+        taxable: c.kind === "earning" ? !!c.tax_effect : true, cuts_tax_base: c.kind === "deduction" && !!c.tax_effect, created_by: currentUser?.id || null });
+    } else if (ex.length) del.push(ex[0].id);
+  }
+  if (ins.length) { const r = await supabase.from("contract_pay_adjust").insert(ins); if (r.error) throw new Error(r.error.message); }
+  if (del.length) { const r = await supabase.from("contract_pay_adjust").delete().in("id", del); if (r.error) throw new Error(r.error.message); }
+  for (const u of upd) { const r = await supabase.from("contract_pay_adjust").update({ amount: u.amount }).eq("id", u.id); if (r.error) throw new Error(r.error.message); }
+  return { changed: ins.length + upd.length + del.length, skipped };
+}
+async function saveGrid(silent) {
+  const cells = [...gridEdits].map(([k, v]) => { const [wid, cid] = k.split(":").map(Number); return { wid, cid, amount: Number(v) || 0 }; });
+  const r = await saveCells(cells);
+  gridEdits.clear();
+  await loadRun(curRun.id);
+  if (r.skipped.length) toast(`ข้าม ${r.skipped.length} ช่องที่มีหลายรายการ — แก้ในแผงรายคน`, "info");
+  if (!silent) toast(`บันทึกแล้ว ${r.changed} รายการ`, "success");
+  return r;
+}
+function wireGrid() {
+  const pg = document.getElementById("pageContractpay"); if (!pg || !curRun) return;
+  pg.querySelectorAll(".cp-in").forEach(inp => {
+    inp.oninput = () => {
+      const k = inp.dataset.k, [wid, cid] = k.split(":").map(Number), orig = onceOf(wid, cid)[0]?.amount;
+      const v = inp.value === "" ? 0 : Number(inp.value);
+      if ((Number(orig) || 0) === v) gridEdits.delete(k); else gridEdits.set(k, v);
+      inp.parentElement.classList.toggle("dirty", gridEdits.has(k));
+      const w = workers.find(x => x.id === wid); const net = pg.querySelector(`[data-net="${wid}"]`);
+      if (w && net) net.textContent = money(previewOf(w).net_amount);
+      const btn = pg.querySelector("#gxSave"); if (btn) { btn.disabled = !gridEdits.size; btn.textContent = `บันทึก${gridEdits.size ? ` (${gridEdits.size})` : ""}`; }
+    };
+    // Enter = ลงช่องถัดไปในคอลัมน์เดียวกัน (กรอกไล่ทีละคอลัมน์ได้เร็ว)
+    inp.onkeydown = e => { if (e.key !== "Enter") return; e.preventDefault();
+      const col = [...inp.closest("tr").children].indexOf(inp.parentElement);
+      inp.closest("tr").nextElementSibling?.children[col]?.querySelector("input")?.focus(); };
+  });
+  pg.querySelector("#gxSave")?.addEventListener("click", async () => {
+    try { await saveGrid(); if (curRun.status === "calculated") { await calculateRun(); await loadRun(curRun.id); toast("ประมวลผลใหม่ตามข้อมูลที่แก้แล้ว", "success"); } draw(); }
+    catch (e) { toast("บันทึกไม่สำเร็จ: " + e.message, "error"); }
+  });
+  pg.querySelector("#gxFile")?.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importGrid(f); });
+}
+// แบบฟอร์ม Excel: แถว = คน · คอลัมน์ = รายการ (หัวคอลัมน์ขึ้นต้นด้วยรหัสรายการ ใช้จับคู่ตอนนำเข้า)
+const gridCols = () => [...activeCodes("earning"), ...activeCodes("deduction")];
+window._gxTemplate = () => {
+  if (!window.XLSX) { toast("กำลังโหลด library Excel — ลองใหม่อีกครั้ง", "info"); return; }
+  const cols = gridCols();
+  const rows = gridWorkers().map(w => { const r = { "รหัส": w.worker_code, "ชื่อ": w.name_th };
+    for (const c of cols) { const ex = onceOf(w.id, c.id); r[`${c.code} ${c.name_th}`] = ex.length ? ex.reduce((s, a) => s + Number(a.amount), 0) : ""; }
+    return r; });
+  const ws = window.XLSX.utils.json_to_sheet(rows, { header: ["รหัส", "ชื่อ", ...cols.map(c => `${c.code} ${c.name_th}`)] });
+  ws["!cols"] = [{ wch: 10 }, { wch: 28 }, ...cols.map(() => ({ wch: 16 }))];
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, "ก่อนประมวลผล");
+  window.XLSX.writeFile(wb, `ค่าจ้างเหมา_ก่อนประมวลผล_${curRun.period}.xlsx`);
+};
+async function importGrid(file) {
+  try {
+    const wb = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+    if (!rows.length) { toast("ไฟล์ว่าง", "error"); return; }
+    const heads = Object.keys(rows[0]);
+    const colMap = heads.map(h => [h, codes.find(c => c.is_active && String(h).trim().split(/\s+/)[0].toUpperCase() === c.code.toUpperCase())]).filter(([, c]) => c);
+    const unknownCols = heads.filter(h => !["รหัส", "ชื่อ"].includes(h) && !colMap.some(([x]) => x === h));
+    const pool = gridWorkers(), cells = [], unknownW = [], bad = [];
+    for (const r of rows) {
+      const code = String(r["รหัส"] || "").trim(); if (!code) continue;
+      const w = pool.find(x => x.worker_code === code); if (!w) { unknownW.push(code); continue; }
+      for (const [h, c] of colMap) {
+        const raw = String(r[h] ?? "").replace(/,/g, "").trim(), v = raw === "" ? 0 : Number(raw);
+        if (!Number.isFinite(v) || v < 0) { bad.push(`${code} · ${h}`); continue; }
+        const cur = onceOf(w.id, c.id).reduce((s, a) => s + Number(a.amount), 0);
+        if (round2(cur) !== round2(v)) cells.push({ wid: w.id, cid: c.id, amount: v });
+      }
+    }
+    const msg = [`นำเข้าจาก ${file.name}`, `เปลี่ยนแปลง ${cells.length} ช่อง`,
+      unknownW.length ? `ไม่พบรหัสในงวดนี้ ${unknownW.length} คน: ${unknownW.slice(0, 6).join(", ")}${unknownW.length > 6 ? " …" : ""}` : "",
+      unknownCols.length ? `ไม่รู้จักคอลัมน์ (ข้าม): ${unknownCols.slice(0, 4).join(", ")}` : "",
+      bad.length ? `ตัวเลขไม่ถูกต้อง (ข้าม) ${bad.length} ช่อง` : ""].filter(Boolean).join("\n");
+    if (!cells.length) { alert(msg + "\n\nไม่มีอะไรเปลี่ยน"); return; }
+    if (!confirm(msg + "\n\nช่องที่ว่างในไฟล์จะลบรายการเดิมของช่องนั้น — บันทึกเลยไหม?")) return;
+    gridEdits.clear();
+    const r = await saveCells(cells);
+    await loadRun(curRun.id);
+    if (curRun.status === "calculated") { await calculateRun(); await loadRun(curRun.id); }
+    draw(); toast(`นำเข้าแล้ว ${r.changed} รายการ${r.skipped.length ? ` · ข้าม ${r.skipped.length}` : ""}`, "success");
+  } catch (e) { toast("นำเข้าไม่สำเร็จ: " + e.message, "error"); }
+}
+
 // ---------- แผงรายละเอียดรายคนในงวด ----------
 // กดแถวในงวดแล้วแผงเลื่อนออกจากขวา: รายได้ / รายหัก แยกตาราง พร้อมยอดสุทธิ
 // เพิ่ม/ลบรายการครั้งเดียวได้ในแผงเลย และตัวเลขของคนนั้นคำนวณใหม่ทันที (ไม่ต้องกดคำนวณทั้งงวดซ้ำ)
 function workerPanel(workerId) {
   const w = workers.find(x => x.id === workerId) || {};
   const it = items.find(x => x.worker_id === workerId);
-  const editable = (curRun.status === "draft" || curRun.status === "calculated") && canEdit();
-  const mine = adjusts.filter(a => a.worker_id === workerId);
-  // ฐานคำนวณ: ใช้ตัวเลขที่บันทึกในงวด (ค่าจ้าง/อัตราภาษี ณ ตอนคำนวณ) ถ้ายังไม่คำนวณใช้ข้อมูลคนปัจจุบัน
-  const basis = it ? { monthly_rate: it.base_amount, wht_apply: Number(it.wht_percent) > 0, wht_percent: it.wht_percent } : w;
+  const editable = isEditable();
+  const mine = linesFor(workerId);
+  // ระหว่างแก้ไขได้: คิดจากข้อมูลคนปัจจุบัน (ตรงกับที่จะประมวลผล) · หลังอนุมัติ: ตัวเลขที่บันทึกในงวด
+  const basis = editable || !it ? w : { monthly_rate: it.base_amount, wht_apply: Number(it.wht_percent) > 0, wht_percent: it.wht_percent };
   const r = calcItem(basis, mine);
   const earn = mine.filter(a => a.kind === "earning"), ded = mine.filter(a => a.kind === "deduction");
   const tag = a => [a.source === "recurring" ? `<span class="wp-tag rec" title="รายการประจำ — แก้ที่ รายชื่อ → รายการประจำ">↻ ประจำ</span>` : "",
@@ -551,18 +737,10 @@ function workerPanel(workerId) {
                                          : (c.tax_effect ? "รายหัก · ลดฐานภาษีด้วย" : "รายหัก · หักหลังคำนวณภาษี ไม่ลดฐาน"); };
   el.querySelector("#wpCode")?.addEventListener("change", hint); hint();
 
-  // บันทึกแล้วคำนวณคนนี้ใหม่ทันที (ถ้างวดคำนวณแล้วและมีแถวของคนนี้อยู่)
+  // บันทึกแล้ว: งวดที่ประมวลผลแล้วประมวลผลใหม่ให้เอง ผลจึงตรงกับข้อมูลเสมอ
   const refresh = async () => {
-    await loadRun(curRun.id);
-    const it2 = items.find(x => x.worker_id === workerId);
-    if(it2) {
-      const b = { monthly_rate: it2.base_amount, wht_apply: Number(it2.wht_percent) > 0, wht_percent: it2.wht_percent };
-      const { error } = await supabase.from("contract_pay_item")
-        .update(withoutTaxBase(calcItem(b, adjusts.filter(a => a.worker_id === workerId)))).eq("id", it2.id);
-      if(error) toast("คำนวณใหม่ไม่สำเร็จ: " + error.message, "error");
-      await loadRun(curRun.id);
-    }
-    draw(); workerPanel(workerId);
+    try { if(curRun.status === "calculated") await calculateRun(); } catch(e){ toast("ประมวลผลใหม่ไม่สำเร็จ: " + e.message, "error"); }
+    await loadRun(curRun.id); draw(); workerPanel(workerId);
   };
   el.querySelector("#wpAddBtn")?.addEventListener("click", async () => {
     const c = codeOf(+el.querySelector("#wpCode").value), amt = Number(el.querySelector("#wpAmt").value);
@@ -598,7 +776,7 @@ function recurringForm(workerId) {
     <div class="modal-header"><div class="modal-title">รายการประจำ — ${esc(w.name_th||"")}</div>
       <button class="modal-close" data-x>✕</button></div>
     <div class="modal-body">
-      <div class="text-muted" style="font-size:12.5px;margin-bottom:12px;">ใส่ครั้งเดียว ระบบเติมให้ทุกงวดในช่วงที่กำหนดตอนกด “คำนวณงวด” ·
+      <div class="text-muted" style="font-size:12.5px;margin-bottom:12px;">ใส่ครั้งเดียว ระบบเติมให้ทุกงวดในช่วงที่กำหนดตอนกด “ประมวลผล” ·
         งวดที่ล็อกแล้วไม่เปลี่ยนตาม · ค่าจ้างเหมาประจำ (${money(w.monthly_rate)}) ตั้งที่ข้อมูลคน ไม่ต้องใส่ที่นี่</div>
       ${mine.length ? `<table class="data-table"><thead><tr><th>รายการ</th><th class="num">ต่องวด</th><th>ช่วงงวด</th><th>สถานะ</th><th></th></tr></thead><tbody>
         ${mine.map(i => { const c = codeOf(i.code_id) || {}, [st, cls] = state(i);
@@ -637,7 +815,7 @@ function recurringForm(workerId) {
     const { error } = await supabase.from("contract_worker_items").insert({ worker_id: workerId, code_id: +g("rc_code"), amount: amt,
       start_period: start, end_period: end || null, note: g("rc_note") || null, created_by: currentUser?.id || null });
     if(error){ toast("เพิ่มไม่สำเร็จ: "+error.message,"error"); return; }
-    toast("เพิ่มรายการประจำแล้ว — มีผลตอนคำนวณงวด","success"); again();
+    toast("เพิ่มรายการประจำแล้ว — มีผลตอนประมวลผลงวด","success"); again();
   };
   el.querySelectorAll("[data-stop]").forEach(b => b.onclick = async () => {
     const { error } = await supabase.from("contract_worker_items").update({ is_active:false }).eq("id", +b.dataset.stop);
