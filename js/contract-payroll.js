@@ -232,12 +232,16 @@ function previewOf(w) {
   return calcItem(w, lines);
 }
 
+// ตัวเลขของแถว: งวดที่ยังแก้ได้ = ประมาณการสด · อนุมัติแล้ว = ผลที่บันทึกไว้
+const rowCalc = w => (!isEditable() && items.find(i => i.worker_id === w.id)) || previewOf(w);
+const taxCell = r => Number(r.wht_amount) ? `${money(r.wht_amount)}<small>${Number(r.wht_percent)}%</small>` : `<span class="text-muted">–</span>`;
+
 function runDetailHTML() {
   const st = curRun.status, nx = NEXT[st], editable = isEditable();
   const processed = items.length > 0;
   const nxLabel = { calculated:"ประมวลผล", approved:"อนุมัติงวด", locked:"ล็อกงวด (แก้ไม่ได้อีก)" }[nx];
   const tab = runTab === "result" && processed ? "result" : runTab === "result" && !processed ? "input" : runTab;
-  const t = tab === "result" ? runTotals(items) : runTotals(gridWorkers().map(previewOf));
+  const t = tab === "result" ? runTotals(items) : runTotals(gridWorkers().map(rowCalc));
   return `
   <div class="section mt-4">
     <div class="card"><div class="card-body cp-runhead">
@@ -280,7 +284,7 @@ function runDetailHTML() {
   <div class="section cp-sum">
     ${[["จำนวนคน",t.count,"คน"],["ยอดจ้างรวม",money(t.base),"บาท"],
        ["ได้เพิ่ม",money(t.extra),"บาท"],["รายการหัก",money(t.deduct),"บาท"],
-       ["ภาษีหัก ณ ที่จ่าย",money(t.wht),"บาท"],["จ่ายสุทธิ",money(t.net),tab==="input"?"บาท · ประมาณการ":"บาท"]]
+       ["ภาษีหัก ณ ที่จ่าย",money(t.wht),"บาท"],["จ่ายสุทธิ",money(t.net),tab==="input"&&editable?"บาท · ประมาณการ":"บาท"]]
       .map(([l,v,u],i)=>`<div class="cp-stat${i===5?" net":""}">
         <span>${l}</span><b>${v}</b><em>${u}</em></div>`).join("")}
   </div>
@@ -319,16 +323,19 @@ function inputHTML(editable) {
     <table class="data-table cp-grid">
       <thead>
         <tr class="cp-gh"><th rowspan="2" class="cp-sticky">ชื่อ</th><th rowspan="2" class="num">ค่าจ้างเหมา</th>
-          ${E.length?`<th colspan="${E.length}" class="cp-gh-e">รายได้</th>`:""}${D.length?`<th colspan="${D.length}" class="cp-gh-d">รายหัก</th>`:""}
-          <th rowspan="2">รายการประจำงวดนี้</th><th rowspan="2" class="num">สุทธิ (ประมาณ)</th></tr>
-        <tr>${[...E, ...D].map(c => `<th class="num cp-gch" title="${esc(c.code)} · ${c.kind==="earning"?(c.tax_effect?"คิดภาษี":"ไม่คิดภาษี"):(c.tax_effect?"ลดฐานภาษี":"ไม่ลดฐานภาษี")}">${esc(c.name_th)}</th>`).join("")}</tr>
+          ${E.length?`<th colspan="${E.length}" class="cp-gh-e">รายได้</th>`:""}<th colspan="${D.length + 1}" class="cp-gh-d">รายหัก</th>
+          <th rowspan="2">รายการประจำงวดนี้</th><th rowspan="2" class="num">${isEditable()?"สุทธิ (ประมาณ)":"สุทธิ"}</th></tr>
+        <tr>${E.map(c => `<th class="num cp-gch" title="${esc(c.code)} · ${c.tax_effect?"คิดภาษี":"ไม่คิดภาษี"}">${esc(c.name_th)}</th>`).join("")}
+          <th class="num cp-gch" title="คำนวณอัตโนมัติจากฐานภาษี">ภาษีหัก ณ ที่จ่าย</th>${D.map(c => `<th class="num cp-gch" title="${esc(c.code)} · ${c.kind==="earning"?(c.tax_effect?"คิดภาษี":"ไม่คิดภาษี"):(c.tax_effect?"ลดฐานภาษี":"ไม่ลดฐานภาษี")}">${esc(c.name_th)}</th>`).join("")}</tr>
       </thead>
       <tbody>${ws.map(w => `<tr data-w="${w.id}">
         <td class="cp-sticky"><button class="cp-name" onclick="window._cpAdj(${w.id})"><b>${esc(w.worker_code)}</b>${esc(w.name_th)}</button></td>
         <td class="num">${money(w.monthly_rate)}</td>
-        ${[...E, ...D].map(c => cell(w, c)).join("")}
+        ${E.map(c => cell(w, c)).join("")}
+        <td class="cp-gc cp-tax num" data-tax="${w.id}" title="คำนวณอัตโนมัติ — แก้ไม่ได้">${taxCell(rowCalc(w))}</td>
+        ${D.map(c => cell(w, c)).join("")}
         <td class="cp-recs">${recs(w) || `<span class="text-muted">–</span>`}</td>
-        <td class="num"><b data-net="${w.id}">${money(previewOf(w).net_amount)}</b></td></tr>`).join("")}</tbody>
+        <td class="num"><b data-net="${w.id}">${money(rowCalc(w).net_amount)}</b></td></tr>`).join("")}</tbody>
     </table></div></div></div>`;
 }
 
@@ -607,7 +614,9 @@ function wireGrid() {
       if ((Number(orig) || 0) === v) gridEdits.delete(k); else gridEdits.set(k, v);
       inp.parentElement.classList.toggle("dirty", gridEdits.has(k));
       const w = workers.find(x => x.id === wid); const net = pg.querySelector(`[data-net="${wid}"]`);
-      if (w && net) net.textContent = money(previewOf(w).net_amount);
+      const pv = w && previewOf(w);
+      if (pv && net) net.textContent = money(pv.net_amount);
+      const tx = pg.querySelector(`[data-tax="${wid}"]`); if (pv && tx) tx.innerHTML = taxCell(pv);
       const btn = pg.querySelector("#gxSave"); if (btn) { btn.disabled = !gridEdits.size; btn.textContent = `บันทึก${gridEdits.size ? ` (${gridEdits.size})` : ""}`; }
     };
     // Enter = ลงช่องถัดไปในคอลัมน์เดียวกัน (กรอกไล่ทีละคอลัมน์ได้เร็ว)

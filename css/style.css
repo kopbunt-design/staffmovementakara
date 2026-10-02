@@ -728,6 +728,8 @@ thead .cp-sticky{z-index:3}
 .cp-in:hover{border-color:var(--border)}
 .cp-in:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(43,90,199,.12)}
 .cp-in::-webkit-inner-spin-button{display:none}
+.cp-tax{background:#f4f1f0!important;color:var(--text);font-variant-numeric:tabular-nums;text-align:right;padding-right:12px!important}
+.cp-tax small{display:block;font-size:10.5px;color:var(--muted)}
 .cp-recs{max-width:240px;white-space:normal!important}
 .adj-list{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:14px;}
 .adj-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);
