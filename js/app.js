@@ -557,6 +557,49 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 
 document.getElementById("logoutBtn")?.addEventListener("click", logout);
 
+// ===== เปลี่ยนรหัสผ่านเอง =====
+// ยืนยันรหัสเดิมก่อนทุกครั้ง (กันคนอื่นมาเปลี่ยนตอนเครื่องเปิดค้างไว้) — บัญชีที่เข้าด้วย Google
+// ไม่มีรหัสเดิม จึงตั้งรหัสผ่านใหม่ได้เลย (ใช้ล็อกอินด้วยอีเมลได้อีกทาง)
+document.getElementById("pwBtn")?.addEventListener("click", () => {
+  const providers = currentUser?.app_metadata?.providers || [currentUser?.app_metadata?.provider].filter(Boolean);
+  const hasPw = providers.includes("email");
+  const el = document.createElement("div");
+  el.className = "modal-overlay";
+  el.innerHTML = `<div class="modal" style="max-width:420px;"><div class="modal-header"><div class="modal-title">เปลี่ยนรหัสผ่าน</div>
+    <button class="modal-close" data-x>✕</button></div>
+    <form class="modal-body" id="pwForm" style="display:flex;flex-direction:column;gap:10px;">
+      <div class="text-muted" style="font-size:12.5px;">${esc(currentUser?.email || "")}${hasPw ? "" : " · บัญชีนี้เข้าด้วย Google — ตั้งรหัสผ่านไว้ใช้เข้าด้วยอีเมลได้อีกทาง"}</div>
+      ${hasPw ? `<label class="form-label">รหัสผ่านปัจจุบัน<input class="form-control" type="password" id="pwOld" autocomplete="current-password" required></label>` : ""}
+      <label class="form-label">รหัสผ่านใหม่ <span class="text-muted">(อย่างน้อย 8 ตัว)</span><input class="form-control" type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
+      <label class="form-label">ยืนยันรหัสผ่านใหม่<input class="form-control" type="password" id="pwNew2" autocomplete="new-password" minlength="8" required></label>
+      <div id="pwErr" style="color:var(--red);font-size:13px;min-height:18px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" class="btn btn-secondary" data-x>ยกเลิก</button>
+        <button type="submit" class="btn btn-primary" id="pwOk">บันทึกรหัสผ่านใหม่</button></div>
+    </form></div>`;
+  document.getElementById("modalPortal").appendChild(el);
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
+  const $ = id => el.querySelector("#" + id), err = m => { $("pwErr").textContent = m; };
+  (hasPw ? $("pwOld") : $("pwNew")).focus();
+  $("pwForm").onsubmit = async e => {
+    e.preventDefault(); err("");
+    const old = hasPw ? $("pwOld").value : "", nw = $("pwNew").value, nw2 = $("pwNew2").value;
+    if (nw.length < 8) return err("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัว");
+    if (nw !== nw2) return err("ยืนยันรหัสผ่านใหม่ไม่ตรงกัน");
+    if (hasPw && nw === old) return err("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม");
+    $("pwOk").disabled = true; $("pwOk").textContent = "กำลังบันทึก…";
+    if (hasPw) {
+      const { error } = await supabase.auth.signInWithPassword({ email: currentUser.email, password: old });
+      if (error) { $("pwOk").disabled = false; $("pwOk").textContent = "บันทึกรหัสผ่านใหม่"; return err("รหัสผ่านปัจจุบันไม่ถูกต้อง"); }
+    }
+    const { error } = await supabase.auth.updateUser({ password: nw });
+    if (error) {
+      $("pwOk").disabled = false; $("pwOk").textContent = "บันทึกรหัสผ่านใหม่";
+      return err(/weak|pwned|leaked/i.test(error.message) ? "รหัสผ่านนี้ไม่ปลอดภัย (เดาง่ายหรือเคยรั่ว) — ลองรหัสอื่น" : error.message);
+    }
+    el.remove(); toast("เปลี่ยนรหัสผ่านแล้ว — ครั้งหน้าใช้รหัสใหม่เข้าระบบ", "success");
+  };
+});
+
 // ===== DASHBOARD =====
 let dashMonth = ""; // "" = เดือนปัจจุบัน
 // การพ้นสภาพนับในเดือนของ end_date / movement date เอง (ดูกฎที่ hcAtMonthEnd ด้านบน)

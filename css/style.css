@@ -1098,3 +1098,4 @@ textarea.form-control{resize:vertical;min-height:72px;}
 .lt-mail-ed iframe{width:100%;height:330px;border:1px solid var(--border);border-radius:10px;background:#fff}
 .lt-mail-subj{font-weight:700;font-size:13.5px;margin:4px 0 6px;color:var(--navy)}
 @media(max-width:900px){.lt-mail-ed{grid-template-columns:1fr}}
+.pw-btn:hover{color:var(--blue);background:var(--blue-light);}
