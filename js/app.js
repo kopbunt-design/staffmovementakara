@@ -553,6 +553,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
   startRealtime();
   // ลิงก์จากอีเมลขออนุมัติหนังสือ (?letter=ID) → เปิดหน้าออกหนังสือ (หน้านั้นเปิดฉบับที่ระบุเอง)
   navigate(new URLSearchParams(location.search).get("letter") ? "letters" : "home");
+  if (session.user.user_metadata?.must_change_password) openPwModal(true);
 });
 
 document.getElementById("logoutBtn")?.addEventListener("click", logout);
@@ -560,25 +561,29 @@ document.getElementById("logoutBtn")?.addEventListener("click", logout);
 // ===== เปลี่ยนรหัสผ่านเอง =====
 // ยืนยันรหัสเดิมก่อนทุกครั้ง (กันคนอื่นมาเปลี่ยนตอนเครื่องเปิดค้างไว้) — บัญชีที่เข้าด้วย Google
 // ไม่มีรหัสเดิม จึงตั้งรหัสผ่านใหม่ได้เลย (ใช้ล็อกอินด้วยอีเมลได้อีกทาง)
-document.getElementById("pwBtn")?.addEventListener("click", () => {
+// forced = แอดมินเพิ่งรีเซ็ตให้ (ธง must_change_password) → ต้องตั้งรหัสใหม่ก่อนใช้งาน ปิดหน้าต่างไม่ได้
+//   ไม่ถามรหัสเดิม เพราะเพิ่งเข้าด้วยรหัสชั่วคราวมาเมื่อครู่
+function openPwModal(forced = false) {
   const providers = currentUser?.app_metadata?.providers || [currentUser?.app_metadata?.provider].filter(Boolean);
-  const hasPw = providers.includes("email");
+  const hasPw = !forced && providers.includes("email");
   const el = document.createElement("div");
   el.className = "modal-overlay";
-  el.innerHTML = `<div class="modal" style="max-width:420px;"><div class="modal-header"><div class="modal-title">เปลี่ยนรหัสผ่าน</div>
-    <button class="modal-close" data-x>✕</button></div>
+  el.innerHTML = `<div class="modal" style="max-width:420px;"><div class="modal-header"><div class="modal-title">${forced ? "ตั้งรหัสผ่านใหม่" : "เปลี่ยนรหัสผ่าน"}</div>
+    ${forced ? "" : `<button class="modal-close" data-x>✕</button>`}</div>
     <form class="modal-body" id="pwForm" style="display:flex;flex-direction:column;gap:10px;">
-      <div class="text-muted" style="font-size:12.5px;">${esc(currentUser?.email || "")}${hasPw ? "" : " · บัญชีนี้เข้าด้วย Google — ตั้งรหัสผ่านไว้ใช้เข้าด้วยอีเมลได้อีกทาง"}</div>
+      <div class="text-muted" style="font-size:12.5px;">${esc(currentUser?.email || "")}${forced ? "" : hasPw ? "" : " · บัญชีนี้เข้าด้วย Google — ตั้งรหัสผ่านไว้ใช้เข้าด้วยอีเมลได้อีกทาง"}</div>
+      ${forced ? `<div style="padding:10px 12px;background:var(--blue-light);border-radius:8px;font-size:12.5px;color:var(--blue-dark);line-height:1.6;">รหัสผ่านนี้เป็นรหัสชั่วคราวที่แอดมินรีเซ็ตให้ กรุณาตั้งรหัสผ่านของคุณเองก่อนใช้งาน</div>` : ""}
       ${hasPw ? `<label class="form-label">รหัสผ่านปัจจุบัน<input class="form-control" type="password" id="pwOld" autocomplete="current-password" required></label>` : ""}
       <label class="form-label">รหัสผ่านใหม่ <span class="text-muted">(อย่างน้อย 8 ตัว)</span><input class="form-control" type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
       <label class="form-label">ยืนยันรหัสผ่านใหม่<input class="form-control" type="password" id="pwNew2" autocomplete="new-password" minlength="8" required></label>
       <div id="pwErr" style="color:var(--red);font-size:13px;min-height:18px;"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" class="btn btn-secondary" data-x>ยกเลิก</button>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">${forced ? `<button type="button" class="btn btn-secondary" id="pwOut">ออกจากระบบ</button>` : `<button type="button" class="btn btn-secondary" data-x>ยกเลิก</button>`}
         <button type="submit" class="btn btn-primary" id="pwOk">บันทึกรหัสผ่านใหม่</button></div>
     </form></div>`;
   document.getElementById("modalPortal").appendChild(el);
   el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
   const $ = id => el.querySelector("#" + id), err = m => { $("pwErr").textContent = m; };
+  if (forced) $("pwOut").onclick = () => { el.remove(); logout(); };
   (hasPw ? $("pwOld") : $("pwNew")).focus();
   $("pwForm").onsubmit = async e => {
     e.preventDefault(); err("");
@@ -591,14 +596,15 @@ document.getElementById("pwBtn")?.addEventListener("click", () => {
       const { error } = await supabase.auth.signInWithPassword({ email: currentUser.email, password: old });
       if (error) { $("pwOk").disabled = false; $("pwOk").textContent = "บันทึกรหัสผ่านใหม่"; return err("รหัสผ่านปัจจุบันไม่ถูกต้อง"); }
     }
-    const { error } = await supabase.auth.updateUser({ password: nw });
+    const { error } = await supabase.auth.updateUser(forced ? { password: nw, data: { must_change_password: false } } : { password: nw });
     if (error) {
       $("pwOk").disabled = false; $("pwOk").textContent = "บันทึกรหัสผ่านใหม่";
       return err(/weak|pwned|leaked/i.test(error.message) ? "รหัสผ่านนี้ไม่ปลอดภัย (เดาง่ายหรือเคยรั่ว) — ลองรหัสอื่น" : error.message);
     }
     el.remove(); toast("เปลี่ยนรหัสผ่านแล้ว — ครั้งหน้าใช้รหัสใหม่เข้าระบบ", "success");
   };
-});
+}
+document.getElementById("pwBtn")?.addEventListener("click", () => openPwModal());
 
 // ===== DASHBOARD =====
 let dashMonth = ""; // "" = เดือนปัจจุบัน

@@ -42,7 +42,8 @@ export async function renderUsers() {
           ${appRoles.map(r=>`<option value="${esc(r.key)}" ${u.role===r.key?"selected":""}>${esc(r.label)}</option>`).join("")}
         </select></td>
         <td><span class="badge" style="color:${rc};background:${rbg};">${esc(roleLabel(u.role))}</span></td>
-        <td>${!isSelf?`<button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._removeUser('${u.user_id}','${esc(u.name||u.email||"")}')">ลบ</button>`:""}</td>
+        <td style="white-space:nowrap;">${!isSelf?`<button class="btn btn-secondary btn-sm" onclick="window._resetPw('${u.user_id}','${esc(u.name||u.email||"")}')">🔑 รีเซ็ตรหัสผ่าน</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._removeUser('${u.user_id}','${esc(u.name||u.email||"")}')">ลบ</button>`:""}</td>
       </tr>`;
     }).join("")||`<tr><td colspan="5" class="text-center text-muted" style="padding:32px;">ยังไม่มีผู้ใช้</td></tr>`;
   };
@@ -67,6 +68,18 @@ export async function renderUsers() {
     if(!confirm(`ลบผู้ใช้ "${name}" ออกจากระบบ?`)) return;
     await supabase.from("user_roles").delete().eq("user_id",uid);
     toast("ลบผู้ใช้เรียบร้อย","info");
+  };
+  // ลืมรหัสผ่าน: ระบบสุ่มรหัสชั่วคราวให้ แอดมินแจ้งเจ้าตัว แล้วเจ้าตัวถูกบังคับตั้งรหัสใหม่เองตอนเข้าครั้งถัดไป
+  window._resetPw = async(uid,name)=>{
+    if(!confirm(`รีเซ็ตรหัสผ่านของ "${name}"?\n\nรหัสเดิมจะใช้ไม่ได้ทันที ระบบจะสร้างรหัสชั่วคราวให้แจ้งเจ้าตัว และเจ้าตัวต้องตั้งรหัสใหม่เองตอนเข้าระบบ`)) return;
+    const {data,error}=await supabase.functions.invoke("admin-reset-password",{body:{user_id:uid}});
+    if(error||data?.error){
+      let msg=data?.error||error.message;
+      try{ msg=(await error.context.json()).error||msg; }catch{}
+      if(/not found|404|Failed to send/i.test(msg)) msg="ยังไม่ได้ deploy ฟังก์ชัน admin-reset-password ใน Supabase";
+      toast("รีเซ็ตไม่สำเร็จ: "+msg,"error"); return;
+    }
+    showCredentials(name,data.email,data.password,true);
   };
   window._openAddUser = ()=>{
     document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="addUserModal">
@@ -117,11 +130,11 @@ export async function renderUsers() {
   };
 
   // แสดงข้อมูลเข้าสู่ระบบหลังสร้างสำเร็จ ให้ admin คัดลอกไปแจ้งผู้ใช้
-  const showCredentials=(name,email,password)=>{
-    const credText=`ระบบ Akara HR System\n${name?`ชื่อ: ${name}\n`:""}อีเมล: ${email}\nรหัสผ่าน: ${password}\nเข้าใช้งานที่: ${window.location.origin}`;
+  const showCredentials=(name,email,password,reset=false)=>{
+    const credText=`ระบบ Akara HR System\n${name?`ชื่อ: ${name}\n`:""}อีเมล: ${email}\n${reset?"รหัสผ่านชั่วคราว":"รหัสผ่าน"}: ${password}\nเข้าใช้งานที่: ${window.location.origin}${reset?"\n(เข้าระบบแล้วจะให้ตั้งรหัสผ่านใหม่เองทันที)":""}`;
     document.getElementById("modalPortal").innerHTML=`<div class="modal-overlay" id="credModal">
       <div class="modal" style="max-width:420px;">
-        <div class="modal-header"><div class="modal-title">✅ สร้างผู้ใช้สำเร็จ</div><button class="modal-close" onclick="document.getElementById('credModal').remove()">✕</button></div>
+        <div class="modal-header"><div class="modal-title">✅ ${reset?"รีเซ็ตรหัสผ่านแล้ว":"สร้างผู้ใช้สำเร็จ"}</div><button class="modal-close" onclick="document.getElementById('credModal').remove()">✕</button></div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
           <div style="padding:12px;background:var(--green-light);border-radius:8px;font-size:12px;color:var(--green);line-height:1.6;">คัดลอกข้อมูลด้านล่างส่งให้ผู้ใช้ — รหัสผ่านจะแสดงครั้งเดียวเท่านั้น ปิดหน้าต่างนี้แล้วจะดูอีกไม่ได้</div>
           <pre id="credText" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-all;margin:0;">${esc(credText)}</pre>
