@@ -408,3 +408,28 @@ end $$;
 drop trigger if exists doc_void_cascade on doc_register;
 create trigger doc_void_cascade after update on doc_register
   for each row execute function doc_void_cascade();
+
+-- ============================================================================
+-- 12. Admin ตั้งลายเซ็นแทนผู้อนุมัติได้ (ผู้อนุมัติส่งไฟล์ให้แอดมินอัปโหลดให้)
+--     ลายเซ็นยังใช้ได้เฉพาะตอนเจ้าของกดอนุมัติเอง (letter_approve ใช้ลายเซ็นของ auth.uid())
+--     แอดมินจึงตั้งให้ได้ แต่เอาไปเซ็นแทนไม่ได้ · set_by เก็บไว้ว่าใครเป็นคนตั้ง
+-- ============================================================================
+alter table letter_signers add column if not exists set_by uuid;
+
+drop policy if exists "ls_write" on letter_signers;
+create policy "ls_write" on letter_signers for all
+  using ((user_id = auth.uid() and has_perm('data.letters.approve')) or get_my_role() = 'admin')
+  with check ((user_id = auth.uid() and has_perm('data.letters.approve')) or get_my_role() = 'admin');
+
+drop policy if exists "la_write"  on storage.objects;
+drop policy if exists "la_update" on storage.objects;
+drop policy if exists "la_delete" on storage.objects;
+create policy "la_write" on storage.objects for insert with check (bucket_id = 'letter-assets' and has_perm('data.letters.approve')
+  and ((storage.foldername(name))[1] = 'seal' or ((storage.foldername(name))[1] = 'signatures'
+       and ((storage.foldername(name))[2] = auth.uid()::text or get_my_role() = 'admin'))));
+create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and has_perm('data.letters.approve')
+  and ((storage.foldername(name))[1] = 'seal' or ((storage.foldername(name))[1] = 'signatures'
+       and ((storage.foldername(name))[2] = auth.uid()::text or get_my_role() = 'admin'))));
+create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and has_perm('data.letters.approve')
+  and ((storage.foldername(name))[1] = 'seal' or ((storage.foldername(name))[1] = 'signatures'
+       and ((storage.foldername(name))[2] = auth.uid()::text or get_my_role() = 'admin'))));

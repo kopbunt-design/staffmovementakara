@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, can, esc as escText, toast, currentUser, notify } from "./app.js";
+import { allEmployees, can, esc as escText, toast, currentUser, notify, userRole } from "./app.js";
 import { bahtText } from "./contract-docs.js";
 import { comboHTML, bindCombo } from "./combobox.js";
 
@@ -289,6 +289,8 @@ function downloadEml(to, subject, html, name, cc = "") {
 }
 
 // ---------------------------------------------------------------- state
+// sgFor = ลายเซ็นที่กำลังตั้งในหน้าตั้งค่า (ปกติคือของตัวเอง · Admin เลือกตั้งแทนผู้อนุมัติคนอื่นได้)
+let approvers = [], sgFor = null;
 let letters = [], incomeItems = [], signers = [], settings = {}, mailCfg = { mode: "outlook" }, mailTpl = [], tab = "mine", search = "";
 
 export function renderLetters() { boot(); }
@@ -310,6 +312,13 @@ async function boot() {
     return;
   }
   letters = l.data || []; incomeItems = i.data || []; signers = s.data || []; settings = st.data || {};
+  sgFor = currentUser?.id;
+  if (userRole === "admin") {   // คนที่อนุมัติได้ = role admin หรือ role ที่มีสิทธิ์ data.letters.approve
+    const [ur, rp] = await Promise.all([supabase.from("user_roles").select("user_id,name,email,role"),
+      supabase.from("role_permissions").select("role_key").eq("perm_key", "data.letters.approve")]);
+    const ok = new Set(["admin", ...(rp.data || []).map(x => x.role_key)]);
+    approvers = (ur.data || []).filter(u => ok.has(u.role)).sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || "", "th"));
+  }
   // ตั้งค่าอีเมล/แบบอีเมล — ถ้ายังไม่ได้รัน SQL ส่วนนี้ ใช้โหมด Outlook กับแบบตั้งต้นไปก่อน
   const [mc, mt] = await Promise.all([supabase.from("mail_settings").select("*").eq("id", 1).maybeSingle(),
                                       supabase.from("mail_templates").select("*")]);
@@ -614,16 +623,20 @@ function cancelLetter(r, done) {
 
 // ---------------------------------------------------------------- ตั้งค่า
 function settingsHTML() {
-  const me = signers.find(s => s.user_id === currentUser?.id) || {};
+  const me = signers.find(s => s.user_id === sgFor) || {};
+  const forOther = sgFor !== currentUser?.id, who = approvers.find(u => u.user_id === sgFor);
   return `<div class="section mt-4" style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));">
     ${canApprove() ? `<div class="card"><div class="card-body">
       <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">ลายเซ็นของฉัน (ผู้อนุมัติ)</div>
-      <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ใช้ลงในหนังสือเฉพาะตอนที่ท่านกดอนุมัติเอง · ใช้ไฟล์ PNG พื้นใส</div>
+      <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ใช้ลงในหนังสือเฉพาะตอนที่เจ้าของลายเซ็นกดอนุมัติเอง · ใช้ไฟล์ PNG พื้นใส</div>
+      ${approvers.length > 1 ? `<label class="lt-f"><span>ตั้งลายเซ็นของ <span class="text-muted">(Admin ตั้งแทนผู้อนุมัติได้)</span></span>
+        <select class="form-control" id="sgFor">${approvers.map(u => `<option value="${u.user_id}" ${u.user_id === sgFor ? "selected" : ""}>${esc(u.name || u.email)}${u.user_id === currentUser?.id ? " (ฉัน)" : ""}${signers.find(x => x.user_id === u.user_id)?.signature_path ? " ✓" : ""}</option>`).join("")}</select></label>` : ""}
+      ${me.set_by && me.set_by !== me.user_id ? `<div class="text-muted" style="font-size:12px;margin-bottom:8px;">ตั้งโดย Admin แทนเจ้าของลายเซ็น</div>` : ""}
       <div class="lt-2"><label class="lt-f"><span>ชื่อ (ไทย)</span><input class="form-control" id="sgNameTh" value="${esc(me.name_th || "")}" placeholder="นายศุภโชค พันธุมิตร"></label>
         <label class="lt-f"><span>ตำแหน่ง (ไทย)</span><input class="form-control" id="sgTitleTh" value="${esc(me.title_th || "")}" placeholder="ผู้จัดการฝ่ายทรัพยากรบุคคล"></label></div>
       <div class="lt-2"><label class="lt-f"><span>Name (EN)</span><input class="form-control" id="sgNameEn" value="${esc(me.name_en || "")}" placeholder="Mr. Suphachoke Phanthumitr"></label>
         <label class="lt-f"><span>Title (EN)</span><input class="form-control" id="sgTitleEn" value="${esc(me.title_en || "")}" placeholder="Human Resources Manager"></label></div>
-      <label class="lt-f"><span>อีเมลรับแจ้งขออนุมัติ</span><input class="form-control" id="sgEmail" value="${esc(me.email || currentUser?.email || "")}"></label>
+      <label class="lt-f"><span>อีเมลรับแจ้งขออนุมัติ</span><input class="form-control" id="sgEmail" value="${esc(me.email || (forOther ? who?.email : currentUser?.email) || "")}"></label>
       <label class="lt-f"><span>ไฟล์ลายเซ็น ${me.signature_path ? `<b style="color:var(--green);">✓ มีแล้ว</b>` : ""}</span><input type="file" class="form-control" id="sgFile" accept="image/png"></label>
       <div id="sgPrev" style="min-height:10px;"></div>
       <button class="btn btn-primary" id="sgSave">บันทึกลายเซ็น</button>
@@ -723,19 +736,25 @@ function wireMail() {
 function wireSettings() {
   const pg = document.getElementById("pageLetters"), $ = s => pg.querySelector(s);
   $("#sgFile")?.addEventListener("change", e => { const f = e.target.files[0]; if (f) $("#sgPrev").innerHTML = `<img src="${URL.createObjectURL(f)}" style="height:60px;margin:6px 0;background:#fff;border:1px dashed var(--border2);border-radius:8px;padding:4px;">`; });
+  $("#sgFor")?.addEventListener("change", e => { sgFor = e.target.value; draw(); });
+  // ลายเซ็นที่อัปโหลดไว้แล้ว — แสดงให้เห็นก่อนตัดสินใจเปลี่ยน (สำคัญตอน Admin ตั้งแทนคนอื่น)
+  const cur = signers.find(x => x.user_id === sgFor)?.signature_path;
+  if (cur && $("#sgPrev")) assetData(cur).then(src => { if (src && !$("#sgFile")?.files[0]) $("#sgPrev").innerHTML =
+    `<img src="${src}" style="height:60px;margin:6px 0;background:#fff;border:1px dashed var(--border2);border-radius:8px;padding:4px;">`; });
   $("#sgSave")?.addEventListener("click", async () => {
-    const me = signers.find(s => s.user_id === currentUser.id) || {};
+    const uid = sgFor || currentUser.id;
+    const me = signers.find(s => s.user_id === uid) || {};
     let path = me.signature_path; const file = $("#sgFile").files[0];
     if (file) {
-      path = `signatures/${currentUser.id}/signature.png`;
+      path = `signatures/${uid}/signature.png`;
       const { error } = await supabase.storage.from("letter-assets").upload(path, file, { upsert: true, contentType: "image/png" });
       if (error) { toast("อัปโหลดลายเซ็นไม่สำเร็จ: " + error.message, "error"); return; }
     }
-    const row = { user_id: currentUser.id, name_th: $("#sgNameTh").value.trim(), title_th: $("#sgTitleTh").value.trim(),
+    const row = { user_id: uid, set_by: currentUser.id, name_th: $("#sgNameTh").value.trim(), title_th: $("#sgTitleTh").value.trim(),
       name_en: $("#sgNameEn").value.trim(), title_en: $("#sgTitleEn").value.trim(), email: $("#sgEmail").value.trim(), signature_path: path || null };
     const { data, error } = await supabase.from("letter_signers").upsert(row).select().single();
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
-    signers = [...signers.filter(s => s.user_id !== currentUser.id), data]; toast("บันทึกลายเซ็นแล้ว", "success"); draw();
+    signers = [...signers.filter(s => s.user_id !== uid), data]; toast("บันทึกลายเซ็นแล้ว", "success"); draw();
   });
   $("#slSave")?.addEventListener("click", async () => {
     const upd = { hr_contact_email: $("#slMail").value.trim() || null }, file = $("#slFile").files[0];
