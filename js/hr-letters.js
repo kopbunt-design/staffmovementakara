@@ -2,6 +2,7 @@ import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, notify, userRole } from "./app.js";
 import { bahtText } from "./contract-docs.js";
 import { comboHTML, bindCombo } from "./combobox.js";
+import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions } from "./masterdata-admin.js";
 
 // ============================================================================
 // ออกหนังสือ HR (หมวด "งานเอกสาร HR")
@@ -85,14 +86,15 @@ export function letterPages(kind, d, opts = {}) {
     <img class="lt-foot" src="${size === "a4" ? I.footA4 : I.footLetter}" alt=""></section>`;
 
   if (kind === "cert_th" || kind === "salary_th") {
-    const rows = [["ชื่อ - นามสกุล", d.name_th], ["เลขบัตรประชาชน", d.id_card], ["ตำแหน่ง", d.position_th], ["ฝ่าย", d.division_th],
-      ["แผนก", d.department_th], ["ระยะเวลาการปฏิบัติงาน", `${thDate(d.period_from)} ถึง${d.period_to ? ` ${thDate(d.period_to)}` : "ปัจจุบัน"}`],
+    // สังกัด 4 ระดับตามโครงสร้างบริษัท: ส่วน (L1) / ฝ่าย (L2) / แผนก (L3) / ทีม (L4) — ระดับที่ว่างไม่แสดง
+    const rows = [["ชื่อ - นามสกุล", d.name_th], ["เลขบัตรประชาชน", d.id_card], ["ตำแหน่ง", d.position_th], ["ส่วน", d.division_th],
+      ["ฝ่าย", d.department_th], ["แผนก", d.section_th], ["ทีม", d.team_th], ["ระยะเวลาการปฏิบัติงาน", `${thDate(d.period_from)} ถึง${d.period_to ? ` ${thDate(d.period_to)}` : "ปัจจุบัน"}`],
       ...inc.map(l => [l.label_th, incomeTH(l)])].filter(([, v]) => String(v ?? "").trim());
     return frame("letter", `
       <div class="lt-a th-no">${esc(no)}</div>
       <div class="lt-a th-title">${esc(K.title)}</div>
       <div class="lt-a th-intro">หนังสือรับรองฉบับนี้โดย บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน) ออกให้เพื่อเป็นการรับรองรายละเอียดต่อไปนี้</div>
-      <div class="lt-a th-flow">
+      <div class="lt-a th-flow"${fitTH(rows.length)}>
         ${rows.map(([k, v]) => `<div class="th-row"><b>${esc(k)}:</b><span>${esc(v)}</span></div>`).join("")}
         <div class="th-close">จึงออกหนังสือรับรองฉบับนี้ไว้เพื่อเป็นหลักฐาน</div>
         <div class="th-sign"><div class="th-date">ออกให้ ณ วันที่ ${esc(thDate(d.issue_date))}</div>
@@ -102,7 +104,7 @@ export function letterPages(kind, d, opts = {}) {
       <div class="lt-a th-remark"><b>หมายเหตุ:</b> เอกสารฉบับนี้จัดทำและออกในรูปแบบอิเล็กทรอนิกส์ จึงไม่จำเป็นต้องมีลายมือชื่อผู้มีอำนาจลงนามกำกับ</div>`);
   }
   if (kind === "cert_en" || kind === "salary_en") {
-    const rows = [["Position", d.position], ["Division", d.division], ["Department", d.department], ["Section", d.section],
+    const rows = [["Position", d.position], ["Division", d.division], ["Department", d.department], ["Section", d.section], ["Team", d.team],
       ["Period of Employment", `${enDate(d.period_from)} - ${d.period_to ? enDate(d.period_to) : "Present"}`],
       ...inc.map(l => [l.label_en, incomeEN(l)])].filter(([, v]) => String(v ?? "").trim());
     return frame("letter", `
@@ -174,10 +176,10 @@ body{background:#e9edf3}
 .th-title{left:0;right:0;top:37.6mm;text-align:center;font-size:12.35pt;font-weight:700;line-height:8.6mm}
 .th-intro{left:36.5mm;top:54.1mm;white-space:nowrap}
 .th-flow{left:0;right:0;top:67.07mm}
-.th-row{display:flex;line-height:8.97mm;padding-left:52.9mm}.th-row b{width:44.6mm;flex:none}
+.th-row{display:flex;line-height:var(--rh,8.97mm);padding-left:52.9mm}.th-row b{width:44.6mm;flex:none}
 .th-close{margin:6.44mm 0 0 39.9mm}
 .th-sign{position:relative;margin-left:83.8mm;width:80mm;text-align:center}
-.th-date{margin-top:17.2mm}
+.th-date{margin-top:var(--dg,17.2mm)}
 .th-name{position:relative;left:-2.3mm;margin-top:23.85mm;line-height:8mm;white-space:pre}
 .th-title2{position:relative;left:-2.6mm;line-height:8mm}
 .th-sig{position:absolute;left:24.3mm;top:-12.4mm;height:12.5mm}
@@ -234,6 +236,19 @@ export function letterDocument(kind, d, opts) {
 
 // ---------------------------------------------------------------- ข้อมูลตั้งต้นจากทะเบียนพนักงาน
 const empName = e => [e.firstname_th, e.lastname_th].filter(Boolean).join(" ");
+const thName = (list, en) => {
+  if (!en) return "";
+  const k = String(en).trim().toLowerCase();
+  return (list || []).find(x => String(x.name || "").trim().toLowerCase() === k)?.name_th || en;
+};
+// หนังสือไทย: แถวข้อมูล + ลายเซ็นต้องจบก่อนบรรทัด "หมายเหตุ" ที่ตำแหน่งตายตัว (top 229.4mm)
+// แบบต้นฉบับพอดีราว 9 แถว — แถวมากกว่านั้น (สังกัด 4 ระดับ + เงินได้หลายรายการ) ลดช่องว่างเหนือวันที่ก่อน แล้วค่อยบีบระยะบรรทัด
+// พื้นที่: 229.4 − 2 (ระยะห่าง) − 67.07 (จุดเริ่ม) = 160.3mm · ส่วนท้าย (ปิดท้าย+วันที่+ลายเซ็น) 79.49mm, แบบกระชับ 70.29mm
+export function fitTH(n) {
+  if (n * 8.97 + 79.49 <= 160.3) return "";
+  const rh = Math.max(6.2, Math.min(8.97, (160.3 - 70.29) / n));
+  return ` style="--rh:${rh.toFixed(2)}mm;--dg:8mm"`;
+}
 export function draftFrom(kind, e, incomeItems = []) {
   const K = KINDS[kind], male = /^m/i.test(e?.gender || ""), female = /^f/i.test(e?.gender || "");
   const d = {
@@ -241,8 +256,10 @@ export function draftFrom(kind, e, incomeItems = []) {
     name_th: e ? `${male ? "นาย" : female ? "นางสาว" : ""}${empName(e)}` : "",
     name_en: e ? `${male ? "Mr." : female ? "Ms." : ""} ${[e.firstname_en, e.lastname_en].filter(Boolean).join(" ")}`.trim() : "",
     title_en: male ? "Mr." : female ? "Ms." : "",
-    position_th: e?.position || "", division_th: e?.division || "", department_th: e?.department || "",
-    position: e?.position || "", division: e?.division || "", department: e?.department || "", section: e?.section || "",
+    // หนังสือไทยใช้ชื่อภาษาไทยจากข้อมูลหลัก (ทะเบียนพนักงานเก็บชื่ออังกฤษ) — ไม่มีชื่อไทยก็ใช้ชื่อเดิม แก้เองได้ในฟอร์ม
+    position_th: thName(masterPositions, e?.position), division_th: thName(masterDivisions, e?.division),
+    department_th: thName(masterDepartments, e?.department), section_th: thName(masterSections, e?.section), team_th: thName(masterTeams, e?.team),
+    position: e?.position || "", division: e?.division || "", department: e?.department || "", section: e?.section || "", team: e?.team || "",
     period_from: e?.join_date || "", period_to: "",
     incomes: incomeItems.filter(i => i.is_active).map(i => ({ key: i.key, label_th: i.label_th, label_en: i.label_en,
       on: (K.income || []).includes(i.key), amount: i.key === "salary" && e?.salary ? e.salary : "" })),
@@ -476,8 +493,8 @@ function openLetter(r) {
         ${editable ? `<button class="btn btn-sm btn-secondary" id="ltSAdd">+ เพิ่มแถว</button>` : ""}`
       : `${th ? `${f("name_th", "ชื่อ - นามสกุล (รวมคำนำหน้า)")}` : f("name_en", "Name (with title, e.g. Miss Prapa Iewsanurak)")}
         ${f("id_card", "เลขบัตรประชาชน", "text", 'inputmode="numeric" maxlength="13"')}
-        ${th ? `${f("position_th", "ตำแหน่ง")}<div class="lt-2">${f("division_th", "ฝ่าย")}${f("department_th", "แผนก")}</div>`
-             : `${f("position", "Position")}<div class="lt-2">${f("division", "Division")}${f("department", "Department")}</div>${f("section", "Section")}`}
+        ${th ? `${f("position_th", "ตำแหน่ง")}<div class="lt-2">${f("division_th", "ส่วน")}${f("department_th", "ฝ่าย")}</div><div class="lt-2">${f("section_th", "แผนก")}${f("team_th", "ทีม")}</div>`
+             : `${f("position", "Position")}<div class="lt-2">${f("division", "Division")}${f("department", "Department")}</div><div class="lt-2">${f("section", "Section")}${f("team", "Team")}</div>`}
         <div class="lt-2">${f("period_from", "เริ่มงาน", "date")}${f("period_to", "ถึง (ว่าง = ปัจจุบัน)", "date")}</div>
         <div class="lt-sub">รายการเงินได้ที่แสดงในหนังสือ <span class="text-muted">(ติ๊กเลือก · เพิ่มรายการได้ที่แท็บตั้งค่า)</span></div>
         ${(d.incomes || []).map((x, i) => `<div class="lt-inc"><label><input type="checkbox" data-ion="${i}" ${x.on ? "checked" : ""} ${editable ? "" : "disabled"}>
@@ -489,7 +506,7 @@ function openLetter(r) {
     $("#ltKind")?.addEventListener("change", e => {
       const keep = d; kind = e.target.value; d = draftFrom(kind, null, incomeItems);
       // เปลี่ยนประเภทแล้วข้อมูลคนเดิมยังอยู่
-      for (const k of ["issue_date","id_card","name_th","name_en","title_en","position_th","division_th","department_th","position","division","department","section","period_from","period_to"]) if (keep[k]) d[k] = keep[k];
+      for (const k of ["issue_date","id_card","name_th","name_en","title_en","position_th","division_th","department_th","section_th","team_th","position","division","department","section","team","period_from","period_to"]) if (keep[k]) d[k] = keep[k];
       d.contact_email = keep.contact_email || settings.hr_contact_email || "";
       form(); preview();
     });

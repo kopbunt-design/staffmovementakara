@@ -13,6 +13,8 @@ const btoa = s => $.NSString.alloc.initWithString(s).dataUsingEncoding($.NSISOLa
 const atob = s => $.NSString.alloc.initWithDataEncoding($.NSData.alloc.initWithBase64EncodedStringOptions(s, 0), $.NSISOLatin1StringEncoding).js;
 const M = new Function("btoa", `${baht}\nconst escText = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const can = () => true, toast = () => {}, notify = () => {}, allEmployees = [], currentUser = {}, supabase = {};
+  const masterDivisions = [{ name: "Operations", name_th: "ปฏิบัติการ" }], masterDepartments = [{ name: "Human Resources", name_th: "ทรัพยากรบุคคล" }],
+        masterSections = [{ name: "HRIS", name_th: "ระบบสารสนเทศบุคคล" }], masterTeams = [], masterPositions = [{ name: "HRIS Supervisor", name_th: "หัวหน้างานระบบสารสนเทศบุคคล" }];
   ${strip(read(`${ROOT}/js/hr-letters.js`)).replace(/const esc = v => escText/, "const esc = v => escText")}
   return { letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
 
@@ -88,4 +90,23 @@ eq(M.renderMail("<b>{{person}}</b>{{missing}}", { person: "<img onerror=x>" }, t
 eq(M.mailList("A@x.com; b@y.co , a@x.com", "not-an-email", "\nc@z.org"), "a@x.com, b@y.co, c@z.org", "รวมอีเมล: คั่นได้หลายแบบ ตัดซ้ำ ตัดค่าที่ไม่ใช่อีเมล");
 has(M.emlText("a@x.com", "s", "<p>x</p>", "b@y.co"), "Cc: b@y.co", "ไฟล์เมลมี CC");
 
+// สังกัด 4 ระดับ: ไทยใช้ชื่อไทยจากข้อมูลหลัก (ไม่มีชื่อไทย = ชื่อเดิม) · อังกฤษใช้ชื่ออังกฤษ · ระดับว่างไม่แสดง
+{
+  const emp = { gender: "Female", firstname_th: "สมใจ", lastname_th: "ทดสอบ", firstname_en: "Somjai", lastname_en: "Test",
+    position: "HRIS Supervisor", division: "Operations", department: "Human Resources", section: "HRIS", team: "Payroll", join_date: "2020-01-06" };
+  const dt = M.draftFrom("cert_th", emp, []);
+  eq([dt.position_th, dt.division_th, dt.department_th, dt.section_th, dt.team_th],
+     ["หัวหน้างานระบบสารสนเทศบุคคล", "ปฏิบัติการ", "ทรัพยากรบุคคล", "ระบบสารสนเทศบุคคล", "Payroll"], "ไทย: ชื่อไทยจากข้อมูลหลัก · ไม่มีชื่อไทยใช้ชื่อเดิม");
+  const ht = M.letterPages("cert_th", dt, {});
+  has(ht, "<b>ส่วน:</b><span>ปฏิบัติการ</span>", "ไทย: ส่วน");
+  has(ht, "<b>ฝ่าย:</b><span>ทรัพยากรบุคคล</span>", "ไทย: ฝ่าย");
+  has(ht, "<b>แผนก:</b><span>ระบบสารสนเทศบุคคล</span>", "ไทย: แผนก");
+  has(ht, "<b>ทีม:</b><span>Payroll</span>", "ไทย: ทีม");
+  eq(ht.indexOf("ส่วน:") < ht.indexOf("ฝ่าย:") && ht.indexOf("ฝ่าย:") < ht.indexOf("แผนก:") && ht.indexOf("แผนก:") < ht.indexOf("ทีม:"), true, "ไทย: เรียง ส่วน/ฝ่าย/แผนก/ทีม");
+  const he = M.letterPages("cert_en", M.draftFrom("cert_en", emp, []), {});
+  has(he, "<b>Division</b><span>Operations</span>", "อังกฤษ: Division");
+  has(he, "<b>Team</b><span>Payroll</span>", "อังกฤษ: Team");
+  not(he, "ปฏิบัติการ", "อังกฤษ: ไม่มีชื่อไทย");
+  not(M.letterPages("cert_th", { ...dt, team_th: "" }, {}), "ทีม:", "ระดับว่างไม่แสดง");
+}
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
