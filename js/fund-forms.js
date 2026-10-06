@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, can, esc as escText, toast, currentUser, notify } from "./app.js";
+import { allEmployees, can, esc as escText, toast, currentUser, notify, userRole } from "./app.js";
 import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-print.js";
 import { renderMail, downloadEml, mailList } from "./hr-letters.js";
 import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
@@ -37,6 +37,8 @@ let approvers = [], mailCfg = { mode: "outlook" }, fundTpl = [], approvalReady =
 // แท็บตั้งค่า: รายชื่อคณะกรรมการ + สถานะความพร้อม (fund_committee_status) · ผู้ใช้ทั้งหมดไว้เลือกเพิ่ม
 let committee = [], committeeReady = true, users = [], fundTplKey = "fund_request";
 let mySigner = null;   // ลายเซ็นของคนที่ล็อกอิน — ใช้ลงนามเป็นพยานตอนส่งให้กรรมการ
+// พยาน = ทุกคนที่ส่งแบบฟอร์มให้กรรมการได้ (สิทธิ์ data.fundforms.write หรือ Admin) · ลายเซ็นจาก letter_signers
+let witnesses = [];
 const approverName = uid => { const a = approvers.find(x => x.user_id === uid); return a?.name_th || a?.email || "กรรมการ"; };
 // ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
 // ตอนรับเรื่องมี 2 ทาง: เซ็นออนไลน์มาแล้ว (รับเรื่องได้เลย) หรือพิมพ์ไปเซ็นสดแล้วเอาตัวจริงมาส่ง
@@ -145,6 +147,13 @@ async function loadCommittee() {
     supabase.from("user_roles").select("user_id,name,email,role").order("name"), supabase.rpc("fund_approvers")]);
   committeeReady = !c.error;
   committee = c.data || []; users = u.data || [];
+  const [rp, sg] = await Promise.all([supabase.from("role_permissions").select("role_key").eq("perm_key", "data.fundforms.write"),
+    supabase.from("letter_signers").select("user_id,name_th,title_th,email,signature_path")]);
+  const roles = new Set(["admin", ...(rp.data || []).map(x => x.role_key)]);
+  const sig = new Map((sg.data || []).map(x => [x.user_id, x]));
+  witnesses = users.filter(u => roles.has(u.role)).map(u => { const g = sig.get(u.user_id) || {};
+    return { user_id: u.user_id, name: u.name, email: u.email, role: u.role, has_signature: !!g.signature_path,
+             signer_name: g.name_th || "", signer_title: g.title_th || "", signer_email: g.email || "" }; });
   if (!ap.error) approvers = ap.data || [];
 }
 const ready = m => m.has_page && m.has_approve && m.has_signature && !!(m.signer_email || m.email);
@@ -176,10 +185,14 @@ function settingsHTML() {
           ${!(m.has_page && m.has_approve) && canRoles ? `<button class="btn btn-sm btn-secondary" data-fperm="${m.user_id}">ให้สิทธิ์</button>` : ""}
           <button class="btn btn-sm btn-secondary" data-fdel="${m.user_id}" style="color:var(--red);">เอาออก</button></td></tr>`).join("")}
     </tbody></table>` : `<div class="text-muted" style="padding:18px 0 4px;">ยังไม่มีกรรมการ — เลือกผู้ใช้ด้านบนแล้วกด “+ เพิ่มกรรมการ”</div>`}
-    <div class="fc-me">${mySigner?.signature_path
-        ? `<span class="fc-ok">✓</span> ลายเซ็นพยานของท่าน: <b>${esc(mySigner.name_th || currentUser?.email || "")}</b>`
-        : `<span class="fc-no">✗</span> ท่านยังไม่มีลายเซ็น — ต้องใช้ลงนามเป็น <b>พยาน</b> ตอนส่งแบบฟอร์มให้กรรมการ`}
-      <button class="btn btn-sm btn-secondary" id="fcMySig">${mySigner?.signature_path ? "แก้ลายเซ็นของฉัน" : "ตั้งลายเซ็นของฉัน"}</button></div>
+    <div class="fc-sub">ลายเซ็นพยาน <span class="text-muted">— HR ที่ส่งแบบฟอร์มให้กรรมการ ลงนามเป็นพยานด้วยลายเซ็นนี้${isAdmin() ? " · Admin ตั้งให้ทุกคนได้" : " · ตั้งให้คนอื่นได้เฉพาะ Admin"}</span></div>
+    <table class="data-table fc-tbl"><thead><tr><th>HR</th><th>role</th><th>ลายเซ็น</th><th></th></tr></thead><tbody>
+      ${witnesses.map(w => `<tr><td><b>${esc(w.signer_name || w.name || w.email)}</b>${w.email ? `<div class="text-muted" style="font-size:12px;">${esc(w.email)}</div>` : ""}</td>
+        <td class="text-muted">${esc(w.role)}</td>
+        <td>${w.has_signature ? `<span class="fc-ok">✓ ตั้งแล้ว</span>` : `<span class="fc-no">✗ ยังไม่ตั้ง</span>`}</td>
+        <td>${isAdmin() || w.user_id === currentUser?.id ? `<button class="btn btn-sm btn-secondary" data-wsig="${w.user_id}">${w.has_signature ? "แก้ลายเซ็น" : "ตั้งลายเซ็น"}</button>` : ""}</td></tr>`).join("")
+        || `<tr><td colspan="4" class="text-muted">ไม่พบผู้ใช้ที่มีสิทธิ์จัดการคำขอกองทุน</td></tr>`}
+    </tbody></table>
     ${committee.some(m => !(m.has_page && m.has_approve)) && !canRoles ? `<div class="lt-hint" style="margin-top:10px;">ผู้ที่ขาดสิทธิ์: ให้ Admin เพิ่มสิทธิ์ “แบบฟอร์มกองทุน” และ “ลงนามอนุมัติแบบฟอร์มกองทุน” ให้ role ของคนนั้นที่ User Management</div>` : ""}
   </div></div>
   <div class="card" style="margin-top:16px;"><div class="card-body">
@@ -240,7 +253,8 @@ function wireSettings() {
     await loadCommittee(); draw();
   });
   pg.querySelectorAll("[data-fsig]").forEach(b => b.onclick = () => signerForm(b.dataset.fsig));
-  pg.querySelector("#fcMySig")?.addEventListener("click", () => signerForm(currentUser?.id, selfBase()));
+  pg.querySelectorAll("[data-wsig]").forEach(b => b.onclick = () => signerForm(b.dataset.wsig,
+    b.dataset.wsig === currentUser?.id ? selfBase() : witnesses.find(w => w.user_id === b.dataset.wsig)));
   // ให้สิทธิ์ทั้ง role (สิทธิ์ในระบบผูกกับ role ไม่ใช่รายคน) — บอกให้ชัดก่อนกด
   pg.querySelectorAll("[data-fperm]").forEach(b => b.onclick = async () => {
     const m = committee.find(x => x.user_id === b.dataset.fperm); if (!m?.role) { toast("คนนี้ยังไม่มี role", "error"); return; }
@@ -253,6 +267,7 @@ function wireSettings() {
   wireTplEditor(pg, fundTpl, { sample: SAMPLE_FUND, onSwitch: k => { fundTplKey = k; draw(); } });
 }
 
+const isAdmin = () => userRole === "admin";
 // ข้อมูลลายเซ็นของตัวเองในรูปแบบเดียวกับแถวกรรมการ (ให้ signerForm ใช้ได้)
 const selfBase = () => ({ signer_name: mySigner?.name_th || currentUser?.user_metadata?.full_name || "", signer_title: mySigner?.title_th || "",
   signer_email: mySigner?.email || currentUser?.email || "", email: currentUser?.email || "", has_signature: !!mySigner?.signature_path });
