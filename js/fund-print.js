@@ -63,7 +63,7 @@ export function thaiDate(iso) {
 }
 
 // ช่องเส้นจุด: ถ้ามีค่าแสดงค่า ถ้าไม่มีเว้นเส้นไว้ให้เขียนมือ
-const fill = (v, w) => `<span class="f" style="min-width:${w}">${esc(v) || "&nbsp;"}</span>`;
+const fill = (v, w, cls = "") => `<span class="f${cls ? " " + cls : ""}" style="min-width:${w}">${esc(v) || "&nbsp;"}</span>`;
 const box  = on => `<span class="bx">${on ? "✓" : ""}</span>`;
 
 // ลายเซ็นที่พนักงานเซ็นบนหน้าจอ (ถ้ามี) — รับเฉพาะ PNG data URL กันของแปลกปลอมมาอยู่ใน src
@@ -113,7 +113,7 @@ function pvdPage(sub, opts = {}) {
 
     <p class="mt"><b><u>ส่วนที่ 2</u></b> การแต่งตั้งผู้รับผลประโยชน์ และ / หรือ การเปลี่ยนแปลงผู้รับผลประโยชน์</p>
     <p>ในกรณีที่ข้าพเจ้าถึงแก่กรรม ข้าพเจ้าขอแต่งตั้งให้คณะกรรมการกองทุนจ่ายเงินผลประโยชน์ใด ๆ ที่ข้าพเจ้าพึงได้รับให้แก่ผู้รับผลประโยชน์ ดังต่อไปนี้</p>
-    ${[0, 1, 2].map(i => { const b = ben[i] || {}; return `<p class="ind2">${i + 1}.&nbsp; ชื่อ-นามสกุล ${fill(b.name, "34%")} ความสัมพันธ์ ${fill(b.relation, "13%")} ร้อยละ ${fill(b.percent, "7%")}</p>`; }).join("")}
+    ${[0, 1, 2].map(i => { const b = ben[i] || {}; return `<p class="ind2">${i + 1}.&nbsp; ชื่อ-นามสกุล ${fill(b.name, "34%", "l")} ความสัมพันธ์ ${fill(b.relation, "13%")} ร้อยละ ${fill(b.percent, "7%")}</p>`; }).join("")}
 
     <p class="mt"><b><u>ส่วนที่ 3</u></b> การยินยอมให้หักเงินสะสม / การแจ้งการเปลี่ยนแปลงอัตราการนำส่งเงินสะสม</p>
     <p>ข้าพเจ้ายินยอมให้บริษัทหักเงินจากเงินได้รายเดือนของข้าพเจ้า เพื่อนำส่งเข้ากองทุนสะสม โดยสามารถเลือกอัตราการหักเงินได้ตั้งแต่ ร้อยละ 2 ถึงร้อยละ 15 ของเงินเดือน ทั้งนี้ การสมทบเงินของบริษัทให้เป็นไปตามระเบียบของกองทุนที่กำหนด ดังนั้น ข้าพเจ้ายินยอมให้บริษัทหักเงินสะสมในอัตรา ร้อยละ ${fill(showR ? p.rate : "", "9%")} ของเงินเดือน</p>
@@ -193,6 +193,7 @@ body{font-family:'Sarabun',sans-serif;color:#000;background:#eee}
 .page:last-child{page-break-after:auto}
 p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{text-align:right}.c{text-align:center}
 .f{display:inline-block;border-bottom:1px dotted #000;padding:0 6px;text-align:center;line-height:1.35;color:#0b2e8a;font-weight:600}
+.f.l{text-align:left;padding-left:3mm}
 .bx{display:inline-block;width:14px;height:14px;border:1.2px solid #000;text-align:center;line-height:12px;font-size:12px;font-weight:700;vertical-align:-2px;margin-right:2px}
 .pvd-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #2B5AC7;padding-bottom:4px;margin-bottom:10px}
 .pvd-top img{height:46px}.pvd-site{font-size:13px}

@@ -99,7 +99,7 @@ export function letterPages(kind, d, opts = {}) {
         ${rows.map(([k, v]) => `<div class="th-row"><b>${esc(k)}:</b><span>${esc(v)}</span></div>`).join("")}
         <div class="th-close">จึงออกหนังสือรับรองฉบับนี้ไว้เพื่อเป็นหลักฐาน</div>
         <div class="th-sign"><div class="th-date">ออกให้ ณ วันที่ ${esc(thDate(d.issue_date))}</div>
-          <div class="th-name">${img(sig, "th-sig")}${img(seal, "th-seal")}${esc(signer?.name_th || "นายศุภโชค  พันธุมิตร")}</div>
+          <div class="th-name">${img(seal, "th-seal")}<span class="nm">${img(sig, "th-sig")}${esc(signer?.name_th || "นายศุภโชค  พันธุมิตร")}</span></div>
           <div class="th-title2">${esc(signer?.title_th || "ผู้จัดการฝ่ายทรัพยากรบุคคล")}</div></div>
       </div>
       <div class="lt-a th-remark"><b>หมายเหตุ:</b> เอกสารฉบับนี้จัดทำและออกในรูปแบบอิเล็กทรอนิกส์ จึงไม่จำเป็นต้องมีลายมือชื่อผู้มีอำนาจลงนามกำกับ</div>`);
@@ -118,7 +118,7 @@ export function letterPages(kind, d, opts = {}) {
         <div class="en-rows">${rows.map(([k, v]) => `<div class="en-row"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
         <p class="en-p en-issued">This certificate has been issued at the employee's request for official purposes.</p>
         <p class="en-p en-yours">Yours sincerely,</p>
-        <div class="en-name">${img(sig, "en-sig")}${img(seal, "en-seal")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</div>
+        <div class="en-name">${img(seal, "en-seal")}<span class="nm">${img(sig, "en-sig")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</span></div>
         <div class="en-name2">${esc(signer?.title_en || "Human Resources Manager")}</div>
       </div>
       <div class="lt-a en-remark"><b>Remark</b> - This document is digitally issued and does not require a handwritten signature.</div>`);
@@ -141,7 +141,7 @@ export function letterPages(kind, d, opts = {}) {
         <p class="of-p j g2">To indicate your acceptance of this offer, please sign below and return a scanned copy to Akara's HR team at <span class="of-mail">${esc(d.contact_email || "")}</span>.</p>
         <p class="of-p g4">We look forward to working with you and achieving success together.</p>
         <p class="of-p g4">Yours sincerely,</p>
-        <p class="of-p of-name">${img(sig, "of-sig")}${img(seal, "of-seal")}(${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")})</p>
+        <p class="of-p of-name">${img(seal, "of-seal")}<span class="nm">${img(sig, "of-sig")}(${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")})</span></p>
         <p class="of-p g5">On behalf of Akara Resources Public Company Limited.</p>
         <p class="of-p of-stars">*********************</p>
         <p class="of-p g6">I acknowledge and accept the terms and conditions of this Offer of Employment.</p>
@@ -183,7 +183,9 @@ body{background:#e9edf3}
 .th-date{margin-top:var(--dg,17.2mm)}
 .th-name{position:relative;left:-2.3mm;margin-top:23.85mm;line-height:8mm;white-space:pre}
 .th-title2{position:relative;left:-2.6mm;line-height:8mm}
-.th-sig{position:absolute;left:24.3mm;top:-12.4mm;height:12.5mm}
+.nm{position:relative;display:inline-block}
+.th-sig,.en-sig,.of-sig{position:absolute;left:50%;transform:translateX(-50%);max-width:none;width:auto;object-fit:contain;object-position:center bottom}
+.th-sig{top:-12.4mm;height:12.5mm;max-width:50mm}
 .th-seal{position:absolute;left:62.2mm;top:-24.1mm;height:35.5mm}
 .th-remark{left:27.9mm;top:229.4mm;white-space:nowrap}
 /* ---- หนังสือรับรอง ภาษาอังกฤษ (Letter) ---- */
@@ -200,7 +202,7 @@ body{background:#e9edf3}
 .en-yours{margin-top:7.3mm}
 .en-name{position:relative;margin-top:15.05mm;line-height:5mm}
 .en-name2{line-height:5mm}
-.en-sig{position:absolute;left:.8mm;top:-13.2mm;height:12mm}
+.en-sig{top:-13.2mm;height:12mm;max-width:46mm}
 .en-seal{position:absolute;left:48.2mm;top:-25.7mm;height:35mm}
 .en-remark{left:27.9mm;top:241.8mm;white-space:nowrap}
 /* ---- Offer Letter (A4) ---- */
@@ -215,7 +217,7 @@ body{background:#e9edf3}
 .of-stars{font-size:10pt;margin-top:6.9mm}.of-p.g6{margin-top:6.4mm}
 .of-signed{margin-top:15.8mm}.of-p.g7{margin-top:9mm}.of-p.g8{margin-top:2.8mm}
 .of-mail{color:#0563C1}
-.of-sig{position:absolute;left:1mm;top:-10.8mm;height:11mm}
+.of-sig{top:-10.8mm;height:11mm;max-width:46mm}
 .of-seal{position:absolute;left:45.8mm;top:-32.3mm;height:32mm}
 .of-sched-h{left:20mm;top:30.2mm;font-size:12pt;font-weight:700;line-height:4.7mm}
 .of-sched-wrap{left:20mm;right:17.4mm;top:43.5mm}
