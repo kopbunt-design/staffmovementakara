@@ -598,7 +598,8 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
   await Promise.all([loadMovements(), loadEmployees(), loadMasterData(), loadNotifications(), loadPosQuota()]);
   startRealtime();
   // ลิงก์จากอีเมลขออนุมัติหนังสือ (?letter=ID) → เปิดหน้าออกหนังสือ (หน้านั้นเปิดฉบับที่ระบุเอง)
-  navigate(new URLSearchParams(location.search).get("letter") ? "letters" : "home");
+  const qp = new URLSearchParams(location.search);
+  navigate(qp.get("letter") ? "letters" : qp.get("fund") ? "fundforms" : "home");
   if (session.user.user_metadata?.must_change_password) openPwModal(true);
 });
 

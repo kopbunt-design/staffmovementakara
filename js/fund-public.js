@@ -17,7 +17,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&l
 const RELATIONS = ["บิดา", "มารดา", "คู่สมรส", "บุตร", "พี่น้อง", "ญาติ", "อื่น ๆ"];
 const NAT_TH = { Thai: "ไทย", Lao: "ลาว", Australian: "ออสเตรเลีย" };
 const STATUS_TH = { submitted: "ส่งแล้ว รอ HR รับเรื่อง", accepted: "HR รับเรื่องแล้ว", received: "HR รับเอกสารตัวจริงแล้ว", approved: "อนุมัติแล้ว",
-                    sent: "ส่งหน่วยงานแล้ว", rejected: "ส่งกลับให้แก้ไข", cancelled: "ยกเลิก" };
+                    pending_approval: "อยู่ระหว่างคณะกรรมการกองทุนพิจารณา", sent: "ส่งหน่วยงานแล้ว", rejected: "ส่งกลับให้แก้ไข", cancelled: "ยกเลิก" };
 const ERR_TH = {
   ALREADY_SUBMITTED: "ท่านส่งแบบฟอร์มแล้ว แก้ไขเองไม่ได้ — ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR",
   VERIFY_FAILED: "ยืนยันตัวตนไม่ผ่าน กรุณาเริ่มใหม่",
@@ -55,8 +55,8 @@ const S = {
   pvd: null, wef: null,
   result: null,       // { id, submitted_at }
 };
-// คนที่ HR เชิญคือคนที่ยังไม่เป็นสมาชิก — ติ๊ก "สมัคร" ไว้ให้ก่อน เปลี่ยนเองได้
-const newPvd = () => ({ requests: ["apply"], beneficiaries: [{ name: "", relation: "", other: "", percent: "" }],
+// ไม่ติ๊กอะไรไว้ก่อน — คนที่เชิญมีทั้งคนที่ยังไม่เป็นสมาชิก (ข้อ 1) และสมาชิกที่ขอเปลี่ยนแปลง (ข้อ 2–3)
+const newPvd = () => ({ requests: [], beneficiaries: [{ name: "", relation: "", other: "", percent: "" }],
   rate: "", policy: "", consent: false });
 
 // ร้อยละผู้รับผลประโยชน์ พนักงานกำหนดเองอิสระ ระบบไม่เฉลี่ยให้ — แค่บอกยอดรวม และส่งได้เมื่อรวมได้ 100 พอดี
@@ -84,12 +84,12 @@ const newWef = e => ({
 const latestAny = () => (S.emp?.history || []).find(x => x.status !== "cancelled");
 // HR รับเรื่องไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (DB กันซ้ำอีกชั้น)
 // ส่งแล้ว = ล็อกทันที แก้เองไม่ได้ ต้องให้ HR ยกเลิกให้ก่อน (status = rejected จึงกรอกใหม่ได้)
-const locked = () => ["submitted", "accepted", "received", "approved", "sent"].includes(latestAny()?.status);
+const locked = () => ["submitted", "accepted", "received", "pending_approval", "approved", "sent"].includes(latestAny()?.status);
 const latestOf = f => (S.emp?.history || []).find(x => x.form_type === f && x.status !== "cancelled");
 const relIn = r => RELATIONS.includes(r) ? { relation: r, other: "" } : { relation: r ? "อื่น ๆ" : "", other: r || "" };
 function pvdFromDraft(d) {
   const bs = (d.beneficiaries || []).map(b => ({ name: b.name || "", ...relIn(b.relation), percent: b.percent ? String(b.percent) : "" }));
-  return { ...newPvd(), requests: d.requests?.length ? d.requests : ["apply"],
+  return { ...newPvd(), requests: (d.requests || []).filter(k => k !== "policy"),
            beneficiaries: bs.length ? bs : newPvd().beneficiaries,
            rate: d.rate ? String(d.rate) : "", policy: d.policy || "" };
 }
@@ -321,11 +321,16 @@ function pvdForm() {
     ${guideBtn("pvd")}
     ${rejectBox("pvd")}
     <div class="fx-sec"><div class="fx-sec-t">เรื่องที่ขอ <span class="fx-muted">(เลือกได้มากกว่า 1 ข้อ)</span></div>
-      ${PVD_REQUESTS.map(r => { const dis = apply && r.key !== "apply";
+      ${PVD_REQUESTS.map((r, i) => {
+        // ข้อ 4 เปลี่ยนนโยบายการลงทุน: สมาชิกทำเองในแอปของบริษัทจัดการได้ ไม่ต้องยื่นฟอร์ม (สมัครใหม่ยังเลือกนโยบายในส่วนที่ 4 ตามปกติ)
+        if (r.selfService) return `<label class="fx-chk dis"><input type="checkbox" disabled>
+          <span>${i + 1}. ${r.label}<small class="fx-muted" style="display:block;">${r.selfService}</small></span></label>`;
+        const dis = apply && r.key !== "apply";
         return `<label class="fx-chk ${dis ? "dis" : ""}"><input type="checkbox" data-act="req" value="${r.key}"
           ${p.requests.includes(r.key) || dis ? "checked" : ""} ${dis ? "disabled" : ""}>
-          <span>${r.label}</span></label>`; }).join("")}
-      ${apply ? `<div class="fx-hint">สมัครใหม่ต้องกรอกทุกส่วน (ผู้รับผลประโยชน์ · อัตราเงินสะสม · นโยบายการลงทุน)</div>` : ""}
+          <span>${i + 1}. ${r.label}</span></label>`; }).join("")}
+      ${apply ? `<div class="fx-hint">สมัครใหม่ต้องกรอกทุกส่วน (ผู้รับผลประโยชน์ · อัตราเงินสะสม · นโยบายการลงทุน)</div>`
+        : !p.requests.length ? `<div class="fx-hint">ยังไม่เป็นสมาชิก เลือกข้อ 1 · เป็นสมาชิกอยู่แล้ว เลือกข้อ 2 และ/หรือ 3</div>` : ""}
     </div>
 
     ${need.ben ? `<div class="fx-sec"><div class="fx-sec-t">ผู้รับผลประโยชน์ <span class="fx-muted">(สูงสุด 3 คน)</span>
@@ -417,7 +422,7 @@ function build() {
   if (S.form === "pvd") {
     const p = S.pvd, need = pvdNeeds(p);
     if (!p.requests.length) return [null, "กรุณาเลือกเรื่องที่ขออย่างน้อย 1 ข้อ"];
-    const out = { requests: p.requests.includes("apply") ? ["apply"] : [...p.requests], consent: p.consent };
+    const out = { requests: p.requests.includes("apply") ? ["apply"] : p.requests.filter(k => k !== "policy"), consent: p.consent };
     if (need.ben) {
       const bs = p.beneficiaries.map(b => ({ name: b.name.trim(), relation: relOf(b), percent: +b.percent || 0 }));
       if (bs.some(b => !b.name || !b.relation || !b.percent)) return [null, "กรอกชื่อ ความสัมพันธ์ และร้อยละของผู้รับผลประโยชน์ให้ครบ"];
@@ -577,6 +582,7 @@ $app.addEventListener("change", e => {
   if (f && /id_card/.test(f)) { rerenderKeepFocus(t); return; }
   const act = t.dataset.act;
   if (act === "req") {
+    if (PVD_REQUESTS.find(x => x.key === t.value)?.selfService) return;
     const r = new Set(S.pvd.requests); t.checked ? r.add(t.value) : r.delete(t.value);
     if (t.value === "apply" && t.checked) r.clear(), r.add("apply");
     S.pvd.requests = [...r]; render();

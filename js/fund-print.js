@@ -11,7 +11,9 @@ export const PVD_REQUESTS = [
   { key: "apply",       label: "ขอสมัครเข้าเป็นสมาชิกกองทุนสำรองเลี้ยงชีพ", parts: "ส่วนที่ 1 ถึง ส่วนที่ 4" },
   { key: "beneficiary", label: "เปลี่ยนแปลงผู้รับผลประโยชน์",                parts: "ส่วนที่ 2" },
   { key: "rate",        label: "เปลี่ยนแปลงอัตราการนำส่งเงินสะสม",           parts: "ส่วนที่ 3" },
-  { key: "policy",      label: "เปลี่ยนแปลงนโยบายการลงทุน",                  parts: "ส่วนที่ 4" },
+  // ข้อ 4 ยังพิมพ์อยู่ในฟอร์ม (ฟอร์มกระดาษมี 4 ข้อ) แต่พนักงานเลือกในเว็บไม่ได้ — ทำเองในแอปของบริษัทจัดการ
+  { key: "policy",      label: "เปลี่ยนแปลงนโยบายการลงทุน",                  parts: "ส่วนที่ 4",
+    selfService: "สมาชิกเปลี่ยนนโยบายการลงทุนได้ด้วยตนเองผ่านแอปพลิเคชันของบริษัทจัดการกองทุน" },
 ];
 export const PVD_POLICIES = [
   { key: "PF1103", label: "ตราสารหนี้ระยะสั้นภาครัฐ สถาบันการเงิน", risk: "ความเสี่ยงต่ำ" },
@@ -77,8 +79,21 @@ function sigBlock({ role, name = "", sig = "", date, w = "58mm" }) {
   </div>`;
 }
 
+// ช่องคณะกรรมการ: อนุมัติออนไลน์แล้ว (schema_fund_approval.sql) → ลายเซ็น ชื่อ ตำแหน่ง วันที่
+// sig = data URL ของลายเซ็น (หน้า HR โหลดจาก storage ให้) · หน้าพนักงานไม่มีสิทธิ์อ่านรูป จึงแสดงชื่อ+วันที่อย่างเดียว
+function committeeBox(sub, sig) {
+  const c = sub.status === "approved" || sub.status === "sent" ? sub.committee : null;
+  if (!c) return `<div class="committee"><div>คณะกรรมการกองทุนลงนามอนุมัติ</div><div class="gap"></div>
+        <div>.........................................................................</div><div>วันที่......................................</div></div>`;
+  const d = thaiDate(sub.approved_at), okSig = /^data:image\/(png|jpeg);base64,/.test(sig || "") ? sig : "";
+  return `<div class="committee on"><div>คณะกรรมการกองทุนลงนามอนุมัติ</div>
+    <div class="cm-sig">${okSig ? `<img src="${okSig}" alt="">` : ""}</div>
+    <div class="cm-name">( ${esc(c.name_th || "")} )</div>${c.title_th ? `<div class="cm-title">${esc(c.title_th)}</div>` : ""}
+    <div>วันที่ <span class="cm-date">${d.d} ${d.m} ${d.y}</span></div></div>`;
+}
+
 // ------------------------------------------------------------------- PVD
-function pvdPage(sub) {
+function pvdPage(sub, opts = {}) {
   const p = sub.payload || {}, req = new Set(p.requests || []);
   const showB = req.has("apply") || req.has("beneficiary");
   const showR = req.has("apply") || req.has("rate");
@@ -108,8 +123,7 @@ function pvdPage(sub) {
     ${PVD_POLICIES.map((x, i) => `<p class="ind">${box(showP && p.policy === x.key)} ${i + 1}. ${x.label} (${x.key})${x.note ? ` — ${x.note}` : ""}</p>`).join("")}
 
     <div class="pvd-sign">
-      <div class="committee"><div>คณะกรรมการกองทุนลงนามอนุมัติ</div><div class="gap"></div>
-        <div>.........................................................................</div><div>วันที่......................................</div></div>
+      ${committeeBox(sub, opts.committeeSig)}
       <div class="sigs">
         ${sigBlock({ role: "พนักงาน", name: sub.emp_name, sig: sigOf(p),
                      date: sigOf(p) ? (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.submitted_at)) : "" })}
@@ -163,8 +177,8 @@ function wefPage(sub, list, startNo, pageNo, pageCount) {
 const refLine = sub => sub.id
   ? `<div class="ref">อ้างอิงคำขอออนไลน์ #${sub.id} · ส่งเมื่อ ${new Date(sub.submitted_at).toLocaleString("th-TH")}</div>` : "";
 
-export function formPagesHTML(sub) {
-  if (sub.form_type === "pvd") return pvdPage(sub);
+export function formPagesHTML(sub, opts = {}) {
+  if (sub.form_type === "pvd") return pvdPage(sub, opts);
   const all = sub.payload?.beneficiaries || [];
   const chunks = [];
   for (let i = 0; i < Math.max(all.length, 1); i += 4) chunks.push(all.slice(i, i + 4));
@@ -186,6 +200,9 @@ p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{
 .pvd-sign{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:8mm;white-space:nowrap}
 .committee{border:1.5px solid #000;padding:8px 14px;width:78mm;text-align:center;margin-top:22px}
 .committee .gap{height:22px}
+.committee.on .cm-sig{height:16mm;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px dotted #000;margin:2px 8mm 3px}
+.committee.on .cm-sig img{max-height:15mm;max-width:100%;object-fit:contain}
+.committee .cm-title{font-size:.92em}.committee .cm-date{color:#0b2e8a;font-weight:600}
 .sigs{flex:none;display:flex;flex-direction:column;align-items:flex-start}.sigs .gap{height:10px}
 .sg{display:inline-grid;align-items:end;justify-content:start;column-gap:1.5mm;row-gap:2px}
 .sg-b{display:inline-block;width:90%;border-bottom:1px dotted #000;height:1em}
@@ -209,14 +226,14 @@ p{margin:0}.ind{padding-left:10mm}.ind2{padding-left:14mm}.mt{margin-top:6px}.r{
 
 // เปิดหน้าต่างใหม่แล้วสั่งพิมพ์ (ผู้ใช้เลือก "บันทึกเป็น PDF" ได้)
 // ⚠️ ต้องเรียกจาก event คลิกโดยตรง ไม่งั้นเบราว์เซอร์มือถือบล็อก popup
-export function printSubmission(sub) {
+export function printSubmission(sub, opts = {}) {
   const w = window.open("", "_blank");
   if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — กรุณาอนุญาต pop-up แล้วลองใหม่"); return; }
   w.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${esc(FORM_NAME[sub.form_type])} — ${esc(sub.emp_code)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>${PRINT_CSS}</style></head><body>${formPagesHTML(sub)}</body></html>`);
+    <style>${PRINT_CSS}</style></head><body>${formPagesHTML(sub, opts)}</body></html>`);
   w.document.close();
   // รอฟอนต์ + โลโก้โหลดก่อน ไม่งั้นพิมพ์ออกมาเป็นฟอนต์ระบบ
   setTimeout(async () => {

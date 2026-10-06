@@ -116,7 +116,7 @@ create policy "lii_write" on letter_income_items for all using (has_perm('data.l
 
 drop policy if exists "ls_read"  on letter_signers;
 drop policy if exists "ls_write" on letter_signers;
-create policy "ls_read"  on letter_signers for select using (has_perm('page.letters'));
+create policy "ls_read"  on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms'));
 -- แก้ได้แค่ข้อมูลผู้ลงนามของตัวเอง (ลายเซ็นของใครของมัน)
 create policy "ls_write" on letter_signers for all using (user_id = auth.uid() and has_perm('data.letters.approve'))
   with check (user_id = auth.uid() and has_perm('data.letters.approve'));
@@ -142,7 +142,8 @@ drop policy if exists "la_update" on storage.objects;
 drop policy if exists "la_delete" on storage.objects;
 -- อ่านได้เฉพาะคนที่ใช้งานหนังสือ (ต้องใช้แสดงลายเซ็นในหนังสือที่อนุมัติแล้ว)
 create policy "la_read" on storage.objects for select
-  using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')));
+  using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')
+         or has_perm('page.fundforms')));   -- ลายเซ็นกรรมการในแบบฟอร์มกองทุน (schema_fund_approval.sql)
 -- อัปโหลดได้เฉพาะผู้อนุมัติ และเฉพาะโฟลเดอร์ของตัวเอง (signatures/<user_id>/...) หรือตราบริษัท (seal/...)
 create policy "la_write" on storage.objects for insert with check (bucket_id = 'letter-assets' and has_perm('data.letters.approve')
   and ((storage.foldername(name))[1] = 'seal' or ((storage.foldername(name))[1] = 'signatures' and (storage.foldername(name))[2] = auth.uid()::text)));

@@ -13,8 +13,10 @@ const LETTER_KIND = {
 };
 const T = {
   th: { approve: no => `อนุมัติหนังสือ ${no}`, fix: no => `แก้ไขหนังสือ ${no} ที่ถูกส่งกลับ`,
+        fundSign: id => `ลงนามแบบฟอร์มกองทุน #${id}`, fundBack: id => `กรรมการส่งกลับแบบฟอร์มกองทุน #${id}`,
         fund: n => `แบบฟอร์มกองทุนรอรับเรื่อง ${n} รายการ`, fundSub: "พนักงานส่งแบบฟอร์มแล้ว รอ HR กดรับ" },
   en: { approve: no => `Approve letter ${no}`, fix: no => `Revise letter ${no} (sent back)`,
+        fundSign: id => `Sign provident fund form #${id}`, fundBack: id => `Fund form #${id} returned by committee`,
         fund: n => `${n} fund form${n > 1 ? "s" : ""} to receive`, fundSub: "Submitted by employees, waiting for HR" },
 };
 
@@ -34,6 +36,22 @@ const SOURCES = [
     if (error) throw error;
     return data.map(l => ({ kind: "fix", title: T[L].fix(l.doc_no || ""), at: l.updated_at,
       sub: [l.person_name, l.reject_reason].filter(Boolean).join(" · "), link: `letters?letter=${l.id}` }));
+  } },
+  // แบบฟอร์มกองทุนที่ HR ส่งให้ฉัน (คณะกรรมการ) ลงนาม
+  { when: () => can("data.fundforms.approve"), load: async (L) => {
+    const { data, error } = await supabase.from("fund_form_submission").select("id,emp_code,emp_name,approval_requested_at")
+      .eq("status", "pending_approval").eq("approver_id", currentUser?.id).order("approval_requested_at");
+    if (error) throw error;
+    return data.map(f => ({ kind: "approve", title: T[L].fundSign(f.id), sub: [f.emp_code, f.emp_name].filter(Boolean).join(" · "),
+      at: f.approval_requested_at, link: `fundforms?fund=${f.id}` }));
+  } },
+  // ที่ฉันส่งไปแล้วกรรมการส่งกลับ
+  { when: () => can("data.fundforms.write"), load: async (L) => {
+    const { data, error } = await supabase.from("fund_form_submission").select("id,emp_code,emp_name,approval_note,updated_at")
+      .in("status", ["accepted", "received"]).eq("approval_requested_by", currentUser?.id).not("approval_note", "is", null);
+    if (error) throw error;
+    return data.map(f => ({ kind: "fix", title: T[L].fundBack(f.id), sub: [f.emp_name, f.approval_note].filter(Boolean).join(" · "),
+      at: f.updated_at, link: `fundforms?fund=${f.id}` }));
   } },
   // แบบฟอร์มกองทุนที่พนักงานส่งแล้ว รอ HR รับเรื่อง — นับเฉพาะฉบับล่าสุดของแต่ละคน (ตรงกับหน้าแบบฟอร์มกองทุน)
   { when: () => can("data.fundforms.write"), load: async (L) => {

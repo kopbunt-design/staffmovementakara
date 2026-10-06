@@ -3,6 +3,8 @@
 //   action = "request"  → แจ้งผู้อนุมัติ (HR Manager) ว่ามีหนังสือรออนุมัติ
 //   action = "approved" | "rejected" → แจ้งคนที่ส่งขออนุมัติ
 //   action = "test"     → ส่งเมลทดสอบหาคนที่กด (ปุ่ม "ทดสอบส่งเมล" ในหน้าตั้งค่า)
+//   fund_id + action = "fund_request" | "fund_approved" | "fund_rejected"
+//                       → แบบฟอร์มกองทุนสำรองเลี้ยงชีพ: ขอคณะกรรมการลงนาม / แจ้ง HR ผล (schema_fund_approval.sql)
 //
 // ค่าตั้ง (Tenant / Client ID / Secret / ผู้ส่ง) ตั้งในหน้าเว็บ: ออกหนังสือ HR → ตั้งค่า → การส่งอีเมล
 //   ใช้แอปเดียวกับที่ TigerSoft ใช้ส่งเมลได้ (ต้องมีสิทธิ์ Mail.Send แบบ Application)
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
     if (uerr || !user) return json({ error: "Invalid session" }, 401);
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
-    const { letter_id, action } = await req.json();
+    const { letter_id, fund_id, action } = await req.json();
     const { data: ms } = await admin.from("mail_settings").select("*").eq("id", 1).maybeSingle();
     const { data: sec } = await admin.from("mail_secret").select("client_secret").eq("id", 1).maybeSingle();
     const cfg = {
@@ -56,7 +58,34 @@ Deno.serve(async (req) => {
 
     let to = "", subject = "", html = "", extraTo: string[] = [], cc: string[] = [];
     const appUrl = (Deno.env.get("APP_URL") || req.headers.get("origin") || "").replace(/\/$/, "");
-    if (action === "test") {
+    const nameOf = async (uid: string | null) => {
+      if (!uid) return { name: "", email: "" };
+      const { data: s } = await admin.from("letter_signers").select("name_th,name_en,email").eq("user_id", uid).maybeSingle();
+      const u = (await admin.auth.admin.getUserById(uid)).data.user;
+      return { name: s?.name_th || s?.name_en || (u?.user_metadata?.full_name as string) || u?.email || "", email: s?.email || u?.email || "" };
+    };
+    const tplVars = async (key: string, v: Record<string, string>) => {
+      const { data: t } = await admin.from("mail_templates").select("subject,html,to_extra,cc").eq("key", key).maybeSingle();
+      if (!t) return false;
+      subject = fill(t.subject, v, false); html = fill(t.html, v, true);
+      extraTo = list(t.to_extra); cc = list(t.cc);
+      return true;
+    };
+    if (fund_id) {
+      // อ่านด้วยสิทธิ์ผู้เรียก — ต้องเปิดหน้าแบบฟอร์มกองทุนได้ (RLS) ถึงส่งเมลเรื่องนี้ได้
+      const { data: f, error } = await caller.from("fund_form_submission").select("*").eq("id", fund_id).single();
+      if (error || !f) return json({ error: "ไม่พบคำขอ หรือไม่มีสิทธิ์" }, 403);
+      const reqBy = await nameOf(f.approval_requested_by), appr = await nameOf(f.approver_id || f.approved_by);
+      if (action === "fund_request") {
+        if (f.status !== "pending_approval") return json({ error: "คำขอไม่ได้รอกรรมการลงนาม" }, 400);
+        to = appr.email;
+      } else if (action === "fund_approved" || action === "fund_rejected") to = reqBy.email;
+      else return json({ error: "action ไม่ถูกต้อง" }, 400);
+      const ok = await tplVars(action, { doc_no: `#${f.id}`, kind: "แบบฟอร์มกองทุนสำรองเลี้ยงชีพ", person: f.emp_name || "",
+        emp_code: f.emp_code ? `(${f.emp_code})` : "", link: `${appUrl}/?fund=${f.id}`, reason: f.approval_note || "-",
+        requester: reqBy.name, approver: appr.name });
+      if (!ok) return json({ sent: false, reason: "no_template" });
+    } else if (action === "test") {
       to = user.email || "";
       subject = "ทดสอบส่งเมลจากระบบ HR";
       html = `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px">ตั้งค่าการส่งอีเมลถูกต้อง — ระบบส่งเมลจาก <b>${esc(cfg.sender)}</b> ได้แล้ว</div>`;

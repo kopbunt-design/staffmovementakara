@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, can, esc as escText, toast, currentUser } from "./app.js";
+import { allEmployees, can, esc as escText, toast, currentUser, notify } from "./app.js";
 import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-print.js";
+import { renderMail, downloadEml, mailList } from "./hr-letters.js";
 
 // ============================================================================
 // หน้า HR: แบบฟอร์มกองทุน
@@ -21,6 +22,7 @@ const STATUS = {
   submitted: { th: "ส่งออนไลน์แล้ว", c: "var(--amber)", bg: "var(--amber-light)" },
   accepted:  { th: "รับเรื่องแล้ว (เซ็นออนไลน์)", c: "var(--blue)", bg: "var(--blue-light)" },
   received:  { th: "รับเอกสารตัวจริงแล้ว", c: "var(--blue)", bg: "var(--blue-light)" },
+  pending_approval: { th: "รอกรรมการลงนาม", c: "var(--purple)", bg: "var(--purple-light)" },
   approved:  { th: "อนุมัติแล้ว",     c: "var(--green)", bg: "var(--green-light)" },
   sent:      { th: "ส่งหน่วยงานแล้ว", c: "var(--green)", bg: "var(--green-light)" },
   rejected:  { th: "ส่งกลับแก้ไข",   c: "var(--red)",   bg: "var(--red-light)" },
@@ -28,6 +30,10 @@ const STATUS = {
 };
 const badge = s => { const x = STATUS[s] || {}; return `<span class="badge" style="color:${x.c};background:${x.bg};">${esc(x.th || s)}</span>`; };
 const canEdit = () => can("data.fundforms.write");
+const canApprove = () => can("data.fundforms.approve");
+// กรรมการที่เลือกได้ (มีสิทธิ์อนุมัติ + ตั้งลายเซ็นแล้ว) — fund_approvers() ใน schema_fund_approval.sql
+let approvers = [], mailCfg = { mode: "outlook" }, fundTpl = [], approvalReady = true;
+const approverName = uid => { const a = approvers.find(x => x.user_id === uid); return a?.name_th || a?.email || "กรรมการ"; };
 // ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
 // ตอนรับเรื่องมี 2 ทาง: เซ็นออนไลน์มาแล้ว (รับเรื่องได้เลย) หรือพิมพ์ไปเซ็นสดแล้วเอาตัวจริงมาส่ง
 // หลัง HR รับเรื่องแล้ว พนักงานส่งฉบับใหม่ไม่ได้ (fund_form_submit กันไว้) จนกว่า HR จะส่งกลับให้แก้
@@ -36,12 +42,16 @@ function nextSteps(r) {
   if (r.status === "submitted") return [
     ...(signedOnline(r) ? [{ to: "accepted", label: "รับเรื่อง (เซ็นออนไลน์)" }] : []),
     { to: "received", label: "รับเอกสารตัวจริง (เซ็นสด)" }];
+  // กองทุนสำรองเลี้ยงชีพ: รับเรื่องแล้วส่งให้คณะกรรมการลงนามออนไลน์ได้ (หรือกรรมการเซ็นกระดาษแล้วกดอนุมัติเอง)
+  if ((r.status === "accepted" || r.status === "received") && r.form_type === "pvd" && approvalReady)
+    return [{ to: "approved", label: "อนุมัติแล้ว (เซ็นกระดาษ)" }, { req: true, label: "ส่งให้กรรมการลงนาม" }];
   return { accepted: [{ to: "approved", label: "อนุมัติแล้ว" }], received: [{ to: "approved", label: "อนุมัติแล้ว" }],
            approved: [{ to: "sent", label: "ส่งหน่วยงานแล้ว" }] }[r.status] || [];
 }
 // ปุ่มขั้นถัดไป — เฉพาะฉบับล่าสุดของคนนั้น ฉบับที่ถูกแทนแล้วไม่ต้องรับ
 const stepBtns = (r, small) => canEdit() && isLatest(r) ? nextSteps(r).map((x, i) =>
-  `<button class="btn ${small ? "btn-sm " : ""}${i === nextSteps(r).length - 1 ? "btn-primary" : "btn-secondary"}" data-next="${r.id}" data-to="${x.to}">✓ ${x.label}</button>`).join(" ") : "";
+  `<button class="btn ${small ? "btn-sm " : ""}${i === nextSteps(r).length - 1 ? "btn-primary" : "btn-secondary"}" ${x.req
+    ? `data-req="${r.id}">✉ ${x.label}` : `data-next="${r.id}" data-to="${x.to}">✓ ${x.label}`}</button>`).join(" ") : "";
 
 async function setStatus(r, status, note) {
   const upd = { status, updated_by: currentUser?.id || null };
@@ -104,7 +114,72 @@ async function boot() {
   }
   rows = sub.data || [];
   invites = inv.data || [];
+  const [ap, mc, mt] = await Promise.all([supabase.rpc("fund_approvers"),
+    supabase.from("mail_settings").select("*").eq("id", 1).maybeSingle(),
+    supabase.from("mail_templates").select("*").like("key", "fund_%")]);
+  approvalReady = !ap.error;               // ยังไม่ได้รัน schema_fund_approval.sql → ไม่มีปุ่มส่งลงนาม
+  approvers = ap.data || [];
+  if (!mc.error && mc.data) mailCfg = mc.data;
+  fundTpl = mt.data || [];
+  if (tab === "invite" && canApprove() && !canEdit()) tab = "approve";
   draw();
+  // เปิดจากอีเมล / กระดิ่ง / งานค้างหน้าหลัก (?fund=ID)
+  const deep = +new URLSearchParams(location.search).get("fund");
+  if (deep) { history.replaceState(null, "", location.pathname); const x = rows.find(r => r.id === deep);
+    if (x) { tab = x.status === "pending_approval" && x.approver_id === currentUser?.id ? "approve" : x.form_type; draw(); openDetail(x.id); }
+    else toast("ไม่พบคำขอนี้ (อาจถูกลบ หรือไม่มีสิทธิ์ดู)", "info"); }
+}
+
+// ---------------------------------------------------------------- ส่งลงนาม / อนุมัติ / อีเมล
+const myPending = () => rows.filter(r => r.status === "pending_approval" && r.approver_id === currentUser?.id);
+// อีเมล: โหมดส่งอัตโนมัติใช้ Edge Function letter-notify · โหมด Outlook (หรือส่งไม่สำเร็จ) ดาวน์โหลดไฟล์ .eml
+async function sendFundMail(r, action) {
+  if (mailCfg.mode === "auto") {
+    try {
+      const { data, error } = await supabase.functions.invoke("letter-notify", { body: { fund_id: r.id, action } });
+      if (error) throw error;
+      if (data?.sent) return `ส่งอีเมลถึง ${data.to} แล้ว`;
+    } catch { /* ตกไปใช้ไฟล์เมลด้านล่าง */ }
+  }
+  const t = fundTpl.find(x => x.key === action); if (!t) return "แจ้งในระบบแล้ว";
+  const appr = approvers.find(x => x.user_id === r.approver_id) || {};
+  const v = { doc_no: `#${r.id}`, kind: "แบบฟอร์มกองทุนสำรองเลี้ยงชีพ", person: r.emp_name || "", emp_code: r.emp_code ? `(${r.emp_code})` : "",
+    link: `${location.origin}/?fund=${r.id}`, reason: r.approval_note || "-",
+    requester: action === "fund_request" ? (currentUser?.user_metadata?.full_name || currentUser?.email || "") : (r.approval_requested_email || ""),
+    approver: appr.name_th || "" };
+  const to = action === "fund_request" ? appr.email : r.approval_requested_email;
+  downloadEml(mailList(to, t.to_extra || ""), renderMail(t.subject, v, false), renderMail(t.html, v, true),
+    `กองทุน #${r.id} ${action === "fund_request" ? "ขอลงนาม" : action === "fund_approved" ? "อนุมัติแล้ว" : "ส่งกลับ"}.eml`, mailList(t.cc || ""));
+  return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดไฟล์ใน Outlook แล้วกด Send";
+}
+function requestApproval(r, done) {
+  if (!approvers.length) { toast("ยังไม่มีกรรมการที่ตั้งลายเซ็นและมีสิทธิ์ลงนาม — ให้สิทธิ์ “ลงนามอนุมัติแบบฟอร์มกองทุน” และตั้งลายเซ็นที่ ออกหนังสือ HR → ตั้งค่า ก่อน", "error"); return; }
+  const el = modal(`ส่งให้คณะกรรมการลงนาม — #${r.id}`, `
+    <div style="margin-bottom:12px;"><b>${esc(r.emp_code)} ${esc(r.emp_name)}</b> · ${esc(topic(r))}</div>
+    <label class="form-label">ส่งถึงกรรมการ</label>
+    <div class="ff-appr">${approvers.map((a, i) => `<label class="ff-appr-o"><input type="radio" name="ffAppr" value="${a.user_id}" ${i === 0 ? "checked" : ""}>
+      <span><b>${esc(a.name_th || a.email)}</b><span class="text-muted">${esc(a.title_th || "")}${a.email ? ` · ${esc(a.email)}` : ""}</span></span></label>`).join("")}</div>
+    <div class="text-muted" style="font-size:12px;margin-top:10px;">ระบบส่งอีเมลแจ้งกรรมการ · ลงนามได้เฉพาะท่านที่เลือก · ลายเซ็นจะลงในช่อง “คณะกรรมการกองทุนลงนามอนุมัติ” เมื่อกดอนุมัติ</div>`,
+    `<button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok>✉ ส่งให้กรรมการ</button>`);
+  el.querySelector("[data-ok]").onclick = async () => {
+    const approver = el.querySelector("input[name=ffAppr]:checked")?.value;
+    const b = el.querySelector("[data-ok]"); b.disabled = true;
+    const { data, error } = await supabase.rpc("fund_request_approval", { p_id: r.id, p_approver: approver });
+    if (error) { b.disabled = false; toast("ส่งไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(r, data); el.remove();
+    notify("แบบฟอร์มกองทุนรอกรรมการลงนาม", `#${r.id} ${r.emp_name || ""}`, { silent: true, link: `fundforms?fund=${r.id}` });
+    toast(`ส่งถึง ${approverName(approver)} แล้ว · ${await sendFundMail(r, "fund_request")}`, "success");
+    done?.(); draw();
+  };
+}
+// ลายเซ็นกรรมการเป็นไฟล์ใน storage (ส่วนตัว) — โหลดเป็น data URL ก่อนเปิดหน้าพิมพ์
+async function printForm(r) {
+  let committeeSig = "";
+  if (r.committee?.signature_path) {
+    const { data } = await supabase.storage.from("letter-assets").download(r.committee.signature_path);
+    if (data) committeeSig = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(data); });
+  }
+  printSubmission(r, { committeeSig });
 }
 
 // หนึ่งคนยึดฉบับล่าสุดฉบับเดียว ไม่ว่าจะเป็นฟอร์มไหน — คนที่ได้ทั้งสองกองทุนต้องเลือกอย่างใดอย่างหนึ่ง
@@ -150,11 +225,23 @@ function draw() {
       <button class="cp-tab${tab === "invite" ? " on" : ""}" data-tab="invite">คำเชิญ (${live})</button>
       <button class="cp-tab${tab === "pvd" ? " on" : ""}" data-tab="pvd">กองทุนสำรองเลี้ยงชีพ (${cnt("pvd")})</button>
       <button class="cp-tab${tab === "wef" ? " on" : ""}" data-tab="wef">กองทุนสงเคราะห์ลูกจ้าง สกล.5 (${cnt("wef")})</button>
+      ${canApprove() ? `<button class="cp-tab${tab === "approve" ? " on" : ""}" data-tab="approve">รอฉันลงนาม${myPending().length ? ` <b style="color:var(--red);">(${myPending().length})</b>` : ""}</button>` : ""}
     </div>
   </div>
-  ${tab === "invite" ? inviteHTML() : listHTML()}
+  ${tab === "invite" ? inviteHTML() : tab === "approve" ? approveHTML() : listHTML()}
   <div class="pb-4"></div>`;
   wire();
+}
+
+function approveHTML() {
+  const list = myPending();
+  return `<div class="section mt-4"><div class="card"><div class="table-wrap">
+    ${list.length ? `<table class="data-table"><thead><tr><th>#</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ฝ่าย/แผนก</th><th>เรื่อง</th><th>ส่งมาเมื่อ</th><th></th></tr></thead>
+      <tbody>${list.map(r => `<tr><td>${r.id}</td><td>${esc(r.emp_code)}</td><td>${esc(r.emp_name)}</td><td>${esc(r.department)}</td>
+        <td style="max-width:260px;">${esc(topic(r))}</td><td style="white-space:nowrap;">${dt(r.approval_requested_at)}</td>
+        <td><button class="btn btn-sm btn-primary" data-view="${r.id}">เปิดดู / ลงนาม</button></td></tr>`).join("")}</tbody></table>`
+    : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">ไม่มีแบบฟอร์มรอท่านลงนาม</div></div>`}
+  </div></div></div>`;
 }
 
 function listHTML() {
@@ -171,7 +258,7 @@ function listHTML() {
       <tbody>${list.map(r => `<tr>
         <td>${r.id}</td><td style="white-space:nowrap;">${dt(r.submitted_at)}</td>
         <td style="white-space:nowrap;">${esc(r.emp_code)}</td><td>${esc(r.emp_name)}</td><td>${esc(r.department)}</td>
-        <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}${isLatest(r) || r.status === "cancelled" ? ""
+        <td style="max-width:260px;">${esc(topic(r))}</td><td>${badge(r.status)}${approvalLine(r)}${isLatest(r) || r.status === "cancelled" ? ""
           : `<div class="text-muted" style="font-size:11px;">ถูกแทนด้วยฉบับใหม่ #${latestByEmp().get(r.emp_code)?.id}</div>`}</td>
         <td style="white-space:nowrap;">${stepBtns(r, true)} <button class="btn btn-sm btn-secondary" data-view="${r.id}">ดู</button>
           ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-sm btn-secondary" data-back="${r.id}" style="color:var(--red);" title="ยกเลิกรายการนี้ ให้พนักงานแก้แล้วส่งใหม่ (ใช้ได้แม้อนุมัติแล้ว)">ยกเลิก ให้แก้ไข</button>` : ""}
@@ -181,6 +268,15 @@ function listHTML() {
     </div></div></div>`;
 }
 
+
+// บรรทัดเล็กใต้สถานะ: รอใครลงนาม / ใครลงนามแล้ว / กรรมการส่งกลับเพราะอะไร
+function approvalLine(r) {
+  const sm = (t, c = "var(--muted)") => `<div style="font-size:11.5px;color:${c};">${t}</div>`;
+  if (r.status === "pending_approval") return sm(`ถึง ${esc(approverName(r.approver_id))}`);
+  if ((r.status === "approved" || r.status === "sent") && r.committee) return sm(`ลงนามโดย ${esc(r.committee.name_th || "")}`);
+  if ((r.status === "accepted" || r.status === "received") && r.approval_note) return sm(`กรรมการส่งกลับ: ${esc(r.approval_note)}`, "var(--red)");
+  return "";
+}
 
 // ---------------------------------------------------------------- คำเชิญ
 // คำขอล่าสุดของคนนี้ในฟอร์มนี้ (ถ้ามี)
@@ -446,7 +542,8 @@ function wire() {
     if (await sendBack(r)) { draw(); toast(`#${r.id} ยกเลิกแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย`, "success"); }
   });
   pg.querySelectorAll("[data-view]").forEach(b => b.onclick = e => { e.preventDefault(); openDetail(+b.dataset.view); });
-  pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printSubmission(rows.find(r => r.id === +b.dataset.print)));
+  pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(rows.find(r => r.id === +b.dataset.print)));
+  pg.querySelectorAll("[data-req]").forEach(b => b.onclick = () => requestApproval(rows.find(r => r.id === +b.dataset.req)));
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openInvite(invites.find(i => i.id === +b.dataset.edit)));
   pg.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
     const msg = inviteMessage(invites.find(i => i.id === +b.dataset.copy));
@@ -476,12 +573,28 @@ function detailBody(r) {
   ].join("");
 }
 
+// ส่วนลงนามคณะกรรมการในหน้าต่างรายละเอียด
+function approvalPanel(r) {
+  const row = (k, v) => `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+    <div style="width:150px;flex:none;color:var(--muted);">${k}</div><div>${v}</div></div>`;
+  if (r.status === "pending_approval") return row("คณะกรรมการ", `รอ <b>${esc(approverName(r.approver_id))}</b> ลงนาม
+    <span class="text-muted" style="font-size:12px;">· ส่งเมื่อ ${dt(r.approval_requested_at)}</span>`);
+  if (r.committee && (r.status === "approved" || r.status === "sent")) return row("คณะกรรมการ",
+    `<span style="color:var(--green);font-weight:600;">✓ ลงนามอนุมัติแล้ว</span> โดย ${esc(r.committee.name_th || "")} · ${dt(r.approved_at)}`);
+  if (r.approval_note && (r.status === "accepted" || r.status === "received")) return row("คณะกรรมการ",
+    `<span style="color:var(--red);">ส่งกลับ: ${esc(r.approval_note)}</span>`);
+  return "";
+}
+
 function openDetail(id) {
   const r = rows.find(x => x.id === id); if (!r) return;
+  // กรรมการที่ถูกเลือก เปิดคำขอที่รอตัวเองลงนาม → หน้าต่างแบบลงนาม (ไม่มีช่องแก้สถานะของ HR)
+  const mine = r.status === "pending_approval" && r.approver_id === currentUser?.id && canApprove();
+  const mySig = approvers.some(a => a.user_id === currentUser?.id);
   const el = document.createElement("div");
   el.className = "modal-overlay"; el.id = "ffModal";
   el.innerHTML = `<div class="modal modal-lg">
-    <div class="modal-header"><div class="modal-title">#${r.id} · ${esc(FORM_NAME[r.form_type])}</div>
+    <div class="modal-header"><div class="modal-title">#${r.id} · ${esc(FORM_NAME[r.form_type])}${mine ? " · ขอลงนามอนุมัติ" : ""}</div>
       <button class="modal-close" data-x>✕</button></div>
     <div class="modal-body">
       <div style="margin-bottom:10px;"><b>${esc(r.emp_code)} ${esc(r.emp_name)}</b> · ${esc(r.department)}
@@ -492,26 +605,35 @@ function openDetail(id) {
         <div>${/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.payload?.signature || "")
           ? `<img src="${r.payload.signature}" alt="" style="height:56px;border:1px solid var(--border);border-radius:6px;background:#fff;"> <span class="text-muted" style="font-size:12px;">เซ็นออนไลน์</span>`
           : `<span class="text-muted">ไม่ได้เซ็นออนไลน์ — ต้องเซ็นบนกระดาษ</span>`}</div></div>
-      <div class="form-grid" style="margin-top:14px;">
+      ${approvalPanel(r)}
+      ${mine ? `<div class="ff-signnote">กด <b>อนุมัติและลงนาม</b> แล้วลายเซ็นของท่านจะลงในช่อง “คณะกรรมการกองทุนลงนามอนุมัติ” ของแบบฟอร์มนี้ทันที
+        · กด <b>ดูแบบฟอร์ม</b> เพื่อตรวจฉบับเต็มก่อน</div>`
+      : `<div class="form-grid" style="margin-top:14px;">
         <div class="form-group"><label class="form-label">สถานะ</label>
-          <select class="form-control" id="ffSt" ${canEdit() ? "" : "disabled"}>${Object.entries(STATUS).map(([k, v]) =>
+          <select class="form-control" id="ffSt" ${canEdit() && r.status !== "pending_approval" ? "" : "disabled"}>${Object.entries(STATUS)
+            .filter(([k]) => k !== "pending_approval" || r.status === k).map(([k, v]) =>
             `<option value="${k}" ${r.status === k ? "selected" : ""}>${v.th}</option>`).join("")}</select></div>
         <div class="form-group"><label class="form-label">หมายเหตุ HR</label>
           <textarea class="form-control" id="ffNote" ${canEdit() ? "" : "disabled"}>${esc(r.hr_note)}</textarea></div>
-      </div>
+      </div>`}
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer">${mine ? `
+      <button class="btn btn-danger" data-areject style="margin-right:auto;">ส่งกลับ HR</button>
+      <button class="btn btn-secondary" data-print>ดูแบบฟอร์ม</button>
+      ${mySig ? `<button class="btn btn-primary" data-approve>✓ อนุมัติและลงนาม</button>`
+        : `<span class="text-muted" style="font-size:12.5px;">บัญชีนี้ยังไม่มีลายเซ็น — ตั้งที่ ออกหนังสือ HR → ตั้งค่า หรือให้ Admin ตั้งให้</span>`}` : `
       ${canEdit() ? `<button class="btn btn-danger" data-del style="margin-right:auto;">ลบ</button>` : ""}
       ${canEdit() && isLatest(r) && r.status !== "rejected" ? `<button class="btn btn-secondary" data-back style="color:var(--red);">ยกเลิก ให้พนักงานแก้ไข</button>` : ""}
+      ${canEdit() && r.status === "pending_approval" ? `<button class="btn btn-secondary" data-recall>ดึงกลับ (เปลี่ยนกรรมการ)</button>` : ""}
       <button class="btn btn-secondary" data-print>พิมพ์ฟอร์ม</button>
-      ${canEdit() ? `<button class="btn btn-secondary" data-save>บันทึก</button>` : ""}
-      ${stepBtns(r, false)}
+      ${canEdit() && r.status !== "pending_approval" ? `<button class="btn btn-secondary" data-save>บันทึก</button>` : ""}
+      ${stepBtns(r, false)}`}
     </div></div>`;
   document.getElementById("modalPortal").appendChild(el);
   const close = () => el.remove();
   el.querySelector("[data-x]").onclick = close;
   el.onclick = e => { if (e.target === el) close(); };
-  el.querySelector("[data-print]").onclick = () => printSubmission(r);
+  el.querySelector("[data-print]").onclick = () => printForm(r);
   el.querySelector("[data-save]")?.addEventListener("click", async () => {
     const upd = { status: el.querySelector("#ffSt").value, hr_note: el.querySelector("#ffNote").value.trim() || null,
                   updated_by: currentUser?.id || null };
@@ -521,10 +643,32 @@ function openDetail(id) {
   });
   el.querySelectorAll("[data-next]").forEach(b => b.addEventListener("click", async () => {
     const to = b.dataset.to;
-    if (await setStatus(r, to, el.querySelector("#ffNote").value.trim() || null)) { close(); draw(); toast(STATUS[to].th, "success"); }
+    if (await setStatus(r, to, el.querySelector("#ffNote")?.value.trim() || null)) { close(); draw(); toast(STATUS[to].th, "success"); }
   }));
+  el.querySelector("[data-req]")?.addEventListener("click", () => { close(); requestApproval(r); });
   el.querySelector("[data-back]")?.addEventListener("click", async () => {
     if (await sendBack(r)) { close(); draw(); toast("ยกเลิกแล้ว — พนักงานเปิดลิงก์เดิมแล้วแก้จากข้อมูลเดิมได้เลย", "success"); }
+  });
+  el.querySelector("[data-recall]")?.addEventListener("click", async () => {
+    const { data, error } = await supabase.rpc("fund_recall_approval", { p_id: r.id });
+    if (error) { toast("ดึงกลับไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(r, data); close(); draw(); toast("ดึงกลับแล้ว — ส่งให้กรรมการท่านอื่นได้", "success");
+  });
+  el.querySelector("[data-approve]")?.addEventListener("click", async e => {
+    e.target.disabled = true;
+    const { data, error } = await supabase.rpc("fund_approve", { p_id: r.id });
+    if (error) { e.target.disabled = false; toast("อนุมัติไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(r, data); close();
+    notify("กรรมการลงนามแบบฟอร์มกองทุนแล้ว", `#${r.id} ${r.emp_name || ""}`, { silent: true, link: `fundforms?fund=${r.id}` });
+    toast(`ลงนามอนุมัติแล้ว · ${await sendFundMail(r, "fund_approved")}`, "success"); draw();
+  });
+  el.querySelector("[data-areject]")?.addEventListener("click", async () => {
+    const why = prompt("ส่งกลับให้ HR เพราะอะไร? (HR จะเห็นข้อความนี้)", "");
+    if (why === null) return;
+    const { data, error } = await supabase.rpc("fund_reject_approval", { p_id: r.id, p_reason: why });
+    if (error) { toast("ส่งกลับไม่สำเร็จ: " + error.message, "error"); return; }
+    Object.assign(r, data); close();
+    toast(`ส่งกลับ HR แล้ว · ${await sendFundMail(r, "fund_rejected")}`, "success"); draw();
   });
   el.querySelector("[data-del]")?.addEventListener("click", async () => {
     if (!confirm(`ลบคำขอ #${r.id} ของ ${r.emp_name}? ย้อนกลับไม่ได้ (ถ้าแค่ไม่ใช้แล้ว ให้เปลี่ยนสถานะเป็น "ยกเลิก" แทน)`)) return;

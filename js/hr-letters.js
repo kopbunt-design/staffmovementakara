@@ -308,7 +308,7 @@ export function emlText(to, subject, html, cc = "") {
   return [`To: ${to}`, ...(cc ? [`Cc: ${cc}`] : []), `Subject: =?UTF-8?B?${b64(subject)}?=`, "X-Unsent: 1", "MIME-Version: 1.0",
           "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body].join("\r\n");
 }
-function downloadEml(to, subject, html, name, cc = "") {
+export function downloadEml(to, subject, html, name, cc = "") {
   const url = URL.createObjectURL(new Blob([emlText(to, subject, html, cc)], { type: "message/rfc822" }));
   const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
