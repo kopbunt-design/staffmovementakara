@@ -1,0 +1,107 @@
+/* ============================================================================
+   Redesign layer — ดีไซน์ตามชุดดีไซน์ใน Figma (Intern Allowance — Redesign)
+   ฟอนต์ IBM Plex Sans Thai · หัวตารางพื้นอ่อน · สีน้อยลง · เส้น/มุมโค้งตามตัวแปรในไฟล์ Figma
+   โหลดต่อจาก style.css — เปลี่ยนเฉพาะหน้าตาบนจอ ไม่แตะข้อมูล/สูตรคำนวณ (อยู่ใน JS ทั้งหมด)
+   ไม่มีผลกับเอกสารที่พิมพ์ (หนังสือรับรอง แบบฟอร์มกองทุน สลิป 50 ทวิ — เปิดหน้าต่างใหม่พร้อม CSS ของตัวเอง)
+   และไม่มีผลกับอีเมล (ส่งเป็น HTML แยก)
+   ลบไฟล์นี้ออกจาก index.html = กลับเป็นหน้าตาเดิมทันที
+   ============================================================================ */
+
+:root {
+  /* ค่าจากตัวแปร Figma: Primitives (blue / gray / green / amber / red / yellow) */
+  --blue:#2B5DA8; --blue-dark:#234E8F; --blue-light:#EEF3FB;
+  --gold:#FFC629; --gold-dark:#B38600; --gold-light:#FFF4D1;
+  --green:#067647; --green-light:#ECFDF3;
+  --red:#B42318; --red-light:#FEF3F2;
+  --amber:#B54708; --amber-light:#FFFAEB;
+  --purple:#6D28D9; --purple-light:#F3F0FF;
+  --navy:#121926; --navy2:#202939;
+  --bg:#F7F8FA; --card:#FFFFFF; --border:#E4E8EE; --border2:#CED5DF;
+  --text:#121926; --muted:#4B5565; --muted2:#6B7585;
+  --radius:12px; --radius-sm:8px; --radius-lg:16px; --radius-md:12px;
+  --shadow:0 1px 2px rgba(18,25,38,.04);
+  --shadow-md:0 4px 12px rgba(18,25,38,.08);
+  --shadow-card:0 1px 2px rgba(18,25,38,.04),0 2px 8px -2px rgba(18,25,38,.06);
+  --shadow-card-lg:0 2px 4px rgba(18,25,38,.04),0 10px 24px -8px rgba(18,25,38,.12);
+  /* แดชบอร์ด/รายงาน: ตัวเลขและสีสถานะคงความหมายเดิม (เขียว=บวก แดง=ลบ เหลือง=เฝ้าระวัง) */
+  --exec-navy:#15305A; --exec-navy-2:#1C3F74; --exec-navy-soft:#EEF3FB;
+  --exec-gold:#B38600; --exec-gold-soft:#FFF4D1;
+  --exec-ink:#121926; --exec-muted:#6B7585; --exec-line:#E4E8EE;
+  --exec-pos:#067647; --exec-pos-soft:#ECFDF3;
+  --exec-neg:#B42318; --exec-neg-soft:#FEF3F2;
+  --exec-warn:#B54708; --exec-warn-soft:#FFFAEB;
+}
+
+body{font-family:'IBM Plex Sans Thai','Sarabun',system-ui,sans-serif;color:var(--text);background:var(--bg);line-height:1.57;}
+
+/* ---------- หัวหน้า ---------- */
+.page-header{padding:28px 32px 0;}
+.page-heading{font-size:26px;font-weight:600;color:var(--text);letter-spacing:-.2px;line-height:1.35;}
+.page-sub{font-size:14px;color:var(--muted2);margin-top:4px;}
+.section{padding:20px 32px 0;}
+
+/* ---------- การ์ด ---------- */
+.card{border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-card);}
+.card-body{padding:20px 24px;}
+.card-title{font-size:13px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0;}
+
+/* ---------- ตาราง: หัวพื้นอ่อนแทนแถบน้ำเงินเข้ม ---------- */
+.data-table{font-size:14px;}
+.data-table th{background:#F7F8FA;color:var(--muted);font-weight:500;font-size:12.5px;padding:11px 16px;
+  border-bottom:1px solid var(--border);letter-spacing:0;}
+.data-table td{padding:12px 16px;border-bottom:1px solid var(--border);}
+.data-table tr:hover td{background:#F7F8FA;}
+.data-table th.num,.data-table td.num{font-variant-numeric:tabular-nums;}
+
+/* ตารางพนักงาน: คอลัมน์ที่ตรึงด้านซ้ายต้องเป็นสีเดียวกับหัวตารางใหม่ */
+.emp-table thead .col-pin{background:#F7F8FA;}
+.emp-table thead .col-pin-2::after{background:var(--border2);}
+.emp-table tr:hover .col-pin{background:#F7F8FA;}
+/* ค่าจ้างเหมา: หัวกลุ่มรายได้/รายหักเป็นพื้นอ่อน + ตัวสี (เดิมพื้นเข้มตัวขาว) */
+.cp-gh-e{background:#ECFDF3!important;color:#067647!important;font-weight:600!important;}
+.cp-gh-d{background:#FEF3F2!important;color:#B42318!important;font-weight:600!important;}
+
+/* ---------- ปุ่ม ---------- */
+.btn{border-radius:var(--radius-sm);font-weight:500;font-size:14px;padding:8px 16px;}
+.btn-sm{font-size:13px;padding:6px 12px;}
+.btn-primary{background:var(--blue);border-radius:var(--radius-sm);font-weight:500;}
+.btn-primary:hover{background:var(--blue-dark);}
+.btn-secondary{background:#fff;border:1px solid var(--border2);color:var(--text);}
+.btn-secondary:hover{background:#F7F8FA;border-color:#9AA4B2;}
+
+/* ---------- ฟอร์ม ---------- */
+.form-label{font-size:12.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;}
+.form-control,.filter-select{border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:14px;}
+.form-control:focus,.filter-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,93,168,.14);}
+
+/* ---------- ป้ายสถานะ ---------- */
+.badge{border-radius:999px;font-weight:500;font-size:12px;padding:2px 10px;}
+
+/* ---------- เมนูข้าง: เลือกอยู่ = พื้นฟ้าอ่อน + แถบเหลืองแบรนด์ด้านซ้าย ---------- */
+.sidebar{background:#fff;border-right:1px solid var(--border);}
+.nav-item{border-radius:var(--radius-sm);color:#4B5565;font-size:14px;font-weight:400;padding:9px 12px;position:relative;}
+.nav-item:hover{background:#F7F8FA;color:var(--text);}
+.nav-item.active{background:var(--blue-light);color:var(--blue-dark);font-weight:500;}
+.nav-item.active::before{content:"";position:absolute;left:-8px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--gold);}
+.nav-section{color:#6B7585;font-weight:600;}
+
+/* ---------- แท็บ ---------- */
+.cp-tab{font-weight:500;font-size:14px;color:var(--muted2);}
+.cp-tab.on{color:var(--blue-dark);border-bottom-color:var(--blue);}
+
+/* ---------- หน้าต่าง ---------- */
+.modal{border-radius:16px;box-shadow:0 24px 48px -12px rgba(18,25,38,.25);}
+.modal-overlay{background:rgba(18,25,38,.4);}
+.modal-title{font-size:18px;font-weight:600;color:var(--text);}
+
+/* ---------- แดชบอร์ด / รายงาน: เปลี่ยนแค่หน้าตา ตัวเลขและโครงเดิมทั้งหมด ---------- */
+.dsh-card{border:1px solid var(--border);box-shadow:var(--shadow-card);}
+.dsh-hero{background:linear-gradient(135deg,#15305A 0%,#1C3F74 100%);}
+
+/* ---------- หน้าหลัก ---------- */
+.hm-hello{font-weight:600;color:var(--text);}
+.hm-tasks,.hm-folder,.hm-tile{border-color:var(--border);}
+
+/* ป้าย "เว็บตัวอย่าง" มุมจอ — มีเฉพาะ branch redesign-preview · ลบก่อน merge เข้า main */
+body::after{content:"เว็บตัวอย่าง · ดีไซน์ใหม่";position:fixed;right:14px;bottom:14px;z-index:99999;pointer-events:none;
+  background:#121926;color:#FFC629;font:600 12px 'IBM Plex Sans Thai',sans-serif;padding:6px 12px;border-radius:999px;opacity:.9}
