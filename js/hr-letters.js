@@ -2,6 +2,7 @@ import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, notify, userRole } from "./app.js";
 import { bahtText } from "./contract-docs.js";
 import { comboHTML, bindCombo } from "./combobox.js";
+import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions } from "./masterdata-admin.js";
 
 // ============================================================================
@@ -349,7 +350,9 @@ async function boot() {
   const [mc, mt] = await Promise.all([supabase.from("mail_settings").select("*").eq("id", 1).maybeSingle(),
                                       supabase.from("mail_templates").select("*")]);
   if (!mc.error && mc.data) mailCfg = mc.data;
-  mailTpl = !mt.error && mt.data?.length ? mt.data : DEFAULT_MAIL;
+  // แบบอีเมลของกองทุน (fund_*) แก้ที่หน้าแบบฟอร์มกองทุน ไม่ปนในหน้านี้
+  const ownTpl = (mt.data || []).filter(x => !x.key.startsWith("fund_"));
+  mailTpl = !mt.error && ownTpl.length ? ownTpl : DEFAULT_MAIL;
   if (!canWrite() && canApprove()) tab = "approve";
   draw();
   // เปิดจากลิงก์ในเมล / กระดิ่ง / งานค้างหน้าหลัก (?letter=ID) · แจ้งเตือนรุ่นเก่าส่งเลขที่มาแทน (?letter_no=HR-122-2026)
@@ -712,37 +715,15 @@ function mailSettingsHTML() {
     <div style="display:flex;gap:8px;margin-top:10px;"><button class="btn btn-primary" id="mlSave">บันทึกการตั้งค่า</button><button class="btn btn-secondary" id="mlTest">ทดสอบส่งเมล (ถึงตัวเอง)</button></div>
     <hr style="margin:18px 0;border:none;border-top:1px solid var(--border);">
     <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">แบบอีเมล</div>
-    <div class="text-muted" style="font-size:12.5px;margin-bottom:8px;">ใส่โค้ด HTML ได้ · ตัวแปร: <code>{{doc_no}}</code> <code>{{kind}}</code> <code>{{person}}</code> <code>{{emp_code}}</code> <code>{{link}}</code> <code>{{reason}}</code> <code>{{requester}}</code> <code>{{approver}}</code></div>
-    <div class="lt-mail-ed"><div>
-      <select class="form-control" id="mtKey" style="max-width:260px;">${mailTpl.map(x => `<option value="${x.key}" ${x.key === t.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select>
-      <div class="lt-hint" style="margin-top:8px;">ผู้รับหลักใส่ให้อัตโนมัติ: ${tplKey === "request" ? "ผู้อนุมัติที่เลือกตอนส่ง" : "HR คนที่ส่งขออนุมัติฉบับนั้น"} · ใส่เพิ่มได้ด้านล่าง คั่นด้วยจุลภาค</div>
-      <label class="lt-f"><span>ส่งถึงเพิ่มเติม (To)</span><input class="form-control" id="mtTo" value="${esc(t.to_extra || "")}" placeholder="เช่น hr.team@akararesources.com"></label>
-      <label class="lt-f"><span>สำเนาถึง (CC)</span><input class="form-control" id="mtCc" value="${esc(t.cc || "")}" placeholder="เช่น chalita@akararesources.com, kopbun@akararesources.com"></label>
-      <label class="lt-f"><span>หัวเรื่อง</span><input class="form-control" id="mtSubject" value="${esc(t.subject || "")}"></label>
-      <label class="lt-f"><span>เนื้อหา (HTML)</span><textarea class="form-control" id="mtHtml" rows="14" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;">${esc(t.html || "")}</textarea></label>
-      <button class="btn btn-primary" id="mtSave" style="margin-top:8px;">บันทึกแบบอีเมล</button></div>
-      <div><div class="lt-f"><span>ตัวอย่าง</span></div><div class="lt-mail-subj" id="mtPrevSubj"></div><iframe id="mtPrev" title="ตัวอย่างอีเมล"></iframe></div></div>
+    ${tplEditorHTML(mailTpl, tplKey, k => k === "request" ? "ผู้อนุมัติที่เลือกตอนส่ง" : "HR คนที่ส่งขออนุมัติฉบับนั้น")}
   </div></div>`;
 }
 const SAMPLE_MAIL = { doc_no: "HR-115-2026", kind: "หนังสือรับรองเงินเดือน (ภาษาไทย)", person: "นางสาวตัวอย่าง ทดสอบ", emp_code: "(AKR00000001)",
   link: "#", reason: "แก้ตำแหน่งให้ตรงกับทะเบียน", requester: "ผู้ออกหนังสือ", approver: "นายศุภโชค พันธุมิตร" };
 function wireMail() {
   const pg = document.getElementById("pageLetters"), $ = s => pg.querySelector(s);
-  if (!$("#mtKey")) return;
-  const prev = () => { $("#mtPrevSubj").textContent = renderMail($("#mtSubject").value, SAMPLE_MAIL, false);
-    $("#mtPrev").srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:12px">${renderMail($("#mtHtml").value, SAMPLE_MAIL, true)}</body></html>`; };
-  prev();
-  $("#mtSubject").oninput = prev; $("#mtHtml").oninput = prev;
-  $("#mtKey").onchange = e => { tplKey = e.target.value; draw(); };
-  $("#mtSave").onclick = async () => {
-    const to_extra = mailList($("#mtTo").value), cc = mailList($("#mtCc").value);
-    const bad = [$("#mtTo").value, $("#mtCc").value].join(",").split(/[,;\s]+/).filter(x => x.trim() && !mailList(x));
-    if (bad.length) { toast(`อีเมลไม่ถูกต้อง: ${bad.join(", ")}`, "error"); return; }
-    const upd = { subject: $("#mtSubject").value, html: $("#mtHtml").value, to_extra: to_extra || null, cc: cc || null, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from("mail_templates").update(upd).eq("key", tplKey);
-    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
-    Object.assign(mailTpl.find(x => x.key === tplKey), upd); toast("บันทึกแบบอีเมลแล้ว", "success");
-  };
+  if (!$("#mlSave")) return;          // กล่องตั้งค่าอีเมลแสดงเฉพาะคนที่มีสิทธิ์
+  wireTplEditor(pg, mailTpl, { sample: SAMPLE_MAIL, onSwitch: k => { tplKey = k; draw(); } });
   $("#mlSave").onclick = async () => {
     const upd = { mode: pg.querySelector('input[name="mlMode"]:checked')?.value || "outlook", tenant_id: $("#mlTenant").value.trim() || null,
                   client_id: $("#mlClient").value.trim() || null, sender: $("#mlSender").value.trim() || null, updated_at: new Date().toISOString() };

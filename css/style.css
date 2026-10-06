@@ -731,6 +731,14 @@ thead .cp-sticky{z-index:3}
 .cp-tax{background:#f4f1f0!important;color:var(--text);font-variant-numeric:tabular-nums;text-align:right;padding-right:12px!important}
 .cp-tax small{display:block;font-size:10.5px;color:var(--muted)}
 .cp-recs{max-width:240px;white-space:normal!important}
+.fc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.fc-t{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:2px}
+.fc-add{display:flex;gap:8px;align-items:center}
+.fc-add select{min-width:280px}
+.fc-add .btn{white-space:nowrap}
+.fc-ok{color:var(--green);font-weight:600;font-size:12.5px}
+.fc-no{color:var(--red);font-weight:600;font-size:12.5px}
+.fc-tbl td{vertical-align:middle}
 .ff-appr{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .ff-appr-o{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer}
 .ff-appr-o:has(input:checked){border-color:var(--blue);background:var(--blue-light)}

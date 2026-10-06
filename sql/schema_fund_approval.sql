@@ -194,3 +194,138 @@ on conflict (key) do nothing;
 insert into permissions (key, category, label, description, sort_order) values
   ('data.fundforms.approve', 'data', 'ลงนามอนุมัติแบบฟอร์มกองทุน', 'คณะกรรมการกองทุน — ลงลายเซ็นอนุมัติแบบฟอร์มที่ HR ส่งมา (ต้องมีสิทธิ์เปิดหน้าแบบฟอร์มกองทุนด้วย)', 43)
 on conflict (key) do update set label = excluded.label, description = excluded.description, sort_order = excluded.sort_order;
+
+-- ============================================================================
+-- 2. รายชื่อคณะกรรมการ (แท็บ "ตั้งค่า" ในหน้าแบบฟอร์มกองทุน) + แบบอีเมลกองทุน
+--    ส่งลงนามได้เฉพาะคนในรายชื่อนี้ ที่มีสิทธิ์ลงนามและตั้งลายเซ็นแล้ว
+--    อีเมลผู้ส่งใช้ค่าเดียวกับหนังสือ HR (mail_settings) — แบบอีเมลแยก (key fund_*)
+-- ============================================================================
+create table if not exists fund_committee (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  sort_order int not null default 100,
+  added_by   uuid,
+  added_at   timestamptz not null default now()
+);
+alter table fund_committee enable row level security;
+drop policy if exists "fc_read"  on fund_committee;
+drop policy if exists "fc_write" on fund_committee;
+create policy "fc_read"  on fund_committee for select using (has_perm('page.fundforms'));
+create policy "fc_write" on fund_committee for all using (has_perm('data.fundforms.write')) with check (has_perm('data.fundforms.write'));
+
+-- สถานะความพร้อมของกรรมการแต่ละคน (หน้าเว็บอ่านสิทธิ์ของคนอื่นเองไม่ได้)
+create or replace function fund_committee_status()
+returns table (user_id uuid, name text, email text, role text, has_page boolean, has_approve boolean,
+               has_signature boolean, signer_name text, signer_title text, signer_email text, sort_order int)
+language sql security definer stable set search_path = public as $$
+  select c.user_id, ur.name, ur.email, ur.role,
+         user_has_perm(c.user_id, 'page.fundforms'), user_has_perm(c.user_id, 'data.fundforms.approve'),
+         g.signature_path is not null, g.name_th, g.title_th, g.email, c.sort_order
+    from fund_committee c
+    left join user_roles ur on ur.user_id = c.user_id
+    left join letter_signers g on g.user_id = c.user_id
+   where has_perm('page.fundforms')
+   order by c.sort_order, ur.name;
+$$;
+revoke all on function fund_committee_status() from public, anon;
+grant execute on function fund_committee_status() to authenticated;
+
+-- กรรมการที่เลือกได้ตอนส่ง: อยู่ในรายชื่อ + มีสิทธิ์ลงนาม + ตั้งลายเซ็นแล้ว
+create or replace function fund_approvers()
+returns table (user_id uuid, name_th text, title_th text, email text)
+language sql security definer stable set search_path = public as $$
+  select g.user_id, g.name_th, g.title_th, g.email from fund_committee c join letter_signers g on g.user_id = c.user_id
+   where has_perm('page.fundforms') and g.signature_path is not null and user_has_perm(g.user_id, 'data.fundforms.approve')
+   order by c.sort_order, g.name_th;
+$$;
+
+create or replace function fund_request_approval(p_id bigint, p_approver uuid)
+returns fund_form_submission language plpgsql security definer set search_path = public as $$
+declare s fund_form_submission;
+begin
+  if not has_perm('data.fundforms.write') then raise exception 'ไม่มีสิทธิ์จัดการคำขอกองทุน'; end if;
+  select * into s from fund_form_submission where id = p_id for update;
+  if s.id is null then raise exception 'ไม่พบคำขอ'; end if;
+  if s.form_type <> 'pvd' then raise exception 'ส่งลงนามได้เฉพาะแบบฟอร์มกองทุนสำรองเลี้ยงชีพ'; end if;
+  if s.status not in ('accepted','received') then raise exception 'ต้องรับเรื่องก่อน จึงส่งให้กรรมการลงนามได้'; end if;
+  if exists (select 1 from fund_form_submission x where x.emp_code = s.emp_code and x.status <> 'cancelled'
+               and x.submitted_at > s.submitted_at) then raise exception 'มีฉบับใหม่กว่านี้ — ส่งฉบับล่าสุดแทน'; end if;
+  if p_approver is null or not exists (select 1 from fund_committee where user_id = p_approver) then
+    raise exception 'ผู้ที่เลือกไม่อยู่ในรายชื่อคณะกรรมการ'; end if;
+  if not user_has_perm(p_approver, 'data.fundforms.approve') then
+    raise exception 'กรรมการที่เลือกยังไม่มีสิทธิ์ลงนามแบบฟอร์มกองทุน'; end if;
+  if not exists (select 1 from letter_signers where user_id = p_approver and signature_path is not null) then
+    raise exception 'กรรมการที่เลือกยังไม่ได้ตั้งลายเซ็น'; end if;
+  perform set_config('fund.approving', 'on', true);
+  update fund_form_submission set status = 'pending_approval', approval_prev_status = s.status, approver_id = p_approver,
+         approval_requested_at = now(), approval_requested_by = auth.uid(), approval_requested_email = auth.jwt()->>'email',
+         approval_note = null, updated_by = auth.uid()
+   where id = p_id returning * into s;
+  return s;
+end $$;
+
+-- HR กองทุนอ่าน/แก้แบบอีเมลของกองทุน และอ่านโหมดส่งเมลได้ (ไม่ต้องมีสิทธิ์หน้าหนังสือ HR)
+drop policy if exists "ms_read"  on mail_settings;
+create policy "ms_read"  on mail_settings for select using (has_perm('page.letters') or has_perm('page.fundforms'));
+drop policy if exists "mt_read"  on mail_templates;
+drop policy if exists "mt_write" on mail_templates;
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')));
+-- ตั้งลายเซ็นให้กรรมการจากหน้ากองทุน: ใช้กติกาเดิม (เจ้าของตั้งเอง หรือ Admin ตั้งแทน)
+
+-- แบบอีเมลกองทุนรุ่นจัดหน้าเต็ม (ดีไซน์เดียวกับเมลหนังสือ HR) — แทนแบบตั้งต้นเดิมครั้งเดียว
+-- แบบที่มีเครื่องหมาย akara-fund-v2 แล้ว (รวมที่ HR แก้ต่อ) จะไม่ถูกทับเมื่อรันไฟล์นี้ซ้ำ
+insert into mail_templates (key, label, subject, html) values
+('fund_request', 'กองทุน: ขอให้กรรมการลงนาม', '[ขอลงนาม] แบบฟอร์มกองทุนสำรองเลี้ยงชีพ — {{person}} {{emp_code}}', $h$<!-- akara-fund-v2 -->
+<div style="margin:0;padding:24px 12px;background:#EEF2F7;font-family:Tahoma,Arial,sans-serif;">
+ <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #E2E8F0;">
+  <div style="background:#0F1C4D;color:#ffffff;padding:16px 26px;font-size:14px;letter-spacing:.3px;">HR · Akara Resources</div>
+  <div style="padding:26px;">
+   <span style="display:inline-block;background:#EDE9FE;color:#6D28D9;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:99px;">● รอท่านลงนาม</span>
+   <h2 style="margin:16px 0 6px;font-size:21px;color:#0F1C4D;">แบบฟอร์มกองทุนรอคณะกรรมการลงนามอนุมัติ</h2>
+   <p style="margin:0 0 18px;color:#64748B;font-size:14px;">HR รับเรื่องแล้ว กรุณาตรวจสอบและลงนามในระบบ</p>
+   <table style="width:100%;border-collapse:collapse;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;">
+    <tr><td style="padding:10px 16px;color:#64748B;width:110px;">คำขอ</td><td style="padding:10px 16px;font-weight:bold;color:#0F1C4D;">{{doc_no}}</td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">เรื่อง</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;">{{kind}}</td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">พนักงาน</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;">{{person}} <span style="color:#94A3B8;">{{emp_code}}</span></td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">ส่งโดย</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;">{{requester}}</td></tr>
+   </table>
+   <div style="margin:24px 0 6px;"><a href="{{link}}" style="display:inline-block;background:#2B5AC7;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 26px;border-radius:9px;font-size:15px;">เปิดแบบฟอร์มเพื่อลงนาม</a></div>
+   <p style="margin:18px 0 0;color:#94A3B8;font-size:12px;">ต้องเข้าสู่ระบบก่อนเปิดดู · ลายเซ็นของท่านจะลงในแบบฟอร์มเมื่อกดอนุมัติเท่านั้น</p>
+  </div>
+ </div>
+</div>$h$),
+('fund_approved', 'กองทุน: แจ้งกรรมการอนุมัติแล้ว', '[อนุมัติแล้ว] แบบฟอร์มกองทุน {{doc_no}} — {{person}}', $h$<!-- akara-fund-v2 -->
+<div style="margin:0;padding:24px 12px;background:#EEF2F7;font-family:Tahoma,Arial,sans-serif;">
+ <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #E2E8F0;">
+  <div style="background:#0F1C4D;color:#ffffff;padding:16px 26px;font-size:14px;letter-spacing:.3px;">HR · Akara Resources</div>
+  <div style="padding:26px;">
+   <span style="display:inline-block;background:#E6F5EE;color:#0D7C4B;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:99px;">✓ อนุมัติแล้ว</span>
+   <h2 style="margin:16px 0 6px;font-size:21px;color:#0F1C4D;">คณะกรรมการกองทุนลงนามอนุมัติแล้ว</h2>
+   <p style="margin:0 0 18px;color:#64748B;font-size:14px;">ลงนามโดย {{approver}}</p>
+   <table style="width:100%;border-collapse:collapse;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;">
+    <tr><td style="padding:10px 16px;color:#64748B;width:110px;">คำขอ</td><td style="padding:10px 16px;font-weight:bold;color:#0F1C4D;">{{doc_no}}</td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">พนักงาน</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;">{{person}} <span style="color:#94A3B8;">{{emp_code}}</span></td></tr>
+   </table>
+   <div style="margin:24px 0 6px;"><a href="{{link}}" style="display:inline-block;background:#2B5AC7;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 26px;border-radius:9px;font-size:15px;">เปิดแบบฟอร์ม</a></div>
+  </div>
+ </div>
+</div>$h$),
+('fund_rejected', 'กองทุน: แจ้งกรรมการส่งกลับ', '[ส่งกลับ] แบบฟอร์มกองทุน {{doc_no}} — {{person}}', $h$<!-- akara-fund-v2 -->
+<div style="margin:0;padding:24px 12px;background:#EEF2F7;font-family:Tahoma,Arial,sans-serif;">
+ <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #E2E8F0;">
+  <div style="background:#0F1C4D;color:#ffffff;padding:16px 26px;font-size:14px;letter-spacing:.3px;">HR · Akara Resources</div>
+  <div style="padding:26px;">
+   <span style="display:inline-block;background:#FDECEA;color:#C0392B;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:99px;">↩ ส่งกลับ</span>
+   <h2 style="margin:16px 0 6px;font-size:21px;color:#0F1C4D;">กรรมการส่งแบบฟอร์มกลับมาให้ HR</h2>
+   <p style="margin:0 0 18px;color:#64748B;font-size:14px;">โดย {{approver}}</p>
+   <table style="width:100%;border-collapse:collapse;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;">
+    <tr><td style="padding:10px 16px;color:#64748B;width:110px;">คำขอ</td><td style="padding:10px 16px;font-weight:bold;color:#0F1C4D;">{{doc_no}}</td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">พนักงาน</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;">{{person}} <span style="color:#94A3B8;">{{emp_code}}</span></td></tr>
+    <tr><td style="padding:10px 16px;color:#64748B;border-top:1px solid #E2E8F0;">เหตุผล</td><td style="padding:10px 16px;border-top:1px solid #E2E8F0;color:#C0392B;">{{reason}}</td></tr>
+   </table>
+   <div style="margin:24px 0 6px;"><a href="{{link}}" style="display:inline-block;background:#2B5AC7;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 26px;border-radius:9px;font-size:15px;">เปิดแบบฟอร์ม</a></div>
+  </div>
+ </div>
+</div>$h$)
+on conflict (key) do update set subject = excluded.subject, html = excluded.html, updated_at = now()
+  where mail_templates.html not like '%akara-fund-v2%';

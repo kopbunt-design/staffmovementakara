@@ -2,6 +2,7 @@ import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, notify } from "./app.js";
 import { PVD_REQUESTS, PVD_POLICIES, FORM_NAME, printSubmission } from "./fund-print.js";
 import { renderMail, downloadEml, mailList } from "./hr-letters.js";
+import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
 
 // ============================================================================
 // หน้า HR: แบบฟอร์มกองทุน
@@ -33,6 +34,8 @@ const canEdit = () => can("data.fundforms.write");
 const canApprove = () => can("data.fundforms.approve");
 // กรรมการที่เลือกได้ (มีสิทธิ์อนุมัติ + ตั้งลายเซ็นแล้ว) — fund_approvers() ใน schema_fund_approval.sql
 let approvers = [], mailCfg = { mode: "outlook" }, fundTpl = [], approvalReady = true;
+// แท็บตั้งค่า: รายชื่อคณะกรรมการ + สถานะความพร้อม (fund_committee_status) · ผู้ใช้ทั้งหมดไว้เลือกเพิ่ม
+let committee = [], committeeReady = true, users = [], fundTplKey = "fund_request";
 const approverName = uid => { const a = approvers.find(x => x.user_id === uid); return a?.name_th || a?.email || "กรรมการ"; };
 // ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
 // ตอนรับเรื่องมี 2 ทาง: เซ็นออนไลน์มาแล้ว (รับเรื่องได้เลย) หรือพิมพ์ไปเซ็นสดแล้วเอาตัวจริงมาส่ง
@@ -121,6 +124,7 @@ async function boot() {
   approvers = ap.data || [];
   if (!mc.error && mc.data) mailCfg = mc.data;
   fundTpl = mt.data || [];
+  if (canEdit()) await loadCommittee();
   if (tab === "invite" && canApprove() && !canEdit()) tab = "approve";
   draw();
   // เปิดจากอีเมล / กระดิ่ง / งานค้างหน้าหลัก (?fund=ID)
@@ -128,6 +132,112 @@ async function boot() {
   if (deep) { history.replaceState(null, "", location.pathname); const x = rows.find(r => r.id === deep);
     if (x) { tab = x.status === "pending_approval" && x.approver_id === currentUser?.id ? "approve" : x.form_type; draw(); openDetail(x.id); }
     else toast("ไม่พบคำขอนี้ (อาจถูกลบ หรือไม่มีสิทธิ์ดู)", "info"); }
+}
+
+// ---------------------------------------------------------------- ตั้งค่า: คณะกรรมการ + แบบอีเมล
+async function loadCommittee() {
+  const [c, u, ap] = await Promise.all([supabase.rpc("fund_committee_status"),
+    supabase.from("user_roles").select("user_id,name,email,role").order("name"), supabase.rpc("fund_approvers")]);
+  committeeReady = !c.error;
+  committee = c.data || []; users = u.data || [];
+  if (!ap.error) approvers = ap.data || [];
+}
+const ready = m => m.has_page && m.has_approve && m.has_signature && !!(m.signer_email || m.email);
+const MAIL_TO = { fund_request: "กรรมการที่เลือกตอนส่งลงนาม", fund_approved: "HR คนที่ส่งให้ลงนาม", fund_rejected: "HR คนที่ส่งให้ลงนาม" };
+const SAMPLE_FUND = { doc_no: "#51", kind: "แบบฟอร์มกองทุนสำรองเลี้ยงชีพ", person: "นายตัวอย่าง ทดสอบ", emp_code: "(AKR00000001)",
+  link: "#", reason: "อัตราสะสมไม่ตรงกับที่แจ้ง", requester: "เจ้าหน้าที่ HR", approver: "นายศุภโชค พันธุมิตร" };
+
+function settingsHTML() {
+  if (!committeeReady) return `<div class="section mt-4"><div class="cp-warn">ยังไม่ได้ตั้งระบบคณะกรรมการ — รัน <code>sql/schema_fund_approval.sql</code> ใน Supabase ก่อน</div></div>`;
+  const inList = new Set(committee.map(m => m.user_id));
+  const ok = (on, yes, no) => on ? `<span class="fc-ok">✓ ${yes}</span>` : `<span class="fc-no">✗ ${no}</span>`;
+  const canRoles = can("data.roles.manage");
+  return `<div class="section mt-4"><div class="card"><div class="card-body">
+    <div class="fc-head"><div><div class="fc-t">คณะกรรมการกองทุน</div>
+        <div class="text-muted" style="font-size:12.5px;">ตอนส่งแบบฟอร์มให้ลงนาม เลือกได้เฉพาะคนในรายชื่อนี้ที่พร้อมแล้ว · ระบบส่งอีเมลแจ้งไปที่อีเมลรับแจ้งของแต่ละคน</div></div>
+      <div class="fc-add"><select class="form-control" id="fcPick"><option value="">— เลือกผู้ใช้เพื่อเพิ่มเป็นกรรมการ —</option>
+        ${users.filter(u => !inList.has(u.user_id)).map(u => `<option value="${u.user_id}">${esc(u.name || u.email)}${u.name && u.email ? ` · ${esc(u.email)}` : ""}</option>`).join("")}</select>
+        <button class="btn btn-primary" id="fcAdd">+ เพิ่มกรรมการ</button></div></div>
+    ${committee.length ? `<table class="data-table fc-tbl"><thead><tr><th>กรรมการ</th><th>อีเมลรับแจ้ง</th><th>สิทธิ์</th><th>ลายเซ็น</th><th>สถานะ</th><th></th></tr></thead><tbody>
+      ${committee.map(m => `<tr>
+        <td><b>${esc(m.signer_name || m.name || m.email || "?")}</b>${m.signer_title ? `<div class="text-muted" style="font-size:12px;">${esc(m.signer_title)}</div>` : ""}</td>
+        <td>${esc(m.signer_email || m.email || "") || `<span class="fc-no">✗ ไม่มีอีเมล</span>`}</td>
+        <td>${ok(m.has_page && m.has_approve, "ครบ", [!m.has_page && "เปิดหน้า", !m.has_approve && "ลงนาม"].filter(Boolean).join(" · "))}
+          ${m.has_page && m.has_approve ? "" : `<div class="text-muted" style="font-size:11.5px;">role: ${esc(m.role || "-")}</div>`}</td>
+        <td>${ok(m.has_signature, "ตั้งแล้ว", "ยังไม่ตั้ง")}</td>
+        <td>${ready(m) ? `<span class="badge" style="color:var(--green);background:var(--green-light);">พร้อมรับงาน</span>`
+                        : `<span class="badge" style="color:var(--amber);background:var(--amber-light);">ยังไม่พร้อม</span>`}</td>
+        <td style="white-space:nowrap;"><button class="btn btn-sm btn-secondary" data-fsig="${m.user_id}">${m.has_signature ? "แก้ลายเซ็น / อีเมล" : "ตั้งลายเซ็น"}</button>
+          ${!(m.has_page && m.has_approve) && canRoles ? `<button class="btn btn-sm btn-secondary" data-fperm="${m.user_id}">ให้สิทธิ์</button>` : ""}
+          <button class="btn btn-sm btn-secondary" data-fdel="${m.user_id}" style="color:var(--red);">เอาออก</button></td></tr>`).join("")}
+    </tbody></table>` : `<div class="text-muted" style="padding:18px 0 4px;">ยังไม่มีกรรมการ — เลือกผู้ใช้ด้านบนแล้วกด “+ เพิ่มกรรมการ”</div>`}
+    ${committee.some(m => !(m.has_page && m.has_approve)) && !canRoles ? `<div class="lt-hint" style="margin-top:10px;">ผู้ที่ขาดสิทธิ์: ให้ Admin เพิ่มสิทธิ์ “แบบฟอร์มกองทุน” และ “ลงนามอนุมัติแบบฟอร์มกองทุน” ให้ role ของคนนั้นที่ User Management</div>` : ""}
+  </div></div>
+  <div class="card" style="margin-top:16px;"><div class="card-body">
+    <div class="fc-t">อีเมลแจ้งเตือน</div>
+    <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ส่งจากอีเมลกลางเดียวกับหนังสือ HR${mailCfg.sender ? ` (<b>${esc(mailCfg.sender)}</b>)` : ""} ·
+      โหมด: <b>${mailCfg.mode === "auto" ? "ส่งอัตโนมัติ" : "เปิดใน Outlook"}</b> · เปลี่ยนผู้ส่ง/โหมดได้ที่ ออกหนังสือ HR → ตั้งค่า · หน้านี้แก้เฉพาะเนื้อหาเมลของกองทุน</div>
+    ${tplEditorHTML(fundTpl, fundTplKey, k => MAIL_TO[k] || "-")}
+  </div></div></div>`;
+}
+
+function signerForm(uid) {
+  const m = committee.find(x => x.user_id === uid) || {};
+  const el = modal(`ลายเซ็นกรรมการ — ${esc(m.signer_name || m.name || m.email || "")}`, `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">ชื่อที่แสดงใต้ลายเซ็น</label><input class="form-control" id="fsName" value="${esc(m.signer_name || m.name || "")}" placeholder="นายศุภโชค พันธุมิตร"></div>
+      <div class="form-group"><label class="form-label">ตำแหน่ง</label><input class="form-control" id="fsTitle" value="${esc(m.signer_title || "")}" placeholder="กรรมการกองทุน"></div>
+      <div class="form-group col-span-2"><label class="form-label">อีเมลรับแจ้งเมื่อมีแบบฟอร์มรอลงนาม</label><input class="form-control" id="fsMail" value="${esc(m.signer_email || m.email || "")}"></div>
+      <div class="form-group col-span-2"><label class="form-label">ไฟล์ลายเซ็น (PNG พื้นใส)${m.has_signature ? ` <b style="color:var(--green);">✓ มีแล้ว — เลือกไฟล์ใหม่ถ้าจะเปลี่ยน</b>` : ""}</label>
+        <input type="file" class="form-control" id="fsFile" accept="image/png"><div id="fsPrev"></div></div>
+    </div>
+    <div class="lt-hint">ใช้ลายเซ็นชุดเดียวกับหนังสือ HR · ตั้งให้คนอื่นได้เฉพาะ Admin (หรือเจ้าตัวตั้งเอง)</div>`,
+    `<button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok>บันทึก</button>`);
+  el.querySelector("#fsFile").onchange = e => { const f = e.target.files[0]; if (f) el.querySelector("#fsPrev").innerHTML =
+    `<img src="${URL.createObjectURL(f)}" style="height:56px;margin-top:8px;background:#fff;border:1px dashed var(--border2);border-radius:8px;padding:4px;">`; };
+  el.querySelector("[data-ok]").onclick = async () => {
+    const file = el.querySelector("#fsFile").files[0];
+    if (!m.has_signature && !file) { toast("เลือกไฟล์ลายเซ็นก่อน", "error"); return; }
+    const row = { user_id: uid, set_by: currentUser?.id || null, name_th: el.querySelector("#fsName").value.trim() || null,
+      title_th: el.querySelector("#fsTitle").value.trim() || null, email: el.querySelector("#fsMail").value.trim() || null };
+    if (file) {
+      const path = `signatures/${uid}/signature.png`;
+      const { error } = await supabase.storage.from("letter-assets").upload(path, file, { upsert: true, contentType: "image/png" });
+      if (error) { toast("อัปโหลดไม่สำเร็จ: " + error.message + " — ตั้งให้คนอื่นได้เฉพาะ Admin", "error"); return; }
+      row.signature_path = path;
+    }
+    const { error } = await supabase.from("letter_signers").upsert(row);
+    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+    el.remove(); await loadCommittee(); draw(); toast("บันทึกลายเซ็นแล้ว", "success");
+  };
+}
+
+function wireSettings() {
+  const pg = document.getElementById("pageFundforms");
+  pg.querySelector("#fcAdd")?.addEventListener("click", async () => {
+    const uid = pg.querySelector("#fcPick").value; if (!uid) { toast("เลือกผู้ใช้ก่อน", "error"); return; }
+    const { error } = await supabase.from("fund_committee").insert({ user_id: uid, added_by: currentUser?.id || null, sort_order: (committee.length + 1) * 10 });
+    if (error) { toast("เพิ่มไม่สำเร็จ: " + error.message, "error"); return; }
+    await loadCommittee(); draw(); toast("เพิ่มกรรมการแล้ว — ดูช่องที่ยังขาดในตาราง", "success");
+  });
+  pg.querySelectorAll("[data-fdel]").forEach(b => b.onclick = async () => {
+    const m = committee.find(x => x.user_id === b.dataset.fdel);
+    if (!confirm(`เอา ${m?.signer_name || m?.name || m?.email} ออกจากคณะกรรมการ? (แบบฟอร์มที่ลงนามไปแล้วไม่เปลี่ยน)`)) return;
+    const { error } = await supabase.from("fund_committee").delete().eq("user_id", b.dataset.fdel);
+    if (error) { toast("ไม่สำเร็จ: " + error.message, "error"); return; }
+    await loadCommittee(); draw();
+  });
+  pg.querySelectorAll("[data-fsig]").forEach(b => b.onclick = () => signerForm(b.dataset.fsig));
+  // ให้สิทธิ์ทั้ง role (สิทธิ์ในระบบผูกกับ role ไม่ใช่รายคน) — บอกให้ชัดก่อนกด
+  pg.querySelectorAll("[data-fperm]").forEach(b => b.onclick = async () => {
+    const m = committee.find(x => x.user_id === b.dataset.fperm); if (!m?.role) { toast("คนนี้ยังไม่มี role", "error"); return; }
+    if (!confirm(`เพิ่มสิทธิ์ “แบบฟอร์มกองทุน” และ “ลงนามอนุมัติแบบฟอร์มกองทุน” ให้ role “${m.role}”?\n\nทุกคนที่อยู่ใน role นี้จะได้สิทธิ์ด้วย — ถ้าไม่ต้องการ ให้สร้าง role กรรมการแยกที่ User Management`)) return;
+    const { error } = await supabase.from("role_permissions").upsert(
+      [{ role_key: m.role, perm_key: "page.fundforms" }, { role_key: m.role, perm_key: "data.fundforms.approve" }], { ignoreDuplicates: true });
+    if (error) { toast("ให้สิทธิ์ไม่สำเร็จ: " + error.message, "error"); return; }
+    await loadCommittee(); draw(); toast(`ให้สิทธิ์ role ${m.role} แล้ว`, "success");
+  });
+  wireTplEditor(pg, fundTpl, { sample: SAMPLE_FUND, onSwitch: k => { fundTplKey = k; draw(); } });
 }
 
 // ---------------------------------------------------------------- ส่งลงนาม / อนุมัติ / อีเมล
@@ -153,7 +263,7 @@ async function sendFundMail(r, action) {
   return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดไฟล์ใน Outlook แล้วกด Send";
 }
 function requestApproval(r, done) {
-  if (!approvers.length) { toast("ยังไม่มีกรรมการที่ตั้งลายเซ็นและมีสิทธิ์ลงนาม — ให้สิทธิ์ “ลงนามอนุมัติแบบฟอร์มกองทุน” และตั้งลายเซ็นที่ ออกหนังสือ HR → ตั้งค่า ก่อน", "error"); return; }
+  if (!approvers.length) { toast("ยังไม่มีกรรมการที่พร้อมรับงาน — ตั้งที่แท็บ “ตั้งค่า” ในหน้านี้", "error"); tab = "settings"; draw(); return; }
   const el = modal(`ส่งให้คณะกรรมการลงนาม — #${r.id}`, `
     <div style="margin-bottom:12px;"><b>${esc(r.emp_code)} ${esc(r.emp_name)}</b> · ${esc(topic(r))}</div>
     <label class="form-label">ส่งถึงกรรมการ</label>
@@ -217,7 +327,7 @@ function draw() {
         ? `${canEdit() ? `<button class="btn btn-secondary" id="ffAdd">+ เชิญทีละคน</button>
            <label class="btn btn-primary" style="cursor:pointer;">นำเข้ารายชื่อ (Excel)<input type="file" id="ffImport" accept=".xlsx,.xls" hidden></label>` : ""}
            <button class="btn btn-secondary" id="ffLinks">Export ลิงก์</button>`
-        : `<button class="btn btn-primary" id="ffExport">Export Excel</button>`}
+        : tab === "pvd" || tab === "wef" ? `<button class="btn btn-primary" id="ffExport">Export Excel</button>` : ""}
     </div>
   </div>
   <div class="section" style="padding-top:12px;padding-bottom:0;">
@@ -225,10 +335,11 @@ function draw() {
       <button class="cp-tab${tab === "invite" ? " on" : ""}" data-tab="invite">คำเชิญ (${live})</button>
       <button class="cp-tab${tab === "pvd" ? " on" : ""}" data-tab="pvd">กองทุนสำรองเลี้ยงชีพ (${cnt("pvd")})</button>
       <button class="cp-tab${tab === "wef" ? " on" : ""}" data-tab="wef">กองทุนสงเคราะห์ลูกจ้าง สกล.5 (${cnt("wef")})</button>
+      ${canEdit() ? `<button class="cp-tab${tab === "settings" ? " on" : ""}" data-tab="settings">ตั้งค่า</button>` : ""}
       ${canApprove() ? `<button class="cp-tab${tab === "approve" ? " on" : ""}" data-tab="approve">รอฉันลงนาม${myPending().length ? ` <b style="color:var(--red);">(${myPending().length})</b>` : ""}</button>` : ""}
     </div>
   </div>
-  ${tab === "invite" ? inviteHTML() : tab === "approve" ? approveHTML() : listHTML()}
+  ${tab === "invite" ? inviteHTML() : tab === "approve" ? approveHTML() : tab === "settings" ? settingsHTML() : listHTML()}
   <div class="pb-4"></div>`;
   wire();
 }
@@ -544,6 +655,7 @@ function wire() {
   pg.querySelectorAll("[data-view]").forEach(b => b.onclick = e => { e.preventDefault(); openDetail(+b.dataset.view); });
   pg.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(rows.find(r => r.id === +b.dataset.print)));
   pg.querySelectorAll("[data-req]").forEach(b => b.onclick = () => requestApproval(rows.find(r => r.id === +b.dataset.req)));
+  if (tab === "settings") wireSettings();
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openInvite(invites.find(i => i.id === +b.dataset.edit)));
   pg.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
     const msg = inviteMessage(invites.find(i => i.id === +b.dataset.copy));

@@ -248,7 +248,7 @@ alter table mail_settings enable row level security;
 alter table mail_secret   enable row level security;     -- ไม่มี policy = ไม่มีใครอ่าน/เขียนตรงได้
 drop policy if exists "ms_read"  on mail_settings;
 drop policy if exists "ms_write" on mail_settings;
-create policy "ms_read"  on mail_settings for select using (has_perm('page.letters'));
+create policy "ms_read"  on mail_settings for select using (has_perm('page.letters') or has_perm('page.fundforms'));
 create policy "ms_write" on mail_settings for update using (has_perm('data.letters.approve'));
 
 create or replace function mail_set_secret(p_secret text) returns void
@@ -273,8 +273,8 @@ create table if not exists mail_templates (
 alter table mail_templates enable row level security;
 drop policy if exists "mt_read"  on mail_templates;
 drop policy if exists "mt_write" on mail_templates;
-create policy "mt_read"  on mail_templates for select using (has_perm('page.letters'));
-create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve'));
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')));
 insert into mail_templates (key, label, subject, html) values
 ('request', 'ขออนุมัติหนังสือ', '[ขออนุมัติ] {{doc_no}} {{kind}} — {{person}}',
 $h$<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b;max-width:560px">
