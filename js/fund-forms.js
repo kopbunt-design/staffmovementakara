@@ -36,6 +36,7 @@ const canApprove = () => can("data.fundforms.approve");
 let approvers = [], mailCfg = { mode: "outlook" }, fundTpl = [], approvalReady = true;
 // แท็บตั้งค่า: รายชื่อคณะกรรมการ + สถานะความพร้อม (fund_committee_status) · ผู้ใช้ทั้งหมดไว้เลือกเพิ่ม
 let committee = [], committeeReady = true, users = [], fundTplKey = "fund_request";
+let mySigner = null;   // ลายเซ็นของคนที่ล็อกอิน — ใช้ลงนามเป็นพยานตอนส่งให้กรรมการ
 const approverName = uid => { const a = approvers.find(x => x.user_id === uid); return a?.name_th || a?.email || "กรรมการ"; };
 // ขั้นถัดไปของเอกสาร — กดปุ่มเดียวเลื่อนสถานะ ไม่ต้องไปเลือกใน dropdown
 // ตอนรับเรื่องมี 2 ทาง: เซ็นออนไลน์มาแล้ว (รับเรื่องได้เลย) หรือพิมพ์ไปเซ็นสดแล้วเอาตัวจริงมาส่ง
@@ -124,7 +125,11 @@ async function boot() {
   approvers = ap.data || [];
   if (!mc.error && mc.data) mailCfg = mc.data;
   fundTpl = mt.data || [];
-  if (canEdit()) await loadCommittee();
+  if (canEdit()) {
+    await loadCommittee();
+    const ms = await supabase.from("letter_signers").select("*").eq("user_id", currentUser?.id).maybeSingle();
+    mySigner = ms.data || null;
+  }
   if (tab === "invite" && canApprove() && !canEdit()) tab = "approve";
   draw();
   // เปิดจากอีเมล / กระดิ่ง / งานค้างหน้าหลัก (?fund=ID)
@@ -171,6 +176,10 @@ function settingsHTML() {
           ${!(m.has_page && m.has_approve) && canRoles ? `<button class="btn btn-sm btn-secondary" data-fperm="${m.user_id}">ให้สิทธิ์</button>` : ""}
           <button class="btn btn-sm btn-secondary" data-fdel="${m.user_id}" style="color:var(--red);">เอาออก</button></td></tr>`).join("")}
     </tbody></table>` : `<div class="text-muted" style="padding:18px 0 4px;">ยังไม่มีกรรมการ — เลือกผู้ใช้ด้านบนแล้วกด “+ เพิ่มกรรมการ”</div>`}
+    <div class="fc-me">${mySigner?.signature_path
+        ? `<span class="fc-ok">✓</span> ลายเซ็นพยานของท่าน: <b>${esc(mySigner.name_th || currentUser?.email || "")}</b>`
+        : `<span class="fc-no">✗</span> ท่านยังไม่มีลายเซ็น — ต้องใช้ลงนามเป็น <b>พยาน</b> ตอนส่งแบบฟอร์มให้กรรมการ`}
+      <button class="btn btn-sm btn-secondary" id="fcMySig">${mySigner?.signature_path ? "แก้ลายเซ็นของฉัน" : "ตั้งลายเซ็นของฉัน"}</button></div>
     ${committee.some(m => !(m.has_page && m.has_approve)) && !canRoles ? `<div class="lt-hint" style="margin-top:10px;">ผู้ที่ขาดสิทธิ์: ให้ Admin เพิ่มสิทธิ์ “แบบฟอร์มกองทุน” และ “ลงนามอนุมัติแบบฟอร์มกองทุน” ให้ role ของคนนั้นที่ User Management</div>` : ""}
   </div></div>
   <div class="card" style="margin-top:16px;"><div class="card-body">
@@ -181,8 +190,9 @@ function settingsHTML() {
   </div></div></div>`;
 }
 
-function signerForm(uid) {
-  const m = committee.find(x => x.user_id === uid) || {};
+// base: แถวกรรมการ (จากตาราง) หรือข้อมูลลายเซ็นของตัวเอง · onDone: หลังบันทึก
+function signerForm(uid, base, onDone) {
+  const m = base || committee.find(x => x.user_id === uid) || {};
   const el = modal(`ลายเซ็นกรรมการ — ${esc(m.signer_name || m.name || m.email || "")}`, `
     <div class="form-grid">
       <div class="form-group"><label class="form-label">ชื่อที่แสดงใต้ลายเซ็น</label><input class="form-control" id="fsName" value="${esc(m.signer_name || m.name || "")}" placeholder="นายศุภโชค พันธุมิตร"></div>
@@ -208,7 +218,9 @@ function signerForm(uid) {
     }
     const { error } = await supabase.from("letter_signers").upsert(row);
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
-    el.remove(); await loadCommittee(); draw(); toast("บันทึกลายเซ็นแล้ว", "success");
+    el.remove(); await loadCommittee();
+    if (uid === currentUser?.id) mySigner = (await supabase.from("letter_signers").select("*").eq("user_id", uid).maybeSingle()).data || mySigner;
+    toast("บันทึกลายเซ็นแล้ว", "success"); onDone ? onDone() : draw();
   };
 }
 
@@ -228,6 +240,7 @@ function wireSettings() {
     await loadCommittee(); draw();
   });
   pg.querySelectorAll("[data-fsig]").forEach(b => b.onclick = () => signerForm(b.dataset.fsig));
+  pg.querySelector("#fcMySig")?.addEventListener("click", () => signerForm(currentUser?.id, selfBase()));
   // ให้สิทธิ์ทั้ง role (สิทธิ์ในระบบผูกกับ role ไม่ใช่รายคน) — บอกให้ชัดก่อนกด
   pg.querySelectorAll("[data-fperm]").forEach(b => b.onclick = async () => {
     const m = committee.find(x => x.user_id === b.dataset.fperm); if (!m?.role) { toast("คนนี้ยังไม่มี role", "error"); return; }
@@ -239,6 +252,10 @@ function wireSettings() {
   });
   wireTplEditor(pg, fundTpl, { sample: SAMPLE_FUND, onSwitch: k => { fundTplKey = k; draw(); } });
 }
+
+// ข้อมูลลายเซ็นของตัวเองในรูปแบบเดียวกับแถวกรรมการ (ให้ signerForm ใช้ได้)
+const selfBase = () => ({ signer_name: mySigner?.name_th || currentUser?.user_metadata?.full_name || "", signer_title: mySigner?.title_th || "",
+  signer_email: mySigner?.email || currentUser?.email || "", email: currentUser?.email || "", has_signature: !!mySigner?.signature_path });
 
 // ---------------------------------------------------------------- ส่งลงนาม / อนุมัติ / อีเมล
 const myPending = () => rows.filter(r => r.status === "pending_approval" && r.approver_id === currentUser?.id);
@@ -269,8 +286,16 @@ function requestApproval(r, done) {
     <label class="form-label">ส่งถึงกรรมการ</label>
     <div class="ff-appr">${approvers.map((a, i) => `<label class="ff-appr-o"><input type="radio" name="ffAppr" value="${a.user_id}" ${i === 0 ? "checked" : ""}>
       <span><b>${esc(a.name_th || a.email)}</b><span class="text-muted">${esc(a.title_th || "")}${a.email ? ` · ${esc(a.email)}` : ""}</span></span></label>`).join("")}</div>
-    <div class="text-muted" style="font-size:12px;margin-top:10px;">ระบบส่งอีเมลแจ้งกรรมการ · ลงนามได้เฉพาะท่านที่เลือก · ลายเซ็นจะลงในช่อง “คณะกรรมการกองทุนลงนามอนุมัติ” เมื่อกดอนุมัติ</div>`,
-    `<button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok>✉ ส่งให้กรรมการ</button>`);
+    <label class="form-label" style="margin-top:14px;">ลงนามเป็นพยาน</label>
+    <div class="ff-witness" id="ffWit">${mySigner?.signature_path
+      ? `<img id="ffWitImg" alt=""><div><b>${esc(mySigner.name_th || currentUser?.email || "")}</b>
+          <div class="text-muted" style="font-size:12px;">ลายเซ็นของท่านจะลงช่อง “พยาน” ในแบบฟอร์มเมื่อกดส่ง</div></div>`
+      : `<div><span class="fc-no">✗ ท่านยังไม่มีลายเซ็น</span><div class="text-muted" style="font-size:12px;">ผู้ส่งให้กรรมการเป็นพยานในแบบฟอร์ม — ตั้งลายเซ็นก่อน</div></div>
+         <button class="btn btn-sm btn-secondary" data-mysig>ตั้งลายเซ็นของฉัน</button>`}</div>
+    <div class="text-muted" style="font-size:12px;margin-top:10px;">ระบบส่งอีเมลแจ้งกรรมการ · ลงนามได้เฉพาะท่านที่เลือก · ลายเซ็นกรรมการลงช่อง “คณะกรรมการกองทุนลงนามอนุมัติ” เมื่อกดอนุมัติ</div>`,
+    `<button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok ${mySigner?.signature_path ? "" : "disabled"}>✍ ลงนามพยาน และส่งให้กรรมการ</button>`);
+  if (mySigner?.signature_path) assetUrl(mySigner.signature_path).then(u => { const i = el.querySelector("#ffWitImg"); if (i && u) i.src = u; });
+  el.querySelector("[data-mysig]")?.addEventListener("click", () => { el.remove(); signerForm(currentUser?.id, selfBase(), () => { draw(); requestApproval(r, done); }); });
   el.querySelector("[data-ok]").onclick = async () => {
     const approver = el.querySelector("input[name=ffAppr]:checked")?.value;
     const b = el.querySelector("[data-ok]"); b.disabled = true;
@@ -278,18 +303,19 @@ function requestApproval(r, done) {
     if (error) { b.disabled = false; toast("ส่งไม่สำเร็จ: " + error.message, "error"); return; }
     Object.assign(r, data); el.remove();
     notify("แบบฟอร์มกองทุนรอกรรมการลงนาม", `#${r.id} ${r.emp_name || ""}`, { silent: true, link: `fundforms?fund=${r.id}` });
-    toast(`ส่งถึง ${approverName(approver)} แล้ว · ${await sendFundMail(r, "fund_request")}`, "success");
+    toast(`ลงนามพยานแล้ว · ส่งถึง ${approverName(approver)} · ${await sendFundMail(r, "fund_request")}`, "success");
     done?.(); draw();
   };
 }
 // ลายเซ็นกรรมการเป็นไฟล์ใน storage (ส่วนตัว) — โหลดเป็น data URL ก่อนเปิดหน้าพิมพ์
+async function assetUrl(path) {
+  if (!path) return "";
+  const { data } = await supabase.storage.from("letter-assets").download(path);
+  return data ? await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(data); }) : "";
+}
 async function printForm(r) {
-  let committeeSig = "";
-  if (r.committee?.signature_path) {
-    const { data } = await supabase.storage.from("letter-assets").download(r.committee.signature_path);
-    if (data) committeeSig = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(data); });
-  }
-  printSubmission(r, { committeeSig });
+  const [committeeSig, witnessSig] = await Promise.all([assetUrl(r.committee?.signature_path), assetUrl(r.witness?.signature_path)]);
+  printSubmission(r, { committeeSig, witnessSig });
 }
 
 // หนึ่งคนยึดฉบับล่าสุดฉบับเดียว ไม่ว่าจะเป็นฟอร์มไหน — คนที่ได้ทั้งสองกองทุนต้องเลือกอย่างใดอย่างหนึ่ง
@@ -689,6 +715,11 @@ function detailBody(r) {
 function approvalPanel(r) {
   const row = (k, v) => `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);">
     <div style="width:150px;flex:none;color:var(--muted);">${k}</div><div>${v}</div></div>`;
+  const wit = r.witness && ["pending_approval", "approved", "sent"].includes(r.status)
+    ? row("พยาน", `✓ ${esc(r.witness.name_th || "")} <span class="text-muted" style="font-size:12px;">· ${dt(r.witnessed_at)}</span>`) : "";
+  return wit + approvalPanelCore(r, row);
+}
+function approvalPanelCore(r, row) {
   if (r.status === "pending_approval") return row("คณะกรรมการ", `รอ <b>${esc(approverName(r.approver_id))}</b> ลงนาม
     <span class="text-muted" style="font-size:12px;">· ส่งเมื่อ ${dt(r.approval_requested_at)}</span>`);
   if (r.committee && (r.status === "approved" || r.status === "sent")) return row("คณะกรรมการ",

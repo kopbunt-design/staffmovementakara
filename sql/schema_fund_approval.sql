@@ -329,3 +329,108 @@ insert into mail_templates (key, label, subject, html) values
 </div>$h$)
 on conflict (key) do update set subject = excluded.subject, html = excluded.html, updated_at = now()
   where mail_templates.html not like '%akara-fund-v2%';
+
+-- ============================================================================
+-- 3. พยาน: HR ที่กด "ส่งให้กรรมการลงนาม" ลงนามเป็นพยานในฟอร์มไปพร้อมกัน (ยืนยันกับผู้ใช้ 2026-10-06)
+--    ลายเซ็นของคนที่กดลงช่อง "พยาน" · กรรมการส่งกลับ / HR ดึงกลับ = ล้างพยาน (ส่งใหม่ต้องลงนามใหม่)
+-- ============================================================================
+alter table fund_form_submission add column if not exists witness     jsonb;
+alter table fund_form_submission add column if not exists witnessed_at timestamptz;
+
+create or replace function fund_approval_guard() returns trigger language plpgsql as $$
+declare ok boolean := current_setting('fund.approving', true) = 'on';
+begin
+  if ok then return new; end if;
+  if new.committee is distinct from old.committee or new.approved_by is distinct from old.approved_by
+     or new.approver_id is distinct from old.approver_id or new.witness is distinct from old.witness then
+    raise exception 'ผู้อนุมัติ พยาน และลายเซ็นเปลี่ยนได้ผ่านปุ่มส่งลงนาม / อนุมัติเท่านั้น';
+  end if;
+  if new.status = 'pending_approval' and old.status <> 'pending_approval' then
+    raise exception 'ส่งให้กรรมการลงนามได้ผ่านปุ่ม "ส่งให้กรรมการลงนาม" เท่านั้น';
+  end if;
+  if old.status = 'pending_approval' and new.status not in ('pending_approval','rejected','cancelled') then
+    raise exception 'รอกรรมการลงนามอยู่ — ดึงกลับก่อน หรือรอกรรมการอนุมัติ';
+  end if;
+  return new;
+end $$;
+
+create or replace function fund_request_approval(p_id bigint, p_approver uuid)
+returns fund_form_submission language plpgsql security definer set search_path = public as $$
+declare s fund_form_submission; w letter_signers;
+begin
+  if not has_perm('data.fundforms.write') then raise exception 'ไม่มีสิทธิ์จัดการคำขอกองทุน'; end if;
+  select * into s from fund_form_submission where id = p_id for update;
+  if s.id is null then raise exception 'ไม่พบคำขอ'; end if;
+  if s.form_type <> 'pvd' then raise exception 'ส่งลงนามได้เฉพาะแบบฟอร์มกองทุนสำรองเลี้ยงชีพ'; end if;
+  if s.status not in ('accepted','received') then raise exception 'ต้องรับเรื่องก่อน จึงส่งให้กรรมการลงนามได้'; end if;
+  if exists (select 1 from fund_form_submission x where x.emp_code = s.emp_code and x.status <> 'cancelled'
+               and x.submitted_at > s.submitted_at) then raise exception 'มีฉบับใหม่กว่านี้ — ส่งฉบับล่าสุดแทน'; end if;
+  if p_approver is null or not exists (select 1 from fund_committee where user_id = p_approver) then
+    raise exception 'ผู้ที่เลือกไม่อยู่ในรายชื่อคณะกรรมการ'; end if;
+  if not user_has_perm(p_approver, 'data.fundforms.approve') then
+    raise exception 'กรรมการที่เลือกยังไม่มีสิทธิ์ลงนามแบบฟอร์มกองทุน'; end if;
+  if not exists (select 1 from letter_signers where user_id = p_approver and signature_path is not null) then
+    raise exception 'กรรมการที่เลือกยังไม่ได้ตั้งลายเซ็น'; end if;
+  select * into w from letter_signers where user_id = auth.uid();
+  if w.signature_path is null then raise exception 'ท่านยังไม่ได้ตั้งลายเซ็น — ต้องใช้ลงนามเป็นพยาน'; end if;
+  perform set_config('fund.approving', 'on', true);
+  update fund_form_submission set status = 'pending_approval', approval_prev_status = s.status, approver_id = p_approver,
+         approval_requested_at = now(), approval_requested_by = auth.uid(), approval_requested_email = auth.jwt()->>'email',
+         approval_note = null, updated_by = auth.uid(),
+         witness = jsonb_build_object('name_th', w.name_th, 'title_th', w.title_th, 'signature_path', w.signature_path), witnessed_at = now()
+   where id = p_id returning * into s;
+  return s;
+end $$;
+
+create or replace function fund_reject_approval(p_id bigint, p_reason text)
+returns fund_form_submission language plpgsql security definer set search_path = public as $$
+declare s fund_form_submission;
+begin
+  if not has_perm('data.fundforms.approve') then raise exception 'ไม่มีสิทธิ์อนุมัติแบบฟอร์มกองทุน'; end if;
+  select * into s from fund_form_submission where id = p_id for update;
+  if s.status is distinct from 'pending_approval' then raise exception 'คำขอนี้ไม่ได้รอกรรมการลงนาม'; end if;
+  if s.approver_id is distinct from auth.uid() then raise exception 'คำขอนี้ส่งถึงกรรมการท่านอื่น'; end if;
+  perform set_config('fund.approving', 'on', true);
+  update fund_form_submission set status = coalesce(approval_prev_status, 'accepted'), approval_note = nullif(trim(p_reason), ''),
+         witness = null, witnessed_at = null, updated_by = auth.uid()
+   where id = p_id returning * into s;
+  return s;
+end $$;
+
+create or replace function fund_recall_approval(p_id bigint)
+returns fund_form_submission language plpgsql security definer set search_path = public as $$
+declare s fund_form_submission;
+begin
+  if not has_perm('data.fundforms.write') then raise exception 'ไม่มีสิทธิ์จัดการคำขอกองทุน'; end if;
+  select * into s from fund_form_submission where id = p_id for update;
+  if s.status is distinct from 'pending_approval' then raise exception 'คำขอนี้ไม่ได้รอกรรมการลงนาม'; end if;
+  perform set_config('fund.approving', 'on', true);
+  update fund_form_submission set status = coalesce(approval_prev_status, 'accepted'), approver_id = null,
+         witness = null, witnessed_at = null, updated_by = auth.uid()
+   where id = p_id returning * into s;
+  return s;
+end $$;
+
+-- HR กองทุน / กรรมการ ตั้งลายเซ็นของตัวเองได้ (ก่อนหน้านี้ต้องเป็นผู้อนุมัติหนังสือ HR) — เหมือนใน schema_hr_letters.sql ข้อ 12
+drop policy if exists "ls_write" on letter_signers;
+create policy "ls_write" on letter_signers for all
+  using ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))
+         or get_my_role() = 'admin')
+  with check ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))
+         or get_my_role() = 'admin');
+
+drop policy if exists "la_write"  on storage.objects;
+drop policy if exists "la_update" on storage.objects;
+drop policy if exists "la_delete" on storage.objects;
+create policy "la_write" on storage.objects for insert with check (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))))));
+create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))))));
+create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))))));

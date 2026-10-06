@@ -92,6 +92,15 @@ function committeeBox(sub, sig) {
     <div>วันที่ <span class="cm-date">${d.d} ${d.m} ${d.y}</span></div></div>`;
 }
 
+// พยาน = HR ที่ส่งฟอร์มให้กรรมการลงนาม (schema_fund_approval.sql ข้อ 3) — ยังไม่ส่ง เว้นช่องไว้เซ็นมือ
+// หน้าพนักงานไม่มีสิทธิ์อ่านรูปลายเซ็น จึงแสดงชื่อ+วันที่อย่างเดียว
+function witnessBlock(sub, sig) {
+  const w = ["pending_approval", "approved", "sent"].includes(sub.status) ? sub.witness : null;
+  if (!w) return sigBlock({ role: "พยาน", date: "" });
+  const okSig = /^data:image\/(png|jpeg);base64,/.test(sig || "") ? sig : "";
+  return sigBlock({ role: "พยาน", name: w.name_th || "", sig: okSig, date: (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.witnessed_at)) });
+}
+
 // ------------------------------------------------------------------- PVD
 function pvdPage(sub, opts = {}) {
   const p = sub.payload || {}, req = new Set(p.requests || []);
@@ -128,7 +137,7 @@ function pvdPage(sub, opts = {}) {
         ${sigBlock({ role: "พนักงาน", name: sub.emp_name, sig: sigOf(p),
                      date: sigOf(p) ? (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.submitted_at)) : "" })}
         <div class="gap"></div>
-        ${sigBlock({ role: "พยาน", date: "" })}
+        ${witnessBlock(sub, opts.witnessSig)}
       </div>
     </div>
     <div class="foot"><span>AKR-OHR-FM-020 Rev. 01</span><span>Effective Date:05-May-2026</span><span>Page 1 of 1</span></div>
