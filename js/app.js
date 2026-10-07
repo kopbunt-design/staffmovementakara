@@ -1132,12 +1132,13 @@ export function combineToDept(toDept, toPos, fromDept){
 async function addMasterPosition(name){
   const clean = String(name||"").trim();
   if(!clean) return null;
-  // รหัสต่อจากเลขตำแหน่งล่าสุด (P-187 → P-188) แบบเดียวกับรหัสที่บริษัทใช้ · ชนกันเพราะมีคนเพิ่มพร้อมกัน → ขยับเลขแล้วลองใหม่
-  const { data: pc } = await supabase.from("master_positions").select("code").like("code", "P-%");
-  let n = Math.max(0, ...(pc || []).map(r => +(/^P-(\d+)$/.exec(r.code) || [])[1] || 0));
+  // รหัสขึ้นต้น POS- = ตำแหน่งที่เพิ่มในระบบนี้เอง ยังไม่มีรหัสใน TigerSoft — HR ไล่ดูได้ว่าตัวไหนต้องไปเปิดใน TigerSoft
+  // แล้วเปลี่ยนเป็นรหัสจริงได้ที่หน้า Settings · เลขเรียงต่อกัน (POS-001, POS-002 …) · ชนกัน (เพิ่มพร้อมกัน) → ขยับเลขแล้วลองใหม่
+  const { data: pc } = await supabase.from("master_positions").select("code").like("code", "POS-%");
+  let n = Math.max(0, ...(pc || []).map(r => +(/^POS-(\d+)$/.exec(r.code) || [])[1] || 0));
   let code, error;
   for (let i = 0; i < 3; i++) {
-    code = `P-${String(++n).padStart(3, "0")}`;
+    code = `POS-${String(++n).padStart(3, "0")}`;
     ({ error } = await supabase.from("master_positions").insert({ code, name: clean, sort_order: 999 }));
     if (!error || !/duplicate|unique/i.test(error.message)) break;
   }

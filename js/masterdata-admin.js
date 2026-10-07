@@ -230,7 +230,7 @@ function openMasterModal(table, item=null) {
       <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
         <div class="form-group"><label class="form-label">Code *</label>
           <input id="mf_code" class="form-control" value="${esc(item?.code||"")}" ${isEdit && !/^POS-/.test(item?.code||"")?"readonly":""}  placeholder="เช่น L1-006, P-187">
-          ${isEdit && /^POS-/.test(item?.code||"") ? `<div style="font-size:11px;color:var(--amber);margin-top:3px;">รหัสชั่วคราวที่ระบบตั้งให้ตอนเพิ่มจากหน้า Staff Movement — เปลี่ยนเป็นรหัสจริงได้ (บันทึกแล้วแก้ไม่ได้อีก)</div>` : ""}
+          ${isEdit && /^POS-/.test(item?.code||"") ? `<div style="font-size:11px;color:var(--amber);margin-top:3px;">POS- = ตำแหน่งที่เพิ่มจากหน้า Staff Movement ยังไม่มีใน TigerSoft — เปิดใน TigerSoft แล้วใส่รหัสจริงที่นี่ (เปลี่ยนแล้วล็อก)</div>` : ""}
         </div>
         <div class="form-group"><label class="form-label">ชื่อ (English) *</label>
           <input id="mf_name" class="form-control" value="${esc(item?.name||"")}" placeholder="ชื่อภาษาอังกฤษ">
