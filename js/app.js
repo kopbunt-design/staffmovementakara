@@ -1132,8 +1132,15 @@ export function combineToDept(toDept, toPos, fromDept){
 async function addMasterPosition(name){
   const clean = String(name||"").trim();
   if(!clean) return null;
-  const code = `POS-${Date.now().toString(36).toUpperCase()}`;
-  const { error } = await supabase.from("master_positions").insert({ code, name: clean, sort_order: 999 });
+  // รหัสต่อจากเลขตำแหน่งล่าสุด (P-187 → P-188) แบบเดียวกับรหัสที่บริษัทใช้ · ชนกันเพราะมีคนเพิ่มพร้อมกัน → ขยับเลขแล้วลองใหม่
+  const { data: pc } = await supabase.from("master_positions").select("code").like("code", "P-%");
+  let n = Math.max(0, ...(pc || []).map(r => +(/^P-(\d+)$/.exec(r.code) || [])[1] || 0));
+  let code, error;
+  for (let i = 0; i < 3; i++) {
+    code = `P-${String(++n).padStart(3, "0")}`;
+    ({ error } = await supabase.from("master_positions").insert({ code, name: clean, sort_order: 999 }));
+    if (!error || !/duplicate|unique/i.test(error.message)) break;
+  }
   if(error){
     toast(error.message.includes("row-level security")
       ? "ไม่มีสิทธิ์เพิ่มตำแหน่ง (เฉพาะ Admin)" : "เพิ่มตำแหน่งไม่สำเร็จ: "+error.message, "error");
