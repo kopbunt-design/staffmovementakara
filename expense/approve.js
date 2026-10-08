@@ -4,6 +4,7 @@
 //   ลายเซ็นที่ลงคือของผู้อนุมัติที่ HR เลือกตอนส่ง · แจ้งผู้จัดทำทางกระดิ่ง (ใน SQL) + อีเมล (letter-notify)
 // ============================================================================
 import { supabase } from "../js/supabase-config.js";
+import { invoiceDoc } from "./doc.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -13,6 +14,10 @@ const thTime = iso => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "
 const app = document.getElementById("app");
 const token = new URLSearchParams(location.search).get("t") || "";
 let D = null;
+// ไฟล์แนบ + รูปลายเซ็นอยู่ใน storage ส่วนตัว → ขอลิงก์ชั่วคราวจาก Edge Function ด้วย token (null = ยังโหลด, false = ขอไม่ได้)
+let X = null;
+const fmtSize = n => !n ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+const toData = url => fetch(url).then(r => r.ok ? r.blob() : null).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); })).catch(() => "");
 
 function toast(msg, type = "") {
   const el = document.createElement("div"); el.className = `toast ${type}`; el.textContent = msg;
@@ -27,37 +32,67 @@ async function load() {
   if (error) return done("⚠️", "เปิดใบแจ้งหนี้ไม่ได้", esc(error.message));
   if (data?.error) return done("🔗", esc(data.error), "ลิงก์อาจถูกแทนด้วยลิงก์ใหม่ เช่น ใบถูกดึงกลับแล้วส่งใหม่ — ใช้ลิงก์จากอีเมลฉบับล่าสุด");
   D = data; render();
+  try {
+    const { data: x, error: e } = await supabase.functions.invoke("letter-notify", { body: { exp_token: token, action: "exp_files" } });
+    if (e || !x?.files) throw e || new Error("no files");
+    const sig = {};
+    await Promise.all(Object.entries(x.sig || {}).map(async ([k, u]) => { sig[k] = u ? await toData(u) : ""; }));
+    X = { files: Object.fromEntries(x.files.map(f => [f.id, f.url])), sig };
+  } catch (_) { X = false; }
+  drawDoc(); drawFiles();
+}
+
+// ใบ A4 จริง (หน้าเดียวกับที่พิมพ์) ย่อให้พอดีความกว้างจอ
+function invDoc() { return invoiceDoc({ ...D, vendor: D.vendor || {} }, D.lines || [], X ? X.sig : {}); }
+function drawDoc() {
+  const box = document.getElementById("apDoc"); if (!box) return;
+  box.innerHTML = `<iframe title="ใบแจ้งหนี้" scrolling="no"></iframe>`;
+  const f = box.querySelector("iframe");
+  const fit = () => {
+    const h = f.contentDocument?.body?.scrollHeight || 1123, sc = Math.min(1, box.clientWidth / 794);
+    f.style.height = h + "px"; f.style.transform = `scale(${sc})`; box.style.height = Math.ceil(h * sc) + "px";
+  };
+  f.onload = () => { fit(); f.contentDocument.fonts?.ready.then(fit); };
+  f.srcdoc = invDoc();
+  window.onresize = fit;
+}
+function drawFiles() {
+  const box = document.getElementById("apFiles"); if (!box) return;
+  const files = D.files || [];
+  box.innerHTML = !files.length ? `<div class="hint">ไม่มีเอกสารแนบ</div>` : files.map(f => {
+    const url = X && X.files[f.id];
+    return `<div class="ap-file"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+      <span><b>${esc(f.name)}</b><span class="hint">${fmtSize(f.size)}</span></span>
+      ${url ? `<a class="btn btn-s btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">เปิด</a>` : X === null ? `<span class="hint">กำลังโหลด…</span>` : `<span class="hint">เปิดไม่ได้</span>`}</div>`;
+  }).join("") + (X === false ? `<div class="note r" style="margin-top:10px">ตอนนี้เปิดไฟล์แนบจากลิงก์นี้ไม่ได้ — แจ้ง HR หรือ${D.id ? ` <a href="/expense/#/invoice/${D.id}" style="text-decoration:underline">เข้าสู่ระบบเพื่อดู</a>` : "เข้าสู่ระบบเพื่อดู"}</div>` : "");
 }
 
 function render() {
-  const d = D, v = d.vendor || {}, wr = Number(d.wht_rate) || 0;
+  const d = D;
   const state = d.state === "open" ? "" :
     d.state === "expired" ? `<div class="note r">ลิงก์นี้หมดอายุแล้ว — เข้าสู่ระบบเพื่ออนุมัติแทน<br>${inApp()}</div>` :
     d.status === "approved" || d.status === "received" ? `<div class="note">✓ ใบนี้อนุมัติแล้ว${d.approver?.at ? " เมื่อ " + esc(thTime(d.approver.at)) : ""}</div>` :
     d.status === "rejected" ? `<div class="note r">↩ ใบนี้ถูกส่งกลับให้แก้ไขแล้ว${d.reject_reason ? ": " + esc(d.reject_reason) : ""}</div>` :
     `<div class="note">ใบนี้ไม่ได้รออนุมัติแล้ว (สถานะปัจจุบันเปลี่ยนไป) — ไม่ต้องดำเนินการ</div>`;
-  const kv = [["ผู้ขาย", `${esc(v.name || "-")}${v.code ? ` <span class="hint">· ${esc(v.code)}</span>` : ""}`], ["วันที่ใบ", thDate(d.inv_date)],
-    ["หมวด", esc(d.category || "-")], ...(d.ref_no ? [["Ref. ผู้ขาย", `${esc(d.ref_no)}${d.ref_date ? ` (${thDate(d.ref_date)})` : ""}`]] : []),
-    ...(d.po_no ? [["PO / PR", esc(d.po_no)]] : []), ...(d.note ? [["หมายเหตุ", esc(d.note)]] : []),
-    ...(d.files ? [["ไฟล์แนบ", `${d.files} ไฟล์ <span class="hint">(ดูได้เมื่อเข้าสู่ระบบ)</span>`]] : [])];
   const signed = (s, label) => s?.name ? `<div><i>✓</i><span><b>${label}</b> ${esc(s.name)} <span class="hint">· ${esc(thTime(s.at))}</span></span></div>` : "";
   app.innerHTML = `
   <div class="ap-hero"><div><span class="bd ${d.state === "open" ? "p" : "n"}">${d.state === "open" ? "รอท่านอนุมัติ" : "ไม่ต้องดำเนินการ"}</span>
       <h1 style="margin-top:8px">ใบแจ้งหนี้ ${esc(d.inv_no || "")}</h1><div class="hint">ผู้อนุมัติ: ${esc(d.approver_name || "-")}</div></div>
     <div class="ap-net"><span>ยอดชำระ (THB)</span><b>${money(d.net)}</b></div></div>
   ${state}
-  <div class="card card-b"><dl class="ap-kv">${kv.map(([k, x]) => `<dt>${k}</dt><dd>${x}</dd>`).join("")}</dl></div>
-  <div class="card card-b"><div class="card-t">รายการ</div><div class="ap-scroll"><table class="ap-lines">
-    <thead><tr><th>รายละเอียด</th><th>จำนวนเงิน</th><th>VAT 7%</th><th>WHT ${wr}%</th><th>สุทธิ</th></tr></thead><tbody>
-    ${(d.lines || []).map(l => `<tr><td>${l.cost_code ? `<small>${esc(l.cost_code)}</small>` : ""}${esc(l.detail)}${l.detail2 ? `<small>${esc(l.detail2)}</small>` : ""}</td>
-      <td>${money(l.amount)}</td><td>${Number(l.vat) ? money(l.vat) : "–"}</td><td>${Number(l.wht) ? money(l.wht) : "–"}</td><td>${money(l.net)}</td></tr>`).join("")}
-    <tr class="tot"><td>รวม</td><td>${money(d.amount)}</td><td>${money(d.vat)}</td><td>${money(d.wht)}</td><td>${money(d.net)}</td></tr>
-  </tbody></table></div></div>
-  <div class="card card-b"><div class="card-t">ลงนามแล้ว</div><div class="ap-steps">
-    ${signed(d.preparer, "จัดทำ")}${signed(d.reviewer, "ตรวจ")}${signed(d.approver, "อนุมัติ")}</div></div>
+  <div class="card card-b"><div class="card-t" style="justify-content:space-between">ใบแจ้งหนี้ <button class="btn btn-g btn-sm" id="apFull">เปิดเต็มจอ ↗</button></div>
+    <div class="ap-doc" id="apDoc"></div></div>
+  <div class="card card-b"><div class="card-t">เอกสารแนบ <span class="hint">(${(d.files || []).length} ไฟล์)</span></div><div id="apFiles"></div></div>
+  ${d.preparer || d.reviewer ? `<div class="card card-b"><div class="card-t">ลงนามแล้ว</div><div class="ap-steps">
+    ${signed(d.preparer, "จัดทำ")}${signed(d.reviewer, "ตรวจ")}${signed(d.approver, "อนุมัติ")}</div></div>` : ""}
   ${d.state === "open" ? `<div class="card card-b">
-    <div class="hint" style="margin-bottom:12px">เมื่อกดอนุมัติ ระบบลงลายเซ็นของ <b>${esc(d.approver_name || "ผู้อนุมัติ")}</b> ในช่อง Approved by และแจ้งผู้จัดทำทันที · ลิงก์ใช้ได้ครั้งเดียว</div>
+    <div class="hint" style="margin-bottom:12px">ตรวจใบแจ้งหนี้และเอกสารแนบด้านบนก่อน · เมื่อกดอนุมัติ ระบบลงลายเซ็นของ <b>${esc(d.approver_name || "ผู้อนุมัติ")}</b> ในช่อง Approved by และแจ้งผู้จัดทำทันที · ลิงก์ใช้ได้ครั้งเดียว</div>
     <div class="ap-acts"><button class="btn btn-d" id="apNo">ส่งกลับแก้ไข</button><button class="btn btn-p" id="apYes">✓ อนุมัติและลงนาม</button></div></div>` : ""}`;
+  drawDoc(); drawFiles();
+  document.getElementById("apFull").onclick = () => {
+    const u = URL.createObjectURL(new Blob([invDoc()], { type: "text/html" }));
+    window.open(u, "_blank"); setTimeout(() => URL.revokeObjectURL(u), 60000);
+  };
   if (d.state !== "open") return;
   document.getElementById("apYes").onclick = () => decide(true);
   document.getElementById("apNo").onclick = () => rejectForm();

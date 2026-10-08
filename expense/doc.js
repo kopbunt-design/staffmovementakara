@@ -104,12 +104,17 @@ export function invoiceHTML(inv, lines, art = {}) {
   </section>`;
 }
 
+// หน้า HTML เต็มของใบ (ใช้ทั้งพิมพ์ และแสดงในหน้าอนุมัติจากลิงก์อีเมล)
+export function invoiceDoc(inv, lines, art) {
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(inv.inv_no || "Invoice draft")}</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>${CSS}</style></head><body>${invoiceHTML(inv, lines, art)}</body></html>`;
+}
+
 export function printInvoice(inv, lines, art) {
   const w = window.open("", "_blank");
   if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — กรุณาอนุญาต pop-up แล้วลองใหม่"); return; }
-  w.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(inv.inv_no || "Invoice draft")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>${CSS}</style></head><body>${invoiceHTML(inv, lines, art)}</body></html>`);
+  w.document.write(invoiceDoc(inv, lines, art));
   w.document.close();
   setTimeout(async () => {
     const imgs = [...w.document.images].filter(i => !i.complete).map(i => new Promise(r => { i.onload = i.onerror = r; }));

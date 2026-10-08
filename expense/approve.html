@@ -29,6 +29,10 @@
   .ap-acts .btn{padding:11px 22px;font-size:15px}
   .ap-done{text-align:center;padding:40px 24px}.ap-done .ic{font-size:44px;line-height:1}.ap-done h2{font-size:20px;margin:10px 0 6px}
   textarea.in{resize:vertical}
+  .ap-doc{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:var(--r-md);background:#fff;min-height:200px}
+  .ap-doc iframe{position:absolute;top:0;left:0;width:794px;border:0;transform-origin:0 0;background:#fff}
+  .ap-file{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}.ap-file:first-child{border-top:0;padding-top:0}
+  .ap-file>span{flex:1;min-width:0}.ap-file b{display:block;font-weight:500;overflow-wrap:anywhere}.ap-file svg{color:var(--ink3)}
   @media (max-width:560px){.ap-kv{grid-template-columns:96px 1fr}.ap-net{text-align:left}.ap-acts .btn{flex:1;justify-content:center}.ap-scroll{margin:0 -16px;padding:0 16px}.card-b{padding:16px}}
 </style>
 </head>
@@ -42,6 +46,6 @@
 <main class="ap-main" id="app"><div class="sp-loading">กำลังโหลด…</div></main>
 <div class="sp-toasts" id="spToasts"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script type="module" src="/expense/approve.js?v=1"></script>
+<script type="module" src="/expense/approve.js?v=2"></script>
 </body>
 </html>

@@ -476,7 +476,7 @@ begin
     'state', case when v.status = 'approval' and t.used_at is null and t.expires_at > now() then 'open'
                   when v.status = 'approval' and t.used_at is null then 'expired' else 'closed' end,
     'id', v.id, 'status', v.status, 'inv_no', v.inv_no, 'inv_date', v.inv_date, 'category', v.category,
-    'vendor', jsonb_build_object('code', v.vendor->>'code', 'name', v.vendor->>'name'),
+    'vendor', v.vendor, 'imported', v.imported,
     'ref_no', v.ref_no, 'ref_date', v.ref_date, 'po_no', v.po_no, 'note', v.note, 'wht_rate', v.wht_rate,
     'amount', v.amount, 'vat', v.vat, 'wht', v.wht, 'net', v.net, 'reject_reason', v.reject_reason,
     'preparer', v.preparer - 'signature_path', 'reviewer', v.reviewer - 'signature_path', 'approver', v.approver - 'signature_path',
@@ -484,7 +484,8 @@ begin
     'lines', coalesce((select jsonb_agg(jsonb_build_object('cost_code', l.cost_code, 'detail', l.detail, 'detail2', l.detail2,
               'amount', l.amount, 'vat', l.vat, 'wht', l.wht, 'net', l.net) order by l.line_no, l.id)
               from exp_invoice_lines l where l.invoice_id = v.id), '[]'::jsonb),
-    'files', (select count(*) from exp_files f where f.invoice_id = v.id));
+    'files', coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'name', f.name, 'size', f.size) order by f.uploaded_at)
+              from exp_files f where f.invoice_id = v.id), '[]'::jsonb));
 end $$;
 
 -- กดอนุมัติ / ส่งกลับจากลิงก์ — ลงลายเซ็นของผู้อนุมัติที่ถูกเลือก + แจ้งกระดิ่งในระบบ HR

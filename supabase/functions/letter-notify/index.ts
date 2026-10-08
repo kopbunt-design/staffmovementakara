@@ -9,6 +9,9 @@
 //                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
 //                         exp_approve ส่งลิงก์อนุมัติไม่ต้อง login (/expense/approve.html?t=...) ถึงผู้อนุมัติ
 //   exp_token (ไม่ต้อง login) → หน้า approve.html แจ้งผู้จัดทำหลังผู้อนุมัติกดจากลิงก์ (ภายใน 30 นาทีหลังกด)
+//   exp_token + action = "exp_files" → ลิงก์ชั่วคราว (1 ชม.) ของไฟล์แนบ + รูปลายเซ็น ให้หน้า approve.html แสดงใบ A4 / เปิดไฟล์แนบ
+//   ⚠️ หน้า approve.html เรียกโดยไม่ได้ login → ต้องปิด "Enforce JWT verification" ของฟังก์ชันนี้
+//      (ฟังก์ชันตรวจ session เองทุกทางอยู่แล้ว ยกเว้นทาง exp_token ที่ตรวจด้วย token แทน)
 //
 // ค่าตั้ง (Tenant / Client ID / Secret / ผู้ส่ง) ตั้งในหน้าเว็บ: ออกหนังสือ HR → ตั้งค่า → การส่งอีเมล
 //   ใช้แอปเดียวกับที่ TigerSoft ใช้ส่งเมลได้ (ต้องมีสิทธิ์ Mail.Send แบบ Application)
@@ -47,6 +50,18 @@ Deno.serve(async (req) => {
     let action = action_;
     // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
     let caller: any = null, user: any = null;
+    if (exp_token && action === "exp_files") {
+      const { data: t } = await admin.from("exp_approve_tokens").select("invoice_id,expires_at").eq("token", String(exp_token)).maybeSingle();
+      if (!t || new Date(t.expires_at) <= new Date()) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" }, 403);
+      const { data: x } = await admin.from("exp_invoices").select("preparer,reviewer,approver").eq("id", t.invoice_id).single();
+      const { data: fs } = await admin.from("exp_files").select("id,name,path").eq("invoice_id", t.invoice_id);
+      const sign = async (bucket: string, path?: string | null) =>
+        path ? (await admin.storage.from(bucket).createSignedUrl(path, 3600)).data?.signedUrl || null : null;
+      const files = await Promise.all((fs || []).map(async f => ({ id: f.id, url: await sign("expense-files", f.path) })));
+      const sig: Record<string, string | null> = {};
+      for (const k of ["preparer", "reviewer", "approver"]) sig[k] = await sign("letter-assets", x?.[k]?.signature_path);
+      return json({ files, sig });
+    }
     if (!exp_token) {
       const auth = req.headers.get("Authorization");
       if (!auth) return json({ error: "Missing authorization header" }, 401);
