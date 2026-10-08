@@ -3,6 +3,8 @@
 //   หัว: โลโก้ + INVOICE / No. / Ref. / Date / Category · กล่อง Vendor / Vendee
 //   ตาราง: รหัสบัญชี + รายละเอียด / Amount / VAT 7% / WHT x% / Net · ตัวอักษร + Grand Total
 //   ช่องลงนาม 4 ช่อง: ลายเซ็นขึ้นเมื่อแต่ละคนกดยืนยันในระบบ (ใบที่นำเข้าจาก Excel ลงนามบนกระดาษ → ว่างไว้)
+//   แบ่งหน้า: หน้าละไม่เกิน 10 รายการ เฉลี่ยให้เท่า ๆ กัน (12 → 6+6, 15 → 8+7)
+//   ยอดรวม + ตัวอักษร + ช่องลงนาม อยู่หน้าสุดท้ายด้วยกันเสมอ (กันใบที่ยอดอยู่หน้าหนึ่ง ลายเซ็นอยู่อีกหน้า)
 // ============================================================================
 import { amountWords, round2 } from "./calc.js";
 
@@ -18,27 +20,30 @@ const CSS = `
 @page{size:A4;margin:0}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'IBM Plex Sans Thai',Tahoma,sans-serif;color:#121926;font-size:12.5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.pg{width:210mm;min-height:297mm;padding:13mm 15mm 11mm;display:flex;flex-direction:column;gap:5.5mm;page-break-after:always;position:relative}
+.pg{width:210mm;min-height:296mm;padding:10mm 15mm 8mm;display:flex;flex-direction:column;gap:4mm;page-break-after:always;position:relative}
 .pg:last-child{page-break-after:auto}
 .hd{display:flex;justify-content:space-between;gap:10mm}
-.hd img{height:13mm;display:block;margin-bottom:2mm}
+.hd img{height:11mm;display:block;margin-bottom:1.5mm}
 .co b{display:block;font-size:11.5px;font-weight:600}.co span{font-size:10.5px;color:#6B7585}
 .meta{text-align:right}
-.meta h1{font-size:24px;font-weight:600;color:#234E8F;letter-spacing:.5px;margin-bottom:1.5mm}
+.meta h1{font-size:22px;font-weight:600;color:#234E8F;letter-spacing:.5px;margin-bottom:1mm;line-height:1.2}
 .meta table{margin-left:auto;border-collapse:collapse}
-.meta td{padding:.6mm 0 .6mm 4mm;font-size:12.5px}.meta td:first-child{color:#6B7585;font-size:10.5px;text-align:right}.meta td:last-child{font-weight:600}
+.meta td{padding:.3mm 0 .3mm 4mm;font-size:12.5px}.meta td:first-child{color:#6B7585;font-size:10.5px;text-align:right}.meta td:last-child{font-weight:600}
 .rule{height:3px;background:#2B5DA8}
 .parties{display:flex;gap:4mm}
-.party{flex:1;background:#F1F3F6;border-radius:2mm;padding:3mm 4mm}
+.party{flex:1;background:#F1F3F6;border-radius:2mm;padding:2.5mm 4mm;line-height:1.45}
 .party .k{font-size:9.5px;font-weight:600;letter-spacing:.6px;color:#6B7585;text-transform:uppercase}
 .party b{display:block;font-size:13px;font-weight:600;margin:.8mm 0}.party span{display:block;font-size:10.5px;color:#4B5565}
 table.ln{width:100%;border-collapse:collapse}
-.ln th{background:#F1F3F6;color:#4B5565;font-weight:500;font-size:10.5px;text-align:right;padding:2.4mm 3mm}
+.ln th{background:#F1F3F6;color:#4B5565;font-weight:500;font-size:10.5px;text-align:right;padding:1.8mm 3mm}
 .ln th:first-child{text-align:left}
-.ln td{padding:2.6mm 3mm;border-top:1px solid #E4E8EE;vertical-align:top;text-align:right;font-variant-numeric:tabular-nums}
+.ln td{padding:1.1mm 3mm;border-top:1px solid #E4E8EE;vertical-align:top;text-align:right;font-variant-numeric:tabular-nums;line-height:1.35}
 .ln td:first-child{text-align:left}
-.ln td small{display:block;color:#6B7585;font-size:10px}
-.ln td .d2{display:block;color:#4B5565;font-size:11px}
+.ln td small{color:#6B7585;font-size:10px;margin-right:2mm}
+.ln td .d2{display:block;color:#4B5565;font-size:10.5px}
+.ln tr{break-inside:avoid}
+.cont{font-size:10.5px;color:#6B7585;text-align:right}
+.end{display:flex;flex-direction:column;gap:4mm;break-inside:avoid}
 .ln tr.tot td{border-top:1.5px solid #CED5DF;font-weight:600}
 .gt{display:flex;gap:4mm;align-items:stretch}
 .words{flex:1;border:1px solid #E4E8EE;border-radius:2mm;padding:2.5mm 3.5mm}
@@ -48,12 +53,12 @@ table.ln{width:100%;border-collapse:collapse}
 .note{font-size:11px;color:#4B5565}
 .grow{flex:1}
 .sigs{display:flex;gap:3mm}
-.sig{flex:1;border:1px solid #E4E8EE;border-radius:2mm;padding:2.5mm 2mm 3mm;text-align:center}
+.sig{flex:1;border:1px solid #E4E8EE;border-radius:2mm;padding:2mm 2mm 2.5mm;text-align:center}
 .sig .r{font-size:10.5px;font-weight:600;color:#4B5565}
-.sig .l{height:13mm;border-bottom:1px dashed #CED5DF;margin:1mm 4mm 1.2mm;display:flex;align-items:flex-end;justify-content:center}
+.sig .l{height:11mm;border-bottom:1px dashed #CED5DF;margin:1mm 4mm 1.2mm;display:flex;align-items:flex-end;justify-content:center}
 .sig .l img{max-height:12mm;max-width:100%;object-fit:contain}
 .sig .n{font-size:10.5px}.sig .d{font-size:10px;color:#6B7585}
-.ft{display:flex;justify-content:space-between;border-top:1px solid #E4E8EE;padding-top:2mm;font-size:9.5px;color:#9AA4B2}
+.ft{display:flex;justify-content:space-between;border-top:1px solid #E4E8EE;padding-top:1.5mm;font-size:9.5px;color:#9AA4B2}
 .wm{position:absolute;top:44%;left:0;right:0;text-align:center;font-size:64px;font-weight:700;color:rgba(180,35,24,.08);transform:rotate(-20deg);pointer-events:none}
 `;
 
@@ -70,7 +75,8 @@ export function invoiceHTML(inv, lines, art = {}) {
       <div class="n">(${esc(s?.name || nameFallback || " ".repeat(28))})</div><div class="d">Date ${s?.at ? shortDate(s.at) : "____________"}</div></div>`;
   };
   const wm = inv.status === "cancelled" ? `<div class="wm">CANCELLED</div>` : !inv.inv_no ? `<div class="wm" style="color:rgba(43,93,168,.08)">DRAFT</div>` : "";
-  return `<section class="pg">${wm}
+  const pages = paginate(lines), N = pages.length;
+  const head = `
   <div class="hd">
     <div class="co"><img src="${location.origin}/assets/logo.png" alt="Akara Resources"><b>Akara Resources Public Company Limited</b><span>99 Moo 9 Khao Chet Luk, Thap Khlo, Phichit 66230 Thailand</span></div>
     <div class="meta"><h1>INVOICE</h1><table>
@@ -85,23 +91,39 @@ export function invoiceHTML(inv, lines, art = {}) {
   <div class="parties">
     <div class="party"><div class="k">Vendor${v.code ? ` · ${esc(v.code)}` : ""}</div><b>${esc(v.name || "")}</b>${v.address ? `<span>${esc(v.address)}</span>` : ""}${v.bank ? `<span>Bank: ${esc(v.bank)}</span>` : ""}${v.tax_id ? `<span>Tax ID: ${esc(v.tax_id)}</span>` : ""}</div>
     <div class="party"><div class="k">Vendee (Bill to)</div><b>Akara Resources Public Company Limited</b><span>99 Moo 9 Khao Chet Luk, Thap Khlo,</span><span>Phichit 66230 Thailand</span></div>
-  </div>
-  <table class="ln"><thead><tr><th>Detail</th><th style="width:28mm">Amount (THB)</th><th style="width:22mm">VAT 7%</th><th style="width:22mm">WHT ${wr}%</th><th style="width:28mm">Net</th></tr></thead><tbody>
-    ${lines.map(l => `<tr><td>${l.cost_code ? `<small>${esc(l.cost_code)}</small>` : ""}${esc(l.detail)}${l.detail2 ? `<span class="d2">${esc(l.detail2)}</span>` : ""}</td>
-      <td>${money(l.amount)}</td><td>${Number(l.vat) ? money(l.vat) : "–"}</td><td>${Number(l.wht) ? money(l.wht) : "–"}</td><td>${money(l.net)}</td></tr>`).join("")}
-    <tr class="tot"><td>Total</td><td>${money(t.amount)}</td><td>${money(t.vat)}</td><td>${money(t.wht)}</td><td>${money(t.net)}</td></tr>
-  </tbody></table>
+  </div>`;
+  const row = l => `<tr><td>${l.cost_code ? `<small>${esc(l.cost_code)}</small>` : ""}${esc(l.detail)}${l.detail2 ? `<span class="d2">${esc(l.detail2)}</span>` : ""}</td>
+      <td>${money(l.amount)}</td><td>${Number(l.vat) ? money(l.vat) : "–"}</td><td>${Number(l.wht) ? money(l.wht) : "–"}</td><td>${money(l.net)}</td></tr>`;
+  const end = `<div class="end">
   <div class="gt"><div class="words"><span>Amount in words</span><b>${esc(amountWords(t.net))}</b></div>
     <div class="grand"><span>Grand Total (THB)</span><b>${money(t.net)}</b></div></div>
   ${inv.note ? `<div class="note">Note: ${esc(inv.note)}</div>` : ""}
-  <div class="grow"></div>
   <div class="sigs">
     ${signed("preparer", "Prepared by")}${signed("reviewer", "Reviewed by")}${signed("approver", "Approved by")}
     <div class="sig"><div class="r">Received by (Finance)</div><div class="l"></div>
-      <div class="n">(${esc(inv.received_name || " ".repeat(28))})</div><div class="d">Date ${inv.received_at && !inv.imported ? shortDate(inv.received_at) : "____________"}</div></div>
-  </div>
-  <div class="ft"><span>${inv.imported ? "Imported from HR Invoice Database (signed on paper)" : "Generated by HR Invoice Hub"} · ${esc(inv.inv_no || "draft")}</span><span>Page 1 of 1</span></div>
+      <div class="n">(${esc(inv.received_name || " ".repeat(28))})</div><div class="d">Date ${inv.received_at && !inv.imported ? shortDate(inv.received_at) : "____________"}</div></div>
+  </div></div>`;
+  return pages.map((pl, i) => {
+    const last = i === N - 1;
+    return `<section class="pg">${wm}${head}
+  <table class="ln"><thead><tr><th>Detail</th><th style="width:28mm">Amount (THB)</th><th style="width:22mm">VAT 7%</th><th style="width:22mm">WHT ${wr}%</th><th style="width:28mm">Net</th></tr></thead><tbody>
+    ${pl.map(row).join("")}
+    ${last ? `<tr class="tot"><td>Total${N > 1 ? ` (${lines.length} items)` : ""}</td><td>${money(t.amount)}</td><td>${money(t.vat)}</td><td>${money(t.wht)}</td><td>${money(t.net)}</td></tr>` : ""}
+  </tbody></table>
+  ${last ? "" : `<div class="cont">Continued on page ${i + 2} — total and signatures on page ${N}</div>`}
+  <div class="grow"></div>
+  ${last ? end : ""}
+  <div class="ft"><span>${inv.imported ? "Imported from HR Invoice Database (signed on paper)" : "Generated by HR Invoice Hub"} · ${esc(inv.inv_no || "draft")}</span><span>Page ${i + 1} of ${N}</span></div>
   </section>`;
+  }).join("");
+}
+
+// หน้าละไม่เกิน PER_PAGE รายการ แบ่งให้เท่า ๆ กัน — หน้าแรก ๆ ได้มากกว่าหน้าท้ายไม่เกิน 1 รายการ
+export const PER_PAGE = 10;
+export function paginate(lines = []) {
+  const n = lines.length, pages = Math.max(1, Math.ceil(n / PER_PAGE)), out = [];
+  for (let i = 0, at = 0; i < pages; i++) { const k = Math.floor(n / pages) + (i < n % pages ? 1 : 0); out.push(lines.slice(at, at + k)); at += k; }
+  return out;
 }
 
 // หน้า HTML เต็มของใบ (ใช้ทั้งพิมพ์ และแสดงในหน้าอนุมัติจากลิงก์อีเมล)

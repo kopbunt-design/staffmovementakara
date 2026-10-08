@@ -49,4 +49,14 @@ eq(r.invoices[0].lines[1].detail2, "บ้านเลขที่ 9", "รา�
 eq(r.invoices[1].category, "Funeral", "ตัดช่องว่างท้ายชื่อหมวด");
 eq(r.categories, ["Canteen", "Funeral"], "หมวดไม่ซ้ำ");
 eq(r.warn.some(w => w.includes("X0009")), true, "เตือนรหัสผู้ขายที่ไม่มีในชีต");
+
+// ใบ A4 แบ่งหน้า: หน้าละไม่เกิน 10 รายการ เฉลี่ยเท่า ๆ กัน · ยอดรวม + ลายเซ็นอยู่หน้าสุดท้ายเท่านั้น (doc.js)
+const dsrc = read(`${ROOT}/expense/doc.js`);
+const pg = new Function(dsrc.match(/export const PER_PAGE[^\n]*\n/)[0].replace("export ", "") + dsrc.match(/export function paginate[\s\S]*?\n}\n/)[0].replace("export ", "") + "return paginate;")();
+const sizes = n => pg(Array.from({ length: n }, (_, i) => i)).map(p => p.length);
+eq(sizes(0), [0], "ไม่มีรายการ = 1 หน้า"); eq(sizes(1), [1], "1 รายการ"); eq(sizes(10), [10], "10 รายการ จบหน้าเดียว");
+eq(sizes(11), [6, 5], "11 → 6+5"); eq(sizes(12), [6, 6], "12 → 6+6"); eq(sizes(15), [8, 7], "15 → 8+7");
+eq(sizes(20), [10, 10], "20 → 10+10"); eq(sizes(21), [7, 7, 7], "21 → 7+7+7");
+eq(pg(Array.from({ length: 23 }, (_, i) => i)).flat(), Array.from({ length: 23 }, (_, i) => i), "ไม่มีรายการหาย/สลับลำดับ");
+eq((dsrc.match(/\$\{last \? end : ""\}/g) || []).length, 1, "ยอดรวม + ลายเซ็นพิมพ์เฉพาะหน้าสุดท้าย");
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
