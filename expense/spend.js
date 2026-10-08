@@ -647,7 +647,13 @@ function renderSettings() {
         <td><input class="in" data-c="${c.id}" data-k="cost_code" value="${esc(c.cost_code || "")}" placeholder="ใส่ทีหลังได้" ${canWrite() ? "" : "disabled"}></td>
         <td><input type="checkbox" data-c="${c.id}" data-k="is_active" ${c.is_active ? "checked" : ""} ${canWrite() ? "" : "disabled"}></td></tr>`).join("") || `<tr><td colspan="4" class="empty">ยังไม่มีหมวด — นำเข้าจาก Excel หรือเพิ่มด้านล่าง</td></tr>`}
       </tbody></table>
-      ${canWrite() ? `<div class="row" style="margin-top:12px"><input class="in grow" id="cNew" placeholder="ชื่อหมวดใหม่ (อังกฤษ ตามไฟล์เดิม)"><button class="btn btn-s" id="cAdd">เพิ่มหมวด</button><button class="btn btn-p" id="cSave">บันทึกหมวด</button></div>` : ""}
+      ${canWrite() ? `<div class="row" style="margin-top:12px"><input class="in grow" id="cNew" placeholder="ชื่อหมวดใหม่ (อังกฤษ ตามไฟล์เดิม)"><button class="btn btn-s" id="cAdd">เพิ่มหมวด</button><button class="btn btn-p" id="cSave">บันทึกหมวด</button></div>
+      <div class="note" style="margin-top:14px"><b>ใส่ Cost Code ทีเดียวหลายหมวด</b> — เลือกได้ 2 ทาง (กด “บันทึกหมวด” หลังเติมเพื่อยืนยัน)</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-s btn-sm" id="ccGuess" title="ดูจากบรรทัดของใบที่ออกในปีล่าสุด ใช้รหัสที่ใช้บ่อยที่สุดของแต่ละหมวด">เติมจากใบที่เคยออก (ปีล่าสุด)</button>
+        <button class="btn btn-s btn-sm" id="ccTpl">ดาวน์โหลดแบบฟอร์ม Excel</button>
+        <label class="btn btn-s btn-sm">นำเข้า Cost Code จาก Excel<input type="file" id="ccFile" accept=".xlsx,.xls,.csv" hidden></label></div>
+      <div class="hint" id="ccOut" style="margin-top:8px">ไฟล์ Excel: คอลัมน์ <b>Category</b> กับ <b>Cost Code</b> (ชื่อหมวดต้องตรงกับในระบบ)</div>` : ""}
     </div>
   </div><div class="ed-col">
     <div class="card card-b"><div class="card-t">ลายเซ็นของฉัน</div>
@@ -659,6 +665,7 @@ function renderSettings() {
       <label class="fld" style="margin-top:12px"><span>ไฟล์ลายเซ็น (PNG พื้นใส) ${S.me?.signature_path ? `<b style="color:var(--green)">✓ มีแล้ว</b>` : ""}</span><input class="in" type="file" id="sgFile" accept="image/png"></label>
       <button class="btn btn-p" id="sgSave" style="margin-top:12px">บันทึกลายเซ็น</button>
     </div>
+    ${canWrite() ? mailCardHTML() : ""}
     ${canWrite() ? `<div class="card card-b"><div class="card-t">นำเข้าข้อมูลเดิมจาก Excel</div>
       <p class="hint" style="margin-bottom:10px">ไฟล์ “HR Invoice Database” (.xlsm) — อ่านชีต Vendor + Data ในเบราว์เซอร์ · ใบที่มีเลขอยู่แล้วจะข้าม (นำเข้าซ้ำได้) · ใบเก่าบันทึกเป็น “นำเข้าจาก Excel” (ลงนามบนกระดาษแล้ว)</p>
       <label class="btn btn-s">เลือกไฟล์ Excel<input type="file" id="imFile" accept=".xlsx,.xlsm,.xls" hidden></label>
@@ -666,7 +673,88 @@ function renderSettings() {
   </div></div>`;
   wireSettings();
 }
+// ---------- แบบอีเมล (ขอตรวจ / ขออนุมัติ / แจ้งอนุมัติ / แจ้งส่งกลับ) — ผู้ส่งและโหมดตั้งที่ ออกหนังสือ HR → ตั้งค่า
+let tplKey = "exp_review";
+const TPL_TO = { exp_review: "ผู้ตรวจที่เลือกตอนส่ง", exp_approve: "ผู้อนุมัติที่เลือกตอนส่ง", exp_approved: "ผู้จัดทำใบ", exp_rejected: "ผู้จัดทำใบ" };
+const SAMPLE = { doc_no: "HRIN360/2026", person: "Thai Dong Subdistrict Community Welfare Shop", kind: "Meal for Employees (Night Shift) : 1-15 October 2026",
+                 emp_code: "44,075.20 บาท", link: "#", reason: "ยอด WHT ไม่ตรง", requester: "Gantida Thianyod", approver: "Suphachoke Phanthumitr" };
+function mailCardHTML() {
+  const t = S.tpl.find(x => x.key === tplKey) || S.tpl[0];
+  if (!t) return `<div class="card card-b"><div class="card-t">แบบอีเมล</div><div class="hint">ยังไม่มีแบบอีเมล — รัน sql/schema_expense.sql ก่อน</div></div>`;
+  return `<div class="card card-b"><div class="card-t">แบบอีเมล</div>
+    <p class="hint" style="margin-bottom:10px">ส่งจากอีเมลกลางเดียวกับหนังสือ HR · โหมด: <b>${S.mail.mode === "auto" ? "ส่งอัตโนมัติ" : "เปิดใน Outlook (.eml)"}</b> (เปลี่ยนที่ ออกหนังสือ HR → ตั้งค่า)<br>
+      ตัวแปร: <code>{{doc_no}}</code> เลขที่ · <code>{{person}}</code> ผู้ขาย · <code>{{kind}}</code> รายการ · <code>{{emp_code}}</code> ยอดชำระ · <code>{{requester}}</code> · <code>{{approver}}</code> · <code>{{reason}}</code> · <code>{{link}}</code></p>
+    <label class="fld"><span>แบบ</span><select class="in" id="mtKey">${S.tpl.map(x => `<option value="${x.key}" ${x.key === t.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
+    <div class="hint" style="margin-top:6px">ผู้รับหลักใส่ให้อัตโนมัติ: ${esc(TPL_TO[t.key] || "-")}</div>
+    <div class="grid2" style="margin-top:10px"><label class="fld"><span>ส่งถึงเพิ่มเติม (To)</span><input class="in" id="mtTo" value="${esc(t.to_extra || "")}" placeholder="คั่นด้วย ,"></label>
+      <label class="fld"><span>สำเนาถึง (CC)</span><input class="in" id="mtCc" value="${esc(t.cc || "")}" placeholder="คั่นด้วย ,"></label></div>
+    <label class="fld" style="margin-top:10px"><span>หัวเรื่อง</span><input class="in" id="mtSubj" value="${esc(t.subject || "")}"></label>
+    <label class="fld" style="margin-top:10px"><span>เนื้อหา (HTML) · แนะนำแก้เฉพาะข้อความ ไม่แตะโครงตาราง (Outlook classic แสดงได้เฉพาะแบบตาราง)</span>
+      <textarea class="in" id="mtHtml" rows="10" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(t.html || "")}</textarea></label>
+    <div class="hint" style="margin-top:10px">ตัวอย่าง: <b id="mtPrevS"></b></div>
+    <iframe id="mtPrev" title="ตัวอย่างอีเมล" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;margin-top:6px;background:#fff"></iframe>
+    <button class="btn btn-p" id="mtSave" style="margin-top:10px">บันทึกแบบอีเมล</button></div>`;
+}
+function wireMailCard() {
+  if (!$("#mtKey")) return;
+  const prev = () => { $("#mtPrevS").textContent = fill($("#mtSubj").value, SAMPLE, false);
+    $("#mtPrev").srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0">${fill($("#mtHtml").value, SAMPLE, true)}</body></html>`; };
+  prev(); $("#mtSubj").oninput = prev; $("#mtHtml").oninput = prev;
+  $("#mtKey").onchange = e => { tplKey = e.target.value; renderSettings(); };
+  $("#mtSave").onclick = async () => {
+    const bad = [$("#mtTo").value, $("#mtCc").value].join(",").split(/[,;\s]+/).filter(x => x.trim() && !mailList(x));
+    if (bad.length) { toast("อีเมลไม่ถูกต้อง: " + bad.join(", "), "err"); return; }
+    const upd = { subject: $("#mtSubj").value, html: $("#mtHtml").value, to_extra: mailList($("#mtTo").value) || null, cc: mailList($("#mtCc").value) || null, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from("mail_templates").update(upd).eq("key", tplKey).select("key");
+    if (error || !data?.length) { toast("บันทึกไม่สำเร็จ" + (error ? ": " + error.message : " — บัญชีนี้ไม่มีสิทธิ์แก้แบบอีเมล"), "err"); return; }
+    Object.assign(S.tpl.find(x => x.key === tplKey), upd); toast("บันทึกแบบอีเมลแล้ว", "ok");
+  };
+}
+
+// ---------- Cost Code ของหมวด: เติมจากใบที่เคยออก / นำเข้าจาก Excel → เติมลงช่อง แล้วกด "บันทึกหมวด"
+const setCC = (map, src) => {
+  let n = 0;
+  for (const c of S.cats) { const v = map.get(c.name.trim().toLowerCase()); const inp = document.querySelector(`[data-c="${c.id}"][data-k="cost_code"]`);
+    if (v && inp && inp.value.trim() !== v) { inp.value = v; inp.style.background = "#FFF4D1"; n++; } }
+  $("#ccOut").innerHTML = n ? `เติมแล้ว ${n} หมวด จาก${esc(src)} (ช่องสีเหลือง) — ตรวจแล้วกด <b>บันทึกหมวด</b>` : `ไม่มีหมวดที่ต้องเติมจาก${esc(src)}`;
+};
+async function guessCostCodes() {
+  $("#ccOut").textContent = "กำลังดูใบที่เคยออก…";
+  const lastYear = Math.max(...S.invoices.map(i => i.inv_year || 0));
+  const inv = S.invoices.filter(i => i.inv_year === lastYear && i.category);
+  const cat = new Map(inv.map(i => [i.id, i.category]));
+  const count = new Map();
+  for (let k = 0; k < inv.length; k += 300) {
+    const { data, error } = await supabase.from("exp_invoice_lines").select("invoice_id,cost_code").in("invoice_id", inv.slice(k, k + 300).map(i => i.id));
+    if (error) { $("#ccOut").textContent = "ดึงข้อมูลไม่สำเร็จ: " + error.message; return; }
+    for (const l of data) { const c = String(l.cost_code || "").trim(); if (!/^[\w.]{4,}$/.test(c)) continue;
+      const key = cat.get(l.invoice_id).trim().toLowerCase(); const m = count.get(key) || new Map(); m.set(c, (m.get(c) || 0) + 1); count.set(key, m); }
+  }
+  // รหัสที่ใช้บ่อยที่สุดของแต่ละหมวดในปีล่าสุด (รหัสบัญชีเปลี่ยนชุดไปแล้ว — ปีเก่าใช้ชุดเดิม จึงดูแค่ปีล่าสุด)
+  setCC(new Map([...count].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1])[0][0]])), `ใบปี ${lastYear}`);
+}
+async function importCostCodes(file) {
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
+    const key = (r, ...names) => { const k = Object.keys(r).find(h => names.includes(h.trim().toLowerCase())); return k ? String(r[k]).trim() : ""; };
+    const map = new Map(rows.map(r => [key(r, "category", "หมวด").toLowerCase(), key(r, "cost code", "costcode", "cost_code", "รหัสบัญชี")]).filter(([c, v]) => c && v));
+    if (!map.size) { $("#ccOut").textContent = "ไม่พบคอลัมน์ Category / Cost Code ในไฟล์"; return; }
+    const unknown = [...map.keys()].filter(c => !S.cats.some(x => x.name.trim().toLowerCase() === c));
+    setCC(map, "ไฟล์");
+    if (unknown.length) $("#ccOut").innerHTML += `<br><span style="color:var(--amber)">ไม่รู้จักหมวด: ${esc(unknown.slice(0, 6).join(", "))}${unknown.length > 6 ? " …" : ""}</span>`;
+  } catch (e) { $("#ccOut").textContent = "อ่านไฟล์ไม่สำเร็จ: " + e.message; }
+}
+
 function wireSettings() {
+  wireMailCard();
+  $("#ccGuess")?.addEventListener("click", guessCostCodes);
+  $("#ccFile")?.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importCostCodes(f); });
+  $("#ccTpl")?.addEventListener("click", () => {
+    const ws = XLSX.utils.json_to_sheet(S.cats.map(c => ({ "Category": c.name, "Cost Code": c.cost_code || "", "ชื่อไทย (ไม่บังคับ)": c.name_th || "" })));
+    ws["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 24 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Code"); XLSX.writeFile(wb, "HR_Spend_cost_codes.xlsx");
+  });
   $("#cAdd")?.addEventListener("click", async () => {
     const name = $("#cNew").value.trim(); if (!name) return;
     const { data, error } = await supabase.from("exp_categories").insert({ name, sort_order: 100 }).select().single();
