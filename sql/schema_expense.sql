@@ -1,5 +1,5 @@
 -- ============================================================================
--- HR Spend — ใบแจ้งหนี้ HR (HRIN) และค่าใช้จ่ายฝ่าย HR · เว็บ /expense
+-- HR Invoice Hub — ใบแจ้งหนี้ HR (HRIN) และค่าใช้จ่ายฝ่าย HR · เว็บ /expense
 -- ใช้ Supabase โปรเจกต์เดียวกับระบบ HR (บัญชี / สิทธิ์ / ลายเซ็นชุดเดียวกัน)
 -- รันหลัง schema_rbac.sql และ schema_hr_letters.sql · รันซ้ำได้ปลอดภัย
 --
@@ -293,7 +293,7 @@ begin
   end loop;
 end $$;
 
--- ------------------------------------------------------------------ 6. ลายเซ็น: ให้ผู้ใช้ HR Spend อ่าน/ตั้งของตัวเองได้
+-- ------------------------------------------------------------------ 6. ลายเซ็น: ให้ผู้ใช้ HR Invoice Hub อ่าน/ตั้งของตัวเองได้
 --   (ชุดเดียวกับ schema_hr_letters.sql ข้อ 12 และ schema_fund_approval.sql — แก้ให้ตรงกันทุกไฟล์)
 drop policy if exists "ls_read" on letter_signers;
 create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
@@ -328,7 +328,7 @@ create policy "la_delete" on storage.objects for delete using (bucket_id = 'lett
 
 -- ------------------------------------------------------------------ 7. สิทธิ์
 insert into permissions (key, category, label, description, sort_order) values
-  ('page.expense',         'page', 'HR Spend (ใบแจ้งหนี้)', 'เปิดเว็บ HR Spend — ใบแจ้งหนี้ HR และค่าใช้จ่ายฝ่าย HR', 25),
+  ('page.expense',         'page', 'HR Invoice Hub (ใบแจ้งหนี้)', 'เปิดเว็บ HR Invoice Hub — ใบแจ้งหนี้ HR และค่าใช้จ่ายฝ่าย HR', 25),
   ('data.expense.write',   'data', 'ออกใบแจ้งหนี้ HR',       'สร้าง/แก้ใบแจ้งหนี้ ผู้ขาย หมวด งบ และนำเข้าจาก Excel (ลงนามช่องผู้จัดทำ)', 44),
   ('data.expense.review',  'data', 'ตรวจใบแจ้งหนี้ HR',      'ลงนามช่อง Reviewed by', 45),
   ('data.expense.approve', 'data', 'อนุมัติใบแจ้งหนี้ HR',   'ลงนามช่อง Approved by', 46)
@@ -344,10 +344,10 @@ on conflict do nothing;
 alter table mail_templates drop constraint if exists mail_templates_key_check;
 alter table mail_templates add constraint mail_templates_key_check check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected'));
 insert into mail_templates (key, label, subject, html) values
-('exp_review', 'HR Spend: ขอให้ตรวจ', '[ขอตรวจ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
+('exp_review', 'HR Invoice Hub: ขอให้ตรวจ', '[ขอตรวจ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:560px;background:#FFFFFF;border:1px solid #E2E8F0;">
-  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Spend · Akara Resources</td></tr>
+  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Invoice Hub · Akara Resources</td></tr>
   <tr><td align="center" style="padding:26px 28px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#EEF3FB" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#EEF3FB;color:#2B5AC7;font-size:13px;font-weight:bold;line-height:150%;padding:5px 16px;">● รอท่านตรวจ</td></tr></table></td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:14px 36px 4px;color:#0F1C4D;font-size:22px;font-weight:bold;line-height:150%;">ใบแจ้งหนี้รอท่านตรวจ</td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:4px 36px 22px;color:#64748B;font-size:15px;line-height:160%;">จัดทำโดย {{requester}}</td></tr>
@@ -357,10 +357,10 @@ insert into mail_templates (key, label, subject, html) values
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 28px 0;color:#94A3B8;font-size:12px;line-height:160%;">หากปุ่มไม่ทำงาน คัดลอกลิงก์นี้ไปเปิดในเบราว์เซอร์<br><a href="{{link}}" style="color:#2B5AC7;">{{link}}</a></td></tr>
   <tr><td style="padding:22px 28px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#F5F3FF" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#F5F3FF;border-left:4px solid #6D28D9;padding:12px 16px;color:#4C1D95;font-size:13px;line-height:160%;">🔒 ต้องเข้าสู่ระบบก่อนเปิดดู · ลายเซ็นของท่านลงช่อง Reviewed by เมื่อกดยืนยัน</td></tr></table></td></tr>
  </table></td></tr></table>$h$),
-('exp_approve', 'HR Spend: ขอให้อนุมัติ', '[ขออนุมัติ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
+('exp_approve', 'HR Invoice Hub: ขอให้อนุมัติ', '[ขออนุมัติ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:560px;background:#FFFFFF;border:1px solid #E2E8F0;">
-  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Spend · Akara Resources</td></tr>
+  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Invoice Hub · Akara Resources</td></tr>
   <tr><td align="center" style="padding:26px 28px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#EDE9FE" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#EDE9FE;color:#6D28D9;font-size:13px;font-weight:bold;line-height:150%;padding:5px 16px;">● รอท่านอนุมัติ</td></tr></table></td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:14px 36px 4px;color:#0F1C4D;font-size:22px;font-weight:bold;line-height:150%;">ใบแจ้งหนี้รอท่านอนุมัติ</td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:4px 36px 22px;color:#64748B;font-size:15px;line-height:160%;">ตรวจแล้วโดย {{requester}}</td></tr>
@@ -370,10 +370,10 @@ insert into mail_templates (key, label, subject, html) values
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 28px 0;color:#94A3B8;font-size:12px;line-height:160%;">หากปุ่มไม่ทำงาน คัดลอกลิงก์นี้ไปเปิดในเบราว์เซอร์<br><a href="{{link}}" style="color:#2B5AC7;">{{link}}</a></td></tr>
   <tr><td style="padding:22px 28px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#F5F3FF" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#F5F3FF;border-left:4px solid #6D28D9;padding:12px 16px;color:#4C1D95;font-size:13px;line-height:160%;">🔒 ต้องเข้าสู่ระบบก่อนเปิดดู · ลายเซ็นของท่านลงช่อง Approved by เมื่อกดอนุมัติ</td></tr></table></td></tr>
  </table></td></tr></table>$h$),
-('exp_approved', 'HR Spend: แจ้งอนุมัติแล้ว', '[อนุมัติแล้ว] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
+('exp_approved', 'HR Invoice Hub: แจ้งอนุมัติแล้ว', '[อนุมัติแล้ว] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:560px;background:#FFFFFF;border:1px solid #E2E8F0;">
-  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Spend · Akara Resources</td></tr>
+  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Invoice Hub · Akara Resources</td></tr>
   <tr><td align="center" style="padding:26px 28px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#E6F5EE" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#E6F5EE;color:#0D7C4B;font-size:13px;font-weight:bold;line-height:150%;padding:5px 16px;">✓ อนุมัติแล้ว</td></tr></table></td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:14px 36px 4px;color:#0F1C4D;font-size:22px;font-weight:bold;line-height:150%;">ใบแจ้งหนี้อนุมัติแล้ว</td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:4px 36px 22px;color:#64748B;font-size:15px;line-height:160%;">อนุมัติโดย {{approver}}</td></tr>
@@ -383,10 +383,10 @@ insert into mail_templates (key, label, subject, html) values
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 28px 0;color:#94A3B8;font-size:12px;line-height:160%;">หากปุ่มไม่ทำงาน คัดลอกลิงก์นี้ไปเปิดในเบราว์เซอร์<br><a href="{{link}}" style="color:#2B5AC7;">{{link}}</a></td></tr>
   <tr><td style="padding:22px 28px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#F5F3FF" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#F5F3FF;border-left:4px solid #6D28D9;padding:12px 16px;color:#4C1D95;font-size:13px;line-height:160%;">พิมพ์ใบที่มีลายเซ็นครบ แล้วส่งฝ่ายบัญชี จากนั้นกด “ส่งบัญชีแล้ว” ในระบบ</td></tr></table></td></tr>
  </table></td></tr></table>$h$),
-('exp_rejected', 'HR Spend: แจ้งส่งกลับแก้ไข', '[ส่งกลับ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
+('exp_rejected', 'HR Invoice Hub: แจ้งส่งกลับแก้ไข', '[ส่งกลับ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:560px;background:#FFFFFF;border:1px solid #E2E8F0;">
-  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Spend · Akara Resources</td></tr>
+  <tr><td bgcolor="#0F1C4D" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#0F1C4D;color:#FFFFFF;padding:16px 28px;font-size:14px;line-height:150%;">HR Invoice Hub · Akara Resources</td></tr>
   <tr><td align="center" style="padding:26px 28px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#FDECEA" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#FDECEA;color:#C0392B;font-size:13px;font-weight:bold;line-height:150%;padding:5px 16px;">↩ ส่งกลับแก้ไข</td></tr></table></td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:14px 36px 4px;color:#0F1C4D;font-size:22px;font-weight:bold;line-height:150%;">ใบแจ้งหนี้ถูกส่งกลับให้แก้ไข</td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:4px 36px 22px;color:#64748B;font-size:15px;line-height:160%;">โดย {{approver}}</td></tr>
@@ -429,3 +429,9 @@ drop policy if exists "ef_delete" on storage.objects;
 create policy "ef_read"   on storage.objects for select using (bucket_id = 'expense-files' and has_perm('page.expense'));
 create policy "ef_write"  on storage.objects for insert with check (bucket_id = 'expense-files' and has_perm('data.expense.write'));
 create policy "ef_delete" on storage.objects for delete using (bucket_id = 'expense-files' and has_perm('data.expense.write'));
+
+-- ------------------------------------------------------------------ 10. ชื่อระบบ: HR Spend → HR Invoice Hub (2026-10-08)
+--   แบบอีเมลที่มีอยู่แล้ว (insert ... do nothing ไม่ทับ) — เปลี่ยนเฉพาะคำว่า HR Spend ข้อความที่ HR แก้เองยังอยู่
+update mail_templates set label = replace(label, 'HR Spend', 'HR Invoice Hub'), html = replace(html, 'HR Spend', 'HR Invoice Hub'),
+       subject = replace(subject, 'HR Spend', 'HR Invoice Hub')
+ where key like 'exp\_%' and (label like '%HR Spend%' or html like '%HR Spend%' or subject like '%HR Spend%');

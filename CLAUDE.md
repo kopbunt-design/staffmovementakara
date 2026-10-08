@@ -22,7 +22,7 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
 - `headcount.js`, `movement-report.js`, `workforce-overview.js`, `vacancy.js` — reporting pages.
 - `supabase-config.js` — Supabase client init only.
 
-## HR Spend (`expense/`) — separate app at `/expense`
+## HR Invoice Hub (`expense/`) — separate app at `/expense`
 
 HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and same Supabase project, so the login session is shared (same origin); the HR app's `navigate("expense")` just redirects there. `vercel.json` rewrites `/expense` before the catch-all.
 - `expense/spend.js` (UI, routing by hash), `expense/calc.js` (money rules + Excel import parser, tested by `test/expense.test.js`), `expense/doc.js` (A4 invoice).

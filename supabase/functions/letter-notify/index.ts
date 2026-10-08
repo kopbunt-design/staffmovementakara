@@ -6,7 +6,7 @@
 //   fund_id + action = "fund_request" | "fund_approved" | "fund_rejected"
 //                       → แบบฟอร์มกองทุนสำรองเลี้ยงชีพ: ขอคณะกรรมการลงนาม / แจ้ง HR ผล (schema_fund_approval.sql)
 //   exp_id + action = "exp_review" | "exp_approve" | "exp_approved" | "exp_rejected"
-//                       → HR Spend ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
+//                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
 //
 // ค่าตั้ง (Tenant / Client ID / Secret / ผู้ส่ง) ตั้งในหน้าเว็บ: ออกหนังสือ HR → ตั้งค่า → การส่งอีเมล
 //   ใช้แอปเดียวกับที่ TigerSoft ใช้ส่งเมลได้ (ต้องมีสิทธิ์ Mail.Send แบบ Application)

@@ -1,5 +1,5 @@
 // ============================================================================
-// HR Spend — แอปหลัก (เว็บ /expense)
+// HR Invoice Hub — แอปหลัก (เว็บ /expense)
 //   ใช้ Supabase + session เดียวกับระบบ HR (โดเมนเดียวกัน) · สิทธิ์ page.expense / data.expense.*
 //   หน้า: #/overview · #/invoices · #/invoice/<id|new> · #/vendors · #/budget · #/settings
 //   ตรรกะเงิน/นำเข้า: calc.js · ใบ A4: doc.js · ฐานข้อมูล + ขั้นตอนลงนาม: sql/schema_expense.sql
@@ -47,7 +47,7 @@ async function boot() {
   if (!session) {
     $("#spMain").innerHTML = `<div class="card card-b" style="max-width:460px;margin:60px auto;text-align:center">
       <div class="card-t" style="justify-content:center">กรุณาเข้าสู่ระบบ</div>
-      <p class="sp-sub" style="margin-bottom:16px">HR Spend ใช้บัญชีเดียวกับระบบ HR — เข้าสู่ระบบ HR ก่อน แล้วกดเมนู HR Spend</p>
+      <p class="sp-sub" style="margin-bottom:16px">HR Invoice Hub ใช้บัญชีเดียวกับระบบ HR — เข้าสู่ระบบ HR ก่อน แล้วกดเมนู HR Invoice Hub</p>
       <a class="btn btn-p" href="/">ไปหน้าเข้าสู่ระบบ HR</a></div>`;
     return;
   }
@@ -58,7 +58,7 @@ async function boot() {
   $("#spUser").innerHTML = `<div class="sp-av">${esc(name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase())}</div>
     <div><b>${esc(name)}</b><span>${canWrite() ? "HR · ผู้จัดทำ" : can("data.expense.approve") ? "ผู้อนุมัติ" : can("data.expense.review") ? "ผู้ตรวจ" : "ดูอย่างเดียว"}</span></div>`;
   if (!can("page.expense")) {
-    $("#spMain").innerHTML = `<div class="empty">บัญชีนี้ยังไม่มีสิทธิ์ใช้ HR Spend — ให้ Admin เพิ่มสิทธิ์ “HR Spend (ใบแจ้งหนี้)” ที่ User Management</div>`;
+    $("#spMain").innerHTML = `<div class="empty">บัญชีนี้ยังไม่มีสิทธิ์ใช้ HR Invoice Hub — ให้ Admin เพิ่มสิทธิ์ “HR Invoice Hub (ใบแจ้งหนี้)” ที่ User Management</div>`;
     return;
   }
   try { await loadAll(); }
@@ -138,7 +138,7 @@ async function sendMail(inv, action, lines) {
   downloadEml(mailList(to, t.to_extra || ""), fill(t.subject, v, false), fill(t.html, v, true), `${inv.inv_no} ${action}.eml`, mailList(t.cc || ""));
   return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดใน Outlook แล้วกด Send";
 }
-// กระดิ่งในระบบ HR (ตาราง notifications เดียวกัน) — กดแล้วเปิดใบนี้ในเว็บ HR Spend
+// กระดิ่งในระบบ HR (ตาราง notifications เดียวกัน) — กดแล้วเปิดใบนี้ในเว็บ HR Invoice Hub
 const notifyHR = (title, inv) => supabase.from("notifications").insert({ title, detail: `${inv.inv_no} · ${inv.vendor?.name || ""}`,
   category: "default", created_by: S.user.id, link: `/expense/#/invoice/${inv.id}` }).then(() => {}, () => {});
 

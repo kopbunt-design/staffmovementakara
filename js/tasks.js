@@ -37,7 +37,7 @@ const SOURCES = [
     return data.map(l => ({ kind: "fix", title: T[L].fix(l.doc_no || ""), at: l.updated_at,
       sub: [l.person_name, l.reject_reason].filter(Boolean).join(" · "), link: `letters?letter=${l.id}` }));
   } },
-  // HR Spend: ใบแจ้งหนี้ที่รอฉันตรวจ / อนุมัติ และที่ฉันจัดทำแล้วถูกส่งกลับ — กดแล้วเปิดในเว็บ HR Spend
+  // HR Invoice Hub: ใบแจ้งหนี้ที่รอฉันตรวจ / อนุมัติ และที่ฉันจัดทำแล้วถูกส่งกลับ — กดแล้วเปิดในเว็บ HR Invoice Hub
   { when: () => can("page.expense"), load: async (L) => {
     const { data, error } = await supabase.from("exp_invoices").select("id,inv_no,vendor,net,status,reviewer_id,approver_id,prepared_by,reject_reason,submitted_at,updated_at")
       .or(`and(status.eq.review,reviewer_id.eq.${currentUser?.id}),and(status.eq.approval,approver_id.eq.${currentUser?.id}),and(status.eq.rejected,prepared_by.eq.${currentUser?.id})`);

@@ -436,7 +436,7 @@ create policy "la_delete" on storage.objects for delete using (bucket_id = 'lett
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')))))));
 
 -- ============================================================================
--- สิทธิ์ลายเซ็นรวมทุกระบบ (หนังสือ HR · แบบฟอร์มกองทุน · HR Spend) — ชุดเดียวกันทุกไฟล์
+-- สิทธิ์ลายเซ็นรวมทุกระบบ (หนังสือ HR · แบบฟอร์มกองทุน · HR Invoice Hub) — ชุดเดียวกันทุกไฟล์
 -- ต้องอยู่ท้ายไฟล์ ไฟล์ไหนรันทีหลังก็ได้ผลเหมือนกัน · แก้ที่นี่ต้องแก้ใน schema_expense.sql / schema_fund_approval.sql / schema_hr_letters.sql ด้วย
 -- ============================================================================
 drop policy if exists "ls_read" on letter_signers;

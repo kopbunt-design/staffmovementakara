@@ -1,4 +1,4 @@
-// เทส HR Spend — ดึงฟังก์ชันจริงจาก expense/calc.js · ข้อมูลสมมติล้วน
+// เทส HR Invoice Hub — ดึงฟังก์ชันจริงจาก expense/calc.js · ข้อมูลสมมติล้วน
 // รัน:  osascript -l JavaScript test/expense.test.js
 ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
