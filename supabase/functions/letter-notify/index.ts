@@ -7,6 +7,8 @@
 //                       → แบบฟอร์มกองทุนสำรองเลี้ยงชีพ: ขอคณะกรรมการลงนาม / แจ้ง HR ผล (schema_fund_approval.sql)
 //   exp_id + action = "exp_review" | "exp_approve" | "exp_approved" | "exp_rejected"
 //                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
+//                         exp_approve ส่งลิงก์อนุมัติไม่ต้อง login (/expense/approve.html?t=...) ถึงผู้อนุมัติ
+//   exp_token (ไม่ต้อง login) → หน้า approve.html แจ้งผู้จัดทำหลังผู้อนุมัติกดจากลิงก์ (ภายใน 30 นาทีหลังกด)
 //
 // ค่าตั้ง (Tenant / Client ID / Secret / ผู้ส่ง) ตั้งในหน้าเว็บ: ออกหนังสือ HR → ตั้งค่า → การส่งอีเมล
 //   ใช้แอปเดียวกับที่ TigerSoft ใช้ส่งเมลได้ (ต้องมีสิทธิ์ Mail.Send แบบ Application)
@@ -39,16 +41,21 @@ const fill = (tpl: string, v: Record<string, string>, html: boolean) =>
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    const auth = req.headers.get("Authorization");
-    if (!auth) return json({ error: "Missing authorization header" }, 401);
     const url = Deno.env.get("SUPABASE_URL")!;
-    // อ่านด้วยสิทธิ์ของผู้เรียก — ถ้าเขาอ่านหนังสือฉบับนี้ไม่ได้ (RLS) ก็ส่งเมลเรื่องนี้ไม่ได้
-    const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
-    const { data: { user }, error: uerr } = await caller.auth.getUser();
-    if (uerr || !user) return json({ error: "Invalid session" }, 401);
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-
-    const { letter_id, fund_id, exp_id, action } = await req.json();
+    const { letter_id, fund_id, exp_id, exp_token, action: action_ } = await req.json();
+    let action = action_;
+    // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
+    let caller: any = null, user: any = null;
+    if (!exp_token) {
+      const auth = req.headers.get("Authorization");
+      if (!auth) return json({ error: "Missing authorization header" }, 401);
+      // อ่านด้วยสิทธิ์ของผู้เรียก — ถ้าเขาอ่านหนังสือฉบับนี้ไม่ได้ (RLS) ก็ส่งเมลเรื่องนี้ไม่ได้
+      caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+      const { data: { user: u }, error: uerr } = await caller.auth.getUser();
+      if (uerr || !u) return json({ error: "Invalid session" }, 401);
+      user = u;
+    }
     const { data: ms } = await admin.from("mail_settings").select("*").eq("id", 1).maybeSingle();
     const { data: sec } = await admin.from("mail_secret").select("client_secret").eq("id", 1).maybeSingle();
     const cfg = {
@@ -73,21 +80,39 @@ Deno.serve(async (req) => {
       extraTo = list(t.to_extra); cc = list(t.cc);
       return true;
     };
-    if (exp_id) {
-      const { data: x, error } = await caller.from("exp_invoices").select("*").eq("id", exp_id).single();
-      if (error || !x) return json({ error: "ไม่พบใบแจ้งหนี้ หรือไม่มีสิทธิ์" }, 403);
-      const { data: ln } = await caller.from("exp_invoice_lines").select("detail").eq("invoice_id", exp_id).order("line_no").limit(1);
+    if (exp_id || exp_token) {
+      let x: any = null;
+      if (exp_token) {
+        const { data: t } = await admin.from("exp_approve_tokens").select("invoice_id,used_at").eq("token", String(exp_token)).maybeSingle();
+        if (!t?.used_at || Date.now() - new Date(t.used_at).getTime() > 30 * 60e3) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดเวลาแจ้งผล" }, 403);
+        x = (await admin.from("exp_invoices").select("*").eq("id", t.invoice_id).single()).data;
+        action = x?.status === "approved" ? "exp_approved" : x?.status === "rejected" ? "exp_rejected" : "";
+        if (!action) return json({ error: "ใบนี้ไม่ได้อยู่ในสถานะที่ต้องแจ้ง" }, 400);
+      } else {
+        const { data, error } = await caller.from("exp_invoices").select("*").eq("id", exp_id).single();
+        if (error || !data) return json({ error: "ไม่พบใบแจ้งหนี้ หรือไม่มีสิทธิ์" }, 403);
+        x = data;
+      }
+      const { data: ln } = await admin.from("exp_invoice_lines").select("detail").eq("invoice_id", x.id).order("line_no").limit(1);
       const prep = await nameOf(x.prepared_by), rev = await nameOf(x.reviewer_id), appr = await nameOf(x.approver_id);
       const money = (n: number) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท";
       if (action === "exp_review") { if (x.status !== "review") return json({ error: "ใบนี้ไม่ได้รอตรวจ" }, 400); to = rev.email; }
       else if (action === "exp_approve") { if (x.status !== "approval") return json({ error: "ใบนี้ไม่ได้รออนุมัติ" }, 400); to = appr.email; }
       else if (action === "exp_approved" || action === "exp_rejected") to = prep.email;
       else return json({ error: "action ไม่ถูกต้อง" }, 400);
-      const decider = action === "exp_rejected" ? (x.status === "rejected" && x.reviewer ? appr.name : rev.name) : appr.name;
+      // ส่งกลับโดยผู้อนุมัติ = ผู้ตรวจผ่านไปแล้วในรอบนี้ (reviewed_at หลังส่งตรวจล่าสุด)
+      const byApprover = x.reviewed_at && x.submitted_at && new Date(x.reviewed_at) > new Date(x.submitted_at);
+      const decider = action === "exp_rejected" ? (byApprover ? appr.name : rev.name) : appr.name;
+      let link = `${appUrl}/expense/#/invoice/${x.id}`;
+      if (action === "exp_approve") {   // ลิงก์อนุมัติไม่ต้อง login — ไปถึงผู้อนุมัติเท่านั้น (ไม่ใส่ให้ผู้รับเพิ่ม/สำเนา)
+        const { data: t } = await admin.from("exp_approve_tokens").select("token,used_at,expires_at").eq("invoice_id", x.id).maybeSingle();
+        if (t && !t.used_at && new Date(t.expires_at) > new Date()) link = `${appUrl}/expense/approve.html?t=${t.token}`;
+      }
       const ok = await tplVars(action, { doc_no: x.inv_no || "", person: x.vendor?.name || "", kind: ln?.[0]?.detail || x.category || "",
-        emp_code: money(x.net), link: `${appUrl}/expense/#/invoice/${x.id}`, reason: x.reject_reason || "-",
+        emp_code: money(x.net), link, reason: x.reject_reason || "-",
         requester: action === "exp_approve" ? rev.name : prep.name, approver: decider });
       if (!ok) return json({ sent: false, reason: "no_template" });
+      if (action === "exp_approve" && link.includes("approve.html")) { extraTo = []; cc = []; }
     } else if (fund_id) {
       // อ่านด้วยสิทธิ์ผู้เรียก — ต้องเปิดหน้าแบบฟอร์มกองทุนได้ (RLS) ถึงส่งเมลเรื่องนี้ได้
       const { data: f, error } = await caller.from("fund_form_submission").select("*").eq("id", fund_id).single();
@@ -103,6 +128,7 @@ Deno.serve(async (req) => {
         requester: reqBy.name, approver: appr.name });
       if (!ok) return json({ sent: false, reason: "no_template" });
     } else if (action === "test") {
+      if (!user) return json({ error: "Invalid session" }, 401);
       to = user.email || "";
       subject = "ทดสอบส่งเมลจากระบบ HR";
       html = `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px">ตั้งค่าการส่งอีเมลถูกต้อง — ระบบส่งเมลจาก <b>${esc(cfg.sender)}</b> ได้แล้ว</div>`;

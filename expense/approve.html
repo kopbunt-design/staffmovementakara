@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>อนุมัติใบแจ้งหนี้ · HR Invoice Hub</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+<style>
+  .ap-top{background:#fff;border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px}
+  .ap-top img{height:30px}.ap-top b{color:var(--blue);font-weight:600;letter-spacing:.6px;font-size:11.5px}.ap-top span{font-size:12px;color:var(--ink3)}
+  .ap-main{max-width:760px;margin:0 auto;padding:24px 16px 48px;display:flex;flex-direction:column;gap:16px}.ap-main>*{min-width:0}
+  .ap-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .ap-hero h1{font-size:22px;font-weight:600;line-height:1.3}.ap-hero .hint{margin-top:2px}
+  .ap-net{text-align:right}.ap-net span{font-size:12px;color:var(--ink3)}.ap-net b{display:block;font-size:26px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
+  .ap-kv{display:grid;grid-template-columns:130px 1fr;gap:8px 16px;font-size:14px}.ap-kv dt{color:var(--ink3)}.ap-kv dd{min-width:0;overflow-wrap:anywhere}
+  .ap-lines{width:100%;min-width:540px;border-collapse:collapse;font-size:13.5px}
+  .ap-lines th{background:#F1F3F6;color:var(--ink2);font-weight:500;font-size:12px;text-align:right;padding:8px 10px}
+  .ap-lines td{padding:9px 10px;border-top:1px solid var(--line);text-align:right;vertical-align:top;font-variant-numeric:tabular-nums}
+  .ap-lines th:first-child,.ap-lines td:first-child{text-align:left}
+  .ap-lines td small{display:block;color:var(--ink3);font-size:11.5px}.ap-lines tr.tot td{font-weight:600;border-top:1.5px solid var(--line2)}
+  .ap-scroll{overflow-x:auto;margin:0 -24px;padding:0 24px}
+  .ap-steps{display:flex;flex-direction:column;gap:8px;font-size:13.5px}.ap-steps div{display:flex;gap:10px}.ap-steps i{font-style:normal;width:20px;color:var(--green)}
+  .ap-acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+  .ap-acts .btn{padding:11px 22px;font-size:15px}
+  .ap-done{text-align:center;padding:40px 24px}.ap-done .ic{font-size:44px;line-height:1}.ap-done h2{font-size:20px;margin:10px 0 6px}
+  textarea.in{resize:vertical}
+  @media (max-width:560px){.ap-kv{grid-template-columns:96px 1fr}.ap-net{text-align:left}.ap-acts .btn{flex:1;justify-content:center}.ap-scroll{margin:0 -16px;padding:0 16px}.card-b{padding:16px}}
+</style>
+</head>
+<body>
+<!--
+  หน้าอนุมัติใบแจ้งหนี้จากลิงก์ในอีเมล — ผู้อนุมัติไม่ต้อง login
+  /expense/approve.html?t=<token> · token ออกเมื่อใบเข้าสถานะรออนุมัติ ใช้ได้ครั้งเดียว อายุ 14 วัน
+  ฟังก์ชัน exp_link_get / exp_link_decide (sql/schema_expense.sql ข้อ 11)
+-->
+<header class="ap-top"><img src="/assets/logo.png" alt="Akara Resources"><div><b>HR INVOICE HUB</b><br><span>อนุมัติใบแจ้งหนี้</span></div></header>
+<main class="ap-main" id="app"><div class="sp-loading">กำลังโหลด…</div></main>
+<div class="sp-toasts" id="spToasts"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module" src="/expense/approve.js?v=1"></script>
+</body>
+</html>

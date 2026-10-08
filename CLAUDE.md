@@ -28,7 +28,8 @@ HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and
 - `expense/spend.js` (UI, routing by hash), `expense/calc.js` (money rules + Excel import parser, tested by `test/expense.test.js`), `expense/doc.js` (A4 invoice).
 - `expense/` must NOT import `js/app.js` (or anything that imports it, e.g. `combobox.js`, `hr-letters.js`) — that would boot the HR app inside it.
 - Money: VAT 7% and WHT (0/1/2/3/5% for the whole invoice) are both computed on the pre-VAT amount, rounded per line, then summed — matches the old Excel exactly.
-- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql` and `schema_expense.sql` — change all three together.
+- **Approver signs from the email without logging in**: `expense/approve.html?t=<token>` + `expense/approve.js` (no `spend.js` import). A token is issued by trigger each time an invoice enters `approval` (`exp_approve_tokens`, no RLS policies — only `exp_link_get` / `exp_link_decide` / `exp_approve_link` and the edge function read it), single use, 14 days. It signs as the approver HR chose, so the `exp_approve` mail goes to that approver only — `to_extra`/`cc` are dropped for it. Afterwards `letter-notify` is called with `exp_token` (no session) to mail the preparer.
+- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql` and `schema_expense.sql` — change all three together.
 
 ## Gotchas
 

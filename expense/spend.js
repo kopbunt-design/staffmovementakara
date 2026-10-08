@@ -132,10 +132,13 @@ async function sendMail(inv, action, lines) {
   const t = S.tpl.find(x => x.key === action); if (!t) return "แจ้งในระบบแล้ว";
   const to = { exp_review: S.signers.find(s => s.user_id === inv.reviewer_id)?.email,
                exp_approve: S.signers.find(s => s.user_id === inv.approver_id)?.email }[action] || "";
+  // ขออนุมัติ: ลิงก์อนุมัติไม่ต้อง login (ขอได้เฉพาะผู้ตรวจที่เพิ่งตรวจ) — ส่งถึงผู้อนุมัติคนเดียว ไม่ใส่ผู้รับเพิ่ม/สำเนา
+  const token = action === "exp_approve" ? (await supabase.rpc("exp_approve_link", { p_id: inv.id })).data : null;
   const v = { doc_no: inv.inv_no || "", person: inv.vendor?.name || "", kind: lines?.[0]?.detail || inv.category || "",
-              emp_code: money(inv.net) + " บาท", link: `${location.origin}/expense/#/invoice/${inv.id}`, reason: inv.reject_reason || "-",
+              emp_code: money(inv.net) + " บาท", reason: inv.reject_reason || "-",
+              link: token ? `${location.origin}/expense/approve.html?t=${token}` : `${location.origin}/expense/#/invoice/${inv.id}`,
               requester: inv.preparer?.name || "", approver: inv.approver?.name || signerName(inv.approver_id) };
-  downloadEml(mailList(to, t.to_extra || ""), fill(t.subject, v, false), fill(t.html, v, true), `${inv.inv_no} ${action}.eml`, mailList(t.cc || ""));
+  downloadEml(token ? mailList(to) : mailList(to, t.to_extra || ""), fill(t.subject, v, false), fill(t.html, v, true), `${inv.inv_no} ${action}.eml`, token ? "" : mailList(t.cc || ""));
   return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดใน Outlook แล้วกด Send";
 }
 // กระดิ่งในระบบ HR (ตาราง notifications เดียวกัน) — กดแล้วเปิดใบนี้ในเว็บ HR Invoice Hub
@@ -358,7 +361,7 @@ function drawEditor() {
       <div class="steps">
         ${step(st(0), "จัดทำ (Prepared)", inv.preparer?.name || (inv.id ? "" : S.me?.name_en || S.me?.name_th || S.user.email), at(inv.preparer) || (inv.status === "rejected" ? "ส่งกลับให้แก้ไข" : ""))}
         ${step(st(1), "ตรวจ (Reviewed)", inv.reviewer?.name || (inv.reviewer_id ? signerName(inv.reviewer_id) : ""), at(inv.reviewer) || (inv.status === "review" ? "รอตรวจ" : ""))}
-        ${step(st(2), "อนุมัติ (Approved)", inv.approver?.name || (inv.approver_id ? signerName(inv.approver_id) : ""), at(inv.approver) || (inv.status === "approval" ? "รออนุมัติ" : ""))}
+        ${step(st(2), "อนุมัติ (Approved)", inv.approver?.name || (inv.approver_id ? signerName(inv.approver_id) : ""), (at(inv.approver) && inv.approver?.via === "email_link" ? at(inv.approver) + " · กดจากลิงก์อีเมล" : at(inv.approver)) || (inv.status === "approval" ? "รออนุมัติ (กดจากลิงก์ในอีเมลได้)" : ""))}
         ${step(st(3) === "done" || inv.status === "received" ? "done" : st(3), "รับเอกสาร (Received)", inv.received_name || "ฝ่ายบัญชี", inv.status === "received" ? thDate(inv.received_at) : "หลังอนุมัติ")}
       </div>
       ${inv.imported ? `<div class="note">ใบนี้นำเข้าจาก Excel เดิม — ลงนามบนกระดาษแล้ว</div>` : ""}
@@ -685,7 +688,7 @@ function mailCardHTML() {
     <p class="hint" style="margin-bottom:10px">ส่งจากอีเมลกลางเดียวกับหนังสือ HR · โหมด: <b>${S.mail.mode === "auto" ? "ส่งอัตโนมัติ" : "เปิดใน Outlook (.eml)"}</b> (เปลี่ยนที่ ออกหนังสือ HR → ตั้งค่า)<br>
       ตัวแปร: <code>{{doc_no}}</code> เลขที่ · <code>{{person}}</code> ผู้ขาย · <code>{{kind}}</code> รายการ · <code>{{emp_code}}</code> ยอดชำระ · <code>{{requester}}</code> · <code>{{approver}}</code> · <code>{{reason}}</code> · <code>{{link}}</code></p>
     <label class="fld"><span>แบบ</span><select class="in" id="mtKey">${S.tpl.map(x => `<option value="${x.key}" ${x.key === t.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
-    <div class="hint" style="margin-top:6px">ผู้รับหลักใส่ให้อัตโนมัติ: ${esc(TPL_TO[t.key] || "-")}</div>
+    <div class="hint" style="margin-top:6px">ผู้รับหลักใส่ให้อัตโนมัติ: ${esc(TPL_TO[t.key] || "-")}${t.key === "exp_approve" ? " · <b>{{link}}</b> ในแบบนี้คือลิงก์อนุมัติไม่ต้อง login จึงส่งถึงผู้อนุมัติคนเดียว (ไม่ส่งช่องเพิ่มเติม/สำเนา)" : ""}</div>
     <div class="grid2" style="margin-top:10px"><label class="fld"><span>ส่งถึงเพิ่มเติม (To)</span><input class="in" id="mtTo" value="${esc(t.to_extra || "")}" placeholder="คั่นด้วย ,"></label>
       <label class="fld"><span>สำเนาถึง (CC)</span><input class="in" id="mtCc" value="${esc(t.cc || "")}" placeholder="คั่นด้วย ,"></label></div>
     <label class="fld" style="margin-top:10px"><span>หัวเรื่อง</span><input class="in" id="mtSubj" value="${esc(t.subject || "")}"></label>

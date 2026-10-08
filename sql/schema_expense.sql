@@ -366,9 +366,9 @@ insert into mail_templates (key, label, subject, html) values
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:4px 36px 22px;color:#64748B;font-size:15px;line-height:160%;">ตรวจแล้วโดย {{requester}}</td></tr>
   <tr><td style="padding:0 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background:#F8FAFC;border:1px solid #E2E8F0;"><tr><td width="120" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;color:#64748B;font-size:14px;line-height:150%;" valign="top">เลขที่</td><td style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;color:#1E293B;font-size:15px;line-height:150%;"><b>{{doc_no}}</b></td></tr><tr><td width="120" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#64748B;font-size:14px;line-height:150%;" valign="top">ผู้ขาย</td><td style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#1E293B;font-size:15px;line-height:150%;">{{person}}</td></tr><tr><td width="120" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#64748B;font-size:14px;line-height:150%;" valign="top">รายการ</td><td style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#1E293B;font-size:15px;line-height:150%;">{{kind}}</td></tr><tr><td width="120" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#64748B;font-size:14px;line-height:150%;" valign="top">ยอดชำระ</td><td style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 18px;border-top:1px solid #E2E8F0;color:#1E293B;font-size:15px;line-height:150%;"><b>{{emp_code}}</b></td></tr></table></td></tr>
   <tr><td align="center" style="padding:28px 28px 6px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#2B5AC7" style="background:#2B5AC7;padding:14px 32px;">
-   <a href="{{link}}" target="_blank" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;color:#FFFFFF;text-decoration:none;font-size:16px;font-weight:bold;line-height:150%;display:block;">เปิดใบแจ้งหนี้เพื่ออนุมัติ</a></td></tr></table></td></tr>
+   <a href="{{link}}" target="_blank" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;color:#FFFFFF;text-decoration:none;font-size:16px;font-weight:bold;line-height:150%;display:block;">เปิดดูและอนุมัติ</a></td></tr></table></td></tr>
   <tr><td align="center" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;padding:12px 28px 0;color:#94A3B8;font-size:12px;line-height:160%;">หากปุ่มไม่ทำงาน คัดลอกลิงก์นี้ไปเปิดในเบราว์เซอร์<br><a href="{{link}}" style="color:#2B5AC7;">{{link}}</a></td></tr>
-  <tr><td style="padding:22px 28px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#F5F3FF" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#F5F3FF;border-left:4px solid #6D28D9;padding:12px 16px;color:#4C1D95;font-size:13px;line-height:160%;">🔒 ต้องเข้าสู่ระบบก่อนเปิดดู · ลายเซ็นของท่านลงช่อง Approved by เมื่อกดอนุมัติ</td></tr></table></td></tr>
+  <tr><td style="padding:22px 28px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#F5F3FF" style="font-family:'Leelawadee UI',Leelawadee,Tahoma,Arial,sans-serif;background:#F5F3FF;border-left:4px solid #6D28D9;padding:12px 16px;color:#4C1D95;font-size:13px;line-height:160%;">🔒 ลิงก์นี้สำหรับท่านเท่านั้น กดอนุมัติได้เลยไม่ต้องเข้าสู่ระบบ · ใช้ได้ครั้งเดียว ภายใน 14 วัน · กรุณาอย่าส่งต่อ</td></tr></table></td></tr>
  </table></td></tr></table>$h$),
 ('exp_approved', 'HR Invoice Hub: แจ้งอนุมัติแล้ว', '[อนุมัติแล้ว] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
@@ -435,3 +435,109 @@ create policy "ef_delete" on storage.objects for delete using (bucket_id = 'expe
 update mail_templates set label = replace(label, 'HR Spend', 'HR Invoice Hub'), html = replace(html, 'HR Spend', 'HR Invoice Hub'),
        subject = replace(subject, 'HR Spend', 'HR Invoice Hub')
  where key like 'exp\_%' and (label like '%HR Spend%' or html like '%HR Spend%' or subject like '%HR Spend%');
+
+-- ------------------------------------------------------------------ 11. ลิงก์อนุมัติในอีเมล — ผู้อนุมัติกดได้เลยไม่ต้อง login (2026-10-08)
+--   ใบเข้าสถานะ "รออนุมัติ" เมื่อไร ออกลิงก์ลับใหม่ทุกครั้ง: /expense/approve.html?t=<token>
+--   ใช้ได้ครั้งเดียว · หมดอายุ 14 วัน · ใช้ไม่ได้ทันทีถ้าใบถูกดึงกลับ / ยกเลิก / มีคนตัดสินแล้ว
+--   ผลการกด = ผู้อนุมัติที่ HR เลือกตอนส่ง (ลายเซ็นของคนนั้น) — ลิงก์จึงต้องไปถึงเฉพาะผู้อนุมัติ
+--   ตาราง token ไม่มี policy → อ่านได้เฉพาะฟังก์ชันด้านล่างและ Edge Function (service role) — HR / ผู้ตรวจอ่านจากตารางไม่ได้
+create table if not exists exp_approve_tokens (
+  invoice_id  bigint primary key references exp_invoices(id) on delete cascade,
+  token       text not null unique,
+  expires_at  timestamptz not null,
+  used_at     timestamptz,
+  created_at  timestamptz default now()
+);
+alter table exp_approve_tokens enable row level security;
+revoke all on exp_approve_tokens from anon, authenticated;
+
+create or replace function exp_token_issue() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'approval' and old.status is distinct from 'approval' then
+    insert into exp_approve_tokens (invoice_id, token, expires_at)
+    values (new.id, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), now() + interval '14 days')
+    on conflict (invoice_id) do update set token = excluded.token, expires_at = excluded.expires_at, used_at = null, created_at = now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists exp_token_issue on exp_invoices;
+create trigger exp_token_issue after update on exp_invoices for each row execute function exp_token_issue();
+
+-- หน้าอนุมัติ (ไม่ login): อ่านใบจาก token · state = open | expired | closed
+create or replace function exp_link_get(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare t exp_approve_tokens; v exp_invoices;
+begin
+  if coalesce(length(p_token), 0) < 40 then return jsonb_build_object('error', 'ลิงก์ไม่ถูกต้อง'); end if;
+  select * into t from exp_approve_tokens where token = p_token;
+  if t.invoice_id is null then return jsonb_build_object('error', 'ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว'); end if;
+  select * into v from exp_invoices where id = t.invoice_id;
+  return jsonb_build_object(
+    'state', case when v.status = 'approval' and t.used_at is null and t.expires_at > now() then 'open'
+                  when v.status = 'approval' and t.used_at is null then 'expired' else 'closed' end,
+    'id', v.id, 'status', v.status, 'inv_no', v.inv_no, 'inv_date', v.inv_date, 'category', v.category,
+    'vendor', jsonb_build_object('code', v.vendor->>'code', 'name', v.vendor->>'name'),
+    'ref_no', v.ref_no, 'ref_date', v.ref_date, 'po_no', v.po_no, 'note', v.note, 'wht_rate', v.wht_rate,
+    'amount', v.amount, 'vat', v.vat, 'wht', v.wht, 'net', v.net, 'reject_reason', v.reject_reason,
+    'preparer', v.preparer - 'signature_path', 'reviewer', v.reviewer - 'signature_path', 'approver', v.approver - 'signature_path',
+    'approver_name', coalesce(v.approver->>'name', exp_sig(v.approver_id)->>'name'), 'expires_at', t.expires_at,
+    'lines', coalesce((select jsonb_agg(jsonb_build_object('cost_code', l.cost_code, 'detail', l.detail, 'detail2', l.detail2,
+              'amount', l.amount, 'vat', l.vat, 'wht', l.wht, 'net', l.net) order by l.line_no, l.id)
+              from exp_invoice_lines l where l.invoice_id = v.id), '[]'::jsonb),
+    'files', (select count(*) from exp_files f where f.invoice_id = v.id));
+end $$;
+
+-- กดอนุมัติ / ส่งกลับจากลิงก์ — ลงลายเซ็นของผู้อนุมัติที่ถูกเลือก + แจ้งกระดิ่งในระบบ HR
+create or replace function exp_link_decide(p_token text, p_ok boolean, p_reason text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare t exp_approve_tokens; v exp_invoices; s jsonb;
+begin
+  select * into t from exp_approve_tokens where token = p_token for update;
+  if t.invoice_id is null then raise exception 'ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว'; end if;
+  if t.used_at is not null then raise exception 'ลิงก์นี้ใช้ไปแล้ว'; end if;
+  if t.expires_at <= now() then raise exception 'ลิงก์หมดอายุแล้ว — เข้าสู่ระบบเพื่ออนุมัติแทน'; end if;
+  select * into v from exp_invoices where id = t.invoice_id for update;
+  if v.status <> 'approval' then raise exception 'ใบนี้ไม่ได้รออนุมัติแล้ว'; end if;
+  if not user_has_perm(v.approver_id, 'data.expense.approve') then raise exception 'ผู้อนุมัติของใบนี้ไม่มีสิทธิ์อนุมัติแล้ว — ติดต่อ HR'; end if;
+  perform set_config('exp.flow', 'on', true);
+  if p_ok then
+    s := exp_sig(v.approver_id);
+    if s is null then raise exception 'ผู้อนุมัติยังไม่ได้ตั้งลายเซ็น — ติดต่อ HR'; end if;
+    update exp_invoices set status = 'approved', approver = s || jsonb_build_object('via', 'email_link'),
+           approved_by = v.approver_id, approved_at = now() where id = v.id returning * into v;
+  else
+    if nullif(trim(p_reason), '') is null then raise exception 'กรุณาระบุเหตุผลที่ส่งกลับ'; end if;
+    update exp_invoices set status = 'rejected', reject_reason = trim(p_reason), reviewer = null where id = v.id returning * into v;
+  end if;
+  update exp_approve_tokens set used_at = now() where invoice_id = v.id;
+  insert into notifications (title, detail, category, created_by, link)
+  values (case when p_ok then 'ใบแจ้งหนี้อนุมัติแล้ว' else 'ใบแจ้งหนี้ถูกส่งกลับแก้ไข' end,
+          v.inv_no || ' · ' || coalesce(v.vendor->>'name', ''), 'default', v.approver_id, '/expense/#/invoice/' || v.id);
+  return jsonb_build_object('status', v.status, 'inv_no', v.inv_no);
+end $$;
+
+-- ลิงก์สำหรับใส่เมลแบบ Outlook (.eml) — ให้เฉพาะผู้ตรวจที่เพิ่งตรวจใบนี้ หรือตัวผู้อนุมัติเอง (HR ทั่วไปขอไม่ได้)
+create or replace function exp_approve_link(p_id bigint) returns text
+language sql stable security definer set search_path = public as $$
+  select t.token from exp_approve_tokens t join exp_invoices v on v.id = t.invoice_id
+   where v.id = p_id and v.status = 'approval' and t.used_at is null and t.expires_at > now()
+     and auth.uid() in (v.reviewed_by, v.approver_id);
+$$;
+
+revoke all on function exp_link_get(text), exp_link_decide(text, boolean, text), exp_approve_link(bigint) from public;
+grant execute on function exp_link_get(text)                      to anon, authenticated;
+grant execute on function exp_link_decide(text, boolean, text)    to anon, authenticated;
+grant execute on function exp_approve_link(bigint)                to authenticated;
+
+-- ใบที่รออนุมัติอยู่แล้วตอนรันไฟล์นี้: ออกลิงก์ให้ด้วย (ส่งเมลขออนุมัติซ้ำจากหน้าใบได้)
+insert into exp_approve_tokens (invoice_id, token, expires_at)
+select id, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), now() + interval '14 days'
+  from exp_invoices where status = 'approval'
+on conflict (invoice_id) do nothing;
+
+-- แบบเมลขออนุมัติ: ปุ่มเปิดหน้าอนุมัติได้เลย ไม่ต้องเข้าสู่ระบบ (แก้เฉพาะข้อความเดิม ข้อความที่ HR แก้เองยังอยู่)
+update mail_templates
+   set html = replace(replace(html, '🔒 ต้องเข้าสู่ระบบก่อนเปิดดู · ลายเซ็นของท่านลงช่อง Approved by เมื่อกดอนุมัติ',
+                                   '🔒 ลิงก์นี้สำหรับท่านเท่านั้น กดอนุมัติได้เลยไม่ต้องเข้าสู่ระบบ · ใช้ได้ครั้งเดียว ภายใน 14 วัน · กรุณาอย่าส่งต่อ'),
+                      'เปิดใบแจ้งหนี้เพื่ออนุมัติ', 'เปิดดูและอนุมัติ')
+ where key = 'exp_approve';
