@@ -13,10 +13,10 @@ const LETTER_KIND = {
 };
 const T = {
   th: { approve: no => `อนุมัติหนังสือ ${no}`, fix: no => `แก้ไขหนังสือ ${no} ที่ถูกส่งกลับ`,
-        fundSign: id => `ลงนามแบบฟอร์มกองทุน #${id}`, fundBack: id => `กรรมการส่งกลับแบบฟอร์มกองทุน #${id}`,
+        fundSign: id => `ลงนามแบบฟอร์มกองทุน #${id}`, expReview: no => `ตรวจใบแจ้งหนี้ ${no}`, expApprove: no => `อนุมัติใบแจ้งหนี้ ${no}`, expFix: no => `แก้ใบแจ้งหนี้ ${no} ที่ถูกส่งกลับ`, fundBack: id => `กรรมการส่งกลับแบบฟอร์มกองทุน #${id}`,
         fund: n => `แบบฟอร์มกองทุนรอรับเรื่อง ${n} รายการ`, fundSub: "พนักงานส่งแบบฟอร์มแล้ว รอ HR กดรับ" },
   en: { approve: no => `Approve letter ${no}`, fix: no => `Revise letter ${no} (sent back)`,
-        fundSign: id => `Sign provident fund form #${id}`, fundBack: id => `Fund form #${id} returned by committee`,
+        fundSign: id => `Sign provident fund form #${id}`, expReview: no => `Review invoice ${no}`, expApprove: no => `Approve invoice ${no}`, expFix: no => `Revise invoice ${no} (sent back)`, fundBack: id => `Fund form #${id} returned by committee`,
         fund: n => `${n} fund form${n > 1 ? "s" : ""} to receive`, fundSub: "Submitted by employees, waiting for HR" },
 };
 
@@ -36,6 +36,17 @@ const SOURCES = [
     if (error) throw error;
     return data.map(l => ({ kind: "fix", title: T[L].fix(l.doc_no || ""), at: l.updated_at,
       sub: [l.person_name, l.reject_reason].filter(Boolean).join(" · "), link: `letters?letter=${l.id}` }));
+  } },
+  // HR Spend: ใบแจ้งหนี้ที่รอฉันตรวจ / อนุมัติ และที่ฉันจัดทำแล้วถูกส่งกลับ — กดแล้วเปิดในเว็บ HR Spend
+  { when: () => can("page.expense"), load: async (L) => {
+    const { data, error } = await supabase.from("exp_invoices").select("id,inv_no,vendor,net,status,reviewer_id,approver_id,prepared_by,reject_reason,submitted_at,updated_at")
+      .or(`and(status.eq.review,reviewer_id.eq.${currentUser?.id}),and(status.eq.approval,approver_id.eq.${currentUser?.id}),and(status.eq.rejected,prepared_by.eq.${currentUser?.id})`);
+    if (error) throw error;
+    const amt = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+    return data.map(x => ({ kind: x.status === "rejected" ? "fix" : "approve",
+      title: (x.status === "review" ? T[L].expReview : x.status === "approval" ? T[L].expApprove : T[L].expFix)(x.inv_no || ""),
+      sub: [x.vendor?.name, x.status === "rejected" ? x.reject_reason : amt(x.net)].filter(Boolean).join(" · "),
+      at: x.status === "rejected" ? x.updated_at : x.submitted_at, link: `/expense/#/invoice/${x.id}` }));
   } },
   // แบบฟอร์มกองทุนที่ HR ส่งให้ฉัน (คณะกรรมการ) ลงนาม
   { when: () => can("data.fundforms.approve"), load: async (L) => {

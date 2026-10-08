@@ -193,6 +193,7 @@ function notifLink(n) {
 
 // เปิดหน้าตามลิงก์ "page" หรือ "page?key=value" — หน้าที่รับ query (เช่น letters?letter=12) อ่านเองจาก location.search
 export function openLink(link) {
+  if (String(link || "").startsWith("/")) { location.href = link; return; }   // ลิงก์ไปเว็บอื่นในโดเมนเดียวกัน เช่น /expense/#/invoice/12
   const [page, qs] = String(link || "").split("?");
   if (!pages.includes(page)) return;
   history.replaceState(null, "", qs ? `${location.pathname}?${qs}` : location.pathname);
@@ -244,10 +245,12 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","docregister","letters","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","uniform","fundforms","docregister","letters","expense","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
+  // HR Spend เป็นเว็บแยก (/expense) โดเมนเดียวกัน session เดียวกัน — ไปหน้านั้นเลย ไม่ต้อง login ซ้ำ
+  if (page === "expense") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/expense/"; return; }
   currentPage = page;
   navOpen = null;
   import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
@@ -389,10 +392,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
-        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "nav.letters":"ออกหนังสือ HR", "grp.system":"ระบบ" },
+        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Spend · ใบแจ้งหนี้", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
-        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "nav.letters":"HR Letters", "grp.system":"System" },
+        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "nav.letters":"HR Letters", "nav.expense":"HR Spend · Invoices", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
 function applyLang(lang) {

@@ -22,6 +22,14 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
 - `headcount.js`, `movement-report.js`, `workforce-overview.js`, `vacancy.js` — reporting pages.
 - `supabase-config.js` — Supabase client init only.
 
+## HR Spend (`expense/`) — separate app at `/expense`
+
+HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and same Supabase project, so the login session is shared (same origin); the HR app's `navigate("expense")` just redirects there. `vercel.json` rewrites `/expense` before the catch-all.
+- `expense/spend.js` (UI, routing by hash), `expense/calc.js` (money rules + Excel import parser, tested by `test/expense.test.js`), `expense/doc.js` (A4 invoice).
+- `expense/` must NOT import `js/app.js` (or anything that imports it, e.g. `combobox.js`, `hr-letters.js`) — that would boot the HR app inside it.
+- Money: VAT 7% and WHT (0/1/2/3/5% for the whole invoice) are both computed on the pre-VAT amount, rounded per line, then summed — matches the old Excel exactly.
+- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql` and `schema_expense.sql` — change all three together.
+
 ## Gotchas
 
 - **Supabase key is intentionally hardcoded** in `js/supabase-config.js` (URL + anon/publishable key). This is a publishable key protected by RLS — do not "fix" this by moving it to env vars or a `.env` file; that would break the static Vercel deploy, which has no build step to inject env vars.

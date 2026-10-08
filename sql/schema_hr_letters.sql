@@ -537,3 +537,46 @@ begin
   end if;
   return new;
 end $$;
+
+-- ============================================================================
+-- สิทธิ์ลายเซ็นรวมทุกระบบ (หนังสือ HR · แบบฟอร์มกองทุน · HR Spend) — ชุดเดียวกันทุกไฟล์
+-- ต้องอยู่ท้ายไฟล์ ไฟล์ไหนรันทีหลังก็ได้ผลเหมือนกัน · แก้ที่นี่ต้องแก้ใน schema_expense.sql / schema_fund_approval.sql / schema_hr_letters.sql ด้วย
+-- ============================================================================
+drop policy if exists "ls_read" on letter_signers;
+create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
+drop policy if exists "la_read" on storage.objects;
+create policy "la_read" on storage.objects for select
+  using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')
+         or has_perm('page.fundforms') or has_perm('page.expense')));
+drop policy if exists "ls_write" on letter_signers;
+create policy "ls_write" on letter_signers for all
+  using ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve'))) or get_my_role() = 'admin')
+  with check ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve'))) or get_my_role() = 'admin');
+drop policy if exists "la_write"  on storage.objects;
+drop policy if exists "la_update" on storage.objects;
+drop policy if exists "la_delete" on storage.objects;
+create policy "la_write" on storage.objects for insert with check (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+
+-- แบบอีเมล: แต่ละระบบอ่าน/แก้แบบของตัวเอง (ชุดเดียวกันทุกไฟล์ — ต้องอยู่ท้ายไฟล์)
+drop policy if exists "ms_read"  on mail_settings;
+create policy "ms_read"  on mail_settings for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
+drop policy if exists "mt_read"  on mail_templates;
+drop policy if exists "mt_write" on mail_templates;
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')));

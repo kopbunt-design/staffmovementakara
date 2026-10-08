@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Spend · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- เวอร์ชัน CSS: แก้ spend.css แล้วบวกเลขนี้ -->
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+</head>
+<body>
+<!--
+  HR Spend — ใบแจ้งหนี้ HR (HRIN) และค่าใช้จ่ายฝ่าย HR
+  เว็บแยกจากระบบ HR แต่อยู่โดเมนเดียวกัน (/expense) → ใช้ session login เดียวกัน ไม่ต้องเข้าระบบซ้ำ
+  ฐานข้อมูล: sql/schema_expense.sql · ตรรกะคำนวณ: expense/calc.js (มีเทส test/expense.test.js)
+-->
+<div class="sp-shell">
+  <aside class="sp-side">
+    <div class="sp-brand">
+      <img src="/assets/logo.png" alt="Akara Resources">
+      <div><b>HR SPEND</b> · ใบแจ้งหนี้ &amp; ค่าใช้จ่าย</div>
+    </div>
+    <nav class="sp-nav" id="spNav">
+      <a href="#/overview" data-r="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>ภาพรวม</a>
+      <a href="#/invoices" data-r="invoices"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>ใบแจ้งหนี้<em id="navPending"></em></a>
+      <a href="#/vendors" data-r="vendors"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>ผู้ขาย / ผู้รับเงิน</a>
+      <a href="#/budget" data-r="budget"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>งบประมาณ</a>
+      <a href="#/settings" data-r="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>ตั้งค่า</a>
+    </nav>
+    <a class="sp-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+    <div class="sp-user" id="spUser"></div>
+  </aside>
+  <main class="sp-main" id="spMain"><div class="sp-loading">กำลังโหลด…</div></main>
+</div>
+<div id="spModal"></div>
+<div class="sp-toasts" id="spToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/expense/spend.js?v=1"></script>
+</body>
+</html>
