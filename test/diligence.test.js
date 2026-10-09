@@ -65,6 +65,13 @@ const legDays = M.editDays([
 eq(legDays.map(d => [d.date, d.legs.join(), d.group]), [["2026-09-02", "out", "out"], ["2026-09-03", "in", "count"], ["2026-09-04", "out", "out"], ["2026-09-06", "none", "unused"]],
    "ลงขาออกเองไม่นับ · ขาเข้านับ · กะดึกขาออกนับเป็นวันของกะ · ไม่ได้ใช้ไม่นับ");
 
+// วันหยุด: มาทำโอที ไม่เอามาคิด
+const holProc = new Map([["AKR1", { code: "AKR1", days: [{ date: "2026-09-05", dayType: "H", inMin: pm(4, 8), outMin: pm(4, 17) }] }]]);
+eq(M.editDays([ed("AKR1", "2026-09-05", pm(4, 8), "ลงเวลา", "ลืมบัตร")], "2026-09", new Map(), holProc).map(d => d.group), ["holiday"], "ลงเวลาขาเข้าในวันหยุด ไม่นับ");
+eq(M.evaluate({ ym: "2026-09", emp: { emp_code: "AKR1", job_level: "O1", contract_type: "Permanent", join_date: "2020-01-01" },
+  t: { code: "AKR1", days: [{ date: "2026-09-01", dayType: "N", note: "" }, { date: "2026-09-05", dayType: "H", late: "0:30", note: "วันหยุดปกติ ลาป่วยไม่จ่ายเงินหักเงิน", leaveDed: true }] } }).qualified,
+  true, "สาย / ลา ในวันหยุด ไม่ทำให้หมดสิทธิ์");
+
 // ประเภทการลาจากหมายเหตุ
 eq(M.leaveKinds("ลาพักร้อน   (ลงเวลาHR Approve(web))"), ["ลาพักร้อน"], "ลาพักร้อน");
 eq(M.leaveKinds("วันหยุดปกติ ลาป่วยไม่จ่ายเงินหักเงิน"), ["ลาป่วยไม่จ่ายเงินหักเงิน"], "ลาป่วยในหมายเหตุยาว");

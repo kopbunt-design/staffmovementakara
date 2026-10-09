@@ -130,7 +130,11 @@ export const GROUPS = {
   hr:      { th: "HR เพิ่มให้",              counted: false },
   out:     { th: "ลงเวลาขาออกเอง (ขาเข้าสแกน)", counted: false },
   unused:  { th: "ไม่ได้ใช้เป็นเวลาเข้า-ออก",    counted: false },
+  holiday: { th: "วันหยุด (มาทำโอที)",          counted: false },
 };
+// วันหยุด (ประเภทวัน H / HD) ไม่เอามาคิดเลย — มาทำโอที (ผู้ใช้ยืนยัน 2026-10-09)
+//   ทั้งการแก้เวลา สาย ออกก่อน ลา หักวัน ในวันหยุด ไม่ทำให้หมดสิทธิ์
+export const isHoliday = d => /^H/i.test(d?.dayType || "");
 // ขาที่ลงเวลาเอง (ผู้ใช้ยืนยัน 2026-10-09): ขาเข้าสแกนตามกะ แล้วลงเวลาขาออกเอง = หยวน ไม่นับ
 //   แต่ลงเวลา "ขาเข้า" เองยังนับ — กันกรณีมาสายแล้วจงใจไม่สแกน มาลงเวลาทีหลังให้ดูตรงเวลา
 //   รายการที่ไม่ได้ถูกใช้เป็นเวลาเข้าหรือออกเลย (วันนั้นมีสแกนจริงทั้งสองขา) ไม่มีผลกับการมาทำงาน → ไม่นับ
@@ -159,7 +163,9 @@ const SEVERITY = ["count", "check", "offsite", "company", "hr", "out", "unused"]
 //   ไม่ส่ง proc มา = ไม่รู้ขา → ถือว่าเป็นขาเข้า (เข้มไว้ก่อน)
 export function editDays(edits, ym, webReasons = new Map(), proc = null) {
   const legOf = new Map();                               // "รหัส|นาที" → { date, leg }
+  const hol = new Set();                                 // "รหัส|วันที่" ที่เป็นวันหยุด
   if (proc) for (const t of proc.values()) for (const d of t.days) {
+    if (isHoliday(d)) hol.add(`${t.code}|${d.date}`);
     for (const [leg, m] of [["in", d.inMin], ["out", d.outMin]]) if (m != null)
       for (const k of [m - 1, m, m + 1]) if (!legOf.has(`${t.code}|${k}`)) legOf.set(`${t.code}|${k}`, { date: d.date, leg });
   }
@@ -182,6 +188,7 @@ export function editDays(edits, ym, webReasons = new Map(), proc = null) {
     if (!d.group || SEVERITY.indexOf(g) < SEVERITY.indexOf(d.group)) d.group = g;
     days.set(key, d);
   }
+  for (const d of days.values()) if (hol.has(d.key)) d.group = "holiday";
   return [...days.values()].sort((a, b) => a.emp.localeCompare(b.emp) || a.date.localeCompare(b.date));
 }
 
@@ -212,7 +219,7 @@ export function evaluate({ ym, emp, t, eds = [], manual = null, prev = null }) {
   const dd = d => d.slice(8).replace(/^0/, "") + "/" + d.slice(5, 7).replace(/^0/, "");
   // รวมเหตุผลชนิดเดียวกันเป็นบรรทัดเดียว: "มาสาย 3 วัน (1/9 0:02, 4/9 0:10, 9/9 0:01)"
   const bucket = new Map(), add = (k, s) => (bucket.get(k) || bucket.set(k, []).get(k)).push(s);
-  for (const d of (t?.days || []).filter(d => d.date.startsWith(ym))) {
+  for (const d of (t?.days || []).filter(d => d.date.startsWith(ym) && !isHoliday(d))) {
     if (d.deduct) add("ขาดงาน/หักวัน", dd(d.date));
     if (d.late) add("มาสาย", `${dd(d.date)} ${d.late}`);
     if (d.early) add("ออกก่อน", `${dd(d.date)} ${d.early}`);
