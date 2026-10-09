@@ -16,7 +16,7 @@ const defaultYM = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMo
 // สถานะของหน้า (อยู่ในหน่วยความจำจนกว่าจะบันทึก)
 const S = { ym: defaultYM(), files: { proc: null, edit: null, web: null }, proc: null, edits: [], web: new Map(),
             days: [], groupOverride: new Map(), manual: new Map(), prev: new Map(), prevSaved: true,
-            results: [], notFound: [], filter: "all", q: "", showAllEdits: false };
+            results: [], notFound: [], filter: "all", q: "", showAllEdits: false, restoredFor: null, restored: null };
 
 const FILES = {
   proc: { label: "1. ข้อมูลหลังประมวล", hint: "รายงานแยกตามพนักงาน (ข้อมูลหลังประมวล)", need: true },
@@ -81,7 +81,7 @@ function drawCalc() {
     </div>
   </div>
   <div id="dgOut" class="mt-4"></div>`;
-  document.getElementById("dgYM").onchange = e => { S.ym = e.target.value || defaultYM(); S.manual.clear(); S.groupOverride.clear(); drawCalc(); recompute(); };
+  document.getElementById("dgYM").onchange = e => { S.ym = e.target.value || defaultYM(); resetEdits(); drawCalc(); recompute(); };
   for (const k of Object.keys(FILES)) document.getElementById(`dgF_${k}`).onchange = e => readFile(k, e.target);
   if (S.proc && S.edits) recompute();
 }
@@ -103,12 +103,30 @@ function readFile(kind, input) {
       if (kind === "proc") {
         const cnt = {}; for (const t of S.proc.values()) for (const d of t.days) cnt[d.date.slice(0, 7)] = (cnt[d.date.slice(0, 7)] || 0) + 1;
         const ym = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0];
-        if (ym && ym >= START_YM && ym !== S.ym) { S.ym = ym; S.manual.clear(); S.groupOverride.clear(); toast(`ตั้งเดือนตามไฟล์: ${ymTH(ym)}`, "info"); }
+        if (ym && ym >= START_YM && ym !== S.ym) { S.ym = ym; resetEdits(); toast(`ตั้งเดือนตามไฟล์: ${ymTH(ym)}`, "info"); }
       }
       drawCalc();
     } catch (e) { toast(`${FILES[kind].label}: ${e.message}`, "error"); }
   };
   fr.readAsArrayBuffer(file);
+}
+
+const resetEdits = () => { S.manual.clear(); S.groupOverride.clear(); S.restoredFor = null; S.restored = null; };
+
+// เดือนที่เคยบันทึกแล้ว: ดึงการแก้ของ HR (รายคน + กลุ่มการแก้เวลา) กลับมาใช้ต่อ — อัปโหลดไฟล์ใหม่ไม่ต้องแก้ซ้ำ
+// ดึงครั้งเดียวต่อเดือน และไม่ทับสิ่งที่แก้ในหน้านี้ไปแล้ว
+async function restoreSaved() {
+  if (S.restoredFor === S.ym) return;
+  S.restoredFor = S.ym; S.restored = null;
+  const [{ data: run }, { data: rows }] = await Promise.all([
+    supabase.from("diligence_runs").select("edit_groups,saved_at").eq("ym", S.ym).maybeSingle(),
+    supabase.from("diligence_results").select("emp_code,manual").eq("ym", S.ym).not("manual", "is", null),
+  ]);
+  if (!run) return;
+  let people = 0, days = 0;
+  for (const r of rows || []) if (r.manual && !S.manual.has(String(r.emp_code).toUpperCase())) { S.manual.set(String(r.emp_code).toUpperCase(), r.manual); people++; }
+  for (const [k, g] of Object.entries(run.edit_groups || {})) if (GROUPS[g] && !S.groupOverride.has(k)) { S.groupOverride.set(k, g); days++; }
+  S.restored = { people, days, at: run.saved_at };
 }
 
 async function loadPrev() {
@@ -126,7 +144,7 @@ async function loadPrev() {
 
 async function recompute() {
   if (!S.proc || !S.files.edit) { document.getElementById("dgOut").innerHTML = ""; return; }
-  await loadPrev();
+  await Promise.all([loadPrev(), restoreSaved()]);
   S.days = editDays(S.edits, S.ym, S.web, S.proc).map(d => ({ ...d, auto: d.group, group: S.groupOverride.get(d.key) || d.group }));
   const byEmp = {}; for (const d of S.days) (byEmp[d.emp] ||= []).push(d);
   const emap = new Map(allEmployees.map(e => [String(e.emp_code).toUpperCase(), e]));
@@ -154,6 +172,7 @@ function drawOut() {
   const tiers = [1, 4, 7].map((from, i) => ok.filter(r => r.streak >= from && r.streak < [4, 7, 1e9][i]).length);
   const warns = [];
   if (S.ym > START_YM && !S.prevSaved) warns.push(`ยังไม่ได้บันทึกเดือน ${ymTH(prevYM(S.ym))} — เดือนต่อเนื่องจะเริ่มนับ 1 ทุกคน และบันทึกเดือนนี้ไม่ได้จนกว่าจะบันทึกเดือนก่อน`);
+  if (S.restored && (S.restored.people || S.restored.days)) warns.push(`ดึงการแก้ไขของ HR จากที่บันทึกไว้ (${new Date(S.restored.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}) มาใช้ต่อแล้ว: แก้รายคน ${S.restored.people} คน · กลุ่มการแก้เวลา ${S.restored.days} วัน — ไม่ต้องแก้ซ้ำ`);
   if (S.notFound.length) warns.push(`${S.notFound.length} รหัสในไฟล์ไม่พบในทะเบียนพนักงาน: ${S.notFound.slice(0, 6).map(x => esc(x.code)).join(", ")}${S.notFound.length > 6 ? " …" : ""}`);
   const noWeb = S.edits.filter(e => e.date.startsWith(S.ym) && /HR\s*Approve\s*\(web\)/i.test(e.reason) && !S.web.get(`${e.emp}|${e.minute}`)).length;
   if (noWeb) warns.push(`${noWeb} รายการแก้เวลาเขียนแค่ “HR Approve(web)” ${S.files.web ? "และหาเหตุผลในไฟล์ web ไม่เจอ" : "— อัปโหลดไฟล์ 3 เพื่อเอาเหตุผลจริง"} → นับเป็นแก้เวลา`);
@@ -174,7 +193,7 @@ function drawOut() {
     ${stat("ไม่ได้", fmt(R.length - ok.length) + " คน", "ดูเหตุผลในตาราง")}
     ${stat("ต้องตรวจ", fmt(flagged.length) + " คน", "สแกนไม่ติด · อุบัติเหตุ · กะไม่ครบ", flagged.length ? "var(--gold-dark)" : "")}
   </div>
-  ${warns.length ? `<div class="card card-body mt-4" style="background:var(--gold-light);font-size:13px;line-height:1.8;">${warns.map(w => "⚠️ " + w).join("<br>")}</div>` : ""}
+  ${warns.length ? `<div class="card card-body mt-4" style="background:var(--gold-light);font-size:13px;line-height:1.8;">${warns.map(w => (w.startsWith("ดึงการแก้ไข") ? "✅ " : "⚠️ ") + w).join("<br>")}</div>` : ""}
 
   <div class="card mt-4">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
@@ -305,7 +324,7 @@ async function save() {
     streak: r.streak, amount: r.qualified ? r.amount : 0, edit_days: r.editCount, reasons: r.reasons, flags: r.flags, manual: r.manual,
     auto_qualified: r.autoQualified, auto_amount: r.autoAmount }));
   const { data, error } = await supabase.rpc("diligence_save", { p_ym: S.ym, p_pay_ym: nextYM(S.ym),
-    p_files: Object.values(S.files).filter(Boolean), p_rows: rows });
+    p_files: Object.values(S.files).filter(Boolean), p_rows: rows, p_groups: Object.fromEntries(S.groupOverride) });
   if (error) { toast("บันทึกไม่สำเร็จ: " + error.message + (/auto_|function/.test(error.message) ? " — รัน sql/schema_diligence.sql ล่าสุดก่อน" : ""), "error"); return; }
   toast(`บันทึก ${ymTH(S.ym)} แล้ว (${data} คน)`, "success");
 }

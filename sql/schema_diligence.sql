@@ -25,6 +25,8 @@ create table if not exists diligence_results (
   manual      jsonb,                           -- HR แก้ {action: ''|grant|deny, amount: null|ตัวเลข, note, by_name, at}
   primary key (ym, emp_code)
 );
+-- กลุ่มการแก้เวลาที่ HR เปลี่ยนเอง {"รหัส|วันที่": "count" | "company" | ...} — อัปโหลดไฟล์เดือนเดิมใหม่ ดึงกลับมาใช้ต่อ
+alter table diligence_runs add column if not exists edit_groups jsonb;
 -- ผลที่ระบบคิดเอง (ก่อน HR แก้) — ใช้แสดงยอดเดิมขีดฆ่า และ "ล้างการแก้ไข" กลับไปผลระบบได้
 alter table diligence_results add column if not exists auto_qualified boolean;
 alter table diligence_results add column if not exists auto_amount    numeric;
@@ -43,7 +45,9 @@ create policy "dil_res_write"  on diligence_results for all    using (has_perm('
 
 -- บันทึกทั้งเดือนในคราวเดียว (แทนของเดิม) — ห้ามแก้เดือนที่มีเดือนถัดไปบันทึกแล้ว
 -- เพราะเดือนต่อเนื่องของเดือนหลังนับจากเดือนนี้ แก้ย้อนหลังแล้วเดือนหลังจะผิดเงียบ ๆ
-create or replace function diligence_save(p_ym text, p_pay_ym text, p_files jsonb, p_rows jsonb)
+-- (เวอร์ชันแรกมี 4 พารามิเตอร์ — ลบก่อน ไม่งั้นเรียกแล้วกำกวมกับตัวใหม่)
+drop function if exists diligence_save(text, text, jsonb, jsonb);
+create or replace function diligence_save(p_ym text, p_pay_ym text, p_files jsonb, p_rows jsonb, p_groups jsonb default null)
 returns int language plpgsql security definer set search_path = public as $$
 declare n int;
 begin
@@ -52,8 +56,8 @@ begin
     raise exception 'มีเดือนหลังจากนี้บันทึกไว้แล้ว — ลบเดือนหลังก่อน แล้วค่อยบันทึกเดือนนี้ใหม่ (เดือนต่อเนื่องจะได้นับถูก)';
   end if;
   delete from diligence_runs where ym = p_ym;
-  insert into diligence_runs (ym, pay_ym, files, in_scope, qualified, total, saved_by)
-  select p_ym, p_pay_ym, p_files, count(*), count(*) filter (where (r->>'qualified')::boolean),
+  insert into diligence_runs (ym, pay_ym, files, edit_groups, in_scope, qualified, total, saved_by)
+  select p_ym, p_pay_ym, p_files, p_groups, count(*), count(*) filter (where (r->>'qualified')::boolean),
          coalesce(sum((r->>'amount')::numeric), 0), auth.uid()
     from jsonb_array_elements(p_rows) r;
   insert into diligence_results (ym, emp_code, emp_name, department, job_level, qualified, streak, amount, edit_days, reasons, flags, manual,
@@ -66,7 +70,7 @@ begin
   get diagnostics n = row_count;
   return n;
 end $$;
-revoke all on function diligence_save(text, text, jsonb, jsonb) from public, anon;
+revoke all on function diligence_save(text, text, jsonb, jsonb, jsonb) from public, anon;
 
 -- แก้ผลของเดือนที่บันทึกแล้ว (หน้า "ประวัติ" → แก้ไข) — p_rows: [{code, qualified, streak, amount, manual}]
 -- เปลี่ยน "ได้/ไม่ได้" หรือเดือนต่อเนื่อง ไม่ได้ถ้ามีเดือนถัดไปบันทึกแล้ว (เดือนหลังนับต่อจากเดือนนี้) — แก้แค่ยอดเงินได้เสมอ
@@ -91,7 +95,7 @@ begin
 end $$;
 revoke all on function diligence_edit(text, jsonb) from public, anon;
 grant execute on function diligence_edit(text, jsonb) to authenticated;
-grant execute on function diligence_save(text, text, jsonb, jsonb) to authenticated;
+grant execute on function diligence_save(text, text, jsonb, jsonb, jsonb) to authenticated;
 
 -- สิทธิ์: เมนูอยู่กลุ่มเงินเดือน · ใครเห็นหน้าคำนวณค่ากะ ได้เห็นหน้านี้ด้วยตั้งแต่แรก
 insert into permissions (key, category, label, description, sort_order) values
