@@ -89,7 +89,7 @@ eq(M.leaveKinds("วันหยุดปกติ ลาป่วยไม่�
 eq(M.leaveKinds("ขาดงาน"), [], "ไม่มีการลา");
 
 // คิดรายคน
-const emp = (o = {}) => ({ emp_code: "AKR1", job_level: "O2", contract_type: "Permanent", join_date: "2020-01-01", end_date: null, ...o });
+const emp = (o = {}) => ({ emp_code: "AKR1", job_level: "O2", contract_type: "Permanent", nationality: "Thai", join_date: "2020-01-01", end_date: null, ...o });
 const day = (date, o = {}) => ({ date, shift: "Nor", dayType: "N", late: "", early: "", leaveOk: false, leaveDed: false, deduct: "", note: "", ...o });
 const T = (...ds) => ({ code: "AKR1", name: "ทดสอบ", days: ds.length ? ds : [day("2026-09-01")] });
 const ev = o => M.evaluate({ ym: "2026-09", emp: emp(), t: T(), ...o });
@@ -97,6 +97,10 @@ eq([ev({}).qualified, ev({}).streak, ev({}).amount], [true, 1, 300], "มาค�
 eq(ev({ emp: emp({ job_level: "M1" }) }).inScope, false, "ระดับ M ไม่อยู่ในขอบเขต");
 eq(ev({ emp: emp({ job_level: "S2" }) }).inScope, true, "ระดับ S อยู่ในขอบเขต");
 eq(ev({ emp: emp({ contract_type: "Contract" }) }).inScope, false, "สัญญาจ้างไม่อยู่ในขอบเขต");
+eq(ev({ emp: emp({ nationality: "Australian" }) }).inScope, false, "ชาวต่างชาติไม่มีสิทธิ์");
+eq(ev({ emp: emp({ nationality: "Lao" }) }).inScope, false, "ชาวลาวไม่มีสิทธิ์");
+eq(ev({ emp: emp({ nationality: "Thai" }) }).inScope, true, "สัญชาติไทยมีสิทธิ์");
+eq(ev({ emp: emp({ nationality: "" }) }).flags.some(f => f.includes("สัญชาติ")), true, "ไม่ระบุสัญชาติ = คิดให้ แต่ขึ้นให้ตรวจ");
 eq(ev({ emp: emp({ end_date: "2026-09-20" }) }).inScope, false, "ออกกลางเดือน = ไม่อยู่ในขอบเขต");
 eq(ev({ emp: emp({ end_date: "2026-10-01" }) }).inScope, true, "ออก 1 ต.ค. = ทำครบ ก.ย.");
 eq(ev({ emp: emp({ join_date: "2026-09-02" }) }).inScope, false, "เข้ากลางเดือน");
