@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/diligence-calc.js`).replace(/^export /gm, "");
-const M = new Function(`${src}; return { rateFor, parseBy, classifyReason, editDays, leaveKinds, evaluate, parseProcessed, parseEdits, parseWebReasons, serialToISO, nextYM, prevYM };`)();
+const M = new Function(`${src}; return { rateFor, parseBy, classifyReason, editDays, leaveKinds, evaluate, parseProcessed, parseEdits, parseWebReasons, serialToISO, nextYM, prevYM, applyHistEdit };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 
@@ -121,6 +121,19 @@ eq(ev({ eds: [{ date: "2026-09-02", group: "offsite", lastAt: "2026-10-07" }] })
 eq(ev({ eds: [{ date: "2026-09-02", group: "offsite", lastAt: "2026-10-08" }] }).qualified, false, "นอกสถานที่ลงหลังวันที่ 7 (4.8)");
 eq(ev({ manual: { action: "deny", note: "พักงาน" } }).qualified, false, "HR ตัดสิทธิ์");
 eq(ev({ t: T(day("2026-09-01", { late: "0:03" })), manual: { action: "grant", note: "ยกเว้น" } }).qualified, true, "HR ให้สิทธิ์");
+
+// HR กำหนดยอดเอง
+eq([ev({ manual: { amount: 600, note: "x" } }).qualified, ev({ manual: { amount: 600, note: "x" } }).amount], [true, 600], "กำหนดยอดเอง");
+eq(ev({ t: T(day("2026-09-01", { late: "0:03" })), manual: { amount: 300, note: "x" } }).qualified, true, "กำหนดยอด > 0 = ให้สิทธิ์ไปด้วย");
+eq([ev({ manual: { amount: 0, note: "x" } }).qualified, ev({ manual: { amount: 0, note: "x" } }).amount, ev({ manual: { amount: 0, note: "x" } }).streak], [true, 0, 1], "กำหนดยอด 0 = ไม่จ่าย แต่ยังนับเดือนต่อเนื่อง");
+eq(ev({ manual: { action: "deny", amount: 500, note: "x" } }).qualified, false, "ตัดสิทธิ์ชนะยอดที่กำหนด");
+// แก้ในประวัติ
+const hrow = { ym: "2026-10", qualified: false, streak: 0, amount: 0, auto_qualified: false, auto_amount: 0 };
+eq(M.applyHistEdit(hrow, { action: "grant", note: "x" }, { qualified: true, streak: 1 }), { qualified: true, streak: 2, amount: 300 }, "ประวัติ: ให้สิทธิ์ → นับต่อจากเดือนก่อน");
+eq(M.applyHistEdit(hrow, { action: "grant", note: "x" }, null), { qualified: true, streak: 1, amount: 300 }, "ประวัติ: ให้สิทธิ์ ไม่มีเดือนก่อน → 1");
+eq(M.applyHistEdit({ ...hrow, qualified: true, streak: 4, amount: 600, auto_qualified: true }, { action: "deny", note: "x" }, null), { qualified: false, streak: 0, amount: 0 }, "ประวัติ: ตัดสิทธิ์");
+eq(M.applyHistEdit({ ...hrow, qualified: true, streak: 4, amount: 600, auto_qualified: true }, { amount: 1000, note: "x" }, null), { qualified: true, streak: 4, amount: 1000 }, "ประวัติ: แก้ยอด คงเดือนต่อเนื่องเดิม");
+eq(M.applyHistEdit({ ...hrow, qualified: true, streak: 4, amount: 1000, auto_qualified: true }, null, null), { qualified: true, streak: 4, amount: 600 }, "ประวัติ: ล้างการแก้ไข กลับไปอัตราตามเดือน");
 
 // เดือนต่อเนื่อง
 const evO = (ym, prev, o = {}) => M.evaluate({ ym, emp: emp(), t: { code: "AKR1", days: [day(`${ym}-01`)] }, prev, ...o });

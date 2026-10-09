@@ -256,12 +256,29 @@ export function evaluate({ ym, emp, t, eds = [], manual = null, prev = null }) {
 
   if (manual?.action === "deny") lose.push(`HR ตัดสิทธิ์: ${manual.note || "-"}`);
   res.reasons = lose;
-  res.qualified = manual?.action === "grant" ? true : !lose.length;
-  if (manual?.action === "grant") res.flags.push(`HR ให้สิทธิ์: ${manual.note || "-"}`);
+  // HR กำหนดยอดเอง (manual.amount) มากกว่า 0 = ให้สิทธิ์ไปด้วย · 0 = ไม่จ่ายเดือนนี้ แต่ยังนับว่ามาครบ (ไม่ตัดเดือนต่อเนื่อง)
+  const fixed = manualAmount(manual);
+  res.qualified = manual?.action === "grant" || (fixed > 0 && manual?.action !== "deny") ? true : !lose.length;
+  if (manual?.action === "grant" || (fixed > 0 && lose.length && manual?.action !== "deny")) res.flags.push(`HR ให้สิทธิ์: ${manual.note || "-"}`);
   if (res.qualified) {
-    const carry = ym > START_YM && prev && prev.qualified && ym > startYM ? Number(prev.streak) || 0 : 0;
-    res.streak = carry + 1;
+    res.streak = streakAfter(ym, prev, startYM);
     res.amount = rateFor(res.streak);
+    if (fixed != null) { res.amount = fixed; res.flags.push(`HR กำหนดยอด ${fixed.toLocaleString("en-US")} บาท: ${manual.note || "-"}`); }
   }
   return res;
+}
+
+// เดือนต่อเนื่องของเดือนนี้ เมื่อเดือนนี้ "ได้" — ต่อจากเดือนก่อนถ้าเดือนก่อนได้ · เดือนแรกของระเบียบ / เดือนแรกหลังพ้นทดลองงาน = 1
+export const streakAfter = (ym, prev, startYM = START_YM) =>
+  (ym > START_YM && ym > startYM && prev && prev.qualified ? Number(prev.streak) || 0 : 0) + 1;
+export const manualAmount = m => m && m.amount !== null && m.amount !== undefined && m.amount !== "" && Number.isFinite(Number(m.amount)) ? Math.max(0, Number(m.amount)) : null;
+
+// แก้ผลของเดือนที่บันทึกแล้ว (หน้าประวัติ) — ไม่มีไฟล์เวลาแล้ว จึงแก้จากผลที่ระบบคิดไว้ (auto_*) + การแก้ของ HR
+// row: แถว diligence_results · manual: {action, amount, note} หรือ null · prev: แถวเดือนก่อน
+export function applyHistEdit(row, manual, prev) {
+  const autoQ = row.auto_qualified ?? row.qualified;
+  const fixed = manualAmount(manual);
+  const q = manual?.action === "grant" || (fixed > 0 && manual?.action !== "deny") ? true : manual?.action === "deny" ? false : !!autoQ;
+  const streak = !q ? 0 : q === row.qualified && row.streak > 0 ? row.streak : streakAfter(row.ym, prev);
+  return { qualified: q, streak, amount: !q ? 0 : fixed != null ? fixed : rateFor(streak) };
 }

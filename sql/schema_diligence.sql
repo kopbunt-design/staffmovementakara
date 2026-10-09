@@ -22,9 +22,12 @@ create table if not exists diligence_results (
   edit_days   int not null default 0,          -- จำนวนวันแก้เวลาที่นับตามข้อ 4.6
   reasons     jsonb not null default '[]',     -- เหตุที่ไม่ได้
   flags       jsonb not null default '[]',     -- ข้อที่ HR ตรวจ / ตัดสินเอง
-  manual      jsonb,                           -- HR ตัดสิทธิ์ / ให้สิทธิ์ {action, note}
+  manual      jsonb,                           -- HR แก้ {action: ''|grant|deny, amount: null|ตัวเลข, note, by_name, at}
   primary key (ym, emp_code)
 );
+-- ผลที่ระบบคิดเอง (ก่อน HR แก้) — ใช้แสดงยอดเดิมขีดฆ่า และ "ล้างการแก้ไข" กลับไปผลระบบได้
+alter table diligence_results add column if not exists auto_qualified boolean;
+alter table diligence_results add column if not exists auto_amount    numeric;
 create index if not exists diligence_results_emp_idx on diligence_results (emp_code, ym);
 
 alter table diligence_runs    enable row level security;
@@ -53,15 +56,41 @@ begin
   select p_ym, p_pay_ym, p_files, count(*), count(*) filter (where (r->>'qualified')::boolean),
          coalesce(sum((r->>'amount')::numeric), 0), auth.uid()
     from jsonb_array_elements(p_rows) r;
-  insert into diligence_results (ym, emp_code, emp_name, department, job_level, qualified, streak, amount, edit_days, reasons, flags, manual)
+  insert into diligence_results (ym, emp_code, emp_name, department, job_level, qualified, streak, amount, edit_days, reasons, flags, manual,
+                                 auto_qualified, auto_amount)
   select p_ym, r->>'code', r->>'name', r->>'department', r->>'job_level', (r->>'qualified')::boolean,
          coalesce((r->>'streak')::int, 0), coalesce((r->>'amount')::numeric, 0), coalesce((r->>'edit_days')::int, 0),
-         coalesce(r->'reasons', '[]'), coalesce(r->'flags', '[]'), r->'manual'
+         coalesce(r->'reasons', '[]'), coalesce(r->'flags', '[]'), nullif(r->'manual', 'null'::jsonb),
+         (r->>'auto_qualified')::boolean, (r->>'auto_amount')::numeric
     from jsonb_array_elements(p_rows) r;
   get diagnostics n = row_count;
   return n;
 end $$;
 revoke all on function diligence_save(text, text, jsonb, jsonb) from public, anon;
+
+-- แก้ผลของเดือนที่บันทึกแล้ว (หน้า "ประวัติ" → แก้ไข) — p_rows: [{code, qualified, streak, amount, manual}]
+-- เปลี่ยน "ได้/ไม่ได้" หรือเดือนต่อเนื่อง ไม่ได้ถ้ามีเดือนถัดไปบันทึกแล้ว (เดือนหลังนับต่อจากเดือนนี้) — แก้แค่ยอดเงินได้เสมอ
+create or replace function diligence_edit(p_ym text, p_rows jsonb)
+returns int language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if not has_perm('data.diligence.write') then raise exception 'ไม่มีสิทธิ์แก้เบี้ยขยัน'; end if;
+  if exists (select 1 from diligence_runs where ym > p_ym) and exists (
+       select 1 from jsonb_array_elements(p_rows) r join diligence_results d on d.ym = p_ym and d.emp_code = r->>'code'
+        where d.qualified is distinct from (r->>'qualified')::boolean or d.streak is distinct from (r->>'streak')::int) then
+    raise exception 'มีเดือนหลังจากนี้บันทึกแล้ว — เปลี่ยนได้/ไม่ได้ของเดือนนี้ไม่ได้ (แก้ได้เฉพาะยอดเงิน)';
+  end if;
+  update diligence_results d set qualified = (r->>'qualified')::boolean, streak = (r->>'streak')::int,
+         amount = (r->>'amount')::numeric, manual = nullif(r->'manual', 'null'::jsonb)
+    from jsonb_array_elements(p_rows) r where d.ym = p_ym and d.emp_code = r->>'code';
+  get diagnostics n = row_count;
+  update diligence_runs u set qualified = x.q, total = x.t
+    from (select count(*) filter (where qualified) q, coalesce(sum(amount), 0) t from diligence_results where ym = p_ym) x
+   where u.ym = p_ym;
+  return n;
+end $$;
+revoke all on function diligence_edit(text, jsonb) from public, anon;
+grant execute on function diligence_edit(text, jsonb) to authenticated;
 grant execute on function diligence_save(text, text, jsonb, jsonb) to authenticated;
 
 -- สิทธิ์: เมนูอยู่กลุ่มเงินเดือน · ใครเห็นหน้าคำนวณค่ากะ ได้เห็นหน้านี้ด้วยตั้งแต่แรก

@@ -1,9 +1,9 @@
 // ===== เบี้ยขยัน (Diligence Allowance) =====
 // ตรรกะทั้งหมดอยู่ใน diligence-calc.js (มีเทส) — ไฟล์นี้เป็นหน้าจอ: อัปโหลด 3 ไฟล์ → ตรวจ → บันทึก → Export
 // ตาราง: sql/schema_diligence.sql · เดือนต่อเนื่องนับจากผลที่ "บันทึก" ของเดือนก่อน จึงต้องบันทึกทีละเดือนตามลำดับ
-import { esc, toast, can, allEmployees } from "./app.js";
+import { esc, toast, can, allEmployees, currentUser } from "./app.js";
 import { supabase } from "./supabase-config.js";
-import { START_YM, MAX_EDIT_DAYS, OFFSITE_DEADLINE_DAY, GROUPS, nextYM, prevYM,
+import { START_YM, MAX_EDIT_DAYS, OFFSITE_DEADLINE_DAY, GROUPS, nextYM, prevYM, manualAmount, applyHistEdit,
          parseProcessed, parseEdits, parseWebReasons, editDays, evaluate } from "./diligence-calc.js";
 
 const TH_M = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
@@ -136,9 +136,12 @@ async function recompute() {
   for (const c of codes) {
     const e = emap.get(c);
     if (!e) { S.notFound.push({ code: c, name: S.proc.get(c)?.name || "" }); continue; }
-    const r = evaluate({ ym: S.ym, emp: e, t: S.proc.get(c), eds: byEmp[c] || [], manual: S.manual.get(c), prev: S.prev.get(e.emp_code) || null });
+    const args = { ym: S.ym, emp: e, t: S.proc.get(c), eds: byEmp[c] || [], prev: S.prev.get(e.emp_code) || null };
+    const r = evaluate({ ...args, manual: S.manual.get(c) });
     if (!r.inScope) continue;
-    S.results.push({ ...r, code: e.emp_code, name: empName(e), department: e.department || "", job_level: e.job_level || "", eds: byEmp[c] || [] });
+    const auto = S.manual.has(c) ? evaluate(args) : r;          // ผลที่ระบบคิดเอง ก่อน HR แก้
+    S.results.push({ ...r, code: e.emp_code, name: empName(e), department: e.department || "", job_level: e.job_level || "", eds: byEmp[c] || [],
+                     autoQualified: auto.qualified, autoAmount: auto.amount, manual: S.manual.get(c) || null });
   }
   S.results.sort((a, b) => a.department.localeCompare(b.department) || a.code.localeCompare(b.code));
   drawOut();
@@ -194,7 +197,7 @@ function drawOut() {
   <div class="card mt-4">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${[["all", `ทั้งหมด ${R.length}`], ["ok", `ได้ ${ok.length}`], ["no", `ไม่ได้ ${R.length - ok.length}`], ["flag", `ต้องตรวจ ${flagged.length}`]]
+        ${[["all", `ทั้งหมด ${R.length}`], ["ok", `ได้ ${ok.length}`], ["no", `ไม่ได้ ${R.length - ok.length}`], ["flag", `ต้องตรวจ ${flagged.length}`], ["edit", `แก้ไขแล้ว ${R.filter(r => r.manual).length}`]]
           .map(([k, t]) => `<button class="btn btn-sm ${S.filter === k ? "btn-primary" : ""}" data-f="${k}">${t}</button>`).join("")}
         <input class="search-input" id="dgQ" placeholder="ค้นหารหัส / ชื่อ / แผนก" value="${esc(S.q)}" style="min-width:200px;">
       </div>
@@ -220,46 +223,90 @@ function drawOut() {
 const stat = (k, v, sub, color = "") => `<div class="card card-body" style="padding:14px 16px;"><div class="text-muted" style="font-size:12px;">${k}</div>
   <div style="font-size:22px;font-weight:700;${color ? `color:${color};` : ""}">${v}</div><div class="text-muted" style="font-size:11.5px;">${sub}</div></div>`;
 
+// ช่องยอดเงิน: แก้แล้วขีดฆ่ายอดที่ระบบคิด · กดเพื่อแก้ (แบบหน้าค่ากะ)
+function amountCell(r, onclick) {
+  const changed = r.manual && (r.amount !== r.autoAmount || r.qualified !== r.autoQualified);
+  const inner = `${changed ? `<span class="sa-struck">${fmt(r.autoAmount)}</span> ` : ""}<b style="color:${changed ? "var(--gold-dark)" : r.qualified ? "var(--green)" : "var(--muted)"};">${r.qualified ? fmt(r.amount) : "0"}</b>`;
+  return onclick ? `<button class="sa-edit-cell" data-edit="${esc(r.code)}" title="กดเพื่อแก้">${inner}<span class="sa-pencil">✎</span></button>` : inner;
+}
+const reasonsCell = r => `${(r.reasons || []).map(x => `<div style="color:var(--red);">• ${esc(x)}</div>`).join("")}${(r.flags || []).filter(x => !/^HR (ให้สิทธิ์|กำหนดยอด)/.test(x)).map(x => `<div style="color:var(--gold-dark);">⚑ ${esc(x)}</div>`).join("")}${r.manual ? `<div style="color:var(--blue);">✎ ${esc(manualText(r.manual))}</div>` : ""}${!(r.reasons || []).length && !(r.flags || []).length && !r.manual ? `<span class="text-muted">มาครบ${r.editCount ?? r.edit_days ? ` · แก้เวลา ${r.editCount ?? r.edit_days} วัน` : ""}</span>` : ""}`;
+const manualText = m => [m.action === "grant" ? "ให้สิทธิ์" : m.action === "deny" ? "ตัดสิทธิ์" : "", manualAmount(m) != null ? `ยอด ${fmt(manualAmount(m))}` : "", m.note].filter(Boolean).join(" · ") + (m.by ? ` (${m.by})` : "");
+
 function drawTable() {
   const q = S.q.trim().toLowerCase();
-  const rows = S.results.filter(r => S.filter === "all" || (S.filter === "ok" ? r.qualified : S.filter === "no" ? !r.qualified : r.flags.length))
+  const rows = S.results.filter(r => S.filter === "all" || (S.filter === "ok" ? r.qualified : S.filter === "no" ? !r.qualified : S.filter === "edit" ? r.manual : r.flags.length))
     .filter(r => !q || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(q));
   const canW = can("data.diligence.write");
   document.getElementById("dgTable").innerHTML = `<div style="overflow:auto;"><table class="data-table"><thead><tr>
-    <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th>${canW ? "<th>HR</th>" : ""}</tr></thead><tbody>
-    ${rows.map(r => { const m = S.manual.get(r.code.toUpperCase());
-      return `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
+    <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
       <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td>
-      <td style="text-align:right;font-weight:600;${r.qualified ? "color:var(--green);" : "color:var(--muted);"}">${r.qualified ? fmt(r.amount) : "0"}</td>
-      <td style="font-size:12px;max-width:420px;">${r.reasons.map(x => `<div style="color:var(--red);">• ${esc(x)}</div>`).join("")}${r.flags.map(x => `<div style="color:var(--gold-dark);">⚑ ${esc(x)}</div>`).join("")}${!r.reasons.length && !r.flags.length ? `<span class="text-muted">มาครบ${r.editCount ? ` · แก้เวลา ${r.editCount} วัน` : ""}</span>` : ""}</td>
-      ${canW ? `<td><select class="filter-select" data-m="${esc(r.code)}">
-        <option value="">—</option>
-        <option value="deny:พักงาน (ข้อ 4.9)" ${m?.note === "พักงาน (ข้อ 4.9)" ? "selected" : ""}>ตัดสิทธิ์: พักงาน</option>
-        <option value="deny:อุบัติเหตุจากความประมาท (ข้อ 4.11)" ${m?.note === "อุบัติเหตุจากความประมาท (ข้อ 4.11)" ? "selected" : ""}>ตัดสิทธิ์: อุบัติเหตุ</option>
-        <option value="deny:" ${m?.action === "deny" && !/4\.(9|11)/.test(m.note) ? "selected" : ""}>ตัดสิทธิ์: อื่น ๆ…</option>
-        <option value="grant:" ${m?.action === "grant" ? "selected" : ""}>ให้สิทธิ์ (ยกเว้น)…</option></select></td>` : ""}</tr>`; }).join("")
-      || `<tr><td colspan="8" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
+      <td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>
+      <td style="font-size:12px;max-width:440px;">${reasonsCell(r)}</td></tr>`).join("")
+      || `<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
   </tbody></table></div>`;
-  document.querySelectorAll("#dgTable [data-m]").forEach(s => s.onchange = () => {
-    const code = s.dataset.m.toUpperCase(), [action, preset] = [s.value.split(":")[0], s.value.slice(s.value.indexOf(":") + 1)];
-    if (!action) S.manual.delete(code);
-    else {
-      const note = preset || prompt(action === "grant" ? "ให้สิทธิ์เพราะอะไร (บันทึกไว้ในผล)" : "ตัดสิทธิ์เพราะอะไร", "");
-      if (!note) { drawTable(); return; }
-      S.manual.set(code, { action, note });
-    }
-    recompute();
+  document.querySelectorAll("#dgTable [data-edit]").forEach(b => b.onclick = () => {
+    const r = S.results.find(x => x.code === b.dataset.edit);
+    editModal(r, ymTH(S.ym), m => { if (m) S.manual.set(r.code.toUpperCase(), m); else S.manual.delete(r.code.toUpperCase()); recompute(); });
   });
+}
+
+// ---------------------------------------------------------------- หน้าต่างแก้ไข (ใช้ทั้งหน้าคำนวณและประวัติ)
+// คืน manual = { action: "" | "grant" | "deny", amount: null | ตัวเลข, note, by, at } หรือ null (ล้างการแก้ไข)
+function editModal(r, monthLabel, onApply) {
+  const m = r.manual || {};
+  const portal = document.getElementById("modalPortal");
+  const presets = ["พักงาน (ข้อ 4.9)", "อุบัติเหตุจากความประมาท (ข้อ 4.11)", "มาทำงานจริง ไฟล์เวลาผิด", "ผู้บริหารอนุมัติเป็นกรณีพิเศษ"];
+  portal.innerHTML = `<div class="modal-overlay" id="dgEditModal"><div class="modal" style="max-width:520px;">
+    <div class="modal-header"><div><div class="modal-title">แก้ไขเบี้ยขยัน</div>
+      <div class="text-sm text-muted">${esc(r.code)} · ${esc(r.name)} · เวลา ${esc(monthLabel)}</div></div>
+      <button class="modal-close" data-x>×</button></div>
+    <div class="modal-body">
+      <div class="sa-edit-calc"><div><div class="sa-edit-l">ผลที่ระบบคิด</div>
+        <div class="sa-edit-n">${r.autoQualified ? `ได้ ${fmt(r.autoAmount)}` : "ไม่ได้"}</div></div>
+        <div class="text-sm text-muted" style="text-align:right;line-height:1.5;max-width:260px;">${(r.reasons || []).filter(x => !x.startsWith("HR ")).slice(0, 3).map(esc).join("<br>") || "มาครบ"}</div></div>
+      <div class="form-group" style="margin-top:14px;"><label class="form-label">ผล</label>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px;">
+          ${[["", "ตามที่ระบบคิด"], ["grant", "ให้สิทธิ์ (ได้)"], ["deny", "ตัดสิทธิ์ (ไม่ได้)"]].map(([v, t]) => `<label style="cursor:pointer;"><input type="radio" name="dgAct" value="${v}" ${(m.action || "") === v ? "checked" : ""}> ${t}</label>`).join("")}
+        </div></div>
+      <div class="form-group" style="margin-top:14px;"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="dgFix" style="width:auto;margin:0;" ${manualAmount(m) != null ? "checked" : ""}> กำหนดยอดเอง (บาท)</label>
+        <input id="dgAmt" type="number" min="0" step="1" class="form-input" value="${manualAmount(m) ?? (r.qualified ? r.amount : 300)}" ${manualAmount(m) != null ? "" : "disabled"}>
+        <div class="text-sm text-muted mt-1">ปกติไม่ต้องกำหนด — ระบบใช้อัตราตามเดือนต่อเนื่อง (300 / 600 / 1,000) · ยอด 0 = ไม่จ่ายเดือนนี้ แต่ยังนับเดือนต่อเนื่อง</div></div>
+      <div class="form-group" style="margin-top:14px;"><label class="form-label">เหตุผล *</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${presets.map(p => `<button class="btn btn-sm" data-p="${esc(p)}">${esc(p)}</button>`).join("")}</div>
+        <textarea id="dgNote" class="form-input" rows="2" placeholder="บังคับกรอก — ให้รู้ภายหลังว่าทำไมผลไม่ตรงกับที่ระบบคิด">${esc(m.note || "")}</textarea></div>
+    </div>
+    <div class="modal-footer">
+      ${r.manual ? `<button class="btn btn-secondary" data-clear style="margin-right:auto;color:var(--red);">ล้างการแก้ไข</button>` : ""}
+      <button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" data-ok>ตกลง</button></div>
+  </div></div>`;
+  const el = document.getElementById("dgEditModal"), close = () => el.remove();
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = close);
+  el.querySelector("#dgFix").onchange = e => { el.querySelector("#dgAmt").disabled = !e.target.checked; };
+  el.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { el.querySelector("#dgNote").value = b.dataset.p; });
+  el.querySelector("[data-clear]")?.addEventListener("click", () => { close(); onApply(null); });
+  el.querySelector("[data-ok]").onclick = () => {
+    const action = el.querySelector("[name=dgAct]:checked")?.value || "";
+    const amount = el.querySelector("#dgFix").checked ? Number(el.querySelector("#dgAmt").value) : null;
+    const note = el.querySelector("#dgNote").value.trim();
+    if (!action && amount == null) { close(); onApply(null); return; }
+    if (amount != null && !(amount >= 0)) { toast("ยอดเงินไม่ถูกต้อง", "error"); return; }
+    if (!note) { toast("กรุณาใส่เหตุผล", "error"); return; }
+    close();
+    onApply({ action, amount, note, by: currentUser?.user_metadata?.full_name || currentUser?.email || "", at: new Date().toISOString() });
+  };
 }
 
 async function save() {
   if (S.ym > START_YM && !S.prevSaved) { toast(`บันทึกเดือน ${ymTH(prevYM(S.ym))} ก่อน`, "error"); return; }
-  if (!confirm(`บันทึกเบี้ยขยันเวลา ${ymTH(S.ym)} (จ่ายงวด ${ymTH(nextYM(S.ym))})\n${S.results.filter(r => r.qualified).length} คนได้ · รวม ฿${fmt(S.results.reduce((s, r) => s + r.amount, 0))}\n\nถ้าเคยบันทึกเดือนนี้แล้ว จะแทนที่ของเดิม`)) return;
+  if (!confirm(`บันทึกเบี้ยขยันเวลา ${ymTH(S.ym)} (จ่ายงวด ${ymTH(nextYM(S.ym))})\n${S.results.filter(r => r.qualified).length} คนได้ · รวม ฿${fmt(S.results.reduce((s, r) => s + (r.qualified ? r.amount : 0), 0))}\n\nถ้าเคยบันทึกเดือนนี้แล้ว จะแทนที่ของเดิม`)) return;
   const rows = S.results.map(r => ({ code: r.code, name: r.name, department: r.department, job_level: r.job_level, qualified: r.qualified,
-    streak: r.streak, amount: r.amount, edit_days: r.editCount, reasons: r.reasons, flags: r.flags, manual: S.manual.get(r.code.toUpperCase()) || null }));
+    streak: r.streak, amount: r.qualified ? r.amount : 0, edit_days: r.editCount, reasons: r.reasons, flags: r.flags, manual: r.manual,
+    auto_qualified: r.autoQualified, auto_amount: r.autoAmount }));
   const { data, error } = await supabase.rpc("diligence_save", { p_ym: S.ym, p_pay_ym: nextYM(S.ym),
     p_files: Object.values(S.files).filter(Boolean), p_rows: rows });
-  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message + (/auto_|function/.test(error.message) ? " — รัน sql/schema_diligence.sql ล่าสุดก่อน" : ""), "error"); return; }
   toast(`บันทึก ${ymTH(S.ym)} แล้ว (${data} คน)`, "success");
 }
 
@@ -267,12 +314,14 @@ async function save() {
 function exportXlsx(results, ym, days = []) {
   if (!window.XLSX) { toast("กรุณารอโหลด library", "error"); return; }
   const X = window.XLSX, wb = X.utils.book_new();
-  const pay = results.filter(r => r.qualified).map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
+  const pay = results.filter(r => r.qualified && Number(r.amount) > 0).map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
     "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.amount }));
   pay.push({ "รหัสพนักงาน": "รวม", "เบี้ยขยัน": pay.reduce((s, r) => s + r["เบี้ยขยัน"], 0) });
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(pay), "จ่าย");
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(results.map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
-    "ได้": r.qualified ? "ได้" : "ไม่ได้", "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.amount, "แก้เวลา (วัน)": r.editCount ?? r.edit_days,
+    "ได้": r.qualified ? "ได้" : "ไม่ได้", "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.qualified ? r.amount : 0,
+    "ระบบคิด": (r.autoQualified ?? r.auto_qualified ?? r.qualified) ? (r.autoAmount ?? r.auto_amount ?? r.amount) : 0,
+    "HR แก้ไข": r.manual ? manualText(r.manual) : "", "แก้เวลา (วัน)": r.editCount ?? r.edit_days,
     "เหตุผล": (r.reasons || []).join(" · "), "ข้อสังเกต": (r.flags || []).join(" · ") }))), "ทั้งหมด");
   if (days.length) X.utils.book_append_sheet(wb, X.utils.json_to_sheet(days.map(d => ({ "รหัสพนักงาน": d.emp, "วันที่": d.date,
     "ขาที่ลงเอง": (d.legs || []).map(l => ({ in: "เข้า", out: "ออก", none: "ไม่ได้ใช้" }[l] || l)).join("+"),
@@ -280,36 +329,93 @@ function exportXlsx(results, ym, days = []) {
   X.writeFile(wb, `เบี้ยขยัน_เวลา${ym}_จ่าย${nextYM(ym)}.xlsx`);
 }
 
-// ---------------------------------------------------------------- ประวัติ
+// ---------------------------------------------------------------- ประวัติ (ดู / แก้ไขเดือนที่บันทึกแล้ว)
+// แก้ได้: ได้/ไม่ได้ และยอดเงิน — ไม่มีไฟล์เวลาแล้ว จึงคำนวณใหม่จากผลที่ระบบคิดไว้ (auto_*) + การแก้ของ HR
+// เปลี่ยนได้/ไม่ได้ไม่ได้ถ้าเดือนถัดไปบันทึกแล้ว (เดือนต่อเนื่องของเดือนหลังนับจากเดือนนี้) — DB บังคับซ้ำใน diligence_edit
+const H = { ym: null, rows: [], prev: new Map(), later: false, edits: new Map(), q: "", filter: "all" };
+
 async function renderHist(sel) {
   const box = document.getElementById("dgHist");
   const { data: runs, error } = await supabase.from("diligence_runs").select("*").order("ym", { ascending: false });
   if (error) { box.innerHTML = `<div class="card card-body text-muted">อ่านประวัติไม่ได้: ${esc(error.message)} — รัน sql/schema_diligence.sql ก่อน</div>`; return; }
   if (!runs.length) { box.innerHTML = `<div class="card card-body text-muted">ยังไม่มีเดือนที่บันทึก</div>`; return; }
-  const ym = sel || runs[0].ym, run = runs.find(r => r.ym === ym);
-  const { data: rows } = await supabase.from("diligence_results").select("*").eq("ym", ym).order("department").order("emp_code");
-  const R = (rows || []).map(r => ({ ...r, code: r.emp_code, name: r.emp_name }));
+  const ym = sel || (runs.some(r => r.ym === H.ym) ? H.ym : runs[0].ym);
+  if (ym !== H.ym) H.edits.clear();
+  const [{ data: rows }, { data: prev }] = await Promise.all([
+    supabase.from("diligence_results").select("*").eq("ym", ym).order("department").order("emp_code"),
+    ym > START_YM ? supabase.from("diligence_results").select("emp_code,qualified,streak").eq("ym", prevYM(ym)) : Promise.resolve({ data: [] }),
+  ]);
+  Object.assign(H, { ym, runs, later: runs.some(r => r.ym > ym), prev: new Map((prev || []).map(p => [p.emp_code, p])),
+    rows: (rows || []).map(r => ({ ...r, code: r.emp_code, name: r.emp_name })) });
+  drawHist();
+}
+
+// แถวที่แสดง = แถวใน DB + การแก้ที่ยังไม่บันทึก
+const histView = r => {
+  if (!H.edits.has(r.code)) return { ...r, autoQualified: r.auto_qualified ?? r.qualified, autoAmount: r.auto_amount ?? r.amount };
+  const m = H.edits.get(r.code), x = applyHistEdit(r, m, H.prev.get(r.code));
+  return { ...r, ...x, manual: m, autoQualified: r.auto_qualified ?? r.qualified, autoAmount: r.auto_amount ?? r.amount, pending: true };
+};
+
+function drawHist() {
+  const box = document.getElementById("dgHist"), run = H.runs.find(r => r.ym === H.ym), canW = can("data.diligence.write");
+  const V = H.rows.map(histView), ok = V.filter(r => r.qualified), total = ok.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const q = H.q.trim().toLowerCase();
+  const list = V.filter(r => H.filter === "all" || (H.filter === "ok" ? r.qualified : H.filter === "no" ? !r.qualified : r.manual))
+                .filter(r => !q || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(q));
   box.innerHTML = `
   <div class="card card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-    <select class="filter-select" id="dgHM">${runs.map(r => `<option value="${r.ym}" ${r.ym === ym ? "selected" : ""}>เวลา ${ymTH(r.ym)} → จ่ายงวด ${ymTH(r.pay_ym)}</option>`).join("")}</select>
-    <div style="font-size:13px;">ได้ <b>${run.qualified}</b> / ${run.in_scope} คน · รวม <b style="color:var(--green);">฿${fmt(run.total)}</b>
+    <select class="filter-select" id="dgHM">${H.runs.map(r => `<option value="${r.ym}" ${r.ym === H.ym ? "selected" : ""}>เวลา ${ymTH(r.ym)} → จ่ายงวด ${ymTH(r.pay_ym)}</option>`).join("")}</select>
+    <div style="font-size:13px;">ได้ <b>${ok.length}</b> / ${V.length} คน · รวม <b style="color:var(--green);">฿${fmt(total)}</b>
       <span class="text-muted">· บันทึก ${new Date(run.saved_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}</span></div>
     <div style="margin-left:auto;display:flex;gap:8px;">
+      ${canW && H.edits.size ? `<button class="btn btn-secondary" id="dgHU">ยกเลิกการแก้</button><button class="btn btn-primary" id="dgHS">💾 บันทึกการแก้ไข (${H.edits.size})</button>` : ""}
       <button class="btn btn-gold" id="dgHX">📤 Export</button>
-      ${can("data.diligence.write") && ym === runs[0].ym ? `<button class="btn btn-secondary" id="dgHD" title="ลบได้เฉพาะเดือนล่าสุด">🗑 ลบเดือนนี้</button>` : ""}
+      ${canW && !H.later && !H.edits.size ? `<button class="btn btn-secondary" id="dgHD" title="ลบได้เฉพาะเดือนล่าสุด">🗑 ลบเดือนนี้</button>` : ""}
     </div>
   </div>
-  <div class="card mt-4"><div style="overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
-    ${R.map(r => `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
-      <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td><td style="text-align:right;font-weight:600;">${r.qualified ? fmt(r.amount) : "0"}</td>
-      <td style="font-size:12px;">${(r.reasons || []).map(x => `<div style="color:var(--red);">• ${esc(x)}</div>`).join("")}${(r.flags || []).map(x => `<div style="color:var(--gold-dark);">⚑ ${esc(x)}</div>`).join("")}</td></tr>`).join("")}
-  </tbody></table></div></div>`;
+  ${canW ? `<div class="text-muted" style="font-size:12px;margin:8px 2px 0;">กดที่ยอดเบี้ยขยัน ✎ เพื่อแก้ (ให้สิทธิ์ / ตัดสิทธิ์ / กำหนดยอด) แล้วกด 💾 บันทึกการแก้ไข${H.later ? ` · <b>เดือนถัดไปบันทึกแล้ว</b> — เดือนนี้แก้ได้เฉพาะยอดเงิน (เปลี่ยนได้/ไม่ได้จะทำให้เดือนต่อเนื่องของเดือนหลังผิด)` : ""}</div>` : ""}
+  <div class="card mt-4">
+    <div class="card-body" style="display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border);">
+      ${[["all", `ทั้งหมด ${V.length}`], ["ok", `ได้ ${ok.length}`], ["no", `ไม่ได้ ${V.length - ok.length}`], ["edit", `แก้ไขแล้ว ${V.filter(r => r.manual).length}`]]
+        .map(([k, t]) => `<button class="btn btn-sm ${H.filter === k ? "btn-primary" : ""}" data-hf="${k}">${t}</button>`).join("")}
+      <input class="search-input" id="dgHQ" placeholder="ค้นหารหัส / ชื่อ / แผนก" value="${esc(H.q)}" style="min-width:200px;">
+    </div>
+    <div style="overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
+    ${list.map(r => `<tr${r.pending ? ' style="background:var(--gold-light);"' : ""}><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
+      <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td><td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>
+      <td style="font-size:12px;max-width:440px;">${reasonsCell(r)}</td></tr>`).join("") || `<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
+    </tbody></table></div></div>`;
   box.querySelector("#dgHM").onchange = e => renderHist(e.target.value);
-  box.querySelector("#dgHX").onclick = () => exportXlsx(R, ym);
-  box.querySelector("#dgHD")?.addEventListener("click", async () => {
-    if (!confirm(`ลบผลเบี้ยขยันเวลา ${ymTH(ym)} ทั้งเดือน?`)) return;
-    const { error: e } = await supabase.from("diligence_runs").delete().eq("ym", ym);
-    if (e) { toast("ลบไม่สำเร็จ: " + e.message, "error"); return; }
-    toast("ลบแล้ว", "success"); renderHist();
+  box.querySelector("#dgHQ").oninput = e => { H.q = e.target.value; drawHist(); const i = document.getElementById("dgHQ"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); };
+  box.querySelectorAll("[data-hf]").forEach(b => b.onclick = () => { H.filter = b.dataset.hf; drawHist(); });
+  box.querySelector("#dgHX").onclick = () => exportXlsx(V, H.ym);
+  box.querySelector("#dgHU")?.addEventListener("click", () => { H.edits.clear(); drawHist(); });
+  box.querySelector("#dgHS")?.addEventListener("click", saveHist);
+  box.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => {
+    const r = V.find(x => x.code === b.dataset.edit);
+    editModal(r, ymTH(H.ym), m => {
+      const base = H.rows.find(x => x.code === r.code);
+      const next = m || null, same = JSON.stringify(next) === JSON.stringify(base.manual || null);
+      if (same) H.edits.delete(r.code); else H.edits.set(r.code, next);
+      if (H.later) { const x = applyHistEdit(base, next, H.prev.get(r.code));
+        if (x.qualified !== base.qualified) { H.edits.delete(r.code); toast("เดือนถัดไปบันทึกแล้ว — เปลี่ยนได้/ไม่ได้ของเดือนนี้ไม่ได้ แก้ได้เฉพาะยอดเงิน", "error"); } }
+      drawHist();
+    });
   });
+  box.querySelector("#dgHD")?.addEventListener("click", async () => {
+    if (!confirm(`ลบผลเบี้ยขยันเวลา ${ymTH(H.ym)} ทั้งเดือน?`)) return;
+    const { error: e } = await supabase.from("diligence_runs").delete().eq("ym", H.ym);
+    if (e) { toast("ลบไม่สำเร็จ: " + e.message, "error"); return; }
+    H.ym = null; toast("ลบแล้ว", "success"); renderHist();
+  });
+}
+
+async function saveHist() {
+  const rows = [...H.edits.keys()].map(code => { const v = histView(H.rows.find(r => r.code === code));
+    return { code, qualified: v.qualified, streak: v.streak, amount: v.qualified ? v.amount : 0, manual: v.manual || null }; });
+  if (!confirm(`บันทึกการแก้ไข ${rows.length} คน ของเวลา ${ymTH(H.ym)}?`)) return;
+  const { error } = await supabase.rpc("diligence_edit", { p_ym: H.ym, p_rows: rows });
+  if (error) { toast("บันทึกไม่สำเร็จ: " + error.message + (/function/.test(error.message) ? " — รัน sql/schema_diligence.sql ล่าสุดก่อน" : ""), "error"); return; }
+  H.edits.clear(); toast("บันทึกการแก้ไขแล้ว", "success"); renderHist(H.ym);
 }
