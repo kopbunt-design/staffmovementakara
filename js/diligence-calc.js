@@ -132,6 +132,8 @@ export const GROUPS = {
   unused:  { th: "ไม่ได้ใช้เป็นเวลาเข้า-ออก",    counted: false },
   holiday: { th: "วันหยุด (มาทำโอที)",          counted: false },
 };
+// ลืมบัตร (ผู้ใช้ยืนยัน 2026-10-09): ลืมทั้งวัน = ลงเวลาเองทั้งเข้าและออก = 1 ครั้ง (ไม่เกิน 2 ครั้งยังได้)
+//   ลืมบัตร "ขาเดียว" (อีกขาสแกนได้ แปลว่ามีบัตร) = น่าสงสัย → นับ 1 ครั้ง ทั้งขาเข้าและขาออก + ขึ้นธงให้ HR ตัดสิน
 // วันหยุด (ประเภทวัน H / HD) ไม่เอามาคิดเลย — มาทำโอที (ผู้ใช้ยืนยัน 2026-10-09)
 //   ทั้งการแก้เวลา สาย ออกก่อน ลา หักวัน ในวันหยุด ไม่ทำให้หมดสิทธิ์
 export const isHoliday = d => /^H/i.test(d?.dayType || "");
@@ -177,18 +179,23 @@ export function editDays(edits, ym, webReasons = new Map(), proc = null) {
     let reason = e.reason;
     if (!reason || /HR\s*Approve\s*\(web\)/i.test(reason)) reason = webReasons.get(`${e.emp}|${e.minute}`) || "";
     const key = `${e.emp}|${date}`;
-    const d = days.get(key) || { key, emp: e.emp, date, reasons: [], types: [], legs: [], lastAt: "", group: null };
+    const d = days.get(key) || { key, emp: e.emp, date, reasons: [], types: [], legs: [], forgot: [], lastAt: "", group: null };
     if (reason && !d.reasons.includes(reason)) d.reasons.push(reason);
     if (!d.types.includes(e.type)) d.types.push(e.type);
     if (!d.legs.includes(leg)) d.legs.push(leg);
     if (e.at > d.lastAt) d.lastAt = e.at;
     // เหตุผลที่ "นับ" จะนับจริงเฉพาะรายการที่เป็นขาเข้า
     let g = classifyReason(reason, e.type);
-    if (g === "count" && leg !== "in") g = leg === "out" ? "out" : "unused";
+    const forgot = g === "count" && RE.forgot.test(reason);
+    if (forgot && leg !== "none" && !d.forgot.includes(leg)) d.forgot.push(leg);
+    if (g === "count" && leg !== "in" && !(forgot && leg === "out")) g = leg === "out" ? "out" : "unused";
     if (!d.group || SEVERITY.indexOf(g) < SEVERITY.indexOf(d.group)) d.group = g;
     days.set(key, d);
   }
-  for (const d of days.values()) if (hol.has(d.key)) d.group = "holiday";
+  for (const d of days.values()) {
+    d.oneLegForgot = d.group === "count" && d.forgot.length === 1 && proc != null ? d.forgot[0] : "";
+    if (hol.has(d.key)) { d.group = "holiday"; d.oneLegForgot = ""; }
+  }
   return [...days.values()].sort((a, b) => a.emp.localeCompare(b.emp) || a.date.localeCompare(b.date));
 }
 
@@ -237,6 +244,8 @@ export function evaluate({ ym, emp, t, eds = [], manual = null, prev = null }) {
   const deadline = `${nextYM(ym)}-${pad(OFFSITE_DEADLINE_DAY)}`;
   const late8 = eds.filter(e => e.group === "offsite" && e.lastAt && e.lastAt > deadline);
   if (late8.length) lose.push(`ลงเวลานอกสถานที่หลังวันที่ ${OFFSITE_DEADLINE_DAY} ${late8.length} วัน (${late8.slice(0, 4).map(e => `${dd(e.date)} ลง ${dd(e.lastAt)}`).join(", ")}${late8.length > 4 ? ", …" : ""})`);
+  const odd = counted.filter(e => e.oneLegForgot);
+  if (odd.length) res.flags.push(`ลืมบัตรขาเดียว ${odd.length} วัน — น่าสงสัย (${odd.slice(0, 4).map(e => `${dd(e.date)} ${e.oneLegForgot === "in" ? "ขาเข้า" : "ขาออก"}`).join(", ")}${odd.length > 4 ? ", …" : ""})`);
   const nCheck = eds.filter(e => e.group === "check").length;
   if (nCheck) res.flags.push(`สแกนไม่ติด ${nCheck} วัน — ยืนยันว่าเป็นปัญหาฝั่งบริษัท`);
 

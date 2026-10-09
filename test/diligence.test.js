@@ -62,8 +62,16 @@ const legDays = M.editDays([
   ed("AKR1", "2026-09-05", pm(4, 8), "ลงเวลา", "ลืมบัตร"),                                        // ขาออกกะดึก (คนละวัน)
   ed("AKR1", "2026-09-06", pm(5, 8), "ลงเวลา", "ลืมบัตร"),                                        // ไม่ได้ใช้ (สแกนจริง 07:30)
 ], "2026-09", new Map(), procMap);
-eq(legDays.map(d => [d.date, d.legs.join(), d.group]), [["2026-09-02", "out", "out"], ["2026-09-03", "in", "count"], ["2026-09-04", "out", "out"], ["2026-09-06", "none", "unused"]],
-   "ลงขาออกเองไม่นับ · ขาเข้านับ · กะดึกขาออกนับเป็นวันของกะ · ไม่ได้ใช้ไม่นับ");
+eq(legDays.map(d => [d.date, d.legs.join(), d.group, d.oneLegForgot]),
+   [["2026-09-02", "out", "count", "out"], ["2026-09-03", "in", "count", "in"], ["2026-09-04", "out", "count", "out"], ["2026-09-06", "none", "unused", ""]],
+   "ลืมบัตรขาเดียว (เข้าหรือออก) = นับ + น่าสงสัย · กะดึกขาออกนับเป็นวันของกะ · ไม่ได้ใช้ไม่นับ");
+const both = M.editDays([ed("AKR1", "2026-09-02", pm(1, 8), "ลงเวลา", "ลืมบัตร"), ed("AKR1", "2026-09-02", pm(1, 17), "ลงเวลา", "ลืมบัตร")], "2026-09", new Map(), procMap);
+eq([both.length, both[0].group, both[0].oneLegForgot], [1, "count", ""], "ลืมบัตรทั้งวัน (เข้า+ออก) = 1 ครั้ง ไม่น่าสงสัย");
+const outOther = M.editDays([ed("AKR1", "2026-09-02", pm(1, 17), "ลงเวลา", "บันทึกเวลาออก")], "2026-09", new Map(), procMap);
+eq(outOther[0].group, "out", "ลงขาออกเองด้วยเหตุอื่น (ไม่ใช่ลืมบัตร) ยังหยวน");
+const evOdd = M.evaluate({ ym: "2026-09", emp: { emp_code: "AKR1", job_level: "O1", contract_type: "Permanent", join_date: "2020-01-01" },
+  t: { code: "AKR1", days: [{ date: "2026-09-01", dayType: "N", note: "" }] }, eds: legDays });
+eq([evOdd.qualified, evOdd.editCount, evOdd.flags.some(f => f.startsWith("ลืมบัตรขาเดียว 3 วัน"))], [false, 3, true], "ลืมบัตรขาเดียว 3 วัน = เกิน 2 + ขึ้นธง");
 
 // วันหยุด: มาทำโอที ไม่เอามาคิด
 const holProc = new Map([["AKR1", { code: "AKR1", days: [{ date: "2026-09-05", dayType: "H", inMin: pm(4, 8), outMin: pm(4, 17) }] }]]);

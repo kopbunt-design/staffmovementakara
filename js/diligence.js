@@ -76,7 +76,7 @@ function drawCalc() {
       • ได้เฉพาะ <b>พนักงานประจำ ระดับ O และ S</b> ที่อยู่ครบทั้งเดือน และพ้นทดลองงานแล้ว (นับจากวันที่ 1 ของเดือนถัดไป · วันพ้นทดลองงาน = วันเริ่มงาน + 119 วัน)<br>
       • หมดสิทธิ์เมื่อ: ขาด/หักวัน · <b>มาสายหรือออกก่อนแม้ 1 นาที</b> · ลาทุกประเภท <b>ยกเว้นลาพักร้อนและลาหยุดชดเชย</b> ·
         แก้เวลาเกิน <b>${MAX_EDIT_DAYS} วัน</b>/เดือน · ลงเวลานอกสถานที่หลังวันที่ ${OFFSITE_DEADLINE_DAY} ของเดือนถัดไป · HR ตัดสิทธิ์ (พักงาน / อุบัติเหตุ)<br>
-      • การแก้เวลาไม่นับ: รปภ./ป้อมสแกนให้ · ไฟดับ · HR เพิ่มให้ · ทำงานนอกสถานที่ (รวม WFH) · <b>ขาเข้าสแกนแล้ว ลงเวลาขาออกเอง</b> · <b>วันหยุด</b> (มาทำโอที — วันหยุดไม่เอามาคิดเลย ทั้งสาย ลา แก้เวลา) — <b>ลงเวลาขาเข้าเอง</b> ด้วยเหตุลืมบัตร ฯลฯ (แม้เซ็นที่ป้อมยาม) นับ<br>
+      • การแก้เวลาไม่นับ: รปภ./ป้อมสแกนให้ · ไฟดับ · HR เพิ่มให้ · ทำงานนอกสถานที่ (รวม WFH) · <b>ขาเข้าสแกนแล้ว ลงเวลาขาออกเอง</b> (ยกเว้นเหตุลืมบัตร) · <b>วันหยุด</b> (มาทำโอที — วันหยุดไม่เอามาคิดเลย ทั้งสาย ลา แก้เวลา) — <b>ลงเวลาขาเข้าเอง</b> (ลืมบัตร ฯลฯ แม้เซ็นที่ป้อมยาม) นับ · <b>ลืมบัตรทั้งวัน = 1 ครั้ง</b> · ลืมบัตรขาเดียว = นับ 1 ครั้ง + ⚑ น่าสงสัย ให้ HR ตัดสิน<br>
       • อัตรา: เดือนต่อเนื่องที่ 1–3 = <b>300</b> · 4–6 = <b>600</b> · 7 ขึ้นไป = <b>1,000</b> · ขาดช่วงเริ่มนับ 1 ใหม่ · เริ่มนับเดือนแรก ${ymTH(START_YM)}
     </div>
   </div>
@@ -176,7 +176,8 @@ function drawOut() {
     </div>
     ${review.length ? `<div style="max-height:360px;overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>ขาที่ลงเอง</th><th>เหตุผล</th><th>ลงเมื่อ</th><th>กลุ่ม</th></tr></thead><tbody>
       ${review.map(d => `<tr><td>${esc(d.emp)}</td><td>${esc(nameOf(d.emp))}</td><td>${dTH(d.date)}</td>
-        <td style="white-space:nowrap;">${(d.legs || []).map(l => l === "in" ? `<b style="color:var(--red);">เข้า</b>` : l === "out" ? "ออก" : `<span class="text-muted">ไม่ได้ใช้</span>`).join(" + ")}</td>
+        <td style="white-space:nowrap;">${(d.legs || []).map(l => l === "in" ? `<b style="color:var(--red);">เข้า</b>` : l === "out" ? "ออก" : `<span class="text-muted">ไม่ได้ใช้</span>`).join(" + ")}
+          ${d.oneLegForgot ? `<div><span class="badge badge-gold" title="ลืมบัตรแต่อีกขาสแกนได้ — HR ตัดสินในตารางผล">⚑ ลืมบัตรขาเดียว</span></div>` : ""}</td>
         <td style="max-width:340px;">${d.reasons.length ? esc(d.reasons.join(" / ")) : `<span class="text-muted">(ไม่ระบุเหตุผล)</span>`} <span class="text-muted" style="font-size:11px;">· ${esc(d.types.join("/"))}</span></td>
         <td style="white-space:nowrap;">${d.lastAt ? dTH(d.lastAt) : "-"}</td>
         <td><select class="filter-select" data-g="${esc(d.key)}" style="min-width:170px;">${Object.entries(GROUPS).map(([k, g]) => `<option value="${k}" ${k === d.group ? "selected" : ""}>${g.th}</option>`).join("")}</select>
