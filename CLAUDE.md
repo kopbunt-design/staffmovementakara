@@ -77,6 +77,12 @@ HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and
 
 - **Shift allowance: one shift family all month pays nothing — this is intended, not a bug.** The rate comes from how many shift *families* (เช้า/บ่าย/ดึก) a person actually worked in payable days that month: 3 families → 1,800/month, 2 → 1,200, **1 or 0 → 0**. So an O-level employee who worked only the morning shift every day of the month earns ฿0 in shift allowance, even with a full 31 payable days. Confirmed with the user on 2026-08-18 after they saw a real case (AKR17030409, O3, เช้า only, ฿0). The allowance pays for *rotating* between shifts, not for working shifts as such. Do not "fix" this by paying a floor amount for a single family.
 
+- **Diligence allowance (เบี้ยขยัน)** — `js/diligence-calc.js` (pure, tested by `test/diligence.test.js`) + `js/diligence.js` (page) + `sql/schema_diligence.sql`. Rules from the company regulation effective 1 Sep 2026, plus details the user confirmed on 2026-10-09:
+  - Time data of month M pays with month M+1's salary. Input is three raw TigerSoft exports (processed report, เพิ่มเวลา, เพิ่มเวลา-web), read by header labels, not fixed columns.
+  - In scope: Permanent, job level O/S, employed the whole month, past probation (join + 119 days, counting from the 1st of the next month).
+  - Lose the month for: absence, **any** late/early minute, any leave except ลาพักร้อน and ลาหยุดชดเชย, more than 2 counted time-edit days, off-site time entered after the 7th of the next month, HR denial (suspension 4.9 / accident 4.11).
+  - Time edits are counted **per day**, by reason group: ลืมบัตร/บัตรหาย/blank = counted (even "ลืมบัตรแต่เซ็นที่ป้อมยาม"); รปภ./ป้อม/ไฟดับ = company, not counted; "สแกนไม่ติด" without saying where = not counted but flagged for HR; WFH/off-site/BKK = not counted but has the 7th deadline; HR-added = not counted. HR can regroup any day on screen.
+  - Rate by consecutive qualifying months: 1–3 → 300, 4–6 → 600, 7+ → 1,000; a miss restarts at 1 the next month. Sep 2026 is month 1 for everyone. Streaks come from the **saved** previous month, so months must be saved in order (`diligence_save` refuses to overwrite a month when a later one exists).
 - **`movYM` vs `lastWorkYM`**: `movYM(movement)` in `app.js` returns the month of `movement.date` (falling back to `created_at`) **without** subtracting a day — it is for new hires and general movement filtering. `lastWorkYM(dateStr)` subtracts a day and is only for separations. Do not swap them.
 
 ## Workflow
