@@ -76,7 +76,7 @@ function drawCalc() {
       • ได้เฉพาะ <b>พนักงานประจำ ระดับ O และ S</b> ที่อยู่ครบทั้งเดือน และพ้นทดลองงานแล้ว (นับจากวันที่ 1 ของเดือนถัดไป · วันพ้นทดลองงาน = วันเริ่มงาน + 119 วัน)<br>
       • หมดสิทธิ์เมื่อ: ขาด/หักวัน · <b>มาสายหรือออกก่อนแม้ 1 นาที</b> · ลาทุกประเภท <b>ยกเว้นลาพักร้อนและลาหยุดชดเชย</b> ·
         แก้เวลาเกิน <b>${MAX_EDIT_DAYS} วัน</b>/เดือน · ลงเวลานอกสถานที่หลังวันที่ ${OFFSITE_DEADLINE_DAY} ของเดือนถัดไป · HR ตัดสิทธิ์ (พักงาน / อุบัติเหตุ)<br>
-      • การแก้เวลาไม่นับ: รปภ./ป้อมสแกนให้ · ไฟดับ · HR เพิ่มให้ · ทำงานนอกสถานที่ (รวม WFH) — <b>ลืมบัตร</b> (แม้เซ็นที่ป้อมยาม) นับ<br>
+      • การแก้เวลาไม่นับ: รปภ./ป้อมสแกนให้ · ไฟดับ · HR เพิ่มให้ · ทำงานนอกสถานที่ (รวม WFH) · <b>ขาเข้าสแกนแล้ว ลงเวลาขาออกเอง</b> — <b>ลงเวลาขาเข้าเอง</b> ด้วยเหตุลืมบัตร ฯลฯ (แม้เซ็นที่ป้อมยาม) นับ<br>
       • อัตรา: เดือนต่อเนื่องที่ 1–3 = <b>300</b> · 4–6 = <b>600</b> · 7 ขึ้นไป = <b>1,000</b> · ขาดช่วงเริ่มนับ 1 ใหม่ · เริ่มนับเดือนแรก ${ymTH(START_YM)}
     </div>
   </div>
@@ -127,7 +127,7 @@ async function loadPrev() {
 async function recompute() {
   if (!S.proc || !S.files.edit) { document.getElementById("dgOut").innerHTML = ""; return; }
   await loadPrev();
-  S.days = editDays(S.edits, S.ym, S.web).map(d => ({ ...d, auto: d.group, group: S.groupOverride.get(d.key) || d.group }));
+  S.days = editDays(S.edits, S.ym, S.web, S.proc).map(d => ({ ...d, auto: d.group, group: S.groupOverride.get(d.key) || d.group }));
   const byEmp = {}; for (const d of S.days) (byEmp[d.emp] ||= []).push(d);
   const emap = new Map(allEmployees.map(e => [String(e.emp_code).toUpperCase(), e]));
   const codes = new Set(S.proc.keys());
@@ -154,7 +154,7 @@ function drawOut() {
   if (S.notFound.length) warns.push(`${S.notFound.length} รหัสในไฟล์ไม่พบในทะเบียนพนักงาน: ${S.notFound.slice(0, 6).map(x => esc(x.code)).join(", ")}${S.notFound.length > 6 ? " …" : ""}`);
   const noWeb = S.edits.filter(e => e.date.startsWith(S.ym) && /HR\s*Approve\s*\(web\)/i.test(e.reason) && !S.web.get(`${e.emp}|${e.minute}`)).length;
   if (noWeb) warns.push(`${noWeb} รายการแก้เวลาเขียนแค่ “HR Approve(web)” ${S.files.web ? "และหาเหตุผลในไฟล์ web ไม่เจอ" : "— อัปโหลดไฟล์ 3 เพื่อเอาเหตุผลจริง"} → นับเป็นแก้เวลา`);
-  const review = S.days.filter(d => S.showAllEdits || d.group === "check" || (d.group === "count" && !d.reasons.length) || d.group !== d.auto)
+  const review = S.days.filter(d => S.showAllEdits || d.group === "check" || d.group === "count" || d.group !== d.auto)
                        .filter(d => R.some(r => r.code.toUpperCase() === d.emp));
   const nameOf = c => R.find(r => r.code.toUpperCase() === c)?.name || S.proc.get(c)?.name || "";
 
@@ -171,11 +171,12 @@ function drawOut() {
   <div class="card mt-4">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
       <div><div class="card-title" style="margin:0;">การแก้เวลาที่ต้องดู · ${review.length} วัน</div>
-        <div class="text-muted" style="font-size:12px;">ระบบจัดกลุ่มจากเหตุผลที่พิมพ์ — เปลี่ยนกลุ่มได้ ผลคำนวณใหม่ทันที · นับวันละ 1 ครั้ง (แก้ทั้งเข้าและออกในวันเดียว = 1)</div></div>
+        <div class="text-muted" style="font-size:12px;">ระบบจัดกลุ่มจากเหตุผลที่พิมพ์ — เปลี่ยนกลุ่มได้ ผลคำนวณใหม่ทันที · นับวันละ 1 ครั้ง · <b>นับเฉพาะวันที่ลงเวลาขาเข้าเอง</b> (ระวังมาสายแล้วไม่สแกน มาลงเวลาทีหลัง) — ขาเข้าสแกนแล้วลงขาออกเอง ไม่นับ</div></div>
       <label style="font-size:13px;cursor:pointer;"><input type="checkbox" id="dgAllEd" ${S.showAllEdits ? "checked" : ""}> แสดงการแก้เวลาทั้งหมด (${S.days.length} วัน)</label>
     </div>
-    ${review.length ? `<div style="max-height:360px;overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>เหตุผล</th><th>ลงเมื่อ</th><th>กลุ่ม</th></tr></thead><tbody>
+    ${review.length ? `<div style="max-height:360px;overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>ขาที่ลงเอง</th><th>เหตุผล</th><th>ลงเมื่อ</th><th>กลุ่ม</th></tr></thead><tbody>
       ${review.map(d => `<tr><td>${esc(d.emp)}</td><td>${esc(nameOf(d.emp))}</td><td>${dTH(d.date)}</td>
+        <td style="white-space:nowrap;">${(d.legs || []).map(l => l === "in" ? `<b style="color:var(--red);">เข้า</b>` : l === "out" ? "ออก" : `<span class="text-muted">ไม่ได้ใช้</span>`).join(" + ")}</td>
         <td style="max-width:340px;">${d.reasons.length ? esc(d.reasons.join(" / ")) : `<span class="text-muted">(ไม่ระบุเหตุผล)</span>`} <span class="text-muted" style="font-size:11px;">· ${esc(d.types.join("/"))}</span></td>
         <td style="white-space:nowrap;">${d.lastAt ? dTH(d.lastAt) : "-"}</td>
         <td><select class="filter-select" data-g="${esc(d.key)}" style="min-width:170px;">${Object.entries(GROUPS).map(([k, g]) => `<option value="${k}" ${k === d.group ? "selected" : ""}>${g.th}</option>`).join("")}</select>
@@ -267,6 +268,7 @@ function exportXlsx(results, ym, days = []) {
     "ได้": r.qualified ? "ได้" : "ไม่ได้", "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.amount, "แก้เวลา (วัน)": r.editCount ?? r.edit_days,
     "เหตุผล": (r.reasons || []).join(" · "), "ข้อสังเกต": (r.flags || []).join(" · ") }))), "ทั้งหมด");
   if (days.length) X.utils.book_append_sheet(wb, X.utils.json_to_sheet(days.map(d => ({ "รหัสพนักงาน": d.emp, "วันที่": d.date,
+    "ขาที่ลงเอง": (d.legs || []).map(l => ({ in: "เข้า", out: "ออก", none: "ไม่ได้ใช้" }[l] || l)).join("+"),
     "เหตุผล": d.reasons.join(" / "), "ประเภท": d.types.join("/"), "ลงเมื่อ": d.lastAt, "กลุ่ม": GROUPS[d.group].th, "นับ": GROUPS[d.group].counted ? "นับ" : "" }))), "การแก้เวลา");
   X.writeFile(wb, `เบี้ยขยัน_เวลา${ym}_จ่าย${nextYM(ym)}.xlsx`);
 }

@@ -11,6 +11,7 @@
 // ได้เบี้ยเดือนนั้นเมื่อ (ข้อ 4):
 //   ไม่ขาด/หักวัน · ไม่สาย/ออกก่อนแม้ 1 นาที (4.4) · ไม่ลา ยกเว้นลาพักร้อนและลาหยุดชดเชย (4.1–4.3)
 //   แก้เวลาไม่เกิน 2 วัน/เดือน (4.6–4.7) — นับเฉพาะกลุ่ม "แก้เวลา" (ลืมบัตร บัตรหาย ฯลฯ) วันละ 1 ครั้ง
+//     และเฉพาะวันที่ลงเวลา "ขาเข้า" เอง — ขาเข้าสแกนแล้วลงขาออกเอง = ไม่นับ
 //     ไม่นับ: ปัญหาฝั่งบริษัท (รปภ./ป้อม สแกนให้ ไฟดับ เครื่องสแกน) · HR เพิ่มให้ · ทำงานนอกสถานที่
 //     นอกสถานที่ (รวม WFH) ต้องลงเวลาเสร็จภายในวันที่ 7 ของเดือนถัดไป ไม่งั้นหมดสิทธิ์ (4.8)
 //   พักงาน (4.9) / อุบัติเหตุจากความประมาท (4.11) — HR ติ๊กเองรายคน (ไม่อยู่ในไฟล์เวลา)
@@ -69,7 +70,8 @@ export function parseProcessed(rows) {
     cur.days.push({ date: serialToISO(r[1]), shift: str(r[3]), dayType: str(r[5]),
       late: nonZero(r[C.late]) ? str(r[C.late]) : "", early: nonZero(r[C.early]) ? str(r[C.early]) : "",
       leaveOk: nonZero(r[C.leaveOk]), leaveDed: nonZero(r[C.leaveDed]), deduct: nonZero(r[C.deduct]) ? str(r[C.deduct]) : "",
-      note: str(r[C.note]).replace(/\s+/g, " ") });
+      note: str(r[C.note]).replace(/\s+/g, " "),
+      inMin: isDateSerial(r[C.in]) ? serialMinute(r[C.in]) : null, outMin: isDateSerial(r[C.out]) ? serialMinute(r[C.out]) : null });
   }
   if (!emps.size) throw new Error("อ่านรายงานหลังประมวลแล้วไม่พบพนักงาน (แถวรหัส AKR…)");
   return emps;
@@ -126,12 +128,17 @@ export const GROUPS = {
   company: { th: "ปัญหาฝั่งบริษัท",          counted: false },
   offsite: { th: "นอกสถานที่",               counted: false },
   hr:      { th: "HR เพิ่มให้",              counted: false },
+  out:     { th: "ลงเวลาขาออกเอง (ขาเข้าสแกน)", counted: false },
+  unused:  { th: "ไม่ได้ใช้เป็นเวลาเข้า-ออก",    counted: false },
 };
+// ขาที่ลงเวลาเอง (ผู้ใช้ยืนยัน 2026-10-09): ขาเข้าสแกนตามกะ แล้วลงเวลาขาออกเอง = หยวน ไม่นับ
+//   แต่ลงเวลา "ขาเข้า" เองยังนับ — กันกรณีมาสายแล้วจงใจไม่สแกน มาลงเวลาทีหลังให้ดูตรงเวลา
+//   รายการที่ไม่ได้ถูกใช้เป็นเวลาเข้าหรือออกเลย (วันนั้นมีสแกนจริงทั้งสองขา) ไม่มีผลกับการมาทำงาน → ไม่นับ
 const RE = {
   forgot:  /ลืม|บัตรหาย/i,
   guard:   /รปภ|ป้อม|ยาม|security|guard/i,
   power:   /ไฟ\S{0,12}ดับ|power\s*(cut|outage)/i,
-  device:  /(สแกน|แสกน|เเสกน|รูด|ปั๊ม|ปั้ม|นิ้ว|บัตร|เครื่อง).{0,12}(ไม่ติด|ไม่ผ่าน|ไม่ขึ้น|เสีย|ไม่ได้|ขัดข้อง)/i,
+  device:  /(สแกน|แสกน|เเสกน|รูด|ปั๊ม|ปั้ม|นิ้ว|บัตร|เครื่อง).{0,12}(ไม่ติด|ไม่ผ่าน|ไม่ขึ้น|เสีย|ไม่ได้|ขัดข้อง)|(card|reader|scan|finger).{0,20}(error|fail|not\s*work)/i,
   hr:      /เริ่มงานวันแรก|ยังไม่ได้รับบัตร|รอบัตร|บัตรใหม่|level\s*m/i,
   offsite: /wfh|work\s*from\s*home|นอกสถานที่|outside|bkk|กรุงเทพ|กทม|australia|ออสเตรเลีย|melbourne|conference|ประชุม|อบรม|train|expo|บูธ|สัมมนา|ดูงาน|งานเลี้ยง|กินเลี้ยง|party|กิจกรรม|ออฟฟิศ|office|work\s*at|สำนักงาน|ต่างจังหวัด|ไปทำงาน|ทำงานที่|ไซต์|site visit/i,
 };
@@ -145,21 +152,33 @@ export function classifyReason(reason, type = "ลงเวลา") {
   if (RE.offsite.test(t)) return "offsite";
   return "count";                                                           // เหตุผลอื่น / ไม่ใส่เหตุผล / "ไม่ได้สแกน" = นับ
 }
-const SEVERITY = ["count", "check", "offsite", "company", "hr"];          // วันเดียวหลายรายการ → ใช้กลุ่มที่หนักสุด
+const SEVERITY = ["count", "check", "offsite", "company", "hr", "out", "unused"];          // วันเดียวหลายรายการ → ใช้กลุ่มที่หนักสุด
 
 // รวมรายการแก้เวลาเป็น "วัน" (วันละ 1 ครั้ง ต่อให้แก้ทั้งเข้าและออก) เฉพาะเดือนที่คิด
-export function editDays(edits, ym, webReasons = new Map()) {
+// proc (จาก parseProcessed): ใช้ดูว่าเวลาที่ลงเอง เป็นเวลาเข้า / ออกของวันไหน — กะดึกขาออกอยู่อีกวัน ก็นับเป็นวันของกะ
+//   ไม่ส่ง proc มา = ไม่รู้ขา → ถือว่าเป็นขาเข้า (เข้มไว้ก่อน)
+export function editDays(edits, ym, webReasons = new Map(), proc = null) {
+  const legOf = new Map();                               // "รหัส|นาที" → { date, leg }
+  if (proc) for (const t of proc.values()) for (const d of t.days) {
+    for (const [leg, m] of [["in", d.inMin], ["out", d.outMin]]) if (m != null)
+      for (const k of [m - 1, m, m + 1]) if (!legOf.has(`${t.code}|${k}`)) legOf.set(`${t.code}|${k}`, { date: d.date, leg });
+  }
   const days = new Map();
   for (const e of edits) {
-    if (!e.date.startsWith(ym)) continue;
+    const hit = proc ? legOf.get(`${e.emp}|${e.minute}`) : null;
+    const date = hit ? hit.date : e.date, leg = proc ? (hit ? hit.leg : "none") : "in";
+    if (!date.startsWith(ym)) continue;
     let reason = e.reason;
-    if (!reason || /HR\s*Approve\s*\(web\)/i.test(reason)) reason = webReasons.get(`${e.emp}|${e.minute}`) || (reason ? "" : "");
-    const key = `${e.emp}|${e.date}`;
-    const d = days.get(key) || { key, emp: e.emp, date: e.date, reasons: [], types: [], lastAt: "", group: null };
+    if (!reason || /HR\s*Approve\s*\(web\)/i.test(reason)) reason = webReasons.get(`${e.emp}|${e.minute}`) || "";
+    const key = `${e.emp}|${date}`;
+    const d = days.get(key) || { key, emp: e.emp, date, reasons: [], types: [], legs: [], lastAt: "", group: null };
     if (reason && !d.reasons.includes(reason)) d.reasons.push(reason);
     if (!d.types.includes(e.type)) d.types.push(e.type);
+    if (!d.legs.includes(leg)) d.legs.push(leg);
     if (e.at > d.lastAt) d.lastAt = e.at;
-    const g = classifyReason(reason, e.type);
+    // เหตุผลที่ "นับ" จะนับจริงเฉพาะรายการที่เป็นขาเข้า
+    let g = classifyReason(reason, e.type);
+    if (g === "count" && leg !== "in") g = leg === "out" ? "out" : "unused";
     if (!d.group || SEVERITY.indexOf(g) < SEVERITY.indexOf(d.group)) d.group = g;
     days.set(key, d);
   }
