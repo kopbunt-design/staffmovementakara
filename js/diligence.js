@@ -154,7 +154,12 @@ function drawOut() {
   if (S.notFound.length) warns.push(`${S.notFound.length} รหัสในไฟล์ไม่พบในทะเบียนพนักงาน: ${S.notFound.slice(0, 6).map(x => esc(x.code)).join(", ")}${S.notFound.length > 6 ? " …" : ""}`);
   const noWeb = S.edits.filter(e => e.date.startsWith(S.ym) && /HR\s*Approve\s*\(web\)/i.test(e.reason) && !S.web.get(`${e.emp}|${e.minute}`)).length;
   if (noWeb) warns.push(`${noWeb} รายการแก้เวลาเขียนแค่ “HR Approve(web)” ${S.files.web ? "และหาเหตุผลในไฟล์ web ไม่เจอ" : "— อัปโหลดไฟล์ 3 เพื่อเอาเหตุผลจริง"} → นับเป็นแก้เวลา`);
-  const review = S.days.filter(d => S.showAllEdits || d.group === "check" || d.group === "count" || d.group !== d.auto)
+  // ต้องดู = วันที่ HR ต้องตัดสิน: สแกนไม่ติด (ยืนยันว่าฝั่งบริษัท) · ลืมบัตรขาเดียว · ลงขาเข้าเองด้วยเหตุอื่น (เสี่ยงซ่อนการมาสาย) · HR เปลี่ยนกลุ่มไว้
+  //   ลืมบัตรทั้งวัน (เข้า+ออก) เป็นเรื่องปกติ นับ 1 ครั้ง ไม่ต้องดู
+  const why = d => d.group !== d.auto ? "HR เปลี่ยนกลุ่ม" : d.group === "check" ? "สแกนไม่ติด — ยืนยันว่าฝั่งบริษัท"
+    : d.oneLegForgot ? `ลืมบัตรขาเดียว (${d.oneLegForgot === "in" ? "ขาเข้า" : "ขาออก"})`
+    : d.group === "count" && !(d.forgot || []).length ? "ลงเวลาขาเข้าเอง — ดูว่ามาสายไหม" : "";
+  const review = S.days.filter(d => S.showAllEdits || why(d))
                        .filter(d => R.some(r => r.code.toUpperCase() === d.emp));
   const nameOf = c => R.find(r => r.code.toUpperCase() === c)?.name || S.proc.get(c)?.name || "";
 
@@ -174,10 +179,11 @@ function drawOut() {
         <div class="text-muted" style="font-size:12px;">ระบบจัดกลุ่มจากเหตุผลที่พิมพ์ — เปลี่ยนกลุ่มได้ ผลคำนวณใหม่ทันที · นับวันละ 1 ครั้ง · <b>นับเฉพาะวันที่ลงเวลาขาเข้าเอง</b> (ระวังมาสายแล้วไม่สแกน มาลงเวลาทีหลัง) — ขาเข้าสแกนแล้วลงขาออกเอง ไม่นับ</div></div>
       <label style="font-size:13px;cursor:pointer;"><input type="checkbox" id="dgAllEd" ${S.showAllEdits ? "checked" : ""}> แสดงการแก้เวลาทั้งหมด (${S.days.length} วัน)</label>
     </div>
-    ${review.length ? `<div style="max-height:360px;overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>ขาที่ลงเอง</th><th>เหตุผล</th><th>ลงเมื่อ</th><th>กลุ่ม</th></tr></thead><tbody>
+    ${review.length ? `<div style="max-height:360px;overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>ต้องดูเพราะ</th><th>ขาที่ลงเอง</th><th>เหตุผล</th><th>ลงเมื่อ</th><th>กลุ่ม</th></tr></thead><tbody>
       ${review.map(d => `<tr><td>${esc(d.emp)}</td><td>${esc(nameOf(d.emp))}</td><td>${dTH(d.date)}</td>
+        <td style="font-size:12px;color:var(--gold-dark);">${esc(why(d)) || `<span class="text-muted">—</span>`}</td>
         <td style="white-space:nowrap;">${(d.legs || []).map(l => l === "in" ? `<b style="color:var(--red);">เข้า</b>` : l === "out" ? "ออก" : `<span class="text-muted">ไม่ได้ใช้</span>`).join(" + ")}
-          ${d.oneLegForgot ? `<div><span class="badge badge-gold" title="ลืมบัตรแต่อีกขาสแกนได้ — HR ตัดสินในตารางผล">⚑ ลืมบัตรขาเดียว</span></div>` : ""}</td>
+</td>
         <td style="max-width:340px;">${d.reasons.length ? esc(d.reasons.join(" / ")) : `<span class="text-muted">(ไม่ระบุเหตุผล)</span>`} <span class="text-muted" style="font-size:11px;">· ${esc(d.types.join("/"))}</span></td>
         <td style="white-space:nowrap;">${d.lastAt ? dTH(d.lastAt) : "-"}</td>
         <td><select class="filter-select" data-g="${esc(d.key)}" style="min-width:170px;">${Object.entries(GROUPS).map(([k, g]) => `<option value="${k}" ${k === d.group ? "selected" : ""}>${g.th}</option>`).join("")}</select>
