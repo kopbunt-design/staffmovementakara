@@ -46,6 +46,11 @@ const str = v => String(v ?? "").trim();
 // "0:02" / "1-00:00" / "0-04:15" → มีค่าไม่ใช่ศูนย์ไหม
 const nonZero = v => typeof v === "number" ? v > 0 : /[1-9]/.test(str(v));
 
+// รหัสพนักงานในไฟล์ TigerSoft: ไม่ได้มีแค่ AKR… — มี DAY… (รายวัน) KCN… ฯลฯ ด้วย
+// ⚠️ ถ้าจับแค่ AKR แถวเวลาของคนรหัสอื่นจะไปต่อท้ายคนก่อนหน้า (เกิดจริง 2026-10-09: ขาดงานของ DAY0103 ไปโผล่ที่คนอื่น)
+const CODE = /^([A-Za-z]{2,6}\d{3,})(?=\s|-|$)/;
+const codeOf = c => { const m = CODE.exec(c); return m ? m[1].toUpperCase() : null; };
+
 // ---------------------------------------------------------------- 1. รายงานหลังประมวล
 // หัวตาราง: แถวที่มีคำ "สาย" "ลาไม่หัก" — ตำแหน่งคอลัมน์อ่านจากหัว ไม่ยึดเลข (เผื่อ TigerSoft ขยับ)
 export function parseProcessed(rows) {
@@ -60,10 +65,10 @@ export function parseProcessed(rows) {
   let cur = null;
   for (const r of rows.slice(hi + 1)) {
     if (!r) continue;
-    const head = r.slice(0, 3).map(str).find(c => /^AKR\d+/i.test(c));
+    const head = r.slice(0, 3).map(str).find(c => codeOf(c));
     if (head) {
-      const code = head.match(/^AKR\d+/i)[0].toUpperCase();
-      cur = emps.get(code) || { code, name: head.replace(/^AKR\d+\s*-?\s*/i, "").replace(/\s+/g, " ").trim(), days: [] };
+      const code = codeOf(head);
+      cur = emps.get(code) || { code, name: head.replace(CODE, "").replace(/^\s*-?\s*/, "").replace(/\s+/g, " ").trim(), days: [] };
       emps.set(code, cur); continue;
     }
     if (!cur || !isDateSerial(r[1])) continue;
@@ -73,7 +78,7 @@ export function parseProcessed(rows) {
       note: str(r[C.note]).replace(/\s+/g, " "),
       inMin: isDateSerial(r[C.in]) ? serialMinute(r[C.in]) : null, outMin: isDateSerial(r[C.out]) ? serialMinute(r[C.out]) : null });
   }
-  if (!emps.size) throw new Error("อ่านรายงานหลังประมวลแล้วไม่พบพนักงาน (แถวรหัส AKR…)");
+  if (!emps.size) throw new Error("อ่านรายงานหลังประมวลแล้วไม่พบพนักงาน (แถวรหัสพนักงาน)");
   return emps;
 }
 
@@ -93,8 +98,8 @@ export function parseEdits(rows) {
   const out = []; let emp = null;
   for (const r of rows) {
     if (!r) continue;
-    const head = r.slice(0, 4).map(str).find(c => /^AKR\d+\s/i.test(c));
-    if (head && !r.some(c => str(c) === "ลงเวลา" || str(c) === "เพิ่มเวลา")) { emp = head.match(/^AKR\d+/i)[0].toUpperCase(); continue; }
+    const head = r.slice(0, 4).map(str).find(c => codeOf(c));
+    if (head && !r.some(c => str(c) === "ลงเวลา" || str(c) === "เพิ่มเวลา")) { emp = codeOf(head); continue; }
     const ti = r.findIndex(c => str(c) === "ลงเวลา" || str(c) === "เพิ่มเวลา");
     if (!emp || ti < 0) continue;
     const dt = r.slice(0, ti).find(isDateSerial); if (dt == null) continue;
@@ -110,8 +115,8 @@ export function parseWebReasons(rows) {
   const map = new Map(); let emp = null;
   for (const r of rows) {
     if (!r) continue;
-    const head = r.slice(0, 6).map(str).find(c => /^AKR\d+\s/i.test(c));
-    if (head) { emp = head.match(/^AKR\d+/i)[0].toUpperCase(); continue; }
+    const head = r.slice(0, 6).map(str).find(c => codeOf(c));
+    if (head) { emp = codeOf(head); continue; }
     const di = r.findIndex(isDateSerial); if (!emp || di < 0) continue;
     const reason = r.slice(di + 1).map(str).find(c => c && !isDateSerial(Number(c)) && !BY_RE.test(c) && !/^[A-Z]$/.test(c) && !/^\d+(\.\d+)?$/.test(c)) || "";
     if (reason) map.set(`${emp}|${serialMinute(r[di])}`, reason);

@@ -140,6 +140,11 @@ const proc = M.parseProcessed([["บริษัท"], [], [], [], hdr, row({ 0:
   row({ 1: 46266, 3: "Nor", 5: "N", 6: 46266.33, 8: 46266.7, 11: "0:02", 16: "1-00:00" }),
   row({ 1: 46267, 3: "Nor", 5: "N", 13: "1-00:00", 32: "ลาพักร้อน" })]);
 const pe = proc.get("AKR00000009");
+// รหัสที่ไม่ใช่ AKR ต้องตัดเป็นคนใหม่ ไม่ไปต่อท้ายคนก่อนหน้า
+const mixed = M.parseProcessed([hdr, row({ 1: "AKR00000009 นายทดสอบ" }), row({ 1: 46266, 5: "N" }),
+  row({ 1: "DAY0001 นางสาวรายวัน" }), row({ 1: 46266, 5: "N", 15: "1-00:00", 32: "ขาดงาน" }), row({ 1: "KCN001 นายอื่น" }), row({ 1: 46267, 5: "N" })]);
+eq([mixed.get("AKR00000009").days.length, mixed.get("DAY0001").days.length, mixed.get("KCN001").days.length], [1, 1, 1], "รหัส DAY/KCN แยกเป็นคนของตัวเอง");
+eq(M.parseEdits([["DAY0001 นางสาวรายวัน"], [null, null, 46266.3, null, "ลงเวลา", null, null, "x", null, null, null, "u,1/9/2569 10:00"]])[0].emp, "DAY0001", "ไฟล์เพิ่มเวลา: รหัส DAY");
 eq([pe.days.length, pe.days[0].late, pe.days[1].leaveOk, pe.days[1].note], [2, "0:02", true, "ลาพักร้อน"], "อ่านรายงานหลังประมวล");
 const edits = M.parseEdits([["บริษัท"], ["AKR00000009 นายทดสอบ  ระบบ"], [null, 46266, null, null, "08:00"],
   [null, null, 46266.33, null, "ลงเวลา", null, null, "รปภ.สแกนไม่ติด", null, null, null, "AKR00000001,2/9/2569 10:00:00"]]);
