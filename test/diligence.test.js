@@ -104,9 +104,11 @@ eq(ev({ emp: emp({ nationality: "" }) }).flags.some(f => f.includes("สัญ�
 eq(ev({ emp: emp({ end_date: "2026-09-20" }) }).inScope, false, "ออกกลางเดือน = ไม่อยู่ในขอบเขต");
 eq(ev({ emp: emp({ end_date: "2026-10-01" }) }).inScope, true, "ออก 1 ต.ค. = ทำครบ ก.ย.");
 eq(ev({ emp: emp({ join_date: "2026-09-02" }) }).inScope, false, "เข้ากลางเดือน");
-// 5.5: เริ่มงาน 1 พ.ค. 2026 + 119 วัน = 28 ส.ค. → เริ่มนับ 1 ก.ย.
+// 5.5: เริ่มงาน 1 พ.ค. 2026 → วันที่ 119 = 27 ส.ค. (พ้นทดลองงานมีผล) → เริ่มนับ 1 ก.ย.
 eq(ev({ emp: emp({ join_date: "2026-05-01" }) }).inScope, true, "พ้นทดลองงาน ส.ค. → นับ ก.ย.");
 eq(ev({ emp: emp({ join_date: "2026-06-01" }) }).inScope, false, "พ้นทดลองงาน ก.ย. → เริ่มนับ ต.ค.");
+eq(ev({ emp: emp({ join_date: "2026-05-05" }) }).inScope, true, "เริ่ม 5 พ.ค. → วันที่ 119 = 31 ส.ค. → นับ ก.ย.");
+eq(ev({ emp: emp({ join_date: "2026-05-06" }) }).inScope, false, "เริ่ม 6 พ.ค. → วันที่ 119 = 1 ก.ย. → เริ่มนับ ต.ค.");
 eq(ev({ t: T(day("2026-09-01", { late: "0:01" })) }).qualified, false, "สาย 1 นาที = หมดสิทธิ์");
 eq(ev({ t: T(day("2026-09-01", { early: "0:05" })) }).qualified, false, "ออกก่อน = หมดสิทธิ์");
 eq(ev({ t: T(day("2026-09-01", { deduct: "1-00:00", note: "ขาดงาน" })) }).qualified, false, "ขาดงาน");

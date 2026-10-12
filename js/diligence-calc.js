@@ -20,7 +20,7 @@
 // ============================================================================
 
 export const START_YM = "2026-09";        // เดือนแรกที่ระเบียบมีผล — ทุกคนเริ่มนับเดือนที่ 1 ที่นี่
-export const PROBATION_DAYS = 119;        // ไม่มีวันพ้นทดลองงานจริงในระบบ → ใช้วันเริ่มงาน + 119 วัน (ตรงกับ app.js)
+export const PROBATION_DAYS = 119;        // ไม่มีวันพ้นทดลองงานจริงในระบบ → ใช้วันที่ 119 นับวันเริ่มงานเป็นวันที่ 1
 export const MAX_EDIT_DAYS = 2;           // 4.6
 export const OFFSITE_DEADLINE_DAY = 7;    // 4.8
 export const ELIGIBLE_CONTRACT = "Permanent";
@@ -232,7 +232,7 @@ export function evaluate({ ym, emp, t, eds = [], manual = null, prev = null }) {
   const join = String(emp.join_date || "").slice(0, 10);
   if (!join || join > first) return out("เริ่มงานไม่ครบเดือน");
   if (emp.end_date && String(emp.end_date).slice(0, 10) <= last) return out("พ้นสภาพก่อนสิ้นเดือน");
-  const pass = new Date(join + "T00:00:00Z"); pass.setUTCDate(pass.getUTCDate() + PROBATION_DAYS);
+  const pass = new Date(join + "T00:00:00Z"); pass.setUTCDate(pass.getUTCDate() + PROBATION_DAYS - 1);   // วันที่ 119 (นับวันเริ่มงานเป็นวันที่ 1) = วันที่พ้นทดลองงานมีผล (ผู้ใช้ 2026-10-12)
   const startYM = nextYM(pass.toISOString().slice(0, 7));                  // 5.5 นับจากวันที่ 1 ของเดือนถัดจากเดือนที่พ้นทดลองงาน
   if (startYM > ym) return out(`ยังไม่เริ่มนับ (พ้นทดลองงาน ~${pass.toISOString().slice(0, 10)} · เริ่มนับ ${startYM})`);
 
