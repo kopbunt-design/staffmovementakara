@@ -62,7 +62,11 @@ export function buildReport({ procMap, employees, dil = null, ym }) {
       dil: dil == null ? null : dl ? { amount: dl.qualified ? Number(dl.amount) || 0 : 0, streak: dl.streak || 0, qualified: !!dl.qualified, why: dl.qualified ? "" : reasonsEn(dl.reasons) } : { amount: 0, streak: 0, qualified: false, why: "Not eligible" },
       status };
   };
-  const pick = band => employees.filter(e => levelBand(e.job_level) === band && employedIn(e, ym)).map(mk);
+  // ชาวต่างชาติไม่อยู่ในรายงาน (ผู้ใช้ 2026-10-12) · ไม่ได้ระบุสัญชาติ = อยู่ในรายงาน
+  const foreign = e => { const n = String(e.nationality || "").trim(); return !!n && !/^(thai|ไทย)$/i.test(n); };
+  const inScope = band => employees.filter(e => levelBand(e.job_level) === band && employedIn(e, ym));
+  const foreigners = [...inScope("O"), ...inScope("S")].filter(foreign).map(e => e.emp_code);
+  const pick = band => inScope(band).filter(e => !foreign(e)).map(mk);
   const sortRows = rs => rs.sort((p, q) => p.department.localeCompare(q.department) || p.section.localeCompare(q.section) || p.team.localeCompare(q.team) || String(p.code).localeCompare(String(q.code)));
   const groupBy = rows => {
     const m = new Map(); for (const r of rows) { (m.get(r.group) || m.set(r.group, []).get(r.group)).push(r); }
@@ -76,5 +80,5 @@ export function buildReport({ procMap, employees, dil = null, ym }) {
   // คนในไฟล์เวลาที่ไม่อยู่ในทะเบียน — ไว้แจ้งใน README
   const known = new Set(employees.map(e => String(e.emp_code).toUpperCase()));
   const notInMaster = [...procMap.keys()].filter(c => !known.has(c));
-  return { ym, groupsO: groupBy(O), groupsS: groupBy(Sx), totalsO: sum(O), totalsS: sum(Sx), extraRates: [...extraRates], notInMaster, hasDil: dil != null };
+  return { ym, groupsO: groupBy(O), groupsS: groupBy(Sx), totalsO: sum(O), totalsS: sum(Sx), extraRates: [...extraRates], notInMaster, foreigners, hasDil: dil != null };
 }

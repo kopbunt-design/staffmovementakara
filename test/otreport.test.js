@@ -42,6 +42,8 @@ eq([r.groupsS[0].rows.length, r.groupsS[0].rows[0].dil.why], [1, "Late"], "ร�
 eq([r.totalsO.employees, r.totalsO.withOT, r.totalsO.dil], [2, 1, 300], "ยอดรวมระดับ O");
 eq(r.notInMaster, ["AKR00000009"], "รหัสในไฟล์ที่ไม่มีในทะเบียน");
 eq(M.buildReport({ procMap, employees, dil: null, ym: "2026-08" }).groupsO[0].rows[0].dil, null, "ยังไม่บันทึกเบี้ยขยัน = ว่าง");
+const r2 = M.buildReport({ procMap, employees: [...employees, emp("AKR00000006", "O1", { nationality: "Australian" }), emp("AKR00000007", "S2", { nationality: "ไทย" })], dil, ym: "2026-08" });
+eq([r2.groupsO[0].rows.map(x => x.code), r2.groupsS[0].rows.map(x => x.code), r2.foreigners], [["AKR00000001", "AKR00000002"], ["AKR00000004", "AKR00000007"], ["AKR00000006"]], "ต่างชาติไม่อยู่ในรายงาน");
 eq(M.hm(1135 * 60 + 30), "1135:30", "รูปแบบชั่วโมง");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

@@ -81,6 +81,7 @@ function drawOut() {
   const stat = (k, v, sub, color = "") => `<div class="card card-body" style="padding:14px 16px;"><div class="text-muted" style="font-size:12px;">${k}</div>
     <div style="font-size:22px;font-weight:700;${color ? `color:${color};` : ""}">${v}</div><div class="text-muted" style="font-size:11.5px;">${sub}</div></div>`;
   const warn = [S.dilNote, R.extraRates.length ? `มีโอทีอัตราอื่น (${R.extraRates.join(", ")} เท่า) — รวมอยู่ในช่อง Total` : "",
+    R.foreigners.length ? `ไม่รวมชาวต่างชาติ ${R.foreigners.length} คน (${R.foreigners.slice(0, 6).join(", ")}${R.foreigners.length > 6 ? " …" : ""})` : "",
     R.notInMaster.length ? `${R.notInMaster.length} รหัสในไฟล์ไม่มีในทะเบียนพนักงาน (ไม่อยู่ในรายงาน): ${R.notInMaster.slice(0, 6).join(", ")}${R.notInMaster.length > 6 ? " …" : ""}` : ""].filter(Boolean);
   el.innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
