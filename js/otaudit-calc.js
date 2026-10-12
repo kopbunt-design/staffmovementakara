@@ -12,6 +12,11 @@
 //   3. วันหยุดต้องขอชนิด "ก่อนเริ่มงาน" (S)
 //   4. ระดับไม่ตรงกับรูปแบบ (O ต้องเป็น I · S/M ต้องเป็น O)
 //   5. กะ F01 วันหยุด OT1 = 9:30 → ยังไม่หักพัก 1 ชม. ควรเป็น 8:30
+// เมื่อรู้เวลากะ (ตาราง ot_shift_times — ระบบเดาให้ HR ยืนยัน, ผู้ใช้เลือก 2026-10-12):
+//   6. คำนวณโอทีที่ควรได้ = ช่วงที่ขอ ∩ เวลาสแกน − เวลางานปกติ (วันทำงาน) / − เวลาพัก (วันหยุด) + พักเที่ยงที่ขอ (วันทำงาน)
+//      ปัดลงทีละ 30 นาทีแบบ TigerSoft แล้วเทียบเป๊ะ — ก.ย. 2569 ตรงกับ TigerSoft 95% ที่เหลือคือที่ต้องตรวจจริง
+//   7. ชนิดไม่ตรงกะ: ก่อนเริ่มงานต้องจบก่อนเข้ากะ · หลังเลิกงานต้องเริ่มหลังเลิกกะ (วันทำงาน)
+//   8. ขอโอทีในวันที่ลา / ขาดงาน
 // เวลาทั้งหมดคิดเป็น "นาทีนับจาก Excel serial" ไม่ผ่าน Date → ไม่มีปัญหาเขตเวลา
 //   (ไฟล์ตรวจเดิม OT_Audit แสดงเวลาสแกนเร็วไป 7 ชม. เพราะแปลงผ่าน UTC)
 // ============================================================================
@@ -22,6 +27,7 @@ export const IO = { I: "จ่ายเงิน", O: "เป็นลา" };
 export const SMALL_DIFF = 60;        // ต่างไม่เกิน 1 ชม. = พัก / ปัดเศษ
 export const SCAN_TOLERANCE = 5;     // สแกนขาดไม่เกิน 5 นาที ถือว่าครบ
 export const F01_HOLIDAY_OT1 = 510;  // 8:30 (9:30 หักพัก 1 ชม.)
+export const OT_BLOCK = 30;          // TigerSoft ปัดโอทีลงทีละ 30 นาที (ก.ย. 2569: 2,166 จาก 2,166 รายการ)
 
 const str = v => String(v ?? "").trim();
 const CODE = /^([A-Za-z]{2,6}\d{3,})(?=\s|-|$)/;
@@ -70,10 +76,84 @@ export function unionLen(ws) {
   return cs == null ? tot : tot + ce - cs;
 }
 
+// ---------------------------------------------------------------- โอทีที่ควรได้ (ต่อคน-วัน)
+// ช่วงที่ขอ (รวมซ้อน) ∩ เวลาสแกน · วันทำงาน: ตัดเวลางานปกติออก แล้วบวกพักเที่ยงที่ขอกลับ · วันหยุด: ตัดเวลาพักของกะ (ส่วนที่ขอพักเที่ยงไว้ไม่ตัด) · ปัดลง 30 นาที
+export function expectedOT(t, sh, reqs) {
+  const base = t.day * 1440, hol = /^H/i.test(t.dayType);
+  const ws = reqs.filter(q => hol || q.typ !== "B").map(q => [Math.max(q.w0, t.inMin), Math.min(q.w1, t.outMin)]).filter(w => w[1] > w[0]).sort((a, b) => a[0] - b[0]);
+  const U = []; for (const w of ws) { if (U.length && w[0] <= U[U.length - 1][1]) U[U.length - 1][1] = Math.max(U[U.length - 1][1], w[1]); else U.push([...w]); }
+  const B = reqs.filter(q => q.typ === "B").map(q => [Math.max(q.w0, t.inMin), Math.min(q.w1, t.outMin)]);
+  let m = 0;
+  for (const [a, b] of U) m += Math.max(0, b - a - (hol ? 0 : overlap(a, b, base + sh.start, base + sh.end)));
+  if (!hol) m += unionLen(B);                                   // วันทำงาน: พักเที่ยงที่ขอ = โอที
+  else if (sh.brk) {                                            // วันหยุด: หักพัก ยกเว้นส่วนที่ขอโอทีพักเที่ยงไว้ (NOR ขอ 12:30–13:00 → หักแค่ 30 นาที)
+    const b0 = base + sh.brk[0], b1 = base + sh.brk[1];
+    const inBrk = U.reduce((s, [a, b]) => s + overlap(a, b, b0, b1), 0);
+    const paid = unionLen(B.map(([a, b]) => [Math.max(a, b0), Math.min(b, b1)]));
+    m -= Math.max(0, inBrk - paid);
+  }
+  return Math.floor(m / OT_BLOCK) * OT_BLOCK;
+}
+
+// ---------------------------------------------------------------- เดาเวลากะ (ให้ HR ยืนยัน)
+// เข้ากะ = เวลาจบที่พบบ่อยสุดของคำขอ "ก่อนเริ่มงาน" · เลิกกะ = เวลาเริ่มที่พบบ่อยสุดของคำขอ "หลังเลิกงาน" (อย่างน้อย 3 คำขอ)
+// ไม่พอ → มัธยฐานเวลาสแกนเข้า/ออก ปัดเป็นครึ่งชั่วโมง
+// เวลาพัก (หักเฉพาะวันหยุด): ดูจากวันหยุดจริง — ช่วงที่ขอ∩สแกน ลบ ยอด TigerSoft ที่พบบ่อยสุด (0 / 30 / 60 นาที) วางที่ 12:00
+//   ก.ย. 2569: NOR หัก 30 นาที (12:00–12:30 — อีกครึ่งคือที่คนขอโอทีพักเที่ยง 12:30–13:00) · D01 ไม่หักเลย
+// คืน { CODE: { start, end, brk, days, basis } } เฉพาะกะที่มีวันทำงานในไฟล์
+export function inferShiftTimes(procMap, reqs) {
+  const S = {}, T = new Map(), HOL = {};
+  for (const t of procMap.values()) for (const d of t.days) {
+    T.set(`${t.code}|${d.date}`, d);
+    if (/^H/i.test(d.dayType) || !d.shift) continue;
+    const c = d.shift.toUpperCase(), x = S[c] ||= { days: 0, ins: [], outs: [], sEnd: {}, eStart: {} };
+    x.days++;
+    if (d.inMin != null && d.outMin != null) { const b = isoToDay(d.date) * 1440; x.ins.push(d.inMin - b); x.outs.push(d.outMin - b); }
+  }
+  // วันหยุด: คนละวันกัน รวมช่วงที่ขอ∩สแกน เทียบยอด TigerSoft → ส่วนที่หายไป = เวลาพักที่ TigerSoft หัก
+  const hol = new Map();
+  for (const q of reqs) {
+    const d = T.get(`${q.emp}|${q.date}`); if (!d || !/^H/i.test(d.dayType) || !d.shift || d.inMin == null || d.outMin == null) continue;
+    const b = isoToDay(d.date) * 1440, w0 = b + q.start, w1 = w0 + ((q.end - q.start + 1440) % 1440 || 1440);
+    const g = hol.get(`${q.emp}|${q.date}`) || { d, ws: [] }; g.ws.push([Math.max(w0, d.inMin), Math.min(w1, d.outMin)]); hol.set(`${q.emp}|${q.date}`, g);
+  }
+  for (const { d, ws } of hol.values()) {
+    const ts = Object.values(d.ot || {}).reduce((s, v) => s + v, 0); if (!ts) continue;
+    const delta = Math.floor(unionLen(ws) / OT_BLOCK) * OT_BLOCK - ts;
+    if (delta >= 0 && delta <= 60) { const c = d.shift.toUpperCase(); (HOL[c] ||= {}); HOL[c][delta] = (HOL[c][delta] || 0) + 1; }
+  }
+  for (const q of reqs) {
+    const d = T.get(`${q.emp}|${q.date}`); if (!d || /^H/i.test(d.dayType) || !d.shift) continue;
+    const x = S[d.shift.toUpperCase()]; if (!x) continue;
+    if (q.typ === "S") x.sEnd[q.end] = (x.sEnd[q.end] || 0) + 1;
+    if (q.typ === "E") x.eStart[q.start] = (x.eStart[q.start] || 0) + 1;
+  }
+  const mode = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1])[0]; return e && e[1] >= 3 ? +e[0] : null; };
+  const med = a => { const s = [...a].sort((p, q) => p - q); return s.length ? s[Math.floor(s.length / 2)] : null; };
+  const r30 = m => Math.round(m / 30) * 30;
+  const out = {};
+  for (const [c, x] of Object.entries(S)) {
+    let start = mode(x.sEnd), end = mode(x.eStart), basis = [];
+    basis.push(start != null ? "เข้า: คำขอก่อนเริ่มงาน" : "เข้า: เวลาสแกน");
+    basis.push(end != null ? "เลิก: คำขอหลังเลิกงาน" : "เลิก: เวลาสแกน");
+    if (start == null) { const m = med(x.ins); start = m == null ? null : ((r30(m) % 1440) + 1440) % 1440; }
+    if (end == null) { const m = med(x.outs); end = m == null ? null : r30(m); }
+    if (start == null || end == null) { out[c] = { start: null, end: null, brk: null, days: x.days, basis: "ข้อมูลไม่พอ" }; continue; }
+    end = ((end % 1440) + 1440) % 1440; if (end <= start) end += 1440;
+    const bm = mode(HOL[c] || {});                             // ต้องเจออย่างน้อย 3 วันหยุด
+    const brk = bm && start <= 720 && end >= 720 + bm ? [720, 720 + bm] : null;
+    basis.push(bm != null ? `พัก: วันหยุดจริง (หัก ${bm} นาที)` : "พัก: ไม่มีข้อมูลวันหยุด — ไม่หัก");
+    out[c] = { start, end, brk, days: x.days, basis: basis.join(" · ") };
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- ตรวจ
 // procMap: parseProcessed() · reqs: parseRequests() · levelOf(code) → "O2" / "S1" / "M1" / "" · ym: "YYYY-MM"
 // คืน { requests: [...คำขอ + ผลตรวจรายคำขอ], days: [...คน-วันที่มีคำขอหรือมีโอทีใน TigerSoft + ผลเทียบยอด], issues: [...ทุกเรื่องที่ต้องตรวจ] }
-export function audit(procMap, reqs, levelOf = () => "", ym = null) {
+// shifts: { CODE: { start, end, brk: [a, b] | null } } — นาทีจาก 00:00 ของวันที่กะเริ่ม (end/brk เกิน 1440 ได้)
+export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {}) {
+  const shiftOf = t => t ? shifts[String(t.shift || "").toUpperCase()] || null : null;
   const T = new Map();                                  // "รหัส|วันserial" → วันจาก TigerSoft
   for (const t of procMap.values()) for (const d of t.days) T.set(`${t.code}|${isoToDay(d.date)}`, { ...d, code: t.code, name: t.name, day: isoToDay(d.date) });
   const otTotal = d => Object.values(d?.ot || {}).reduce((s, v) => s + v, 0);
@@ -109,6 +189,15 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null) {
     else r.scan = ov > 0 ? `สแกนครอบคลุม ${hhmm(ov)} จาก ${hhmm(len)}` : "เวลาสแกนไม่ครอบคลุมช่วงที่ขอ";
     if (q.typ === "B") issue("lunch", "info", { req: r, text: `ขอโอทีพักเที่ยง ${hhmm(q.hours)} — ตรวจว่าทำงานจริง` });
     else if (r.scan !== "ครบ") issue("scan", "warn", { req: r, text: r.scan });
+    // 7–8. เทียบกับเวลากะ (วันทำงาน) · ขอโอทีวันที่ลา/ขาดงาน
+    const sh = shiftOf(t), work = t && !/^H/i.test(t.dayType);
+    if (sh && work && q.typ !== "B") {
+      const s0 = t.day * 1440 + sh.start, s1 = t.day * 1440 + sh.end;
+      if (q.typ === "S" && w1 > s0) issue("position", "warn", { req: r, text: `ชนิดก่อนเริ่มงาน แต่ช่วงที่ขอเลยเวลาเข้ากะ ${t.shift} (${clockOf(s0)}) ไป ${hhmm(Math.min(w1, s1) - Math.max(w0, s0) > 0 ? Math.min(w1, s1) - Math.max(w0, s0) : w1 - s0)}` });
+      if (q.typ === "E" && w0 < s1) issue("position", "warn", { req: r, text: `ชนิดหลังเลิกงาน แต่เริ่มก่อนเลิกกะ ${t.shift} (${clockOf(s1)}) ${hhmm(Math.min(w1, s1) - w0)}` });
+    }
+    if (work && (t.deduct || t.leaveOk || t.leaveDed))
+      issue("leaveday", "warn", { req: r, text: `ขอโอทีในวันที่${t.deduct ? "ขาดงาน/หักวัน" : "ลา"}${t.note ? ` (${t.note.slice(0, 40)})` : ""}` });
     // 3. วันหยุดต้องขอชนิดก่อนเริ่มงาน
     if (t && /^H/i.test(t.dayType) && q.typ !== "S") issue("holiday", "warn", { req: r, text: `วันหยุดแต่ขอชนิด "${TYPES[q.typ]}" — ต้องขอชนิดก่อนเริ่มงาน` });
     // 4. ระดับกับรูปแบบ
@@ -128,15 +217,19 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null) {
     const t = g.t, time = otTotal(t);
     const sumHours = g.reqs.reduce((s, r) => s + r.hours, 0);
     const sumLen = g.reqs.reduce((s, r) => s + r.len, 0), uni = unionLen(g.reqs.map(r => [r.w0, r.w1]));
-    const overlapCut = sumLen - uni, asked = Math.max(0, sumHours - overlapCut), diff = time - asked;
+    const overlapCut = sumLen - uni, asked = Math.max(0, sumHours - overlapCut);
+    // รู้เวลากะ + มีสแกนครบ → คิดโอทีที่ควรได้ แล้วเทียบเป๊ะ · ไม่รู้ → เทียบยอดที่ขอ ยอมคลาด 1 ชม. แบบเดิม
+    const sh = shiftOf(t), expected = sh && t.inMin != null && t.outMin != null ? expectedOT(t, sh, g.reqs) : null;
+    const target = expected ?? asked, diff = time - target;
     let result;
     if (!g.reqs.length) result = "มีโอทีใน TigerSoft แต่ไม่มีคำขอ";
-    else if (time === 0 && asked > 0) result = "TigerSoft ไม่ขึ้นโอที";
+    else if (time === 0 && target > 0) result = "TigerSoft ไม่ขึ้นโอที";
+    else if (expected != null) result = diff === 0 ? "ตรง" : diff < 0 ? "TigerSoft ขึ้นน้อยกว่าที่ควร" : "TigerSoft ขึ้นมากกว่าที่ควร";
     else if (Math.abs(diff) <= SMALL_DIFF) result = diff === 0 ? "ตรง" : "ต่างไม่เกิน 1 ชม. (พัก/ปัดเศษ)";
     else result = diff < 0 ? "TigerSoft ขึ้นน้อยกว่าที่ขอ" : "TigerSoft ขึ้นมากกว่าที่ขอ";
-    const d = { ...g, time, asked, overlapCut, diff, result, date: t ? t.date : (g.reqs[0]?.date || "") };
+    const d = { ...g, time, asked, expected, overlapCut, diff, result, noShift: !!(g.reqs.length && !sh && t), date: t ? t.date : (g.reqs[0]?.date || "") };
     days.push(d);
-    if (!/^ตรง$|^ต่างไม่เกิน/.test(result)) issue("amount", "warn", { day: d, text: `${result} (ขอ ${hhmm(asked)} · TigerSoft ${hhmm(time)})` });
+    if (!/^ตรง|^ต่างไม่เกิน/.test(result)) issue("amount", "warn", { day: d, text: `${result} (ขอ ${hhmm(asked)}${expected != null ? ` · ควรได้ ${hhmm(expected)}` : ""} · TigerSoft ${hhmm(time)})${d.noShift ? ` · ยังไม่มีเวลากะ ${t.shift} จึงเทียบแบบคลาดได้ 1 ชม.` : ""}` });
     const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}`, dup = g.reqs.length - new Set(g.reqs.map(sig)).size;
     if (dup) issue("overlap", "warn", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน) — ลบคำขอที่ซ้ำใน TigerSoft` });
     else if (overlapCut > 0) issue("overlap", "info", { day: d, text: `คำขอช่วงเวลาซ้อนกัน ${hhmm(overlapCut)} — ตัดออกก่อนเทียบยอด` });
