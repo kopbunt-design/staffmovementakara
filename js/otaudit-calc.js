@@ -30,7 +30,9 @@ export const SCAN_TOLERANCE = 5;     // สแกนขาดไม่เกิ�
 export const F01_HOLIDAY_OT1 = 510;  // 8:30 (9:30 หักพัก 1 ชม.)
 export const WEEK_LIMIT = 36 * 60;   // กฎหมายแรงงาน: โอที + โอทีวันหยุด รวมไม่เกิน 36 ชม./สัปดาห์ (ผู้ใช้ขอเพิ่ม 2026-10-12)
 // ไม่นับอัตรา 1 / 2 เท่า = ทำงานในวันหยุดช่วงเวลางานปกติ ซึ่งไม่ใช่โอทีตามกฎหมาย · สัปดาห์ = จันทร์–อาทิตย์
-export const OT_BLOCK = 30;          // TigerSoft ปัดโอทีลงทีละ 30 นาที (ก.ย. 2569: 2,166 จาก 2,166 รายการ)
+export const OT_BLOCK = 30;
+// กะที่ถ้ามีคำขอพักเที่ยง TigerSoft จะไม่คิดโอทีชนิดอื่นให้ (ต้องแก้มือ) — ผู้ใช้แจ้ง 2026-10-12
+export const LUNCH_BLOCKS_OTHERS = ["F01"];          // TigerSoft ปัดโอทีลงทีละ 30 นาที (ก.ย. 2569: 2,166 จาก 2,166 รายการ)
 
 const str = v => String(v ?? "").trim();
 const CODE = /^([A-Za-z]{2,6}\d{3,})(?=\s|-|$)/;
@@ -247,7 +249,16 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     else result = diff < 0 ? "TigerSoft ขึ้นน้อยกว่าที่ขอ" : "TigerSoft ขึ้นมากกว่าที่ขอ";
     const d = { ...g, time, asked, expected, overlapCut, diff, result, noShift: !!(g.reqs.length && !sh && t), date: t ? t.date : (g.reqs[0]?.date || "") };
     days.push(d);
-    if (!/^ตรง|^ต่างไม่เกิน/.test(result)) issue("amount", "warn", { day: d, text: `${result} (ขอ ${hhmm(asked)}${expected != null ? ` · ควรได้ ${hhmm(expected)}` : ""} · TigerSoft ${hhmm(time)})${d.noShift ? ` · ยังไม่มีเวลากะ ${t.shift} จึงเทียบแบบคลาดได้ 1 ชม.` : ""}` });
+    const nums = `(ขอ ${hhmm(asked)}${expected != null ? ` · ควรได้ ${hhmm(expected)}` : ""} · TigerSoft ${hhmm(time)})${d.noShift ? ` · ยังไม่มีเวลากะ ${t.shift} จึงเทียบแบบคลาดได้ 1 ชม.` : ""}`;
+    // กะ F01 ที่มีคำขอพักเที่ยง: TigerSoft ไม่คิดโอทีชนิดอื่นให้ → ต้องแก้มือ (ผู้ใช้แจ้ง 2026-10-12)
+    const lunchBlocks = t && LUNCH_BLOCKS_OTHERS.includes(String(t.shift).toUpperCase()) && g.reqs.some(r => r.typ === "B") && g.reqs.some(r => r.typ !== "B");
+    if (lunchBlocks && time < target) {
+      issue("lunchblock", "warn", { day: d, text: `กะ ${t.shift} มีโอทีพักเที่ยง — TigerSoft ไม่คิดโอทีชนิดอื่นให้ ต้องแก้มือ ${nums}` });
+    } else if (g.reqs.length && time > asked) {
+      // ได้เกินที่ขอ = HR แก้มือใน TigerSoft แล้ว (ผู้ใช้แจ้ง 2026-10-12) — ไม่ใช่ข้อผิดพลาด แค่ให้เห็น
+      d.manual = true;
+      issue("manual", "info", { day: d, text: `TigerSoft มากกว่าที่ขอ — น่าจะแก้มือแล้ว ${nums}` });
+    } else if (!/^ตรง|^ต่างไม่เกิน/.test(result)) issue("amount", "warn", { day: d, text: `${result} ${nums}` });
     const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}`, dup = g.reqs.length - new Set(g.reqs.map(sig)).size;
     if (dup) issue("overlap", "warn", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน) — ลบคำขอที่ซ้ำใน TigerSoft` });
     else if (overlapCut > 0) issue("overlap", "info", { day: d, text: `คำขอช่วงเวลาซ้อนกัน ${hhmm(overlapCut)} — ตัดออกก่อนเทียบยอด` });

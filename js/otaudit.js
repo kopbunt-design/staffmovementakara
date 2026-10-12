@@ -26,6 +26,8 @@ const KINDS = {
   overlap:  ["ขอซ้ำ / ซ้อนกัน", "warn"],
   f01:      ["F01 วันหยุดยังไม่หักพัก", "warn"],
   week36:   ["โอทีเกิน 36 ชม./สัปดาห์", "warn"],
+  lunchblock: ["F01 พักเที่ยงทำให้โอทีไม่ขึ้น", "warn"],
+  manual:   ["แก้มือแล้ว (มากกว่าที่ขอ)", "info"],
   lunch:    ["โอทีพักเที่ยง (เตือน)", "info"],
 };
 // shifts: เวลากะที่ใช้ตรวจ = ที่ยืนยันใน DB + ที่ระบบเดา (ยังไม่ยืนยัน) · edits: ที่ HR พิมพ์ในแผงแต่ยังไม่กดยืนยัน
@@ -228,7 +230,7 @@ function drawOut() {
     ${stat("คำขอโอที", fmt(R.requests.length), `${fmt(people)} คน · เวลา ${S.ym ? ymTH(S.ym) : "-"}`)}
     ${stat("คิดตรงกับ TigerSoft", withExp.length ? `${Math.round(exact * 100 / withExp.length)}%` : "-", `${fmt(exact)} จาก ${fmt(withExp.length)} คน-วัน`, "var(--green)")}
     ${stat("ต้องตรวจ", fmt(needG.length) + " คน-วัน", `${fmt(need.length)} เรื่อง · แก้แล้ว ${fmt(needG.filter(isDone).length)}`, needG.length ? "var(--red)" : "")}
-    ${stat("เตือน", fmt(info.length), "โอทีพักเที่ยง · คำขอซ้อน", "var(--gold-dark)")}
+    ${stat("ข้อสังเกต", fmt(info.length), "แก้มือแล้ว · โอทีพักเที่ยง · คำขอซ้อน", "var(--gold-dark)")}
   </div>
   <div class="card mt-4">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
