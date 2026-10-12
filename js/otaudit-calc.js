@@ -83,6 +83,7 @@ export function unionLen(ws) {
 // ช่วงที่ขอ (รวมซ้อน) ∩ เวลาสแกน · วันทำงาน: ตัดเวลางานปกติออก แล้วบวกพักเที่ยงที่ขอกลับ · วันหยุด: ตัดเวลาพักของกะ (ส่วนที่ขอพักเที่ยงไว้ไม่ตัด) · ปัดลง 30 นาที
 export function expectedOT(t, sh, reqs) {
   const base = t.day * 1440, hol = /^H/i.test(t.dayType);
+  if (sh.byHours) return expectedByHours(t, sh, reqs);
   const ws = reqs.filter(q => hol || q.typ !== "B").map(q => [Math.max(q.w0, t.inMin), Math.min(q.w1, t.outMin)]).filter(w => w[1] > w[0]).sort((a, b) => a[0] - b[0]);
   const U = []; for (const w of ws) { if (U.length && w[0] <= U[U.length - 1][1]) U[U.length - 1][1] = Math.max(U[U.length - 1][1], w[1]); else U.push([...w]); }
   const B = reqs.filter(q => q.typ === "B").map(q => [Math.max(q.w0, t.inMin), Math.min(q.w1, t.outMin)]);
@@ -96,6 +97,19 @@ export function expectedOT(t, sh, reqs) {
     m -= Math.max(0, inBrk - paid);
   }
   return Math.floor(m / OT_BLOCK) * OT_BLOCK;
+}
+
+// กะนับชั่วโมง (ผู้ใช้ยืนยัน 2026-10-12) — นับจากเวลาเข้างานจริง ไม่สนเวลาตามนาฬิกาของคำขอ ได้ไม่เกินที่ขอ
+//   วันทำงาน: โอที = เวลาออก − (เวลาเข้า + span) · span 8.5 ชม. (ไม่หักพัก) หรือ 9.5 ชม. (หักพัก 1 ชม.)
+//   วันหยุด: ทั้งวันเป็นโอที = เวลาออก − เวลาเข้า − พัก (เฉพาะแบบ 9.5 ชม. ที่หักพัก 1 ชม.)
+//   ปัดลง 30 นาที แล้วไม่เกินชั่วโมงที่ขอ (รวมทุกคำขอของวันนั้น ตัดช่วงซ้อนแล้ว)
+export function expectedByHours(t, sh, reqs) {
+  const span = sh.span || 570, brk = span === 570 ? 60 : 0, hol = /^H/i.test(t.dayType);
+  const worked = t.outMin - t.inMin;
+  const raw = hol ? worked - brk : worked - span;
+  const sumH = reqs.reduce((s, q) => s + q.hours, 0), sumLen = reqs.reduce((s, q) => s + q.len, 0);
+  const asked = Math.max(0, sumH - (sumLen - unionLen(reqs.map(q => [q.w0, q.w1]))));
+  return Math.min(Math.floor(Math.max(0, raw) / OT_BLOCK) * OT_BLOCK, asked);
 }
 
 // ---------------------------------------------------------------- เดาเวลากะ (ให้ HR ยืนยัน)
@@ -154,7 +168,8 @@ export function inferShiftTimes(procMap, reqs) {
 // ---------------------------------------------------------------- ตรวจ
 // procMap: parseProcessed() · reqs: parseRequests() · levelOf(code) → "O2" / "S1" / "M1" / "" · ym: "YYYY-MM"
 // คืน { requests: [...คำขอ + ผลตรวจรายคำขอ], days: [...คน-วันที่มีคำขอหรือมีโอทีใน TigerSoft + ผลเทียบยอด], issues: [...ทุกเรื่องที่ต้องตรวจ] }
-// shifts: { CODE: { start, end, brk: [a, b] | null } } — นาทีจาก 00:00 ของวันที่กะเริ่ม (end/brk เกิน 1440 ได้)
+// shifts: { CODE: { start, end, brk: [a, b] | null, byHours?: true, span?: 510 | 570 } } — นาทีจาก 00:00 ของวันที่กะเริ่ม (end/brk เกิน 1440 ได้)
+//   byHours = กะนับชั่วโมง: นับจากเวลาเข้างานจริง ครบ span แล้วที่เกินเป็นโอที · span 510 = 8.5 ชม. ไม่หักพัก · 570 = 9.5 ชม. หักพัก 1 ชม.
 export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {}) {
   const shiftOf = t => t ? shifts[String(t.shift || "").toUpperCase()] || null : null;
   const T = new Map();                                  // "รหัส|วันserial" → วันจาก TigerSoft
@@ -194,7 +209,7 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     else if (r.scan !== "ครบ") issue("scan", "warn", { req: r, text: r.scan });
     // 7–8. เทียบกับเวลากะ (วันทำงาน) · ขอโอทีวันที่ลา/ขาดงาน
     const sh = shiftOf(t), work = t && !/^H/i.test(t.dayType);
-    if (sh && work && q.typ !== "B") {
+    if (sh && !sh.byHours && work && q.typ !== "B") {          // กะนับชั่วโมง ไม่มีเวลาเข้า–เลิกตายตัว → ไม่ตรวจชนิดกับเวลากะ
       const s0 = t.day * 1440 + sh.start, s1 = t.day * 1440 + sh.end;
       if (q.typ === "S" && w1 > s0) issue("position", "warn", { req: r, text: `ชนิดก่อนเริ่มงาน แต่ช่วงที่ขอเลยเวลาเข้ากะ ${t.shift} (${clockOf(s0)}) ไป ${hhmm(Math.min(w1, s1) - Math.max(w0, s0) > 0 ? Math.min(w1, s1) - Math.max(w0, s0) : w1 - s0)}` });
       if (q.typ === "E" && w0 < s1) issue("position", "warn", { req: r, text: `ชนิดหลังเลิกงาน แต่เริ่มก่อนเลิกกะ ${t.shift} (${clockOf(s1)}) ${hhmm(Math.min(w1, s1) - w0)}` });

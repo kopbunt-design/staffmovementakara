@@ -37,3 +37,9 @@ create policy "ot_times_read"  on ot_shift_times for select using (has_perm('pag
 create policy "ot_times_write" on ot_shift_times for all    using (has_perm('data.shiftallow.write')) with check (has_perm('data.shiftallow.write'));
 create policy "ot_marks_read"  on ot_audit_marks for select using (has_perm('page.shiftallow'));
 create policy "ot_marks_write" on ot_audit_marks for all    using (has_perm('data.shiftallow.write')) with check (has_perm('data.shiftallow.write'));
+
+-- กะนับชั่วโมง (ผู้ใช้ยืนยัน 2026-10-12): ไม่ดูเวลาเข้า–เลิกตามนาฬิกา นับจากเวลาเข้างานจริง
+--   ทำครบ "ชั่วโมงงานปกติ" แล้ว ส่วนที่เกินเป็นโอที (ไม่เกินที่ขอ)
+--   hours_span = 510 (8.5 ชม. รวมพัก ไม่หักพัก) หรือ 570 (9.5 ชม. รวมพัก หักพัก 1 ชม.)
+alter table ot_shift_times add column if not exists by_hours   boolean not null default false;
+alter table ot_shift_times add column if not exists hours_span int check (hours_span is null or hours_span in (510, 570));

@@ -115,7 +115,8 @@ async function load() {
   ]);
   S.dbOk = !times.error; S.marksOk = !marks.error;
   S.db = Object.fromEntries((times.data || []).map(r => [r.code.toUpperCase(),
-    { start: r.start_min, end: r.end_min, brk: r.break_start != null ? [r.break_start, r.break_end] : null, by: r.updated_by, at: r.updated_at }]));
+    { start: r.start_min, end: r.end_min, brk: r.break_start != null ? [r.break_start, r.break_end] : null,
+      byHours: !!r.by_hours, span: r.hours_span || 570, by: r.updated_by, at: r.updated_at }]));
   S.marks = new Map((marks.data || []).map(m => [m.key, m]));
   S.guess = inferShiftTimes(S.proc, S.reqs);
   S.edits = {};
@@ -146,22 +147,35 @@ function drawShifts() {
       <td><b>${esc(c)}</b></td><td style="text-align:right;">${fmt(g.days || 0)}</td>
       <td>${inp("start", x?.start)}</td><td>${inp("end", x?.end)}${x && x.end >= 1440 ? ` <span class="text-muted" style="font-size:11px;">(+1 วัน)</span>` : ""}</td>
       <td>${inp("b0", x?.brk?.[0])} – ${inp("b1", x?.brk?.[1])}</td>
+      <td style="white-space:nowrap;"><label style="cursor:pointer;font-size:13px;"><input type="checkbox" data-sh="${esc(c)}" ${x?.byHours ? "checked" : ""}> นับชั่วโมง</label>
+        ${x?.byHours ? `<select class="filter-select" data-span="${esc(c)}" style="margin-left:6px;">
+          <option value="510" ${x.span === 510 ? "selected" : ""}>8.5 ชม. (ไม่หักพัก)</option>
+          <option value="570" ${x.span !== 510 ? "selected" : ""}>9.5 ชม. (หักพัก 1 ชม.)</option></select>` : ""}</td>
       <td style="font-size:12px;">${conf ? `<span style="color:var(--green);">✓ ยืนยันแล้ว</span>${S.db[c].by ? ` <span class="text-muted">· ${esc(S.db[c].by)}</span>` : ""}`
         : S.edits[c] ? `<span style="color:var(--blue);">แก้แล้ว รอยืนยัน</span>` : `<span style="color:var(--gold-dark);">ระบบเดา — ${S.db[c] ? "" : "<b>กะใหม่</b> · "}${esc(g.basis || "")}</span>`}</td></tr>`;
   };
   el.innerHTML = `<div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
       <div><div class="card-title" style="margin:0;">เวลากะ ${pending.length ? `<span class="badge badge-gold">ยังไม่ยืนยัน ${pending.length} กะ</span>` : `<span class="badge badge-green">ยืนยันครบ</span>`}</div>
-        <div class="text-muted" style="font-size:12px;">ใช้คิดโอทีที่ควรได้ และตรวจว่าชนิดโอทีตรงเวลากะไหม · พัก = ช่วงที่ TigerSoft หักในวันหยุด (เว้นว่าง = ไม่หัก) · เลิกน้อยกว่าเข้า = ข้ามคืน</div></div>
+        <div class="text-muted" style="font-size:12px;">ใช้คิดโอทีที่ควรได้ และตรวจว่าชนิดโอทีตรงเวลากะไหม · พัก = ช่วงที่ TigerSoft หักในวันหยุด (เว้นว่าง = ไม่หัก) · เลิกน้อยกว่าเข้า = ข้ามคืน ·
+          <b>นับชั่วโมง</b> = นับจากเวลาเข้างานจริง ครบ 8.5 / 9.5 ชม. แล้วที่เกินเป็นโอที (ไม่เกินที่ขอ)</div></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" id="otShTog">${S.showShifts ? "ซ่อน" : `ดูเวลากะ (${codes.length})`}</button>
         ${S.showShifts && can("data.shiftallow.write") ? `<button class="btn btn-primary btn-sm" id="otShSave">✓ ยืนยันเวลากะ${pending.length || Object.keys(S.edits).length ? ` (${new Set([...pending, ...Object.keys(S.edits)]).size})` : ""}</button>` : ""}
       </div>
     </div>
-    ${S.showShifts ? `<div style="overflow:auto;"><table class="data-table"><thead><tr><th>กะ</th><th style="text-align:right;">วันทำงาน</th><th>เข้า</th><th>เลิก</th><th>พัก (วันหยุด)</th><th>สถานะ</th></tr></thead>
+    ${S.showShifts ? `<div style="overflow:auto;"><table class="data-table"><thead><tr><th>กะ</th><th style="text-align:right;">วันทำงาน</th><th>เข้า</th><th>เลิก</th><th>พัก (วันหยุด)</th><th title="ไม่ดูเวลาตามนาฬิกา — นับจากเวลาเข้างานจริง ครบชั่วโมงงานปกติแล้วที่เกินเป็นโอที (ไม่เกินที่ขอ)">นับชั่วโมง</th><th>สถานะ</th></tr></thead>
       <tbody>${codes.map(row).join("")}</tbody></table></div>` : ""}
   </div>`;
   el.querySelector("#otShTog").onclick = () => { S.showShifts = !S.showShifts; drawShifts(); };
+  el.querySelectorAll("[data-sh]").forEach(i => i.onchange = () => {
+    const c = i.dataset.sh, cur = { ...(shiftFor(c) || {}) };
+    if (cur.start == null || cur.end == null) { toast("ใส่เวลาเข้าและเลิกก่อน", "error"); i.checked = !i.checked; return; }
+    S.edits[c] = { ...cur, byHours: i.checked, span: cur.span || 570 }; run();
+  });
+  el.querySelectorAll("[data-span]").forEach(i => i.onchange = () => {
+    const c = i.dataset.span; S.edits[c] = { ...(shiftFor(c) || {}), byHours: true, span: Number(i.value) }; run();
+  });
   el.querySelectorAll("[data-sc]").forEach(i => i.onchange = () => {
     const c = i.dataset.sc, cur = { ...(shiftFor(c) || {}) }, v = fromTm(i.value);
     const st = i.dataset.f === "start" ? v : cur.start;
@@ -184,10 +198,11 @@ async function saveShifts() {
   if (!rows.length) { toast("ไม่มีกะที่ต้องยืนยัน", "info"); return; }
   const bad = codes.filter(c => !rows.some(r => r.c === c));
   if (bad.length) toast(`ข้าม ${bad.join(", ")} — ยังไม่มีเวลาเข้า/เลิก`, "error");
-  if (!confirm(`ยืนยันเวลากะ ${rows.length} กะ:\n${rows.map(({ c, x }) => `${c}  ${tm(x.start)}–${tm(x.end)}${x.end >= 1440 ? " (+1)" : ""}${x.brk ? `  พัก ${tm(x.brk[0])}–${tm(x.brk[1])}` : ""}`).join("\n")}`)) return;
+  if (!confirm(`ยืนยันเวลากะ ${rows.length} กะ:\n${rows.map(({ c, x }) => `${c}  ${tm(x.start)}–${tm(x.end)}${x.end >= 1440 ? " (+1)" : ""}${x.brk ? `  พัก ${tm(x.brk[0])}–${tm(x.brk[1])}` : ""}${x.byHours ? `  · นับชั่วโมง ${x.span === 510 ? "8.5 ชม. ไม่หักพัก" : "9.5 ชม. หักพัก 1 ชม."}` : ""}`).join("\n")}`)) return;
   const { error } = await supabase.from("ot_shift_times").upsert(rows.map(({ c, x }) => ({ code: c, start_min: x.start, end_min: x.end,
-    break_start: x.brk ? x.brk[0] : null, break_end: x.brk ? x.brk[1] : null, updated_by: me(), updated_at: new Date().toISOString() })));
-  if (error) { toast("บันทึกเวลากะไม่สำเร็จ: " + error.message, "error"); return; }
+    break_start: x.brk ? x.brk[0] : null, break_end: x.brk ? x.brk[1] : null, by_hours: !!x.byHours, hours_span: x.byHours ? (x.span || 570) : null,
+    updated_by: me(), updated_at: new Date().toISOString() })));
+  if (error) { toast("บันทึกเวลากะไม่สำเร็จ: " + error.message + (/by_hours|hours_span/.test(error.message) ? " — รัน sql/schema_ot_audit.sql อีกครั้ง" : ""), "error"); return; }
   toast(`ยืนยันเวลากะ ${rows.length} กะแล้ว`, "success");
   await load();
 }
@@ -290,6 +305,7 @@ function exportXlsx() {
   const codes = Object.keys(S.guess).sort();
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(codes.map(c => { const x = shiftFor(c);
     return { "กะ": c, "วันทำงาน": S.guess[c].days, "เข้า": tm(x?.start), "เลิก": tm(x?.end) + (x?.end >= 1440 ? " (+1)" : ""), "พัก (วันหยุด)": x?.brk ? `${tm(x.brk[0])}–${tm(x.brk[1])}` : "",
+      "นับชั่วโมง": x?.byHours ? (x.span === 510 ? "8.5 ชม. ไม่หักพัก" : "9.5 ชม. หักพัก 1 ชม.") : "",
       "สถานะ": S.db[c] && !S.edits[c] ? "ยืนยันแล้ว" : "ระบบเดา" }; })), "เวลากะ");
   X.writeFile(wb, `ตรวจโอที_${S.ym || ""}.xlsx`);
 }
