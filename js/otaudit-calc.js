@@ -17,6 +17,7 @@
 //      ปัดลงทีละ 30 นาทีแบบ TigerSoft แล้วเทียบเป๊ะ — ก.ย. 2569 ตรงกับ TigerSoft 95% ที่เหลือคือที่ต้องตรวจจริง
 //   7. ชนิดไม่ตรงกะ: ก่อนเริ่มงานต้องจบก่อนเข้ากะ · หลังเลิกงานต้องเริ่มหลังเลิกกะ (วันทำงาน)
 //   8. ขอโอทีในวันที่ลา / ขาดงาน
+//   9. โอทีรวมเกิน 36 ชม./สัปดาห์ (จาก TigerSoft — ไม่นับอัตรา 1 / 2 เท่า)
 // เวลาทั้งหมดคิดเป็น "นาทีนับจาก Excel serial" ไม่ผ่าน Date → ไม่มีปัญหาเขตเวลา
 //   (ไฟล์ตรวจเดิม OT_Audit แสดงเวลาสแกนเร็วไป 7 ชม. เพราะแปลงผ่าน UTC)
 // ============================================================================
@@ -27,6 +28,8 @@ export const IO = { I: "จ่ายเงิน", O: "เป็นลา" };
 export const SMALL_DIFF = 60;        // ต่างไม่เกิน 1 ชม. = พัก / ปัดเศษ
 export const SCAN_TOLERANCE = 5;     // สแกนขาดไม่เกิน 5 นาที ถือว่าครบ
 export const F01_HOLIDAY_OT1 = 510;  // 8:30 (9:30 หักพัก 1 ชม.)
+export const WEEK_LIMIT = 36 * 60;   // กฎหมายแรงงาน: โอที + โอทีวันหยุด รวมไม่เกิน 36 ชม./สัปดาห์ (ผู้ใช้ขอเพิ่ม 2026-10-12)
+// ไม่นับอัตรา 1 / 2 เท่า = ทำงานในวันหยุดช่วงเวลางานปกติ ซึ่งไม่ใช่โอทีตามกฎหมาย · สัปดาห์ = จันทร์–อาทิตย์
 export const OT_BLOCK = 30;          // TigerSoft ปัดโอทีลงทีละ 30 นาที (ก.ย. 2569: 2,166 จาก 2,166 รายการ)
 
 const str = v => String(v ?? "").trim();
@@ -236,6 +239,22 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     // 5. F01 วันหยุด OT1 ยังไม่หักพัก
     if (t && String(t.shift).toUpperCase() === "F01" && /^H/i.test(t.dayType) && (t.ot?.["1"] || 0) === F01_HOLIDAY_OT1 + 60)
       issue("f01", "warn", { day: d, text: `กะ F01 วันหยุด OT1 = 9:30 ยังไม่หักพัก 1 ชม. — ควรเป็น ${hhmm(F01_HOLIDAY_OT1)}` });
+  }
+  // 9. โอทีเกิน 36 ชม./สัปดาห์ (จันทร์–อาทิตย์) — นับจากทุกวันในไฟล์ แจ้งที่วันที่โอทีมากสุดของสัปดาห์นั้น
+  const dayByKey = new Map(days.map(d => [d.key, d])), firstDay = Math.min(...[...T.values()].map(t => t.day)), lastDay = Math.max(...[...T.values()].map(t => t.day));
+  const weeks = new Map(), dm = day => { const iso = serialToISO(day); return `${+iso.slice(8)}/${+iso.slice(5, 7)}`; };
+  for (const [k, t] of T) {
+    const legal = Object.entries(t.ot || {}).filter(([rate]) => rate !== "1" && rate !== "2").reduce((s, [, v]) => s + v, 0);
+    if (!legal) continue;
+    const mon = t.day - ((t.day + 5) % 7), wk = weeks.get(`${t.code}|${mon}`) || { mon, sum: 0, top: null };
+    wk.sum += legal; if (!wk.top || legal > wk.top.legal) wk.top = { key: k, legal };
+    weeks.set(`${t.code}|${mon}`, wk);
+  }
+  for (const wk of weeks.values()) {
+    if (wk.sum <= WEEK_LIMIT) continue;
+    const d = dayByKey.get(wk.top.key); if (!d || (ym && !d.date.startsWith(ym))) continue;
+    const part = wk.mon < firstDay || wk.mon + 6 > lastDay ? " (สัปดาห์คร่อมเดือน — นับเฉพาะวันที่อยู่ในไฟล์)" : "";
+    issue("week36", "warn", { day: d, text: `โอทีสัปดาห์ ${dm(wk.mon)}–${dm(wk.mon + 6)} รวม ${hhmm(wk.sum)} ชม. เกิน 36 ชม./สัปดาห์ตามกฎหมาย${part}` });
   }
   // คำขอที่น่าจะลงวันผิด: วันนี้ขอแต่ TigerSoft ไม่ขึ้น + วันติดกัน (±1–2) TigerSoft มีโอทีแต่ไม่มีคำขอ ยอดใกล้กัน
   const noReq = days.filter(d => !d.reqs.length && d.t);

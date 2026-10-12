@@ -96,4 +96,11 @@ for (let i = 7; i < 10; i++) { pdays.push(holD({ date: DC.serialToISO(day0 + i),
 const g = M.inferShiftTimes(mkProc(pdays), many).NOR;
 eq([g.start, g.end, g.brk], [450, 1020, [720, 780]], "เดาเวลากะ NOR 07:30–17:00 พัก 12:00–13:00");
 
+// โอทีเกิน 36 ชม./สัปดาห์ (จันทร์ 7 ก.ย. = day0+6)
+const wkDays = [6, 7, 8, 9, 10].map(i => D(i, { ot: { "1.5": 450 } }));            // 5 วัน × 7:30 = 37:30
+r = runS(wkDays, []);
+eq(kinds(r).filter(k => k === "week36").length, 1, "โอที 37:30 ใน 1 สัปดาห์ = เกิน 36");
+r = runS([6, 7, 8, 9].map(i => D(i, { ot: { "1.5": 450 } })).concat([D(12, { dayType: "H", ot: { "1": 510 } })]), []);
+eq(kinds(r).includes("week36"), false, "ทำงานวันหยุดในเวลาปกติ (1 เท่า) ไม่นับ");
+
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
