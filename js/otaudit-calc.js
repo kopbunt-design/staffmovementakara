@@ -204,8 +204,10 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     //   → [ช่วงวันที่ขอ, กะของเมื่อวาน] (ขอด้วยวันที่หลังเที่ยงคืน)
     // ใช้แบบแรกที่สแกนครอบคลุมครบ · ไม่มีแบบไหนครบ = แบบที่ซ้อนมากสุด (เท่ากันเอาแบบแรก)
     // ไม่ลองย้ายไปวันอื่นไกลกว่านี้ — คำขอลงวันผิดต้องโผล่ให้ HR เห็น (จับคู่ไว้ด้านล่าง)
+    // TigerSoft ผูกคำขอกับกะของวันที่ในคำขอ → ลองกะวันที่ขอก่อน · ไปกะของเมื่อวานเฉพาะเมื่อกะวันที่ขอไม่มีสแกนทับเลย
     let best = null;
     for (const [shift, dd] of [[0, 0], [1, 0], [0, -1]]) {
+      if (dd === -1 && best && best.ov > 0) break;
       const w0 = (base + shift) * 1440 + q.start, w1 = w0 + ((q.end - q.start + 1440) % 1440 || 1440);
       const t = T.get(`${q.emp}|${base + dd}`); if (!t) continue;
       const ov = t.inMin != null && t.outMin != null ? overlap(w0, w1, t.inMin, t.outMin) : 0;
@@ -303,6 +305,8 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     if (f01Bad) { /* ไม่ซ้ำกับข้อ F01 วันหยุด */ }
     else if (lunchBlocks && diff < 0) issue("lunchblock", "warn", { day: d, text: `กะ ${t.shift} มีโอทีพักเที่ยง — TigerSoft ไม่คิดโอทีชนิดอื่นให้ ต้องแก้มือ ${nums}` });
     else if (result === "TigerSoft มากกว่าที่ขอ") { d.manual = true; issue("manual", "info", { day: d, text: `TigerSoft มากกว่าที่ขอ — น่าจะแก้มือแล้ว ${nums}` }); }
+    // TigerSoft ให้มากกว่าที่สแกนรองรับแต่ไม่เกินที่ขอ — มักเป็นกะนับชั่วโมง (F01 นับจากเวลาเข้างาน) ไม่ใช่เรื่องต้องแก้
+    else if (result === "TigerSoft มากกว่าเวลาสแกนที่รองรับ") issue("overscan", "info", { day: d, text: `${result} แต่ไม่เกินที่ขอ ${nums}` });
     else if (result !== "ตรง") issue("amount", "warn", { day: d, text: `${result} ${nums}` });
     // ขอซ้ำ: ต้องแก้เฉพาะเมื่อ TigerSoft จ่ายซ้ำไปแล้ว (เกินยอดที่ควรได้) ไม่งั้นแค่ข้อสังเกต
     if (dup) issue("overlap", diff > 0 ? "warn" : "info", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน)${diff > 0 ? " — TigerSoft จ่ายเกิน ลบคำขอที่ซ้ำ" : " — TigerSoft ไม่ได้จ่ายซ้ำ ลบทิ้งได้"}` });

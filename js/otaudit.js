@@ -22,6 +22,7 @@ const KINDS = {
   leaveday: ["ขอโอทีวันลา/ขาดงาน", "info"],
   wrongday: ["อาจลงวันผิด", "warn"],
   nextday:  ["ลงวันถัดจากวันกะ (TigerSoft ไม่นับ)", "info"],
+  overscan: ["TigerSoft มากกว่าเวลาสแกน (ไม่เกินที่ขอ)", "info"],
   holiday:  ["วันหยุดขอผิดชนิด", "info"],
   level:    ["ระดับไม่ตรงรูปแบบ (I/O)", "warn"],
   overlap:  ["ขอซ้ำ / ซ้อนกัน", "warn"],

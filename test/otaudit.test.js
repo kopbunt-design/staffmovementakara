@@ -37,9 +37,12 @@ r = run([D(0), D(1, { ot: { "1.5": 60 } })], [Q(0, "E", 17, 18, 1)]);
 eq(r.days.find(d => d.date === "2026-09-01").reqs.length, 1, "คำขอติดวันที่ขอ ไม่ย้ายไปวันถัดไป");
 r = run([D(0, { shift: "N01", inMin: at(0, 23.2), outMin: at(1, 12.02), ot: { "1.5": 240 } })], [Q(0, "E", 8, 11, 3), Q(0, "E", 8, 12, 4)]);
 eq([r.days[0].asked, r.days[0].expected, r.days[0].result], [240, 240, "ตรง"], "คำขอทับกัน 8–11 กับ 8–12 = นับ 4:00 ครั้งเดียว");
-r = run([D(0, { shift: "N01", inMin: at(0, 19.5), outMin: at(1, 9.02), ot: { "1.5": 210 } }), D(1, { shift: "N01", inMin: at(1, 19.5), outMin: at(2, 8.02), ot: { "1.5": 210 } })],
+r = run([D(0, { shift: "N01", inMin: at(0, 19.5), outMin: at(1, 9.02), ot: { "1.5": 210 } }), D(1, { shift: "N01", inMin: at(1, 19.5), outMin: at(2, 7.95), ot: { "1.5": 210 } })],
   [Q(0, "S", 20, 23.5, 3.5), Q(1, "E", 8, 9, 1), Q(1, "S", 20, 23.5, 3.5)]);
 eq([r.days.map(d => d.result), r.issues.filter(i => i.kind === "nextday").map(i => i.sev)], [["ตรง", "ตรง"], ["info"]], "ขอหลังเลิกกะดึกแต่ลงวันถัดไป: TigerSoft ไม่นับ = ถูก เป็นข้อสังเกต");
+r = run([D(0, { shift: "F01", inMin: at(0, 19.58), outMin: at(1, 8.3), ot: { "1.5": 570 } }), D(1, { shift: "F01", inMin: at(1, 19.58), outMin: at(2, 5.88), ot: { "1.5": 30 } })],
+  [Q(0, "S", 20, 5.5, 9.5), Q(1, "E", 5.5, 8, 2.5)]);
+eq([r.days.find(d => d.date === "2026-09-02").reqs.length, r.issues.filter(i => i.sev === "warn").map(i => i.kind)], [1, []], "คำขอติดกะวันที่ขอ (สแกนทับบางส่วน) · TigerSoft มากกว่าสแกนแต่ไม่เกินที่ขอ = ข้อสังเกต");
 r = run([D(0)], [Q(0, "E", 17, 19, 2)]);
 eq(r.days[0].result, "TigerSoft ไม่ขึ้นโอที", "TigerSoft ไม่ขึ้น");
 r = run([D(0, { outMin: at(0, 21.1), ot: { "1.5": 60 } })], [Q(0, "E", 17, 21, 4)], "O1");
