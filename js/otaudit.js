@@ -17,11 +17,11 @@ const me = () => currentUser?.user_metadata?.full_name || currentUser?.email || 
 
 const KINDS = {
   amount:   ["ยอดไม่ตรง TigerSoft", "warn"],
-  scan:     ["เวลาสแกนไม่ครอบคลุม", "warn"],
-  position: ["ชนิดไม่ตรงเวลากะ", "warn"],
-  leaveday: ["ขอโอทีวันลา/ขาดงาน", "warn"],
+  scan:     ["สแกนไม่ครอบคลุม (TigerSoft ตัดแล้ว)", "info"],
+  position: ["ชนิดไม่ตรงเวลากะ", "info"],
+  leaveday: ["ขอโอทีวันลา/ขาดงาน", "info"],
   wrongday: ["อาจลงวันผิด", "warn"],
-  holiday:  ["วันหยุดขอผิดชนิด", "warn"],
+  holiday:  ["วันหยุดขอผิดชนิด", "info"],
   level:    ["ระดับไม่ตรงรูปแบบ (I/O)", "warn"],
   overlap:  ["ขอซ้ำ / ซ้อนกัน", "warn"],
   f01:      ["F01 วันหยุดยังไม่หักพัก", "warn"],
@@ -120,7 +120,7 @@ async function load() {
   S.dbOk = !times.error; S.marksOk = !marks.error;
   S.db = Object.fromEntries((times.data || []).map(r => [r.code.toUpperCase(),
     { start: r.start_min, end: r.end_min, brk: r.break_start != null ? [r.break_start, r.break_end] : null,
-      byHours: !!r.by_hours, span: r.hours_span || 570, by: r.updated_by, at: r.updated_at }]));
+      byHours: !!r.by_hours, span: r.hours_span || 570, confirmed: true, by: r.updated_by, at: r.updated_at }]));
   S.marks = new Map((marks.data || []).map(m => [m.key, m]));
   S.guess = inferShiftTimes(S.proc, S.reqs);
   S.edits = {};
@@ -227,7 +227,7 @@ const isDone = g => !!S.marks.get(g.key)?.done;
 function drawOut() {
   const el = document.getElementById("otOut"); if (!el) return;
   const R = S.res;
-  const need = R.issues.filter(i => KINDS[i.kind][1] === "warn"), info = R.issues.filter(i => KINDS[i.kind][1] === "info");
+  const need = R.issues.filter(i => i.sev === "warn"), info = R.issues.filter(i => i.sev === "info");
   const withExp = R.days.filter(d => d.expected != null && d.reqs.length), exact = withExp.filter(d => d.diff === 0).length;
   const byKind = k => R.issues.filter(i => i.kind === k);
   const needG = groupIssues(need), q = S.q.trim().toLowerCase();
@@ -257,7 +257,7 @@ function drawOut() {
     </div>
     <div style="overflow:auto;max-height:70vh;"><table class="data-table"><thead><tr>
       <th style="width:34px;" title="ติ๊กเมื่อแก้ใน TigerSoft แล้ว (ทีมเห็นร่วมกัน)">✓</th><th>รหัส</th><th>ชื่อ</th><th>วันที่</th><th>กะ</th><th>สแกน เข้า–ออก</th><th>คำขอ</th>
-      <th style="text-align:right;">TigerSoft</th><th style="text-align:right;">ควรได้</th><th>ต้องตรวจ</th><th>งานที่ทำ / หมายเหตุ HR</th></tr></thead><tbody>
+      <th style="text-align:right;">TigerSoft</th><th style="text-align:right;" title="ยอดที่ขอ ตัดตามเวลาสแกน ปัดลง 30 นาที">ควรได้</th><th>ต้องตรวจ</th><th>งานที่ทำ / หมายเหตุ HR</th></tr></thead><tbody>
       ${list.map(row).join("") || `<tr><td colspan="11" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
     </tbody></table></div>
   </div>`;
@@ -285,7 +285,7 @@ const reqText = r => `${TYPES[r.typ] || r.typ} · ${IO[r.io] || r.io || "-"} · 
 function row(g) {
   const t = g.t, ref = t ? t.day : null, m = S.marks.get(g.key), done = !!m?.done, d = g.day;
   const ot = t ? Object.entries(t.ot || {}).filter(([, v]) => v).map(([rate, v]) => `${rate}× ${hhmm(v)}`).join("<br>") : "";
-  const texts = [...new Set(g.issues.map(i => `${KINDS[i.kind][1]}|${i.text}`))];
+  const texts = [...new Set(g.issues.map(i => `${i.sev}|${i.text}`))];
   return `<tr style="${done ? "opacity:.55;" : ""}">
     <td><input type="checkbox" data-done="${esc(g.key)}" ${done ? "checked" : ""} title="${done ? `แก้แล้ว · ${esc(m.by_name || "")}` : "ติ๊กเมื่อแก้ใน TigerSoft แล้ว"}"></td>
     <td>${esc(g.emp)}</td><td style="white-space:nowrap;">${esc(g.name)}</td>
@@ -311,8 +311,8 @@ function exportXlsx() {
       "TigerSoft": hhmm(Object.values(t?.ot || {}).reduce((s, v) => s + v, 0)), "ควรได้": g.day?.expected != null ? hhmm(g.day.expected) : "",
       "ต้องตรวจ": [...new Set(g.issues.map(i => i.text))].join(" · "), "เรื่อง": [...new Set(g.issues.map(i => KINDS[i.kind][0]))].join(", "),
       "งานที่ทำ": [...new Set(g.reqs.map(x => x.note).filter(Boolean))].join(" / "), "หมายเหตุ HR": m?.note || "", "โดย": m?.by_name || "" }; });
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => KINDS[i.kind][1] === "warn")))), "ต้องตรวจ");
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => KINDS[i.kind][1] === "info")))), "เตือน");
+  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => i.sev === "warn")))), "ต้องตรวจ");
+  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => i.sev === "info")))), "เตือน");
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(R.days.map(d => ({ ...base(d), "จำนวนคำขอ": d.reqs.length, "ยอดที่ขอ (ตัดซ้อน)": hhmm(d.asked),
     "ควรได้": d.expected != null ? hhmm(d.expected) : "", "TigerSoft": hhmm(d.time), "ผลเทียบยอด": d.result }))), "เทียบยอดรายวัน");
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(R.requests.map(r => ({ ...base({ ...r, t: r.t }), "ระดับ": r.lv, "ชนิด": TYPES[r.typ], "รูปแบบ": IO[r.io] || r.io,

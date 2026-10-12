@@ -224,18 +224,19 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     else if (ov >= len - SCAN_TOLERANCE) r.scan = "ครบ";
     else r.scan = ov > 0 ? `สแกนครอบคลุม ${hhmm(ov)} จาก ${hhmm(len)}` : "เวลาสแกนไม่ครอบคลุมช่วงที่ขอ";
     if (q.typ === "B") issue("lunch", "info", { req: r, text: `ขอโอทีพักเที่ยง ${hhmm(q.hours)} — ตรวจว่าทำงานจริง` });
-    else if (r.scan !== "ครบ") issue("scan", "warn", { req: r, text: r.scan });
+    // สแกนไม่ครอบคลุม: TigerSoft ตัดตามสแกนอยู่แล้ว และยอดที่ควรได้ก็ตัดตามสแกน → ไม่ใช่เรื่องต้องแก้ แค่ข้อสังเกต
+    else if (r.scan !== "ครบ") issue("scan", "info", { req: r, text: r.scan });
     // 7–8. เทียบกับเวลากะ (วันทำงาน) · ขอโอทีวันที่ลา/ขาดงาน
     const sh = shiftOf(t), work = t && !/^H/i.test(t.dayType);
     if (sh && !sh.byHours && work && q.typ !== "B") {          // กะนับชั่วโมง ไม่มีเวลาเข้า–เลิกตายตัว → ไม่ตรวจชนิดกับเวลากะ
       const s0 = t.day * 1440 + sh.start, s1 = t.day * 1440 + sh.end;
-      if (q.typ === "S" && w1 > s0) issue("position", "warn", { req: r, text: `ชนิดก่อนเริ่มงาน แต่ช่วงที่ขอเลยเวลาเข้ากะ ${t.shift} (${clockOf(s0)}) ไป ${hhmm(Math.min(w1, s1) - Math.max(w0, s0) > 0 ? Math.min(w1, s1) - Math.max(w0, s0) : w1 - s0)}` });
-      if (q.typ === "E" && w0 < s1) issue("position", "warn", { req: r, text: `ชนิดหลังเลิกงาน แต่เริ่มก่อนเลิกกะ ${t.shift} (${clockOf(s1)}) ${hhmm(Math.min(w1, s1) - w0)}` });
+      if (q.typ === "S" && w1 > s0) issue("position", "info", { req: r, text: `ชนิดก่อนเริ่มงาน แต่ช่วงที่ขอเลยเวลาเข้ากะ ${t.shift} (${clockOf(s0)}) ไป ${hhmm(Math.min(w1, s1) - Math.max(w0, s0) > 0 ? Math.min(w1, s1) - Math.max(w0, s0) : w1 - s0)}` });
+      if (q.typ === "E" && w0 < s1) issue("position", "info", { req: r, text: `ชนิดหลังเลิกงาน แต่เริ่มก่อนเลิกกะ ${t.shift} (${clockOf(s1)}) ${hhmm(Math.min(w1, s1) - w0)}` });
     }
     if (work && (t.deduct || t.leaveOk || t.leaveDed))
-      issue("leaveday", "warn", { req: r, text: `ขอโอทีในวันที่${t.deduct ? "ขาดงาน/หักวัน" : "ลา"}${t.note ? ` (${t.note.slice(0, 40)})` : ""}` });
+      issue("leaveday", "info", { req: r, text: `ขอโอทีในวันที่${t.deduct ? "ขาดงาน/หักวัน" : "ลา"}${t.note ? ` (${t.note.slice(0, 40)})` : ""}` });
     // 3. วันหยุดต้องขอชนิดก่อนเริ่มงาน
-    if (t && /^H/i.test(t.dayType) && q.typ !== "S") issue("holiday", "warn", { req: r, text: `วันหยุดแต่ขอชนิด "${TYPES[q.typ]}" — ต้องขอชนิดก่อนเริ่มงาน` });
+    if (t && /^H/i.test(t.dayType) && q.typ !== "S") issue("holiday", "info", { req: r, text: `วันหยุดแต่ขอชนิด "${TYPES[q.typ]}" — ต้องขอชนิดก่อนเริ่มงาน` });
     // 4. ระดับกับรูปแบบ
     const L = r.lv.charAt(0).toUpperCase();
     if (!L) issue("level", "warn", { req: r, text: "ไม่พบระดับในทะเบียนพนักงาน" });
@@ -251,35 +252,59 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
   const days = [];
   for (const g of byDay.values()) {
     const t = g.t, time = otTotal(t);
-    const sumHours = g.reqs.reduce((s, r) => s + r.hours, 0);
-    const sumLen = g.reqs.reduce((s, r) => s + r.len, 0), uni = unionLen(g.reqs.map(r => [r.w0, r.w1]));
-    const overlapCut = sumLen - uni, asked = Math.max(0, sumHours - overlapCut);
-    // รู้เวลากะ + มีสแกนครบ → คิดโอทีที่ควรได้ แล้วเทียบเป๊ะ · ไม่รู้ → เทียบยอดที่ขอ ยอมคลาด 1 ชม. แบบเดิม
-    const sh = shiftOf(t), expected = sh && t.inMin != null && t.outMin != null ? expectedOT(t, sh, g.reqs) : null;
-    const target = expected ?? asked, diff = time - target;
+    // ยอดที่ควรได้ (ผู้ใช้ 2026-10-12: "ส่วนมากชั่วโมงตรงตามที่ขอ") — ไม่พึ่งเวลากะ:
+    //   ช่อง "รวม" ของแต่ละคำขอ (TigerSoft หักพักไว้แล้ว) · ตัดคำขอที่ซ้ำทุกอย่าง · ตัดส่วนที่สแกนไม่ครอบคลุม · ปัดลงทีละ 30 นาที
+    //   วันหยุด ที่คำขอยังไม่หักพัก (รวม = ความยาวช่วง): TigerSoft หักพักให้เอง — F01 (ช่วงยาว ≥ 9 ชม.) หัก 1 ชม. ·
+    //   NOR (ช่วงคลุม 12:00–12:30) หัก 30 นาที (ก.ย. 2569: ขอ 06:30–00:00 รวม 17:30 → ได้ 17:00)
+    //   ก.ย. 2569: ตรงกับ TigerSoft 2,009 จาก 2,123 คน-วัน (95%) — ที่เหลือคือที่ต้องดูจริง
+    const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}|${r.hours}`, seen = new Set();
+    const qs = g.reqs.filter(r => !seen.has(sig(r)) && seen.add(sig(r))), dup = g.reqs.length - qs.length;
+    const hol = t && /^H/i.test(t.dayType), f01 = t && String(t.shift).toUpperCase() === "F01";
+    const nor = t && String(t.shift).toUpperCase() === "NOR", base = t ? t.day * 1440 : 0;
+    const hoursOf = r => !hol || r.hours !== r.len ? r.hours
+      : f01 && r.len >= 540 ? r.hours - 60
+      : nor && r.w0 <= base + 720 && r.w1 >= base + 750 ? r.hours - 30 : r.hours;
+    // คำขอที่ช่วงเวลาทับกันจริง (ไม่นับพักเที่ยงที่อยู่ในช่วงซึ่งหักพักไว้แล้ว) → นับส่วนที่ทับครั้งเดียว
+    const nonB = qs.filter(r => r.typ !== "B"), Bs = qs.filter(r => r.typ === "B");
+    const overlapCut = nonB.reduce((s, r) => s + r.len, 0) - unionLen(nonB.map(r => [r.w0, r.w1]));
+    const asked = qs.reduce((s, r) => s + hoursOf(r), 0) - overlapCut;
+    const scanned = t && t.inMin != null && t.outMin != null;
+    const cov = r => scanned ? overlap(r.w0, r.w1, t.inMin, t.outMin) : r.len;
+    const partOf = r => { const h = hoursOf(r); return Math.min(h, Math.max(0, cov(r) - (r.len - h))); };
+    const fl = m => Math.floor(Math.max(0, m) / OT_BLOCK) * OT_BLOCK;
+    let expected = null;
+    if (g.reqs.length) {
+      if (!overlapCut) expected = qs.reduce((s, r) => s + fl(partOf(r)), 0);
+      else {
+        const u = nonB.map(r => scanned ? [Math.max(r.w0, t.inMin), Math.min(r.w1, t.outMin)] : [r.w0, r.w1]);
+        const brk = nonB.reduce((s, r) => s + (r.len - hoursOf(r)), 0);
+        expected = Bs.reduce((s, r) => s + fl(partOf(r)), 0) + fl(Math.min(nonB.reduce((s, r) => s + partOf(r), 0), unionLen(u) - brk));
+      }
+    }
+    const diff = expected == null ? time : time - expected;
     let result;
     if (!g.reqs.length) result = "มีโอทีใน TigerSoft แต่ไม่มีคำขอ";
-    else if (time === 0 && target > 0) result = "TigerSoft ไม่ขึ้นโอที";
-    else if (expected != null) result = diff === 0 ? "ตรง" : diff < 0 ? "TigerSoft ขึ้นน้อยกว่าที่ควร" : "TigerSoft ขึ้นมากกว่าที่ควร";
-    else if (Math.abs(diff) <= SMALL_DIFF) result = diff === 0 ? "ตรง" : "ต่างไม่เกิน 1 ชม. (พัก/ปัดเศษ)";
-    else result = diff < 0 ? "TigerSoft ขึ้นน้อยกว่าที่ขอ" : "TigerSoft ขึ้นมากกว่าที่ขอ";
-    const d = { ...g, time, asked, expected, overlapCut, diff, result, noShift: !!(g.reqs.length && !sh && t), date: t ? t.date : (g.reqs[0]?.date || "") };
+    else if (diff === 0) result = "ตรง";
+    else if (time === 0) result = "TigerSoft ไม่ขึ้นโอที";
+    else if (time > asked) result = "TigerSoft มากกว่าที่ขอ";
+    else if (diff > 0) result = "TigerSoft มากกว่าเวลาสแกนที่รองรับ";
+    else result = "TigerSoft น้อยกว่าที่ควร";
+    const d = { ...g, time, asked, expected, overlapCut, diff, result, date: t ? t.date : (g.reqs[0]?.date || "") };
     days.push(d);
-    const nums = `(ขอ ${hhmm(asked)}${expected != null ? ` · ควรได้ ${hhmm(expected)}` : ""} · TigerSoft ${hhmm(time)})${d.noShift ? ` · ยังไม่มีเวลากะ ${t.shift} จึงเทียบแบบคลาดได้ 1 ชม.` : ""}`;
+    const nums = `(ขอ ${hhmm(asked)}${expected != null && expected !== asked ? ` · ตามสแกน ${hhmm(expected)}` : ""} · TigerSoft ${hhmm(time)})`;
     // กะ F01 ที่มีคำขอพักเที่ยง: TigerSoft ไม่คิดโอทีชนิดอื่นให้ → ต้องแก้มือ (ผู้ใช้แจ้ง 2026-10-12)
     const lunchBlocks = t && LUNCH_BLOCKS_OTHERS.includes(String(t.shift).toUpperCase()) && g.reqs.some(r => r.typ === "B") && g.reqs.some(r => r.typ !== "B");
-    if (lunchBlocks && time < target) {
-      issue("lunchblock", "warn", { day: d, text: `กะ ${t.shift} มีโอทีพักเที่ยง — TigerSoft ไม่คิดโอทีชนิดอื่นให้ ต้องแก้มือ ${nums}` });
-    } else if (g.reqs.length && time > asked) {
-      // ได้เกินที่ขอ = HR แก้มือใน TigerSoft แล้ว (ผู้ใช้แจ้ง 2026-10-12) — ไม่ใช่ข้อผิดพลาด แค่ให้เห็น
-      d.manual = true;
-      issue("manual", "info", { day: d, text: `TigerSoft มากกว่าที่ขอ — น่าจะแก้มือแล้ว ${nums}` });
-    } else if (!/^ตรง|^ต่างไม่เกิน/.test(result)) issue("amount", "warn", { day: d, text: `${result} ${nums}` });
-    const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}`, dup = g.reqs.length - new Set(g.reqs.map(sig)).size;
-    if (dup) issue("overlap", "warn", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน) — ลบคำขอที่ซ้ำใน TigerSoft` });
-    else if (overlapCut > 0) issue("overlap", "info", { day: d, text: `คำขอช่วงเวลาซ้อนกัน ${hhmm(overlapCut)} — ตัดออกก่อนเทียบยอด` });
+    const f01Bad = t && f01 && hol && (t.ot?.["1"] || 0) === F01_HOLIDAY_OT1 + 60;   // ข้อ 5 รายงานแยกแล้ว
+    if (f01Bad) { /* ไม่ซ้ำกับข้อ F01 วันหยุด */ }
+    else if (lunchBlocks && diff < 0) issue("lunchblock", "warn", { day: d, text: `กะ ${t.shift} มีโอทีพักเที่ยง — TigerSoft ไม่คิดโอทีชนิดอื่นให้ ต้องแก้มือ ${nums}` });
+    else if (result === "TigerSoft มากกว่าที่ขอ") { d.manual = true; issue("manual", "info", { day: d, text: `TigerSoft มากกว่าที่ขอ — น่าจะแก้มือแล้ว ${nums}` }); }
+    else if (result !== "ตรง") issue("amount", "warn", { day: d, text: `${result} ${nums}` });
+    // ขอซ้ำ: ต้องแก้เฉพาะเมื่อ TigerSoft จ่ายซ้ำไปแล้ว (เกินยอดที่ควรได้) ไม่งั้นแค่ข้อสังเกต
+    if (dup) issue("overlap", diff > 0 ? "warn" : "info", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน)${diff > 0 ? " — TigerSoft จ่ายเกิน ลบคำขอที่ซ้ำ" : " — TigerSoft ไม่ได้จ่ายซ้ำ ลบทิ้งได้"}` });
+    else if (overlapCut > 0) issue("overlap", "info", { day: d, text: `คำขอช่วงเวลาซ้อนกัน ${hhmm(overlapCut)}` });
+    const sh = shiftOf(t);
     // 10. อัตราตามวันที่โอทีตกจริง — เฉพาะกะตามเวลา (รู้ช่วงเวลา) ในวันทำงาน
-    if (sh && !sh.byHours && t && !/^H/i.test(t.dayType) && t.inMin != null && t.outMin != null && g.reqs.length) {
+    if (sh && sh.confirmed && !sh.byHours && t && !/^H/i.test(t.dayType) && t.inMin != null && t.outMin != null && g.reqs.length) {  // เฉพาะเวลากะที่ HR ยืนยันแล้ว — กะที่เดาผิดจะเตือนมั่ว
       const onHol = holidayPart(t, sh, g.reqs, day => T.get(`${g.emp}|${day}`));
       const x3 = t.ot?.["3"] || 0, x15 = t.ot?.["1.5"] || 0;
       if (onHol >= OT_BLOCK && !x3 && x15) issue("rate", "warn", { day: d, text: `โอที ${hhmm(onHol)} ตกวันหยุด/นักขัตฤกษ์ ควรเป็น 3 เท่า แต่ TigerSoft ให้ 1.5 เท่า` });
