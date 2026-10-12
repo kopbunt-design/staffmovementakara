@@ -148,7 +148,7 @@ function drawShifts() {
     return `<tr${conf ? "" : ' style="background:var(--gold-light);"'}>
       <td><b>${esc(c)}</b></td><td style="text-align:right;">${fmt(g.days || 0)}</td>
       <td>${inp("start", x?.start)}</td><td>${inp("end", x?.end)}${x && x.end >= 1440 ? ` <span class="text-muted" style="font-size:11px;">(+1 วัน)</span>` : ""}</td>
-      <td>${inp("b0", x?.brk?.[0])} – ${inp("b1", x?.brk?.[1])}</td>
+      <td>${inp("b0", (x?.brkDraft || x?.brk)?.[0])} – ${inp("b1", (x?.brkDraft || x?.brk)?.[1])}${x?.brkDraft ? ` <span style="font-size:11px;color:var(--gold-dark);">ใส่ให้ครบ 2 ช่อง</span>` : ""}</td>
       <td style="white-space:nowrap;"><label style="cursor:pointer;font-size:13px;"><input type="checkbox" data-sh="${esc(c)}" ${x?.byHours ? "checked" : ""}> นับชั่วโมง</label>
         ${x?.byHours ? `<select class="filter-select" data-span="${esc(c)}" style="margin-left:6px;">
           <option value="510" ${x.span === 510 ? "selected" : ""}>8.5 ชม. (ไม่หักพัก)</option>
@@ -184,10 +184,19 @@ function drawShifts() {
     const norm = m => m == null ? null : (m <= st ? m + 1440 : m);          // เวลาก่อนเข้ากะ = วันถัดไป
     if (i.dataset.f === "start") { cur.start = v; cur.end = cur.end != null ? norm(cur.end % 1440) : null; }
     if (i.dataset.f === "end") cur.end = norm(v);
-    const b = cur.brk ? [...cur.brk] : [null, null];
+    // ช่องพักมี 2 ช่อง — จำค่าที่ใส่ไว้ (brkDraft) จนกว่าจะครบทั้งคู่ ไม่งั้นใส่ช่องแรกแล้วค่าหาย (บั๊กเดิม)
+    const b = cur.brkDraft ? [...cur.brkDraft] : cur.brk ? [...cur.brk] : [null, null];
     if (i.dataset.f === "b0") b[0] = norm(v);
     if (i.dataset.f === "b1") b[1] = norm(v);
-    cur.brk = b[0] != null && b[1] != null && b[1] > b[0] ? b : (i.dataset.f.startsWith("b") && v == null ? null : cur.brk);
+    if (i.dataset.f.startsWith("b")) {
+      cur.brkDraft = b;
+      if (b[0] == null && b[1] == null) { cur.brk = null; delete cur.brkDraft; }               // ล้างทั้งสองช่อง = ไม่หักพัก
+      else if (b[0] != null && b[1] != null) {
+        if (b[1] <= b[0]) { toast("เวลาสิ้นสุดพักต้องหลังเวลาเริ่มพัก", "error"); S.edits[c] = cur; drawShifts(); return; }
+        if (b[0] < cur.start || b[1] > cur.end) { toast("เวลาพักต้องอยู่ในช่วงเวลากะ", "error"); S.edits[c] = cur; drawShifts(); return; }
+        cur.brk = b; delete cur.brkDraft;
+      } else { S.edits[c] = cur; drawShifts(); return; }                                  // ใส่ไปช่องเดียว — รอช่องที่สอง
+    }
     if (cur.start == null || cur.end == null) { toast("ใส่เวลาเข้าและเลิกให้ครบ", "error"); return; }
     S.edits[c] = cur; run();
   });
@@ -196,6 +205,8 @@ function drawShifts() {
 
 async function saveShifts() {
   const codes = [...new Set([...Object.keys(S.guess).filter(c => !S.db[c]), ...Object.keys(S.edits)])];
+  const draft = codes.filter(c => shiftFor(c)?.brkDraft);
+  if (draft.length) { toast(`ใส่เวลาพักให้ครบ 2 ช่องก่อน: ${draft.join(", ")}`, "error"); return; }
   const rows = codes.map(c => ({ c, x: shiftFor(c) })).filter(({ x }) => x && x.start != null && x.end != null);
   if (!rows.length) { toast("ไม่มีกะที่ต้องยืนยัน", "info"); return; }
   const bad = codes.filter(c => !rows.some(r => r.c === c));
