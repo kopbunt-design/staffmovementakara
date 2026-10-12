@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-config.js";
 import { logout } from "./auth.js";
-import { loadMasterData, masterDepartments, masterPositions } from "./masterdata-admin.js";
+import { loadMasterData, masterDepartments, masterPositions, masterJobLevels } from "./masterdata-admin.js";
 import { comboHTML, bindCombo, toItems } from "./combobox.js";
 
 // ===== SHARED STATE =====
@@ -1167,7 +1167,7 @@ function openMovModal(entry=null) {
     const nameEn=((e.firstname_en||"")+" "+(e.lastname_en||"")).trim();
     return {
       code:e.emp_code||"", name:nameTh||nameEn,
-      dept:e.department||"", pos:e.position||"", sec:e.section||"",
+      dept:e.department||"", pos:e.position||"", sec:e.section||"", jl:e.job_level||"",
       q:[e.emp_code,nameTh,nameEn,e.department,e.section,e.position].filter(Boolean).join(" ").toLowerCase(),
     };
   });
@@ -1201,6 +1201,10 @@ function openMovModal(entry=null) {
           <div class="form-group"><label class="form-label">ตำแหน่งใหม่
             ${can("data.masterdata.write")?`<span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่มีในลิสต์ = พิมพ์แล้วกดเพิ่มได้เลย)</span>`:""}</label>
             ${comboHTML("mv_toPos", toItems(masterPositions), toPos, "พิมพ์ค้นหาตำแหน่ง…")}
+          </div>
+          <div class="form-group"><label class="form-label">Job Level ใหม่ <span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่เปลี่ยน = เว้นว่าง)</span>
+            <span id="mv_jlNow" style="font-weight:400;color:var(--muted);font-size:11px;margin-left:4px;">${(()=>{ const cur=allEmployees.find(e=>e.emp_code&&e.emp_code===entry?.emp_code)?.job_level; return cur?`· ปัจจุบัน ${esc(cur)}`:""; })()}</span></label>
+            <select id="mv_jl" class="form-control"><option value="">— ไม่เปลี่ยน —</option>${[...new Set([...masterJobLevels.map(j=>j.name),entry?.job_level].filter(Boolean))].map(n=>`<option value="${esc(n)}" ${n===entry?.job_level?"selected":""}>${esc(n)}</option>`).join("")}</select>
           </div>
           <div class="form-group col-span-2"><label class="form-label">เหตุผล / หมายเหตุ</label><textarea id="mv_reason" class="form-control">${esc(entry?.reason||"")}</textarea></div>
           ${can("field.salary.read")?`
@@ -1251,6 +1255,7 @@ function openMovModal(entry=null) {
       document.getElementById("mv_code").value = e.code;
       document.getElementById("mv_name").value = e.name;
       document.getElementById("mv_from").value = [e.dept,e.pos].filter(Boolean).join(" / ");
+      const jlNow = document.getElementById("mv_jlNow"); if(jlNow) jlNow.textContent = e.jl ? `· ปัจจุบัน ${e.jl}` : "";
       box.value = `${e.code} - ${e.name}`;
       close();
     };
@@ -1326,6 +1331,7 @@ function openMovModal(entry=null) {
       date: g("mv_date")||null, from_dept: g("mv_from"),
       to_dept: combineToDept(g("mv_toDept"), g("mv_toPos"), g("mv_from")),
       reason: g("mv_reason"),
+      job_level: g("mv_jl")||null,                          // Job Level ใหม่ (ตำแหน่งเปลี่ยน ระดับเปลี่ยนด้วย) — ว่าง = ไม่เปลี่ยน
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
       ...(can("field.salary.read") ? { salary: Number(document.getElementById("mv_sal")?.value)||null, cost_center: g("mv_cc") } : {})
@@ -1349,13 +1355,16 @@ function openMovModal(entry=null) {
       }
     }
 
-    const { error } = existId
-      ? await supabase.from("movements").update({...data, updated_at: new Date().toISOString()}).eq("id", existId)
-      : await supabase.from("movements").insert(data);
+    const write = d => existId
+      ? supabase.from("movements").update({...d, updated_at: new Date().toISOString()}).eq("id", existId)
+      : supabase.from("movements").insert(d);
+    let { error } = await write(data);
+    // ยังไม่ได้รัน sql/schema_movement_joblevel.sql → บันทึกรายการได้ก่อน (ไม่มีคอลัมน์ job_level) แต่ยังอัปเดตระดับพนักงานให้
+    if(error && /job_level/.test(error.message)){ const { job_level, ...rest } = data; ({ error } = await write(rest)); if(!error) toast("บันทึกแล้ว — แต่ยังไม่ได้เก็บ Job Level ในรายการนี้ (รัน sql/schema_movement_joblevel.sql)","info"); }
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
     if(data.emp_code){
-      const empUpdate = { updated_at: new Date().toISOString(), ...empUpdateFromMovement(data.type, data.to_dept, data.date) };
+      const empUpdate = { updated_at: new Date().toISOString(), ...empUpdateFromMovement(data.type, data.to_dept, data.date, data.job_level) };
       if(Object.keys(empUpdate).length>1){
         await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
       }
@@ -1456,9 +1465,9 @@ async function movImport(inputEl){
         });
       });
       if(!batch.length){ toast("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E17\u0E35\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07"+(errors.length?": "+errors[0]:""),"error"); return; }
-      // job_level \u0E44\u0E21\u0E48\u0E43\u0E0A\u0E48\u0E04\u0E2D\u0E25\u0E31\u0E21\u0E19\u0E4C\u0E02\u0E2D\u0E07 movements \u2014 \u0E15\u0E31\u0E14\u0E2D\u0E2D\u0E01\u0E01\u0E48\u0E2D\u0E19 insert (\u0E40\u0E01\u0E47\u0E1A\u0E44\u0E27\u0E49\u0E43\u0E0A\u0E49\u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19)
-      const movRows = batch.map(({job_level, ...m})=>m);
-      const { error } = await supabase.from("movements").insert(movRows);
+      // เก็บ Job Level ใหม่ไว้ในรายการด้วย — ถ้ายังไม่ได้รัน sql/schema_movement_joblevel.sql (ไม่มีคอลัมน์) ตัดออกแล้วนำเข้าแบบเดิม
+      let { error } = await supabase.from("movements").insert(batch.map(m=>({...m, job_level: m.job_level||null})));
+      if(error && /job_level/.test(error.message)) ({ error } = await supabase.from("movements").insert(batch.map(({job_level, ...m})=>m)));
       if(error){ toast("Import \u0E44\u0E21\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08: "+error.message,"error"); return; }
       // \u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15\u0E1E\u0E19\u0E31\u0E01\u0E07\u0E32\u0E19 \u2014 \u0E40\u0E23\u0E35\u0E22\u0E07\u0E15\u0E32\u0E21\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48 (\u0E40\u0E01\u0E48\u0E32->\u0E43\u0E2B\u0E21\u0E48) \u0E43\u0E2B\u0E49\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14\u0E17\u0E31\u0E1A
       let updated=0;
