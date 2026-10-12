@@ -301,26 +301,100 @@ function row(g) {
       ${can("data.shiftallow.write") ? `<button class="btn btn-sm" data-note="${esc(g.key)}" style="margin-top:4px;padding:2px 8px;">📝 ${m?.note ? "แก้หมายเหตุ" : "หมายเหตุ"}</button>` : ""}</td></tr>`;
 }
 
-function exportXlsx() {
-  if (!window.XLSX) { toast("กรุณารอโหลด library", "error"); return; }
-  const X = window.XLSX, wb = X.utils.book_new(), R = S.res;
-  const base = (g) => { const t = g.t; return { "รหัสพนักงาน": g.emp, "ชื่อ-สกุล": g.name, "วันที่": t ? t.date : g.date,
-    "กะ": t?.shift || "", "ประเภทวัน": t?.dayType || "", "สแกนเข้า": t ? clockOf(t.inMin, t.day) : "", "สแกนออก": t ? clockOf(t.outMin, t.day) : "" }; };
-  const sheet = gs => gs.map(g => { const t = g.t, m = S.marks.get(g.key);
-    return { "แก้แล้ว": m?.done ? "✓" : "", ...base(g), "คำขอ": g.reqs.map(reqText).join(" / "),
-      "TigerSoft": hhmm(Object.values(t?.ot || {}).reduce((s, v) => s + v, 0)), "ควรได้": g.day?.expected != null ? hhmm(g.day.expected) : "",
-      "ต้องตรวจ": [...new Set(g.issues.map(i => i.text))].join(" · "), "เรื่อง": [...new Set(g.issues.map(i => KINDS[i.kind][0]))].join(", "),
-      "งานที่ทำ": [...new Set(g.reqs.map(x => x.note).filter(Boolean))].join(" / "), "หมายเหตุ HR": m?.note || "", "โดย": m?.by_name || "" }; });
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => i.sev === "warn")))), "ต้องตรวจ");
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sheet(groupIssues(R.issues.filter(i => i.sev === "info")))), "เตือน");
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(R.days.map(d => ({ ...base(d), "จำนวนคำขอ": d.reqs.length, "ยอดที่ขอ (ตัดซ้อน)": hhmm(d.asked),
-    "ควรได้": d.expected != null ? hhmm(d.expected) : "", "TigerSoft": hhmm(d.time), "ผลเทียบยอด": d.result }))), "เทียบยอดรายวัน");
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(R.requests.map(r => ({ ...base({ ...r, t: r.t }), "ระดับ": r.lv, "ชนิด": TYPES[r.typ], "รูปแบบ": IO[r.io] || r.io,
-    "เริ่ม": hhmm(r.start), "ถึง": hhmm(r.end), "ชั่วโมงที่ขอ": hhmm(r.hours), "สแกนครอบคลุม": hhmm(r.covered), "ผลเวลาสแกน": r.scan, "งานที่ทำ": r.note }))), "ทุกคำขอ");
-  const codes = Object.keys(S.guess).sort();
-  X.utils.book_append_sheet(wb, X.utils.json_to_sheet(codes.map(c => { const x = shiftFor(c);
-    return { "กะ": c, "วันทำงาน": S.guess[c].days, "เข้า": tm(x?.start), "เลิก": tm(x?.end) + (x?.end >= 1440 ? " (+1)" : ""), "พัก (วันหยุด)": x?.brk ? `${tm(x.brk[0])}–${tm(x.brk[1])}` : "",
-      "นับชั่วโมง": x?.byHours ? (x.span === 510 ? "8.5 ชม. ไม่หักพัก" : "9.5 ชม. หักพัก 1 ชม.") : "",
-      "สถานะ": S.db[c] && !S.edits[c] ? "ยืนยันแล้ว" : "ระบบเดา" }; })), "เวลากะ");
-  X.writeFile(wb, `ตรวจโอที_${S.ym || ""}.xlsx`);
+// Export — ExcelJS จัดรูปแบบ: หัวรายงาน · หัวตารางสีกรม · ตรึงแถว/คอลัมน์ · ตัวกรอง · หลายบรรทัดในช่อง · สีตามความรุนแรง
+async function exportXlsx() {
+  if (!window.ExcelJS) { toast("กรุณารอโหลด library", "error"); return; }
+  const R = S.res, wb = new window.ExcelJS.Workbook(); wb.creator = "Akara HR System"; wb.created = new Date();
+  const NAVY = "FF0F1C4D", LINE = "FFE4E7EC", ZEBRA = "FFF7F8FB", RED = "FFB42318", GOLD = "FF9A6700", GREEN = "FF0D7C4B", GREY = "FF98A2B3";
+  const fill = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb } }), thin = { style: "thin", color: { argb: LINE } };
+  const [y, mo] = (S.ym || "-").split("-"), monthTxt = S.ym ? `${TH_M[+mo - 1]} ${+y + 543}` : "";
+  const byEmpDate = (p, q) => String(p.emp).localeCompare(String(q.emp)) || String(p.date).localeCompare(String(q.date));
+  const otLines = t => Object.entries(t?.ot || {}).filter(([, v]) => v).map(([r, v]) => `${r}× ${hhmm(v)}`).join("\n");
+  const scanOf = t => t && (t.inMin != null || t.outMin != null) ? `${clockOf(t.inMin, t.day) || "—"} – ${clockOf(t.outMin, t.day) || "—"}` : "ไม่มีสแกน";
+  const shiftTxt = t => t ? `${t.shift || ""}${/^H/i.test(t.dayType) ? " (วันหยุด)" : ""}` : "";
+
+  // cols: [หัว, กว้าง, จัด] · rows: อาร์เรย์ค่า · style(row, ข้อมูล) ปรับสีรายแถว
+  const sheet = (name, title, cols, rows, style, tab) => {
+    const ws = wb.addWorksheet(name, { properties: tab ? { tabColor: { argb: tab } } : {} }), n = cols.length;
+    ws.columns = cols.map(([, w]) => ({ width: w }));
+    ws.mergeCells(1, 1, 1, n); Object.assign(ws.getCell(1, 1), { value: `ตรวจโอที ${monthTxt} — ${title}`, font: { bold: true, size: 14, color: { argb: NAVY } } });
+    ws.mergeCells(2, 1, 2, n); Object.assign(ws.getCell(2, 1), { value: `${rows.length.toLocaleString()} แถว · ออกรายงาน ${new Date().toLocaleString("th-TH")}`, font: { size: 10, color: { argb: "FF667085" } } });
+    ws.getRow(1).height = 22;
+    const h = ws.getRow(4); h.values = cols.map(([t]) => t); h.height = 30;
+    h.eachCell(c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = fill(NAVY); c.alignment = { vertical: "middle", horizontal: "center", wrapText: true }; c.border = { top: thin, bottom: thin, left: thin, right: thin }; });
+    rows.forEach((vals, i) => {
+      const r = ws.addRow(vals.row);
+      r.eachCell({ includeEmpty: true }, (c, k) => {
+        c.alignment = { vertical: "top", wrapText: true, horizontal: cols[k - 1][2] || "left" };
+        c.border = { bottom: thin, left: thin, right: thin };
+        if (i % 2) c.fill = fill(ZEBRA);
+      });
+      if (style) style(r, vals);
+    });
+    ws.views = [{ state: "frozen", xSplit: Math.min(3, n), ySplit: 4 }];
+    if (rows.length) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + rows.length, column: n } };
+    ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "4:4", margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
+    return ws;
+  };
+
+  // ---- สรุป ----
+  const cnt = (xs, f) => xs.reduce((m, x) => (m.set(f(x), (m.get(f(x)) || 0) + 1), m), new Map());
+  const warnG = groupIssues(R.issues.filter(i => i.sev === "warn")).sort(byEmpDate), infoG = groupIssues(R.issues.filter(i => i.sev === "info")).sort(byEmpDate);
+  const doneN = warnG.filter(g => S.marks.get(g.key)?.done).length;
+  const sum = [["ภาพรวม", "", ""], ["ต้องตรวจ (คน-วัน)", warnG.length, "ต้องแก้ใน TigerSoft"], ["แก้แล้ว", doneN, ""], ["ยังไม่แก้", warnG.length - doneN, ""], ["ข้อสังเกต (คน-วัน)", infoG.length, "ไม่ต้องแก้"], ["", "", ""],
+    ["ผลเทียบยอดรายวัน", "", ""], ...[...cnt(R.days, d => d.result)].sort((p, q) => q[1] - p[1]).map(([k, v]) => [k, v, ""]), ["", "", ""],
+    ["เรื่องที่ต้องตรวจ", "", ""], ...[...cnt(R.issues.filter(i => i.sev === "warn"), i => KINDS[i.kind][0])].sort((p, q) => q[1] - p[1]).map(([k, v]) => [k, v, "รายการ"]), ["", "", ""],
+    ["ข้อสังเกต", "", ""], ...[...cnt(R.issues.filter(i => i.sev === "info"), i => KINDS[i.kind][0])].sort((p, q) => q[1] - p[1]).map(([k, v]) => [k, v, "รายการ"])];
+  const s0 = wb.addWorksheet("สรุป", { properties: { tabColor: { argb: NAVY } } });
+  s0.columns = [{ width: 42 }, { width: 12 }, { width: 24 }];
+  s0.mergeCells(1, 1, 1, 3); Object.assign(s0.getCell(1, 1), { value: `ตรวจโอที ${monthTxt} — สรุป`, font: { bold: true, size: 14, color: { argb: NAVY } } });
+  s0.addRow([]);
+  for (const v of sum) {
+    const r = s0.addRow(v);
+    if (v[0] && v[1] === "" && v[2] === "") { r.eachCell({ includeEmpty: true }, c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = fill(NAVY); }); }
+    else if (v[0]) { r.getCell(2).numFmt = "#,##0"; r.getCell(2).alignment = { horizontal: "right" }; r.getCell(3).font = { color: { argb: GREY } }; r.eachCell(c => { c.border = { bottom: thin }; }); }
+  }
+
+  // ---- ต้องตรวจ / ข้อสังเกต ----
+  const issueCols = [["แก้แล้ว", 8, "center"], ["รหัสพนักงาน", 14], ["ชื่อ-สกุล", 26], ["วันที่", 10, "center"], ["กะ", 14, "center"], ["สแกนเข้า – ออก", 16, "center"],
+    ["คำขอโอที", 44], ["TigerSoft", 13, "right"], ["ควรได้", 9, "right"], ["เรื่อง", 22], ["รายละเอียด", 60], ["งานที่ทำ", 34], ["หมายเหตุ HR", 28], ["โดย", 16]];
+  const issueRows = gs => gs.map(g => { const t = g.t, m = S.marks.get(g.key);
+    return { done: !!m?.done, row: [m?.done ? "✓" : "", g.emp, g.name, dTH(g.date), shiftTxt(t), t ? scanOf(t) : "",
+      g.reqs.map(reqText).join("\n") || "ไม่มีคำขอ", otLines(t) || "0:00", g.day?.expected != null ? hhmm(g.day.expected) : "",
+      [...new Set(g.issues.map(i => KINDS[i.kind][0]))].join("\n"), [...new Set(g.issues.map(i => `• ${i.text}`))].join("\n"),
+      [...new Set(g.reqs.map(x => x.note).filter(Boolean))].join("\n"), m?.note || "", m?.by_name || ""] }; });
+  const tone = color => (r, v) => {
+    r.getCell(11).font = { color: { argb: color } }; r.getCell(10).font = { bold: true, color: { argb: color } };
+    if (v.done) { r.eachCell({ includeEmpty: true }, c => { c.font = { ...(c.font || {}), color: { argb: GREY } }; }); r.getCell(1).font = { bold: true, color: { argb: GREEN } }; }
+  };
+  sheet("ต้องตรวจ", "รายการที่ต้องแก้ใน TigerSoft", issueCols, issueRows(warnG), tone(RED), RED);
+  sheet("ข้อสังเกต", "ข้อสังเกต (ไม่ต้องแก้)", issueCols, issueRows(infoG), tone(GOLD), GOLD);
+
+  // ---- เทียบยอดรายวัน ----
+  const days = [...R.days].sort((p, q) => byEmpDate({ emp: p.emp, date: p.t?.date || p.date }, { emp: q.emp, date: q.t?.date || q.date }));
+  sheet("เทียบยอดรายวัน", "เทียบยอดที่ขอกับ TigerSoft รายคน-วัน",
+    [["รหัสพนักงาน", 14], ["ชื่อ-สกุล", 26], ["วันที่", 10, "center"], ["กะ", 14, "center"], ["สแกนเข้า – ออก", 16, "center"], ["คำขอ", 8, "center"],
+     ["ยอดที่ขอ", 10, "right"], ["ควรได้", 10, "right"], ["TigerSoft", 10, "right"], ["ต่าง", 9, "right"], ["ผลเทียบยอด", 32]],
+    days.map(d => ({ ok: d.result === "ตรง", manual: d.result === "TigerSoft มากกว่าที่ขอ", row: [d.emp, d.name, dTH(d.t?.date || d.date), shiftTxt(d.t), d.t ? scanOf(d.t) : "", d.reqs.length,
+      hhmm(d.asked), d.expected != null ? hhmm(d.expected) : "", hhmm(d.time), d.diff ? `${d.diff > 0 ? "+" : "−"}${hhmm(Math.abs(d.diff))}` : "", d.result] })),
+    (r, v) => { r.getCell(11).font = { bold: !v.ok, color: { argb: v.ok ? GREEN : v.manual ? GOLD : RED } }; if (!v.ok && !v.manual) r.getCell(10).font = { bold: true, color: { argb: RED } }; });
+
+  // ---- ทุกคำขอ ----
+  const reqs = [...R.requests].sort((p, q) => byEmpDate({ emp: p.emp, date: p.t?.date || p.date }, { emp: q.emp, date: q.t?.date || q.date }) || p.start - q.start);
+  sheet("ทุกคำขอ", "คำขอโอทีทั้งหมด",
+    [["รหัสพนักงาน", 14], ["ชื่อ-สกุล", 26], ["วันที่", 10, "center"], ["กะ", 14, "center"], ["สแกนเข้า – ออก", 16, "center"], ["ระดับ", 8, "center"], ["ชนิด", 16],
+     ["รูปแบบ", 12], ["เริ่ม", 8, "center"], ["ถึง", 8, "center"], ["ชั่วโมงที่ขอ", 10, "right"], ["สแกนครอบคลุม", 11, "right"], ["ผลเวลาสแกน", 28], ["งานที่ทำ", 40]],
+    reqs.map(r => ({ row: [r.emp, r.name, dTH(r.t?.date || r.date), shiftTxt(r.t), r.t ? scanOf(r.t) : "", r.lv || "", TYPES[r.typ] || r.typ, IO[r.io] || r.io || "",
+      hhmm(r.start), hhmm(r.end), hhmm(r.hours), r.covered != null ? hhmm(r.covered) : "", r.scan || "", r.note || ""] })));
+
+  // ---- เวลากะ ----
+  sheet("เวลากะ", "เวลากะที่ใช้ตรวจ", [["กะ", 10, "center"], ["วันทำงาน", 10, "right"], ["เข้า", 9, "center"], ["เลิก", 12, "center"], ["พัก (วันหยุด)", 16, "center"], ["นับชั่วโมง", 22], ["สถานะ", 14, "center"]],
+    Object.keys(S.guess).sort().map(c => { const x = shiftFor(c), ok = !!(S.db[c] && !S.edits[c]);
+      return { ok, row: [c, S.guess[c].days, tm(x?.start), tm(x?.end) + (x?.end >= 1440 ? " (+1)" : ""), x?.brk ? `${tm(x.brk[0])}–${tm(x.brk[1])}` : "",
+        x?.byHours ? (x.span === 510 ? "8.5 ชม. ไม่หักพัก" : "9.5 ชม. หักพัก 1 ชม.") : "", ok ? "ยืนยันแล้ว" : "ระบบเดา"] }; }),
+    (r, v) => { r.getCell(7).font = { bold: true, color: { argb: v.ok ? GREEN : GOLD } }; });
+
+  const buf = await wb.xlsx.writeBuffer(), a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  a.download = `ตรวจโอที_${S.ym || ""}.xlsx`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
