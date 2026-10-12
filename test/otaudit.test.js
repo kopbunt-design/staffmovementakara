@@ -5,7 +5,7 @@ const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8St
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const strip = f => read(`${ROOT}/js/${f}`).replace(/^import[^;]*;/gm, "").replace(/^export \{[^}]*\};?/gm, "").replace(/^export /gm, "");
 const DC = new Function(strip("diligence-calc.js") + "; return { parseProcessed, serialToISO, durMin };")();
-const M = new Function("parseProcessed", "serialToISO", "durMin", strip("otaudit-calc.js") + "; return { parseRequests, audit, unionLen, hhmm, clockOf, isoToDay };")(DC.parseProcessed, DC.serialToISO, DC.durMin);
+const M = new Function("parseProcessed", "serialToISO", "durMin", strip("otaudit-calc.js") + "; return { parseRequests, audit, unionLen, hhmm, clockOf, isoToDay, expectedOT, inferShiftTimes };")(DC.parseProcessed, DC.serialToISO, DC.durMin);
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 
@@ -64,5 +64,36 @@ eq(kinds(r).includes("f01"), false, "F01 วันหยุด OT1 8:30 = ถู
 r = run([D(3), D(4, { dayType: "H", inMin: at(4, 13), outMin: at(4, 16), ot: { "1": 180 } })], [Q(3, "S", 13, 16, 3)]);
 eq(kinds(r).includes("wrongday"), true, "ขอวันที่ 4 แต่ TigerSoft ขึ้นวันที่ 5 = อาจลงวันผิด");
 eq(M.clockOf(at(1, 6.05), day0), "06:03 (+1)", "แสดงเวลาข้ามวัน (ไม่ผ่านเขตเวลา)");
+
+// ---- เวลากะ: คิดโอทีที่ควรได้ + ตรวจชนิดกับเวลากะ
+const NOR = { NOR: { start: 450, end: 1020, brk: [720, 780] } };
+const runS = (days, qs, lv = "O2") => M.audit(mkProc(days), qs, () => lv, "2026-09", NOR);
+r = runS([D(0, { outMin: at(0, 19.1), ot: { "1.5": 120 } })], [Q(0, "E", 17, 19, 2)]);
+eq([r.days[0].expected, r.days[0].result], [120, "ตรง"], "วันทำงาน: หลังเลิกงาน 17–19 = 2:00");
+r = runS([D(0, { outMin: at(0, 18.75), ot: { "1.5": 90 } })], [Q(0, "E", 17, 19, 2)]);
+eq([r.days[0].expected, r.days[0].result], [90, "ตรง"], "สแกนออก 18:45 → ควรได้ 1:30 (ปัดลง 30 นาที)");
+r = runS([D(0, { outMin: at(0, 19.1), ot: { "1.5": 150 } })], [Q(0, "E", 17, 19, 2)]);
+eq(r.days[0].result, "TigerSoft ขึ้นมากกว่าที่ควร", "ต่าง 30 นาทีก็ขึ้น");
+r = runS([D(0, { inMin: at(0, 6.4), ot: { "1.5": 90 } })], [Q(0, "S", 6.5, 7.5, 1), Q(0, "B", 12.5, 13, 0.5)]);
+eq(r.days[0].expected, 90, "วันทำงาน: ก่อนเริ่มงาน 1:00 + พักเที่ยงที่ขอ 0:30 = 1:30");
+r = runS([D(0, { ot: { "1.5": 30 } })], [Q(0, "S", 6.5, 7.5, 1), Q(0, "B", 12.5, 13, 0.5)]);
+eq(r.days[0].expected, 30, "สแกนเข้า 7:30 → ก่อนเริ่มงานไม่ได้ เหลือพักเที่ยง 0:30");
+const holD = o => D(0, { dayType: "H", inMin: at(0, 6.4), outMin: at(0, 20.05), ...o });
+r = runS([holD({ ot: { "1": 510, "3": 210 } })], [Q(0, "S", 6.5, 20, 13.5)]);
+eq(r.days[0].expected, 750, "วันหยุด: 6:30–20:00 หักพัก 1 ชม. = 12:30");
+r = runS([holD({ ot: { "1": 510, "3": 270 } })], [Q(0, "S", 6.5, 20, 13.5), Q(0, "B", 12.5, 13, 0.5)]);
+eq(r.days[0].expected, 780, "วันหยุด + ขอพักเที่ยง 12:30–13:00 → หักพักแค่ 30 นาที = 13:00");
+r = runS([D(0, { ot: { "1.5": 60 } })], [Q(0, "S", 7, 8.5, 1.5)]);
+eq(kinds(r).includes("position"), true, "ก่อนเริ่มงานแต่เลยเวลาเข้ากะ");
+r = runS([D(0, { ot: { "1.5": 60 } })], [Q(0, "E", 16, 18, 2)]);
+eq(kinds(r).includes("position"), true, "หลังเลิกงานแต่เริ่มก่อนเลิกกะ");
+r = runS([D(0, { leaveOk: true, note: "ลาพักร้อน", ot: { "1.5": 60 } })], [Q(0, "E", 17, 18, 1)]);
+eq(kinds(r).includes("leaveday"), true, "ขอโอทีวันที่ลา");
+// เดาเวลากะจากคำขอ (≥ 3 คำขอ) + เวลาพักจากวันหยุด
+const many = []; const pdays = [];
+for (let i = 0; i < 6; i++) { pdays.push(D(i)); many.push(Q(i, "S", 6.5, 7.5, 1), Q(i, "E", 17, 18, 1)); }
+for (let i = 7; i < 10; i++) { pdays.push(holD({ date: DC.serialToISO(day0 + i), inMin: at(i, 7.4), outMin: at(i, 17.05), ot: { "1": 510 } })); many.push(Q(i, "S", 7.5, 17, 9.5)); }
+const g = M.inferShiftTimes(mkProc(pdays), many).NOR;
+eq([g.start, g.end, g.brk], [450, 1020, [720, 780]], "เดาเวลากะ NOR 07:30–17:00 พัก 12:00–13:00");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
