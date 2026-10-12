@@ -65,7 +65,8 @@ export function renderOtAudit() {
       <span style="font-size:12px;margin-left:6px;">${S.files[k] ? `✅ ${esc(S.files[k])}` : ""}</span></div>`;
   pg.innerHTML = `
   <div class="page-header"><div><div class="page-heading">ตรวจโอที</div>
-    <div class="page-sub">เทียบคำขอโอทีกับรายงานหลังประมวลจาก TigerSoft — ได้รายการให้ไปแก้ใน TigerSoft</div></div></div>
+    <div class="page-sub">เทียบคำขอโอทีกับรายงานหลังประมวลจาก TigerSoft — ได้รายการให้ไปแก้ใน TigerSoft</div></div>
+    <div class="header-actions"><a class="btn btn-secondary" href="docs/ot-audit-guide.html" target="_blank" rel="noopener" title="กติกาตรวจโอทีทั้งหมด">📖 คู่มือตรวจโอที</a></div></div>
   <div class="section mt-4 pb-4">
     <div class="card card-body">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">
