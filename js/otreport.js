@@ -225,13 +225,13 @@ async function pdfS(g) {
   const doc = newDoc(), t = g.totals, R = S.rep;
   const c = chrome(doc, g.name, `${monthEn(S.ym)} Diligence Allowance`, `${g.name}  •  Time ${S.ym}-01 to ${lastDay(S.ym)}  •  Paid with ${monthEn(nextYM(S.ym))} salary  •  Level S1–S3`,
     [["EMPLOYEES", fmtN(t.employees)], ["QUALIFIED", R.hasDil ? fmtN(t.dilPeople) : "—", COL.green], ["NOT QUALIFIED", R.hasDil ? fmtN(t.employees - t.dilPeople) : "—", COL.red], ["TOTAL (THB)", R.hasDil ? baht(t.dil) : "—", COL.green]]);
-  const body = g.rows.map((r, i) => [i + 1, r.division, r.department, r.section, r.team, r.code, r.name, r.dil?.qualified ? r.dil.streak : "-",
-    r.dil ? baht(r.dil.amount) : "—", r.status.join(" · ")]);                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF (ผู้ใช้ 2026-10-12)
-  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "Month", "Diligence", "Status"], body,
-    [{ content: "TOTAL", colSpan: 8 }, R.hasDil ? baht(t.dil) : "—", ""],
-    [28, 90, 120, 120, 110, 90, 190, 70, 80, 145], ["center", "left", "left", "left", "left", "left", "left", "center", "right", "left"],
-    d => { if (d.column.index === 8) d.cell.styles.textColor = d.cell.raw === "0" || d.cell.raw === "—" ? COL.ter : COL.green;
-           if (d.column.index === 9) d.cell.styles.textColor = COL.sub; });
+  const body = g.rows.map((r, i) => [i + 1, r.division, r.department, r.section, r.team, r.code, r.name,
+    r.dil ? (r.dil.qualified && r.dil.amount ? `${baht(r.dil.amount)} (${r.dil.streak})` : baht(r.dil.amount)) : "—", r.status.join(" · ")]);   // "300 (1)" = ยอด (เดือนต่อเนื่อง)                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF (ผู้ใช้ 2026-10-12)
+  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "Diligence", "Status"], body,
+    [{ content: "TOTAL", colSpan: 7 }, R.hasDil ? baht(t.dil) : "—", ""],
+    [28, 100, 125, 125, 115, 90, 200, 90, 170], ["center", "left", "left", "left", "left", "left", "left", "right", "left"],
+    d => { if (d.column.index === 7) d.cell.styles.textColor = d.cell.raw === "0" || d.cell.raw === "—" ? COL.ter : COL.green;
+           if (d.column.index === 8) d.cell.styles.textColor = COL.sub; });
   finish(doc, "Source: saved diligence results + employee master");
   return doc;
 }
