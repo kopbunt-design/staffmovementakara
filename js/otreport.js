@@ -210,7 +210,8 @@ async function pdfO(g) {
     [["EMPLOYEES", fmtN(t.employees)], ["OT 1", H(t.ot1)], ["OT 1.5", H(t.ot15)], ["OT 3", H(t.ot3)], ["TOTAL OT", H(t.total)],
      ["DILIGENCE (THB)", R.hasDil ? baht(t.dil) : "—", COL.green], ["DATA REVIEW", review]]);
   const body = g.rows.map((r, i) => [i + 1, r.division, r.department, r.section, r.team, r.code, r.name, hm(r.ot1), hm(r.ot15), hm(r.ot3), hm(r.total),
-    r.dil ? baht(r.dil.amount) : "—", r.status.join(" · ")]);                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF ระดับ O (ผู้ใช้ 2026-10-12)
+    r.dil ? (r.dil.qualified && r.dil.amount ? `${baht(r.dil.amount)} (${r.dil.streak})` : baht(r.dil.amount)) : "—",   // "300 (1)" = ยอด (เดือนต่อเนื่อง)
+    r.status.join(" · ")]);                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF ระดับ O (ผู้ใช้ 2026-10-12)
   table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "OT 1", "OT 1.5", "OT 3", "Total", "Diligence", "Status"], body,
     [{ content: "DEPARTMENT TOTAL", colSpan: 7 }, H(t.ot1), H(t.ot15), H(t.ot3), H(t.total), R.hasDil ? baht(t.dil) : "—", ""],
     [28, 78, 100, 100, 100, 86, 170, 52, 52, 52, 56, 66, 103], ["center", "left", "left", "left", "left", "left", "left", "right", "right", "right", "right", "right", "left"],
