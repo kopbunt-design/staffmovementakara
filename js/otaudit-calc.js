@@ -261,16 +261,18 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     // ยอดที่ควรได้ (ผู้ใช้ 2026-10-12: "ส่วนมากชั่วโมงตรงตามที่ขอ") — ไม่พึ่งเวลากะ:
     //   ช่อง "รวม" ของแต่ละคำขอ (TigerSoft หักพักไว้แล้ว) · ตัดคำขอที่ซ้ำทุกอย่าง · ตัดส่วนที่สแกนไม่ครอบคลุม · ปัดลงทีละ 30 นาที
     //   วันหยุด ที่คำขอยังไม่หักพัก (รวม = ความยาวช่วง): TigerSoft หักพักให้เอง — F01 (ช่วงยาว ≥ 9 ชม.) หัก 1 ชม. ·
-    //   NOR (ช่วงคลุม 12:00–12:30) หัก 30 นาที (ก.ย. 2569: ขอ 06:30–00:00 รวม 17:30 → ได้ 17:00)
+    //   NOR (ช่วงคลุม 12:00–13:00) หัก 1 ชม. ลบส่วนที่ขอโอทีพักเที่ยงไว้ (ผู้ใช้ 2026-10-12: กะนี้พัก 1 ชม.)
     //   ก.ย. 2569: ตรงกับ TigerSoft 2,009 จาก 2,123 คน-วัน (95%) — ที่เหลือคือที่ต้องดูจริง
     const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}|${r.hours}`, seen = new Set();
     const live = g.reqs.filter(r => !r.nextDay);                    // คำขอที่ลงวันถัดไป TigerSoft ไม่นับ
     const qs = live.filter(r => !seen.has(sig(r)) && seen.add(sig(r))), dup = live.length - qs.length;
     const hol = t && /^H/i.test(t.dayType), f01 = t && String(t.shift).toUpperCase() === "F01";
     const nor = t && String(t.shift).toUpperCase() === "NOR", base = t ? t.day * 1440 : 0;
+    // NOR พัก 12:00–13:00 (ผู้ใช้ 2026-10-12) — ส่วนที่ขอโอทีพักเที่ยงไว้ไม่หัก
+    const norBrk = 60 - g.reqs.filter(r => r.typ === "B").reduce((s, r) => s + overlap(r.w0, r.w1, base + 720, base + 780), 0);
     const hoursOf = r => !hol || r.hours !== r.len ? r.hours
       : f01 && r.len >= 540 ? r.hours - 60
-      : nor && r.w0 <= base + 720 && r.w1 >= base + 750 ? r.hours - 30 : r.hours;
+      : nor && r.w0 <= base + 720 && r.w1 >= base + 780 ? r.hours - Math.max(0, norBrk) : r.hours;
     // คำขอที่ช่วงเวลาทับกันจริง (ไม่นับพักเที่ยงที่อยู่ในช่วงซึ่งหักพักไว้แล้ว) → นับส่วนที่ทับครั้งเดียว
     const nonB = qs.filter(r => r.typ !== "B"), Bs = qs.filter(r => r.typ === "B");
     const overlapCut = nonB.reduce((s, r) => s + r.len, 0) - unionLen(nonB.map(r => [r.w0, r.w1]));
