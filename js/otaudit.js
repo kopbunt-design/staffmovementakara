@@ -21,6 +21,7 @@ const KINDS = {
   position: ["ชนิดไม่ตรงเวลากะ", "info"],
   leaveday: ["ขอโอทีวันลา/ขาดงาน", "info"],
   wrongday: ["อาจลงวันผิด", "warn"],
+  nextday:  ["ลงวันถัดจากวันกะ (TigerSoft ไม่นับ)", "info"],
   holiday:  ["วันหยุดขอผิดชนิด", "info"],
   level:    ["ระดับไม่ตรงรูปแบบ (I/O)", "warn"],
   overlap:  ["ขอซ้ำ / ซ้อนกัน", "warn"],

@@ -209,20 +209,24 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
       const w0 = (base + shift) * 1440 + q.start, w1 = w0 + ((q.end - q.start + 1440) % 1440 || 1440);
       const t = T.get(`${q.emp}|${base + dd}`); if (!t) continue;
       const ov = t.inMin != null && t.outMin != null ? overlap(w0, w1, t.inMin, t.outMin) : 0;
-      if (!best || ov > best.ov) best = { ov, w0, w1, t };
-      if (ov >= w1 - w0 - SCAN_TOLERANCE) { best = { ov, w0, w1, t }; break; }
+      if (!best || ov > best.ov) best = { ov, w0, w1, t, dd };
+      if (ov >= w1 - w0 - SCAN_TOLERANCE) { best = { ov, w0, w1, t, dd }; break; }
     }
     if (!best) {
       const w0 = base * 1440 + q.start;
       best = { ov: 0, w0, w1: w0 + ((q.end - q.start + 1440) % 1440 || 1440), t: T.get(`${q.emp}|${base}`) || null };
     }
     const { t, w0, w1, ov } = best, len = w1 - w0;
-    const r = { ...q, w0, w1, len, covered: ov, t, dayKey: t ? `${q.emp}|${t.day}` : `${q.emp}|${base}`, lv: levelOf(q.emp) || "" };
+    // ลงวันที่ถัดจากวันกะ (เช่น กะ N01 วันที่ 26 ขอหลังเลิกงาน 08:00–09:00 แต่ลงวันที่ 27): TigerSoft ผูกคำขอกับกะของวันที่ในคำขอ
+    // → ไม่จ่ายให้ (ก.ย. 2569: 4 จาก 5 ราย) ผู้ใช้ 2026-10-12 ถือว่า TigerSoft ถูก → ไม่นับในยอดที่ควรได้ เป็นข้อสังเกต
+    const nextDay = best.dd === -1 && !!t;
+    const r = { ...q, w0, w1, len, covered: ov, t, nextDay, dayKey: t ? `${q.emp}|${t.day}` : `${q.emp}|${base}`, lv: levelOf(q.emp) || "" };
     // 1. เวลาสแกน
     if (q.typ === "B") r.scan = "พักเที่ยง — สแกนตรวจไม่ได้";
     else if (!t || t.inMin == null || t.outMin == null) r.scan = "ข้อมูลเวลาไม่พอ";
     else if (ov >= len - SCAN_TOLERANCE) r.scan = "ครบ";
     else r.scan = ov > 0 ? `สแกนครอบคลุม ${hhmm(ov)} จาก ${hhmm(len)}` : "เวลาสแกนไม่ครอบคลุมช่วงที่ขอ";
+    if (nextDay) issue("nextday", "info", { req: r, text: `คำขอลงวันที่ ${q.date} แต่เป็นช่วงของกะวันที่ ${t.date} — TigerSoft ไม่นับให้ (ถ้าทำจริงต้องแก้วันที่ในคำขอเป็น ${t.date})` });
     if (q.typ === "B") issue("lunch", "info", { req: r, text: `ขอโอทีพักเที่ยง ${hhmm(q.hours)} — ตรวจว่าทำงานจริง` });
     // สแกนไม่ครอบคลุม: TigerSoft ตัดตามสแกนอยู่แล้ว และยอดที่ควรได้ก็ตัดตามสแกน → ไม่ใช่เรื่องต้องแก้ แค่ข้อสังเกต
     else if (r.scan !== "ครบ") issue("scan", "info", { req: r, text: r.scan });
@@ -258,7 +262,8 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     //   NOR (ช่วงคลุม 12:00–12:30) หัก 30 นาที (ก.ย. 2569: ขอ 06:30–00:00 รวม 17:30 → ได้ 17:00)
     //   ก.ย. 2569: ตรงกับ TigerSoft 2,009 จาก 2,123 คน-วัน (95%) — ที่เหลือคือที่ต้องดูจริง
     const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}|${r.hours}`, seen = new Set();
-    const qs = g.reqs.filter(r => !seen.has(sig(r)) && seen.add(sig(r))), dup = g.reqs.length - qs.length;
+    const live = g.reqs.filter(r => !r.nextDay);                    // คำขอที่ลงวันถัดไป TigerSoft ไม่นับ
+    const qs = live.filter(r => !seen.has(sig(r)) && seen.add(sig(r))), dup = live.length - qs.length;
     const hol = t && /^H/i.test(t.dayType), f01 = t && String(t.shift).toUpperCase() === "F01";
     const nor = t && String(t.shift).toUpperCase() === "NOR", base = t ? t.day * 1440 : 0;
     const hoursOf = r => !hol || r.hours !== r.len ? r.hours
