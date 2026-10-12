@@ -44,6 +44,9 @@ const lastDay = ym => { const [y, m] = ym.split("-").map(Number); return `${ym}-
 const isDateSerial = v => typeof v === "number" && v > 40000 && v < 80000;
 const str = v => String(v ?? "").trim();
 // "0:02" / "1-00:00" / "0-04:15" → มีค่าไม่ใช่ศูนย์ไหม
+// "2:30" / "1-00:00" (วัน-ชม:นาที) → นาที · วัน = 24 ชม. (ช่องโอทีไม่เคยเกินวัน)
+export const durMin = v => { const t = str(v); let m = /^(\d+)-(\d+):(\d+)$/.exec(t); if (m) return +m[1] * 1440 + +m[2] * 60 + +m[3];
+  m = /^(\d+):(\d+)/.exec(t); return m ? +m[1] * 60 + +m[2] : 0; };
 const nonZero = v => typeof v === "number" ? v > 0 : /[1-9]/.test(str(v));
 
 // รหัสพนักงานในไฟล์ TigerSoft: ไม่ได้มีแค่ AKR… — มี DAY… (รายวัน) KCN… ฯลฯ ด้วย
@@ -61,6 +64,8 @@ export function parseProcessed(rows) {
               in: at("เข้า", 6), out: at("ออก", 8) };
   const cntCol = at("จำนวนพนักงาน", -1);
   C.note = cntCol > 0 ? cntCol - 1 : 32;
+  // ชั่วโมงโอทีที่ TigerSoft คิด แยกตามอัตรา (หัวตาราง "1" "1.5" "2" "2.5" "3" "6") — ใช้ในหน้าตรวจโอที
+  const OT_RATES = ["1", "1.5", "2", "2.5", "3", "6"].map(k => [k, h.indexOf(k)]).filter(([, i]) => i >= 0);
   const emps = new Map();
   let cur = null;
   for (const r of rows.slice(hi + 1)) {
@@ -76,7 +81,8 @@ export function parseProcessed(rows) {
       late: nonZero(r[C.late]) ? str(r[C.late]) : "", early: nonZero(r[C.early]) ? str(r[C.early]) : "",
       leaveOk: nonZero(r[C.leaveOk]), leaveDed: nonZero(r[C.leaveDed]), deduct: nonZero(r[C.deduct]) ? str(r[C.deduct]) : "",
       note: str(r[C.note]).replace(/\s+/g, " "),
-      inMin: isDateSerial(r[C.in]) ? serialMinute(r[C.in]) : null, outMin: isDateSerial(r[C.out]) ? serialMinute(r[C.out]) : null });
+      inMin: isDateSerial(r[C.in]) ? serialMinute(r[C.in]) : null, outMin: isDateSerial(r[C.out]) ? serialMinute(r[C.out]) : null,
+      ot: Object.fromEntries(OT_RATES.map(([k, i]) => [k, durMin(r[i])])) });
   }
   if (!emps.size) throw new Error("อ่านรายงานหลังประมวลแล้วไม่พบพนักงาน (แถวรหัสพนักงาน)");
   return emps;
