@@ -122,4 +122,17 @@ eq(r.days[0].expected, 660, "วันหยุด 9.5 ชม.: 12:21 − พั
 r = runH([FD({ ot: { "1.5": 150 } })], [Q(0, "S", 18, 19, 1)], 570);
 eq(kinds(r).includes("position"), false, "กะนับชั่วโมง ไม่ตรวจชนิดกับเวลากะ");
 
+// อัตราตามวันที่โอทีตก: กะดึก 23:30–08:00 ทำต่อ 08:00–12:00 · วันรุ่งขึ้นเป็นวันหยุด = 3 เท่า
+const N01 = { N01: { start: 1410, end: 1920, brk: null } };
+const runN = (days, qs) => M.audit(mkProc(days), qs, () => "O2", "2026-09", N01);
+const ND = o => D(0, { shift: "N01", inMin: at(0, 23.4), outMin: at(1, 12.05), ...o });
+r = runN([ND({ ot: { "3": 240 } }), D(1, { dayType: "H", inMin: null, outMin: null })], [Q(0, "E", 8, 12, 4)]);
+eq(kinds(r).includes("rate"), false, "ตกวันหยุด ได้ 3 เท่า = ถูก");
+r = runN([ND({ ot: { "1.5": 240 } }), D(1, { dayType: "H", inMin: null, outMin: null })], [Q(0, "E", 8, 12, 4)]);
+eq(kinds(r).includes("rate"), true, "ตกวันหยุด แต่ได้ 1.5 เท่า = ผิด");
+r = runN([ND({ ot: { "3": 240 } }), D(1)], [Q(0, "E", 8, 12, 4)]);
+eq(kinds(r).includes("rate"), true, "ไม่ตกวันหยุด แต่ได้ 3 เท่า = ผิด");
+r = runN([ND({ ot: { "1.5": 240 } }), D(1)], [Q(0, "E", 8, 12, 4)]);
+eq(kinds(r).includes("rate"), false, "วันทำงาน 1.5 เท่า = ถูก");
+
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

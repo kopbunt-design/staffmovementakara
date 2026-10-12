@@ -18,6 +18,8 @@
 //   7. ชนิดไม่ตรงกะ: ก่อนเริ่มงานต้องจบก่อนเข้ากะ · หลังเลิกงานต้องเริ่มหลังเลิกกะ (วันทำงาน)
 //   8. ขอโอทีในวันที่ลา / ขาดงาน
 //   9. โอทีรวมเกิน 36 ชม./สัปดาห์ (จาก TigerSoft — ไม่นับอัตรา 1 / 2 เท่า)
+//  10. อัตราตามวันที่โอทีตกจริง (ผู้ใช้ยืนยัน 2026-10-12): กะวันทำงานที่โอทีเลยเที่ยงคืนไปตกวันหยุด/นักขัตฤกษ์ = 3 เท่า
+//      (เช่น กะดึก 23:30–08:00 ทำต่อ 08:00–12:00 แล้ววันรุ่งขึ้นเป็นวันหยุด) · ไม่ตกวันหยุดเลยแต่ได้ 3 เท่า = ผิด
 // เวลาทั้งหมดคิดเป็น "นาทีนับจาก Excel serial" ไม่ผ่าน Date → ไม่มีปัญหาเขตเวลา
 //   (ไฟล์ตรวจเดิม OT_Audit แสดงเวลาสแกนเร็วไป 7 ชม. เพราะแปลงผ่าน UTC)
 // ============================================================================
@@ -112,6 +114,20 @@ export function expectedByHours(t, sh, reqs) {
   const sumH = reqs.reduce((s, q) => s + q.hours, 0), sumLen = reqs.reduce((s, q) => s + q.len, 0);
   const asked = Math.max(0, sumH - (sumLen - unionLen(reqs.map(q => [q.w0, q.w1]))));
   return Math.min(Math.floor(Math.max(0, raw) / OT_BLOCK) * OT_BLOCK, asked);
+}
+
+// นาทีโอที (ช่วงที่ขอ ∩ สแกน − เวลางานปกติ) ที่ตกบนวันปฏิทินที่เป็นวันหยุด/นักขัตฤกษ์ของคนนั้น
+export function holidayPart(t, sh, reqs, dayOf) {
+  const base = t.day * 1440;
+  const ws = reqs.filter(q => q.typ !== "B").map(q => [Math.max(q.w0, t.inMin), Math.min(q.w1, t.outMin)]).filter(w => w[1] > w[0]);
+  let m = 0;
+  for (const [a, b] of ws) for (let day = Math.floor(a / 1440); day * 1440 < b; day++) {
+    if (day === t.day) continue;                                     // วันของกะเอง = วันทำงาน
+    const other = dayOf(day); if (!other || !/^H/i.test(other.dayType)) continue;
+    const s0 = Math.max(a, day * 1440), s1 = Math.min(b, (day + 1) * 1440);
+    m += Math.max(0, s1 - s0 - overlap(s0, s1, base + sh.start, base + sh.end));
+  }
+  return m;
 }
 
 // ---------------------------------------------------------------- เดาเวลากะ (ให้ HR ยืนยัน)
@@ -262,6 +278,13 @@ export function audit(procMap, reqs, levelOf = () => "", ym = null, shifts = {})
     const sig = r => `${r.typ}|${r.io}|${r.w0}|${r.w1}`, dup = g.reqs.length - new Set(g.reqs.map(sig)).size;
     if (dup) issue("overlap", "warn", { day: d, text: `ขอซ้ำ ${dup} รายการ (ชนิด/เวลาเดียวกัน) — ลบคำขอที่ซ้ำใน TigerSoft` });
     else if (overlapCut > 0) issue("overlap", "info", { day: d, text: `คำขอช่วงเวลาซ้อนกัน ${hhmm(overlapCut)} — ตัดออกก่อนเทียบยอด` });
+    // 10. อัตราตามวันที่โอทีตกจริง — เฉพาะกะตามเวลา (รู้ช่วงเวลา) ในวันทำงาน
+    if (sh && !sh.byHours && t && !/^H/i.test(t.dayType) && t.inMin != null && t.outMin != null && g.reqs.length) {
+      const onHol = holidayPart(t, sh, g.reqs, day => T.get(`${g.emp}|${day}`));
+      const x3 = t.ot?.["3"] || 0, x15 = t.ot?.["1.5"] || 0;
+      if (onHol >= OT_BLOCK && !x3 && x15) issue("rate", "warn", { day: d, text: `โอที ${hhmm(onHol)} ตกวันหยุด/นักขัตฤกษ์ ควรเป็น 3 เท่า แต่ TigerSoft ให้ 1.5 เท่า` });
+      else if (x3 && onHol < OT_BLOCK) issue("rate", "warn", { day: d, text: `ได้ 3 เท่า ${hhmm(x3)} แต่โอทีไม่ได้ตกวันหยุด — วันทำงานควรเป็น 1.5 เท่า` });
+    }
     // 5. F01 วันหยุด OT1 ยังไม่หักพัก
     if (t && String(t.shift).toUpperCase() === "F01" && /^H/i.test(t.dayType) && (t.ot?.["1"] || 0) === F01_HOLIDAY_OT1 + 60)
       issue("f01", "warn", { day: d, text: `กะ F01 วันหยุด OT1 = 9:30 ยังไม่หักพัก 1 ชม. — ควรเป็น ${hhmm(F01_HOLIDAY_OT1)}` });
