@@ -251,6 +251,8 @@ let currentPage = "home";
 export function navigate(page) {
   // HR Invoice Hub เป็นเว็บแยก (/expense) โดเมนเดียวกัน session เดียวกัน — ไปหน้านั้นเลย ไม่ต้อง login ซ้ำ
   if (page === "expense") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/expense/"; return; }
+  // สต๊อกยูนิฟอร์มย้ายไปเป็นเว็บแยก /uniform (2026-10-14) — ฐานข้อมูลเดิม
+  if (page === "uniform") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/uniform/"; return; }
   currentPage = page;
   navOpen = null;
   import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
@@ -372,7 +374,6 @@ async function renderPage(page) {
   else if(page==="payrollbuild") (await import("./payroll-build-ui.js")).renderPayrollBuild();
   else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
   else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
-  else if(page==="uniform") (await import("./uniform.js")).renderUniform();
   else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
   else if(page==="docregister") (await import("./doc-register.js")).renderDocRegister();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();

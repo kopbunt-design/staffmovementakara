@@ -31,6 +31,13 @@ HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and
 - **Approver signs from the email without logging in**: `expense/approve.html?t=<token>` + `expense/approve.js` (no `spend.js` import). A token is issued by trigger each time an invoice enters `approval` (`exp_approve_tokens`, no RLS policies — only `exp_link_get` / `exp_link_decide` / `exp_approve_link` and the edge function read it), single use, 14 days. The page shows the real A4 (`invoiceDoc` in `doc.js`) and attachments; file and signature URLs come from `letter-notify` (`action: "exp_files"` + token), which therefore must have JWT verification **off** (it checks sessions itself). It signs as the approver HR chose, so the `exp_approve` mail goes to that approver only — `to_extra`/`cc` are dropped for it. Afterwards `letter-notify` is called with `exp_token` (no session) to mail the preparer.
 - DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql` and `schema_expense.sql` — change all three together.
 
+## Uniform Stock (`uniform/`) — separate app at `/uniform`
+
+Moved out of the HR app on 2026-10-14 (user wanted a modern look; the HR app's own styling stays as is). Same Vercel deploy, same Supabase session; `navigate("uniform")` redirects there, and `vercel.json` rewrites `/uniform` before the catch-all. Layout follows the Figma page "Uniform — สต๊อกยูนิฟอร์ม" (file 30MJ7bk8egMyFtmvHlbdyo).
+- `uniform/uni.js` (all UI, hash routes `#/overview` `#/people` `#/history[/itemId]` `#/items`; receive/issue/return/adjust in one right-hand drawer), `uniform/uni.css` (stock-specific styles on top of `/expense/spend.css`, which it links — a change there affects both apps).
+- Same rule as `expense/`: must NOT import `js/app.js`.
+- DB unchanged: `sql/schema_uniform.sql` (run 2026-10-14). Balances always come from the `uniform_balance` view (sum of `uniform_move`), never a stored column; a constraint trigger blocks issuing more than is on hand. New item types/sizes are added on the "รายการของ" page, not in SQL. Employee profile's uniform tab still reads the same tables.
+
 ## Gotchas
 
 - **Supabase key is intentionally hardcoded** in `js/supabase-config.js` (URL + anon/publishable key). This is a publishable key protected by RLS — do not "fix" this by moving it to env vars or a `.env` file; that would break the static Vercel deploy, which has no build step to inject env vars.

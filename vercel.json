@@ -9,6 +9,14 @@
       "destination": "/expense/index.html"
     },
     {
+      "source": "/uniform",
+      "destination": "/uniform/index.html"
+    },
+    {
+      "source": "/uniform/",
+      "destination": "/uniform/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -52,6 +60,15 @@
     },
     {
       "source": "/expense/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/uniform/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
