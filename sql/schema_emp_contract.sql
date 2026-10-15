@@ -39,6 +39,8 @@ create table if not exists emp_contracts (
 create index if not exists ec_status_idx on emp_contracts (status, created_at desc);
 -- ไม่มีทดลองงาน (แบบ Word มีกรณีนี้ เช่นผู้บริหาร) — ข้อ 7 ขึ้นว่า "ไม่มีทดลองงาน"
 alter table emp_contracts add column if not exists no_probation boolean not null default false;
+-- เลขบัตรเต็ม 13 หลัก — เดิมเก็บแค่ 5 ตัวท้าย ผู้ใช้ขอให้เก็บเต็ม (2026-10-15) · อ่านได้เฉพาะ HR ที่ทำสัญญา + ผู้ลงนาม/พยานของฉบับนั้น (RLS เดียวกับเงินเดือน)
+alter table emp_contracts add column if not exists id_card text check (id_card is null or id_card ~ '^\d{13}$');
 
 -- เนื้อหาแก้ได้เฉพาะร่าง/ส่งกลับ · สถานะและลายเซ็นเปลี่ยนผ่าน ec_* เท่านั้น
 create or replace function emp_contracts_guard() returns trigger language plpgsql as $$
@@ -52,7 +54,12 @@ begin
     raise exception 'ข้อมูลการลงนามแก้ไขไม่ได้';
   end if;
   if old.status in ('pending','signed','cancelled') and new.status <> 'cancelled'
-     and (to_jsonb(new) - 'updated_at' - 'emp_code' - 'remark') is distinct from (to_jsonb(old) - 'updated_at' - 'emp_code' - 'remark') then
+     and (to_jsonb(new) - 'updated_at' - 'emp_code' - 'remark' - 'id_card') is distinct from (to_jsonb(old) - 'updated_at' - 'emp_code' - 'remark' - 'id_card') then
+    raise exception 'สัญญาที่ส่งลงนาม/ลงนามแล้วแก้เนื้อหาไม่ได้ — ให้ผู้ลงนามส่งกลับ หรือยกเลิกแล้วทำฉบับใหม่';
+  end if;
+  -- ฉบับเก่าที่มีแค่ 5 ตัวท้าย: เติมเลขเต็มทีหลังได้ ถ้า 5 ตัวท้ายตรงกัน · มีเลขเต็มแล้วแก้ไม่ได้
+  if old.status in ('pending','signed','cancelled') and new.id_card is distinct from old.id_card
+     and (old.id_card is not null or right(new.id_card, 5) is distinct from old.id_last5) then
     raise exception 'สัญญาที่ส่งลงนาม/ลงนามแล้วแก้เนื้อหาไม่ได้ — ให้ผู้ลงนามส่งกลับ หรือยกเลิกแล้วทำฉบับใหม่';
   end if;
   return new;

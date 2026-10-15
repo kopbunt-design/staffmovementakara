@@ -8,7 +8,7 @@ import { readIdCard, readRegion, complete } from "./idcard-read.js";
 // ============================================================================
 // สัญญาจ้างงาน (AKR-OHR-FM-006) — งานเอกสาร HR · sql/schema_emp_contract.sql
 //   ผู้สมัครยังไม่อยู่ในทะเบียน → กรอกเอง หรืออ่านจากรูปบัตรประชาชน (Tesseract ในเบราว์เซอร์ รูปไม่ถูกส่งขึ้นไหน)
-//   ⚠️ เก็บเลขบัตรแค่ 5 ตัวท้าย — พิมพ์ฉบับจริงต้องใส่เลขเต็มอีกครั้ง (ระบบตรวจกับ 5 ตัวท้าย + เลขตรวจสอบ)
+//   เก็บเลขบัตรเต็ม (id_card · ผู้ใช้ขอ 2026-10-15 — เดิมเก็บแค่ 5 ตัวท้าย) · ฉบับเก่าที่มีแค่ 5 ตัวท้ายเติมเลขเต็มได้ตอนพิมพ์
 //   ลงนามออนไลน์: ผู้แทนบริษัท + พยาน (ec_sign) → ครบสองคน = ลงนามแล้ว → HR พิมพ์ให้พนักงานเซ็นมือ
 //   ไม่รันเลขเอกสาร · อีเมลใช้แบบ ec_sign / ec_signed / ec_rejected (แก้ได้ที่แท็บตั้งค่า)
 // ============================================================================
@@ -107,7 +107,7 @@ async function sigData(path) {
 function openContract(r) {
   const editable = !r || (canWrite() && ["draft", "rejected"].includes(r.status));
   let d = r ? { ...r } : { location: "phichit", contract_date: new Date().toISOString().slice(0, 10), title_th: "นาย", salary: "" };
-  let idFull = "", sig = null, read = new Set();
+  let idFull = r?.id_card || "", sig = null, read = new Set();
   const el = document.createElement("div"); el.className = "modal-overlay";
   el.innerHTML = `<div class="modal lt-modal"><div class="modal-header"><div class="modal-title">${r ? `สัญญาจ้าง · ${esc(who(r))} ${badge(r.status)}` : "ทำสัญญาจ้างงาน"}</div><button class="modal-close" data-x>✕</button></div>
     <div class="lt-body"><div class="lt-form" id="ecForm"></div><div class="lt-preview"><iframe id="ecFrame" title="ตัวอย่างสัญญา"></iframe></div></div><div class="modal-footer" id="ecFoot"></div></div>`;
@@ -124,7 +124,7 @@ function openContract(r) {
   const L = () => LOC[d.location] || LOC.phichit;
   const positions = [...new Set(allEmployees.map(e => e.position).filter(Boolean))].sort();
   const form = () => {
-    const idOk = idFull && idValid(idFull), match = idFull && d.id_last5 && idFull.replace(/\D/g, "").slice(-5) !== d.id_last5;
+    const idOk = idFull && idValid(idFull), match = !editable && idFull && d.id_last5 && idFull.replace(/\D/g, "").slice(-5) !== d.id_last5;
     $("#ecForm").innerHTML = `
       ${editable ? `<div class="lt-hint" style="margin-top:0;"><b>อ่านจากบัตรประชาชน</b> (รูปถ่าย หรือ PDF สำเนาบัตร) — อ่านในเครื่องนี้ ไฟล์ไม่ถูกส่งขึ้นที่ไหน · อ่านแล้วตรวจช่องสีเหลืองทุกช่อง
         <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><label class="btn btn-sm btn-secondary" style="cursor:pointer;">📷 เลือกรูป / PDF บัตร<input type="file" id="ecImg" accept="image/*,application/pdf,.pdf" hidden></label><span id="ecOcr" class="text-muted"></span></div></div>` : ""}
@@ -134,8 +134,8 @@ function openContract(r) {
       <div class="lt-2"><label class="lt-f"><span>คำนำหน้า${read.has("title_th") ? ' <b style="color:var(--amber);">·</b>' : ""}</span><select class="form-control" data-k="title_th" ${editable ? "" : "disabled"}>${["นาย", "นาง", "นางสาว"].map(t => `<option ${d.title_th === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>${f("name_th", "ชื่อ-สกุล (ไทย)")}</div>
       ${f("name_en", "ชื่อ-สกุล (อังกฤษ)")}
       <label class="lt-f"><span>เลขบัตรประชาชน 13 หลัก${read.has("id") ? ' <b style="color:var(--amber);">· อ่านจากบัตร ตรวจด้วย</b>' : ""}</span>
-        <input class="form-control" id="ecId" inputmode="numeric" value="${esc(idFull)}" placeholder="${d.id_last5 ? `ที่บันทึกไว้: …${esc(d.id_last5)} (พิมพ์เลขเต็มเพื่อพิมพ์ฉบับจริง)` : "พิมพ์หรืออ่านจากรูปบัตร"}" ${read.has("id") ? 'style="background:#FFFBEB;border-color:#FCD34D;"' : ""}>
-        <span style="font-weight:400;font-size:11.5px;color:${idFull ? (idOk && !match ? "var(--green)" : "var(--red)") : "var(--muted)"};">${idFull ? (match ? "✕ ไม่ตรงกับ 5 ตัวท้ายที่บันทึกไว้" : idOk ? "✓ เลขถูกต้อง (ตรวจเลขหลักสุดท้ายแล้ว)" : "✕ เลขไม่ถูกต้อง — ตรวจอีกครั้ง") : "ระบบเก็บแค่ 5 ตัวท้าย เลขเต็มใช้ตอนพิมพ์เท่านั้น"}</span></label>
+        <input class="form-control" id="ecId" inputmode="numeric" value="${esc(idFull)}" placeholder="${d.id_last5 ? `ที่บันทึกไว้: …${esc(d.id_last5)} (ฉบับเก่า — ใส่เลขเต็มแล้วระบบจะเก็บไว้)` : "พิมพ์หรืออ่านจากรูปบัตร"}" ${read.has("id") ? 'style="background:#FFFBEB;border-color:#FCD34D;"' : ""}>
+        <span style="font-weight:400;font-size:11.5px;color:${idFull ? (idOk && !match ? "var(--green)" : "var(--red)") : "var(--muted)"};">${idFull ? (match ? "✕ ไม่ตรงกับ 5 ตัวท้ายที่บันทึกไว้" : idOk ? "✓ เลขถูกต้อง (ตรวจเลขหลักสุดท้ายแล้ว)" : "✕ เลขไม่ถูกต้อง — ตรวจอีกครั้ง") : "บันทึกเลขเต็มไว้กับสัญญา"}</span></label>
       ${f("birth_date", "วันเกิด", "date")}
       <label class="lt-f"><span>ที่อยู่ (ตามบัตร)${read.has("address") ? ' <b style="color:var(--amber);">· อ่านจากบัตร ตรวจด้วย</b>' : ""}</span><textarea class="form-control" data-k="address" rows="2" ${editable ? "" : "disabled"} ${read.has("address") ? 'style="background:#FFFBEB;border-color:#FCD34D;"' : ""}>${esc(d.address || "")}</textarea></label>
       <div class="lt-sub">ตำแหน่ง · ค่าตอบแทน</div>
@@ -181,7 +181,7 @@ function openContract(r) {
     birth_date: d.birth_date || null, address: d.address?.trim() || null, start_date: d.start_date, position_th: (d.position_th || "").trim(), position_en: d.position_en?.trim() || null,
     job_level: d.job_level?.trim() || null, salary: Number(d.salary), work_days: d.work_days || null, work_hours: d.work_hours || null, workplace: d.workplace || null,
     probation_end: d.no_probation ? null : d.probation_end || null, no_probation: !!d.no_probation, updated_at: new Date().toISOString() };
-    if (idFull) x.id_last5 = idFull.slice(-5); return x; };
+    if (idFull) { x.id_last5 = idFull.slice(-5); x.id_card = idFull; } return x; };
   const check = () => { const x = row();
     if (!x.name_th) return "กรอกชื่อ"; if (!x.start_date) return "กรอกวันเริ่มงาน"; if (!x.position_th) return "กรอกตำแหน่ง"; if (!(x.salary > 0)) return "กรอกเงินเดือน";
     if (idFull && !idValid(idFull)) return "เลขบัตรประชาชนไม่ถูกต้อง"; if (!idFull && !d.id_last5) return "กรอกเลขบัตรประชาชน"; return ""; };
@@ -226,7 +226,8 @@ function openContract(r) {
     el.querySelector("[data-save]")?.addEventListener("click", async () => { if (await save()) done("บันทึกร่างแล้ว"); });
     el.querySelector("[data-print]")?.addEventListener("click", async () => {
       if (r?.status === "signed") { if (!idFull || !idValid(idFull)) { toast("ใส่เลขบัตรประชาชนเต็ม 13 หลักก่อนพิมพ์ฉบับจริง", "error"); $("#ecId")?.focus(); return; }
-        if (r.id_last5 && idFull.slice(-5) !== r.id_last5) { toast("เลขบัตรไม่ตรงกับ 5 ตัวท้ายที่บันทึกไว้", "error"); return; } }
+        if (r.id_last5 && idFull.slice(-5) !== r.id_last5) { toast("เลขบัตรไม่ตรงกับ 5 ตัวท้ายที่บันทึกไว้", "error"); return; }
+        if (!r.id_card) { const { error } = await supabase.from("emp_contracts").update({ id_card: idFull }).eq("id", r.id); if (!error) r.id_card = idFull; } }
       const w = window.open("", "_blank"); if (!w) { toast("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต pop-up แล้วลองใหม่", "error"); return; }
       w.document.open(); w.document.write(html(true)); w.document.close(); setTimeout(async () => { try { await w.document.fonts?.ready; } catch {} w.focus(); w.print(); }, 700);
     });
