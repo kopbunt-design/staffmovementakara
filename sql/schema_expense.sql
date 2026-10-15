@@ -344,7 +344,7 @@ on conflict do nothing;
 -- ------------------------------------------------------------------ 8. อีเมลแจ้งเตือน (ผ่าน Edge Function letter-notify · โหมด Outlook = ไฟล์ .eml)
 --   ตัวแปร: {{doc_no}}=เลขที่ · {{person}}=ผู้ขาย · {{kind}}=รายการแรก/หมวด · {{emp_code}}=ยอดชำระ · {{requester}} {{approver}} {{reason}} {{link}}
 alter table mail_templates drop constraint if exists mail_templates_key_check;
-alter table mail_templates add constraint mail_templates_key_check check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected'));
+alter table mail_templates add constraint mail_templates_key_check check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected'));
 insert into mail_templates (key, label, subject, html) values
 ('exp_review', 'HR Invoice Hub: ขอให้ตรวจ', '[ขอตรวจ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">

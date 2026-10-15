@@ -170,7 +170,7 @@ create policy "ls_read" on letter_signers for select using (has_perm('page.lette
 -- ------------------------------------------------------------------ แบบอีเมล
 alter table mail_templates drop constraint if exists mail_templates_key_check;
 alter table mail_templates add constraint mail_templates_key_check
-  check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected'));
+  check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected'));
 insert into mail_templates (key, label, subject, html) values
 ('fund_request', 'กองทุน: ขอให้กรรมการลงนาม', '[ขอลงนาม] แบบฟอร์มกองทุนสำรองเลี้ยงชีพ — {{person}} {{emp_code}}',
  $h$<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b;max-width:560px">

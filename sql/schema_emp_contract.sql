@@ -140,6 +140,10 @@ select r.key, p.key from app_roles r cross join (values ('page.empcontract'), ('
 where r.key = 'admin' on conflict do nothing;
 
 -- แบบอีเมล (แก้ได้ในหน้าสัญญาจ้าง → ตั้งค่า) · ตัวแปรชุดเดียวกับแบบอื่น
+-- ตาราง mail_templates จำกัดชื่อแบบไว้ (ชุดเดียวกับ schema_expense.sql / schema_fund_approval.sql — เพิ่มแบบใหม่ต้องแก้ทุกไฟล์)
+alter table mail_templates drop constraint if exists mail_templates_key_check;
+alter table mail_templates add constraint mail_templates_key_check
+  check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected'));
 insert into mail_templates (key, label, subject, html) values
   ('ec_sign', 'ขอลงนามสัญญาจ้าง', '[ขอลงนาม] สัญญาจ้างงาน — {{person}}',
    '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b"><p><b>มีสัญญาจ้างงานรอลงนามจากท่าน</b></p><p>{{person}} · {{kind}} · {{emp_code}}</p><p><a href="{{link}}">เปิดสัญญาเพื่อลงนาม</a></p><p style="color:#64748b;font-size:12px">ส่งโดย {{requester}}</p></div>'),
