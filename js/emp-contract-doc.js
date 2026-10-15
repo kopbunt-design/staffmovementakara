@@ -33,14 +33,14 @@ export function idValid(id) {
 }
 
 // ---------------------------------------------------------------- เอกสาร 4 หน้า
-const CSS = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:'Sarabun','TH Sarabun New',sans-serif;color:#222;font-size:15px;line-height:1.66}
-.pg{width:210mm;height:297mm;padding:12mm 18mm 0;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
+const CSS = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,'Sarabun',sans-serif;color:#222;font-size:14.4px;line-height:2}
+.pg{width:210mm;height:297mm;padding:12mm 22mm 0 25mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
 .hd{display:flex;align-items:flex-end;gap:0;border-bottom:3px solid #1f5fa8;padding-bottom:1mm;margin-bottom:8mm}.hd img{height:15mm;margin-bottom:-1mm}
 .hd span{margin-left:auto;font-size:13px;color:#1f3c66}
-.ft{position:absolute;left:18mm;right:18mm;bottom:12mm;border-top:3px solid #1f5fa8;padding-top:1mm;display:flex;justify-content:space-between;font-size:11px;color:#333}
-h1{text-align:center;font-size:20px;margin:2mm 0 4mm}.r{text-align:right}.ind{text-indent:18mm}.j{text-align:justify}
-h3{font-size:15px;text-decoration:underline;margin:5mm 0 1mm}.v{color:#1f3c88;font-weight:700}
-.kv{display:grid;grid-template-columns:40mm 1fr;margin:2mm 0}.sub{padding-left:14mm}
+.ft{position:absolute;left:25mm;right:22mm;bottom:12mm;border-top:3px solid #1f5fa8;padding-top:1mm;display:flex;justify-content:space-between;font-size:11px;color:#333}
+h1{text-align:center;font-size:19px;font-weight:700;margin:2mm 0 3mm}.r{text-align:right}.ind{text-indent:18mm}.j{text-align:justify}
+h3{font-size:14.4px;font-weight:400;text-decoration:underline;text-underline-offset:3px;margin:4mm 0 1mm}.v{color:#233f8e;font-weight:700}p{margin:0 0 2.5mm}
+.kv{display:grid;grid-template-columns:42mm 1fr;margin:1.5mm 0}.sub{padding-left:14mm}
 .sign{margin-top:18mm;text-align:center}.sign .b{margin:0 auto 12mm;width:170mm;white-space:nowrap}.sign .ln{display:flex;align-items:flex-end;justify-content:center;gap:2mm;height:16mm}
 .sign .ln img{max-height:16mm;max-width:60mm;margin-bottom:-3mm}.sign .dots{display:inline-block;width:70mm;border-bottom:1px dotted #333}
 .draft{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:56px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700}`;
@@ -54,7 +54,7 @@ export function contractHTML(d0, opts = {}) {
   const pos = `${d.position_th}${d.position_en ? ` (${d.position_en})` : ""}`;
   const signLine = (s, role, nameFallback) => `<div class="b"><div class="ln">ลงชื่อ${s?.img ? `<img src="${esc(s.img)}" alt="">` : ""}<span class="dots"></span>${role}</div>(${esc(s?.name || nameFallback || "........................................")})</div>`;
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(opts.title || "สัญญาจ้างงาน")}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"><style>${CSS}</style></head><body>
+  <style>${CSS}</style></head><body>
   <section class="pg">${wm}${hd}<h1>สัญญาจ้างงาน</h1><p class="r">เขียนที่ ${COMPANY.name}</p>
     <p class="ind j">สัญญาฉบับนี้ทำขึ้นเมื่อวันที่ ${v(thLong(d.contract_date))} ระหว่าง ${COMPANY.name} สำนักงาน${COMPANY.address} ซึ่งต่อไปในสัญญาฉบับนี้เรียกว่า "<b>บริษัท</b>" ฝ่ายหนึ่ง<b>และ</b> ${v(who)} บัตรประจำตัวประชาชนเลขที่ ${v(id)} ที่อยู่ ${v(d.address || "")} ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า "<b>พนักงาน</b>" อีกฝ่ายหนึ่ง</p>
     <p class="ind j"><b>บริษัท</b> และ <b>พนักงาน</b> ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า “<b>คู่สัญญา</b>” ได้ตกลงในสัญญาร่วมกันโดยมีรายละเอียดดังต่อไปนี้</p>
