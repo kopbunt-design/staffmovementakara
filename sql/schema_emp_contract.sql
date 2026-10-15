@@ -37,6 +37,8 @@ create table if not exists emp_contracts (
   created_at     timestamptz default now(), updated_at timestamptz default now()
 );
 create index if not exists ec_status_idx on emp_contracts (status, created_at desc);
+-- ไม่มีทดลองงาน (แบบ Word มีกรณีนี้ เช่นผู้บริหาร) — ข้อ 7 ขึ้นว่า "ไม่มีทดลองงาน"
+alter table emp_contracts add column if not exists no_probation boolean not null default false;
 
 -- เนื้อหาแก้ได้เฉพาะร่าง/ส่งกลับ · สถานะและลายเซ็นเปลี่ยนผ่าน ec_* เท่านั้น
 create or replace function emp_contracts_guard() returns trigger language plpgsql as $$

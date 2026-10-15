@@ -83,13 +83,17 @@ const loadPdf = () => pdfP ||= new Promise((ok, no) => { if (window.pdfjsLib) re
   const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
   s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
   s.onerror = () => { pdfP = null; no(new Error("โหลดตัวอ่าน PDF ไม่สำเร็จ")); }; document.head.appendChild(s); });
-async function pdfFirstPage(file) {
-  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, page = await doc.getPage(1);
-  const tc = await page.getTextContent(), text = tc.items.map(i => i.str + (i.hasEOL ? "\n" : " ")).join("");
-  const vp = page.getViewport({ scale: 3 }), c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
-  await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
-  return { text, canvas: c };
+async function pdfPages(file, max = 3) {
+  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, out = [];
+  for (let n = 1; n <= Math.min(max, doc.numPages); n++) {
+    const page = await doc.getPage(n), tc = await page.getTextContent(), text = tc.items.map(i => i.str + (i.hasEOL ? "\n" : " ")).join("");
+    const vp = page.getViewport({ scale: 3 }), c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    out.push({ text, canvas: c });
+  }
+  return out;
 }
+const score = r => ["id", "name_th", "name_en", "birth_date", "address"].filter(k => r[k]).length + (r.idOk ? 2 : 0);
 // ขยาย + ขาวดำ + เพิ่มความคมชัด ก่อนอ่าน (ตัวอักษรไทยบนบัตรเล็ก และพื้นหลังมีลาย) · src = ไฟล์รูป หรือ canvas
 async function prepImage(src) {
   const img = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src), scale = Math.min(3, Math.max(1, 2200 / img.width)), c = document.createElement("canvas");
@@ -101,16 +105,23 @@ async function prepImage(src) {
   for (let i = 0; i < a.length; i += 4) { const y = Math.min(255, Math.max(0, (a[i] - lo) * k)); a[i] = a[i + 1] = a[i + 2] = y; }
   g.putImageData(px, 0, 0); return c;
 }
+// PDF: ลองทีละหน้า (สูงสุด 3) — ข้อความในไฟล์ก่อน ไม่พอค่อยอ่านภาพ · เลือกหน้าที่อ่านได้มากสุด
 async function readIdCard(file, onProgress) {
-  let src = file;
-  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
-    const pg = await pdfFirstPage(file), fromText = parseIdCard(pg.text);
-    if (fromText.idOk && fromText.name_th) return { ...fromText, raw: pg.text };   // PDF ที่มีตัวหนังสืออยู่แล้ว ไม่ต้องอ่านภาพ
-    src = pg.canvas;
-  }
-  const T = await loadTess(), canvas = await prepImage(src);
-  const w = await T.createWorker(["tha", "eng"], 1, { logger: m => m.status === "recognizing text" && onProgress?.(Math.round(m.progress * 100)) });
-  try { const { data } = await w.recognize(canvas); return { ...parseIdCard(data.text), raw: data.text }; } finally { await w.terminate(); }
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const pages = isPdf ? await pdfPages(file) : [{ text: "", canvas: null }];
+  let best = null, w = null;
+  try {
+    for (let i = 0; i < pages.length; i++) {
+      const pg = pages[i], fromText = parseIdCard(pg.text);
+      if (fromText.idOk && fromText.name_th) return { ...fromText, raw: pg.text, page: i + 1 };   // PDF ที่มีตัวหนังสืออยู่แล้ว
+      if (!w) { const T = await loadTess(); w = await T.createWorker(["tha", "eng"], 1, { logger: m => m.status === "recognizing text" && onProgress?.(Math.round(m.progress * 100), i + 1, pages.length) }); }
+      const { data } = await w.recognize(await prepImage(isPdf ? pg.canvas : file));
+      const r = { ...parseIdCard(data.text), raw: data.text, page: i + 1 };
+      if (!best || score(r) > score(best)) best = r;
+      if (best.idOk && best.name_th) break;
+    }
+  } finally { if (w) await w.terminate(); }
+  return best;
 }
 
 // ---------------------------------------------------------------- ตัวแก้สัญญา (ฟอร์มซ้าย · ตัวอย่างขวา)
@@ -160,22 +171,26 @@ function openContract(r) {
       <div class="lt-sub">วันเวลา · สถานที่ <span class="text-muted" style="font-weight:400;">(ว่าง = ตาม${esc(L().label)})</span></div>
       <div class="lt-2">${f("work_days", "วันทำงาน", "text", `placeholder="${esc(L().days)}"`)}${f("work_hours", "เวลาทำงาน", "text", `placeholder="${esc(L().hours)}"`)}</div>
       ${f("workplace", "สถานที่ทำงาน", "text", `placeholder="${esc(L().workplace)}"`)}
-      ${f("probation_end", "ทดลองงานถึงวันที่", "date", `placeholder="${probationEnd(d.start_date)}"`)}
-      <div class="lt-hint">ทดลองงาน 119 วัน: ว่าง = ${d.start_date ? thLong(probationEnd(d.start_date)) : "คำนวณจากวันเริ่มงาน"} (วันที่ 119 นับวันเริ่มงานเป็นวันที่ 1)</div>
+      <label class="lt-f" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="ecNoProb" ${d.no_probation ? "checked" : ""} ${editable ? "" : "disabled"}> ไม่มีทดลองงาน</label>
+      ${d.no_probation ? "" : `${f("probation_end", "ทดลองงานถึงวันที่", "date", `placeholder="${probationEnd(d.start_date)}"`)}
+      <div class="lt-hint">ทดลองงาน 119 วัน: ว่าง = ${d.start_date ? thLong(probationEnd(d.start_date)) : "คำนวณจากวันเริ่มงาน"} (วันที่ 119 นับวันเริ่มงานเป็นวันที่ 1)</div>`}
       ${r?.status === "signed" || r?.status === "pending" ? `<div class="lt-sub">การลงนาม</div><div style="font-size:13px;margin-top:6px;">${r.signed_at ? "✓" : "○"} ผู้แทนบริษัท: ${esc(nameOf(r.signer_id))}${r.signed_at ? ` · ${new Date(r.signed_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}` : ""}<br>
         ${r.witnessed_at ? "✓" : "○"} พยาน: ${esc(nameOf(r.witness_id))}${r.witnessed_at ? ` · ${new Date(r.witnessed_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}` : ""}</div>` : ""}
       ${r ? `<label class="lt-f"><span>รหัสพนักงาน (ใส่เมื่อมีรหัสแล้ว)</span><input class="form-control" id="ecEmp" value="${esc(r.emp_code || "")}" ${canWrite() ? "" : "disabled"}></label>` : ""}`;
     el.querySelectorAll("[data-k]").forEach(i => i.oninput = i.onchange = () => { d[i.dataset.k] = i.value; if (["location", "start_date"].includes(i.dataset.k)) { form(); } preview(); });
+    $("#ecNoProb")?.addEventListener("change", e => { d.no_probation = e.target.checked; form(); preview(); });
     $("#ecId").oninput = e => { idFull = e.target.value.replace(/\D/g, "").slice(0, 13); const p = e.target.selectionStart; form(); preview(); const n = $("#ecId"); n.focus(); n.setSelectionRange(p, p); };
     $("#ecImg")?.addEventListener("change", async e => {
       const file = e.target.files[0]; if (!file) return; const st = $("#ecOcr"); st.textContent = "กำลังโหลดตัวอ่านภาพ… (ครั้งแรกประมาณ 10–20 วินาที)";
-      try { const x = await readIdCard(file, p => { st.textContent = `กำลังอ่าน ${p}%`; });
+      try { const x = await readIdCard(file, (p, n, of) => { st.textContent = `กำลังอ่าน${of > 1 ? ` หน้า ${n}/${of}` : ""} ${p}%`; });
         const got = { title_th: x.title_th, name_th: x.name_th, name_en: x.name_en, birth_date: x.birth_date, address: x.address };
         const filled = Object.entries(got).filter(([, v]) => v); read = new Set(filled.map(([k]) => k));
         for (const [k, v] of filled) d[k] = v;
         if (x.id) { idFull = x.id; read.add("id"); }
         form(); preview();
-        $("#ecOcr").textContent = `อ่านได้ ${read.size} ช่อง${x.id && !x.idOk ? " · เลขบัตรอ่านไม่ชัด ตรวจอีกครั้ง" : ""} — ตรวจช่องสีเหลืองทุกช่อง`;
+        $("#ecOcr").innerHTML = `${read.size ? `อ่านได้ ${read.size} ช่อง${x.page > 1 ? ` (หน้า ${x.page})` : ""}${x.id && !x.idOk ? " · เลขบัตรอ่านไม่ชัด ตรวจอีกครั้ง" : ""} — ตรวจช่องสีเหลืองทุกช่อง`
+          : "อ่านข้อมูลบัตรไม่ออก — ลองรูปที่ชัดกว่า (ถ่ายตรง ไม่เอียง ไม่สะท้อนแสง) หรือกรอกเอง"}
+          <details style="margin-top:4px;"><summary style="cursor:pointer;">ดูข้อความที่ระบบอ่านได้</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;background:#fff;padding:6px;border-radius:6px;">${esc(x.raw || "(ว่าง)")}</pre></details>`;
       } catch (er) { st.textContent = "อ่านไม่สำเร็จ: " + er.message + " — กรอกเองได้"; }
     });
     $("#ecEmp")?.addEventListener("change", async e => { const { error } = await supabase.from("emp_contracts").update({ emp_code: e.target.value.trim() || null }).eq("id", r.id); if (error) toast(error.message, "error"); else { r.emp_code = e.target.value.trim() || null; toast("บันทึกรหัสพนักงานแล้ว", "success"); } });
@@ -183,7 +198,7 @@ function openContract(r) {
   const row = () => { const x = { location: d.location, contract_date: d.contract_date, title_th: d.title_th, name_th: (d.name_th || "").trim(), name_en: d.name_en?.trim() || null,
     birth_date: d.birth_date || null, address: d.address?.trim() || null, start_date: d.start_date, position_th: (d.position_th || "").trim(), position_en: d.position_en?.trim() || null,
     job_level: d.job_level?.trim() || null, salary: Number(d.salary), work_days: d.work_days || null, work_hours: d.work_hours || null, workplace: d.workplace || null,
-    probation_end: d.probation_end || null, updated_at: new Date().toISOString() };
+    probation_end: d.no_probation ? null : d.probation_end || null, no_probation: !!d.no_probation, updated_at: new Date().toISOString() };
     if (idFull) x.id_last5 = idFull.slice(-5); return x; };
   const check = () => { const x = row();
     if (!x.name_th) return "กรอกชื่อ"; if (!x.start_date) return "กรอกวันเริ่มงาน"; if (!x.position_th) return "กรอกตำแหน่ง"; if (!(x.salary > 0)) return "กรอกเงินเดือน";

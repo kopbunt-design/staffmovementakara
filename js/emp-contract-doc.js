@@ -33,18 +33,29 @@ export function idValid(id) {
 }
 
 // ---------------------------------------------------------------- เอกสาร 4 หน้า
-// วัดจากต้นฉบับสแกน (A4 = 794×1123 px): ตัวหนังสือ Tahoma ~9.5pt บรรทัดละ 27px · ขอบซ้าย 26.5 มม. ขวา 15.5 มม. · หัวกระดาษ/ท้ายกระดาษกว้างกว่าเนื้อหา
-const CSS = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,'Sarabun',sans-serif;color:#1d1d1d;font-size:12.67px;line-height:27px}
-.pg{width:210mm;height:297mm;padding:33mm 15.5mm 0 26.5mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
+// ตามไฟล์ Word "สัญญาจ้างงาน 2026 Final.docx": TH Sarabun New 14pt (หัวเรื่อง 18pt) · ขอบ บน 30 ซ้าย 18 ขวา 22.6 มม. · เนื้อหาเยื้องซ้าย 10 มม.
+//   ย่อหน้าเปิด เยื้องบรรทัดแรก 15 มม. · ก่อนย่อหน้า 12pt หลัง 8pt · บรรทัด 1.15 · ค่าที่กรอกตัวหนาสีน้ำเงิน (0000FF) · กระจายแบบไทย
+//   กล่องข้อความ/ระยะห่างวัดจากฉบับพิมพ์จริงที่สแกนมา (กว้างกว่าค่าในไฟล์ Word เล็กน้อย) เพื่อให้ได้ 4 หน้าเท่าต้นฉบับ
+//   ฟอนต์: ใช้ TH Sarabun New ในเครื่องก่อน ไม่มีค่อยโหลดจาก jsDelivr (font-th-sarabun-new@1.0.0) — ไฟล์เว็บฟอนต์ตัวใหญ่กว่าจริง จึงย่อ (size-adjust)
+//   ให้ตัดบรรทัดตรงกับฉบับพิมพ์จริงที่สแกนมา
+const FONT = "https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/";
+const CSS = `@font-face{font-family:ECTH;src:local('TH Sarabun New'),local('THSarabunNew')}
+@font-face{font-family:ECTH;font-weight:700;src:local('TH Sarabun New Bold'),local('THSarabunNew-Bold'),local('THSarabunNew Bold')}
+@font-face{font-family:ECTHW;src:url(${FONT}THSarabunNew-webfont.woff) format('woff');size-adjust:72%}
+@font-face{font-family:ECTHW;font-weight:700;src:url(${FONT}THSarabunNew_bold-webfont.woff) format('woff');size-adjust:72%}
+@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:ECTH,ECTHW,'Sarabun',sans-serif;color:#000;font-size:18.67px;line-height:26px}
+.pg{width:210mm;height:297mm;padding:31mm 15.5mm 0 16.5mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
 .hd{position:absolute;left:8mm;right:13mm;top:11.5mm;height:14mm;display:flex;align-items:flex-end}.hd img{height:13.5mm;display:block}
-.hd i{flex:1;border-bottom:3px solid #2457a6;margin:0 0 .4mm -1mm}.hd span{position:absolute;right:0;bottom:2mm;font-size:11.5px;line-height:1;color:#2b3445}
-.ft{position:absolute;left:8mm;right:9mm;top:267.5mm;border-top:4px solid #2457a6;padding-top:1.2mm;display:grid;grid-template-columns:1fr 1fr 1fr;font:9.5px/1.3 Arial,Helvetica,sans-serif;color:#333}
-.ft span:first-child{padding-left:12mm}.ft span:nth-child(2){text-align:center}.ft span:last-child{text-align:right;padding-right:16mm}
-h1{text-align:center;font-size:16.5px;font-weight:700;margin:0 0 22px;line-height:27px}.r{text-align:right;margin:0 0 26px}.ind{text-indent:16mm}.j{text-align:justify}
-p{margin:0 0 20px}h3{font-size:12.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px;margin:26px 0 13px}.v{color:#233f8e;font-weight:700}
-.kv{margin:0 0 17px}.kv span{display:inline-block;min-width:28mm;padding-right:2mm}.sub{padding-left:10.5mm;margin-bottom:12px}
-.sign{margin-top:24mm;text-align:center}.sign .b{margin:0 auto 22mm;white-space:nowrap}.sign .ln{display:flex;align-items:flex-end;justify-content:center;gap:1mm;height:16mm}
-.sign .ln img{max-height:16mm;max-width:60mm;margin-bottom:-3mm}.sign .dots{display:inline-block;width:72mm;border-bottom:1px dotted #333}
+.hd i{flex:1;border-bottom:3px solid #2457a6;margin:0 0 .4mm -1mm}.hd span{position:absolute;right:0;bottom:2mm;font-size:18.67px;line-height:1;color:#2b3445}
+.ft{position:absolute;left:8mm;right:9mm;top:267.5mm;border-top:4px solid #2457a6;padding-top:1mm;display:grid;grid-template-columns:1fr 1fr 1fr;font-size:14.67px;line-height:1.3;color:#222}
+.ft span:first-child{padding-left:10mm}.ft span:nth-child(2){text-align:center}.ft span:last-child{text-align:right;padding-right:13.6mm}
+.c{margin-left:10mm}p,h3,.kv{margin:0 0 19px 10mm}.j{text-align:justify}.ind{text-indent:15mm;margin-bottom:32px}
+h1{text-align:center;font-size:24px;font-weight:700;line-height:34px;margin:0 0 14px}.r{text-align:right;margin-bottom:22px}
+h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.v{color:#0000ff;font-weight:700}
+.kv{margin-bottom:15px}.kv span{display:inline-block;padding-right:6mm}.sub{text-indent:15mm;margin-bottom:6px}
+.sign{margin-top:16mm;margin-left:50.8mm}.sign table{border-collapse:collapse}.sign td{padding:0;vertical-align:bottom;white-space:nowrap}
+.sign .line{width:63.5mm;border-bottom:1px solid #000;height:15mm;text-align:center;position:relative}.sign .line img{max-height:15mm;max-width:58mm;position:absolute;left:50%;bottom:-2mm;transform:translateX(-50%)}
+.sign .nm{text-align:center;padding-top:2px}.sign .gap{height:20mm}
 .draft{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:56px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700}`;
 
 // d = ข้อมูลสัญญา · opts.idFull = เลขบัตรเต็ม (ถ้าไม่ใส่จะแสดงแค่ 5 ตัวท้าย) · opts.sig = { signer:{name,img}, witness:{name,img} } · opts.draft
@@ -54,7 +65,8 @@ export function contractHTML(d0, opts = {}) {
   const id = opts.idFull ? String(opts.idFull).replace(/\D/g, "") : d.id_last5 ? `xxxxxxxx${d.id_last5}` : "…………………";
   const who = `${d.title_th || ""}${d.name_th || ""}`, sal = Number(d.salary || 0);
   const pos = `${d.position_th}${d.position_en ? ` (${d.position_en})` : ""}`;
-  const signLine = (s, role, nameFallback) => `<div class="b"><div class="ln">ลงชื่อ${s?.img ? `<img src="${esc(s.img)}" alt="">` : ""}<span class="dots"></span>${role}</div>(${esc(s?.name || nameFallback || "........................................")})</div>`;
+  const signRow = (s, role, nameFallback, last) => `<tr><td>ลงชื่อ&nbsp;</td><td class="line">${s?.img ? `<img src="${esc(s.img)}" alt="">` : ""}</td><td>&nbsp;&nbsp;${role}</td></tr>
+    <tr><td></td><td class="nm">(${esc(s?.name || nameFallback || "")})</td><td></td></tr>${last ? "" : `<tr><td colspan="3" class="gap"></td></tr>`}`;
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(opts.title || "สัญญาจ้างงาน")}</title>
   <style>${CSS}</style></head><body>
   <section class="pg">${wm}${hd}<h1>สัญญาจ้างงาน</h1><p class="r">เขียนที่ ${COMPANY.name}</p>
@@ -62,8 +74,8 @@ export function contractHTML(d0, opts = {}) {
     <p class="ind j"><b>บริษัท</b> และ <b>พนักงาน</b> ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า “<b>คู่สัญญา</b>” ได้ตกลงในสัญญาร่วมกันโดยมีรายละเอียดดังต่อไปนี้</p>
     <h3>1. สัญญาจ้างงาน</h3><p class="j"><b>บริษัท</b>ตกลงจ้าง และ <b>พนักงาน</b>ตกลงรับจ้าง ตั้งแต่วันที่ ${v(thLong(d.start_date))} เป็นต้นไป พนักงานรับทราบว่ารายละเอียดข้อมูลในสัญญาจ้างงาน ข้อมูลเงินเดือน สวัสดิการต่าง ๆ เป็นความลับ ไม่สามารถเปิดเผยให้กับบุคคลอื่นรับทราบได้ทุกกรณี <b>หากมีข้อสงสัยเรื่องค่าตอบแทน ค่าจ้างและอื่น ๆ พนักงานจะต้องติดต่อสอบถามโดยตรงจากฝ่ายทรัพยากรบุคคลเท่านั้น</b> หากพนักงานฝ่าฝืน ถือเป็นความผิดทางวินัยขั้นร้ายแรง บริษัทมีสิทธิ์เลิกจ้างโดยไม่จ่ายค่าชดเชย</p>
     <h3>2. ตำแหน่งหน้าที่ และค่าตอบแทน</h3>
-    <div class="kv"><span>ตำแหน่งงาน :</span>${v(pos)}</div><div class="kv"><span style="min-width:0">ระดับตำแหน่งงาน :</span>${v(d.job_level || "")}</div>
-    <div class="kv"><span style="min-width:30.5mm">เงินเดือนพื้นฐาน :</span>${v(`${sal.toLocaleString("en-US")} บาท (${bahtText(sal)})`)}</div>
+    <div class="kv"><span>ตำแหน่งงาน :</span>${v(pos)}</div><div class="kv"><span style="padding-right:2.5mm">ระดับตำแหน่งงาน :</span>${v(d.job_level || "")}</div>
+    <div class="kv"><span>เงินเดือนพื้นฐาน :</span>${v(`${sal.toLocaleString("en-US")} บาท (${bahtText(sal)})`)}</div>
     <p class="j">โดยบริษัทตกลงจ่ายค่าตอบแทนผ่านบัญชีธนาคารของพนักงาน ซึ่งเปิดไว้กับธนาคารที่บริษัทได้แจ้งให้พนักงานทราบ ทุกวันที่ 25 ของเดือน บริษัทจะหักเงินค่าตอบแทนของพนักงานเพื่อชำระภาษีเงินได้ ประกันสังคม หรือเพื่อชำระเงินอื่น ๆ ตามที่กฎหมายกำหนด บริษัทอาจพิจารณาเปลี่ยนแปลงกำหนดวันจ่ายค่าตอบแทนตามความเหมาะสม โดยยึดแนวทางตามข้อกฎหมายเป็นตัวกำหนด</p>
     <h3>3. สวัสดิการและสิทธิประโยชน์</h3><p>เป็นไปตามเงื่อนไขที่บริษัทระบุไว้ในหมวดสวัสดิการและสิทธิประโยชน์ตามรายละเอียดคู่มือพนักงาน</p>${page(1)}</section>
   <section class="pg">${wm}${hd}
@@ -71,7 +83,7 @@ export function contractHTML(d0, opts = {}) {
     <h3>5. สถานที่ทำงาน</h3><p class="j">บริษัทตกลงรับพนักงานเข้าปฏิบัติงานที่ ${v(d.workplace)} ซึ่งสถานที่ทำงานดังกล่าวอาจเปลี่ยนแปลงตามความเหมาะสมอันเนื่องจากการขยายตัวของธุรกิจในอนาคต</p>
     <h3>6. การตรวจร่างกายก่อนจ้างงาน</h3><p class="j">สัญญาฉบับนี้จะยังไม่มีผลบังคับใช้จนกว่าพนักงานจะเข้ารับการตรวจร่างกายก่อนจ้างงานและผ่านเกณฑ์ตามมาตรฐานที่บริษัทกำหนด โดยบริษัทได้แจ้งรายละเอียดการตรวจร่างกายนี้ให้พนักงานรับทราบก่อนการจ้างงานแล้ว พนักงานอนุญาตให้บริษัทจัดเก็บและเปิดเผยข้อมูลส่วนบุคคลด้านการตรวจร่างกายนี้ต่อหน่วยงานภายนอกและ/หรือฝ่ายต่างๆในบริษัทตามความเหมาะสมหรือตามข้อบังคับด้านกฎหมาย เพื่อให้ถูกต้องตามกระบวนการต่างๆที่อาจจะเกิดจากข้อบังคับตามกฎหมายหรือหน่วยงานราชการที่เกี่ยวข้อง บริษัทมีสิทธิ์พิจารณาเลิกจ้างพนักงานโดยไม่จ่ายค่าชดเชยในกรณีที่ผลการตรวจร่างกายพบว่า</p>
     <p class="sub">6.1 ตรวจพบสารเสพติดในร่างกาย</p><p class="sub">6.2 ตรวจพบข้อมูลด้านสุขภาพที่ไม่ตรงกับข้อมูลที่พนักงานได้แจ้งไว้ในใบสมัครงานหรือมีการปกปิดข้อมูล</p>
-    <h3>7. ระยะเวลาทดลองงาน</h3><p class="j">ระยะเวลาทดลองงานมีกำหนดไม่เกิน 119 วัน นับตั้งแต่วันที่พนักงานเริ่มงาน ถึงวันที่ ${v(thLong(d.probation_end))} หากบริษัทพิจารณาแล้วเห็นว่าพนักงานมีคุณสมบัติไม่เหมาะสมกับตำแหน่งงาน บริษัทมีสิทธิ์บอกเลิกสัญญานี้โดยไม่จ่ายค่าชดเชย ซึ่งบริษัทจะแจ้งล่วงหน้าเป็นลายลักษณ์อักษรอย่างน้อย 30 วัน</p>
+    <h3>7. ระยะเวลาทดลองงาน</h3><p class="j">ระยะเวลาทดลองงานมีกำหนดไม่เกิน 119 วัน นับตั้งแต่วันที่พนักงานเริ่มงาน ถึงวันที่ ${v(d.no_probation ? "ไม่มีทดลองงาน" : thLong(d.probation_end))} หากบริษัทพิจารณาแล้วเห็นว่าพนักงานมีคุณสมบัติไม่เหมาะสมกับตำแหน่งงาน บริษัทมีสิทธิ์บอกเลิกสัญญานี้โดยไม่จ่ายค่าชดเชย ซึ่งบริษัทจะแจ้งล่วงหน้าเป็นลายลักษณ์อักษรอย่างน้อย 30 วัน</p>
     <h3>8. การบอกเลิกสัญญาจ้างงาน</h3><p class="j">หากพนักงานต้องการบอกเลิกสัญญาจ้างฉบับนี้ พนักงานจะต้องแจ้งให้บริษัททราบเป็นลายลักษณ์อักษรล่วงหน้าอย่างน้อย 30 วัน</p>${page(2)}</section>
   <section class="pg">${wm}${hd}
     <h3>9. ลิขสิทธิ์ในผลงานของพนักงาน</h3><p class="j">ตามกฎหมายว่าด้วยลิขสิทธิ์ พ.ศ.2537 ผลงานของพนักงานที่เกิดจากการค้นคว้า ทดลอง การพัฒนา รวมไปถึงนวัตกรรม โปรแกรม และแฟ้มเอกสารบนเครื่องคอมพิวเตอร์ ที่เกิดขึ้นระหว่างการทำงาน หรือใช้สถานที่ของบริษัท หรือใช้ทรัพยากรใด ๆ ของบริษัท ในการผลิตผลงานดังกล่าว ลิขสิทธิ์ของผลงานนั้น ๆ จะตกเป็นของบริษัท</p>
@@ -84,7 +96,7 @@ ${page(3)}</section>
   <section class="pg">${wm}${hd}
     <h3>14. การดัดแปลงแก้ไข</h3><p class="j">สัญญาฉบับนี้อาจแก้ไข แทนที่ หรือทำให้เป็นโมฆะได้ก็ต่อเมื่อคู่สัญญาทั้งสองฝ่ายได้ลงนามเป็นลายลักษณ์อักษร นอกจากนี้ความเสียหายทางกายภาพหรือการสูญหายของเอกสารนี้จะไม่ถูกตีความว่าเป็นการแก้ไขหรือยุติข้อตกลงที่มีอยู่ในที่นี้</p>
     <p class="ind j">พนักงานจะต้องปฏิบัติตามระเบียบ และข้อบังคับการทำงานของบริษัท อันไม่ขัดต่อพระราชบัญญัติคุ้มครองแรงงาน และขนบธรรมเนียมประเพณีอันดีงามในสังคม <b>คู่สัญญา</b>ได้อ่าน และทำความเข้าใจในสัญญาจ้างนี้โดยตลอดแล้ว จึงได้ลงนามไว้ต่อหน้าพยานเป็นสำคัญ</p>
-    <div class="sign">${signLine(opts.sig?.signer, "ในนามบริษัท / ทำแทนบริษัท")}${signLine(null, "พนักงาน", who)}${signLine(opts.sig?.witness, "พยาน")}</div>${page(4)}</section>
+    <div class="sign"><table>${signRow(opts.sig?.signer, "ในนามบริษัท / ทำแทนบริษัท")}${signRow(null, "พนักงาน", who)}${signRow(opts.sig?.witness, "พยาน", "", true)}</table></div>${page(4)}</section>
   </body></html>`;
 }
 
