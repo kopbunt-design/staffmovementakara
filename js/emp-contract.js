@@ -49,12 +49,12 @@ function draw() {
     <div class="header-actions">${canWrite() ? `<button class="btn btn-primary" id="ecNew">+ ทำสัญญาจ้าง</button>` : ""}</div></div>
   <div class="section" style="padding-top:12px;padding-bottom:0;"><div class="cp-tabs">
     ${canWrite() ? `<button class="cp-tab${tab === "all" ? " on" : ""}" data-tab="all">สัญญาทั้งหมด (${rows.length})</button>` : ""}
-    ${canSign() ? `<button class="cp-tab${tab === "sign" ? " on" : ""}" data-tab="sign">รอฉันลงนาม${mine.length ? ` <b style="color:var(--red);">(${mine.length})</b>` : ""}</button>` : ""}
+    ${canSign() || mine.length ? `<button class="cp-tab${tab === "sign" ? " on" : ""}" data-tab="sign">รอฉันลงนาม${mine.length ? ` <b style="color:var(--red);">(${mine.length})</b>` : ""}</button>` : ""}
     ${canWrite() ? `<button class="cp-tab${tab === "settings" ? " on" : ""}" data-tab="settings">ตั้งค่าอีเมล</button>` : ""}</div></div>
   ${tab === "settings" ? `<div class="section mt-4"><div class="card"><div class="card-body">
       <div style="font-weight:700;color:var(--navy);margin-bottom:6px;">แบบอีเมลแจ้งลงนาม</div>
       <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">โหมดส่ง: <b>${mailCfg.mode === "auto" ? "ส่งอัตโนมัติจากอีเมลกลาง" : "ดาวน์โหลดไฟล์เมลเปิดใน Outlook"}</b> (ตั้งที่หน้าออกหนังสือ HR → ตั้งค่า) ·
-        ลายเซ็นของผู้ลงนาม/พยาน ตั้งที่ “ลายเซ็นของฉัน” หน้าออกหนังสือ HR · ผู้ลงนามต้องมีสิทธิ์ “ลงนามสัญญาจ้างงาน”</div>
+        ลายเซ็นของผู้ลงนาม/พยาน ตั้งที่ “ลายเซ็นของฉัน” หน้าออกหนังสือ HR · ผู้แทนบริษัทต้องมีสิทธิ์ “ลงนามสัญญาจ้างงาน” · พยานจะเป็นคนออกสัญญา (HR ที่มีสิทธิ์ทำสัญญา) ก็ได้</div>
       ${tplEditorHTML(mailTpl, tplKey, k => MAIL_TO[k] || "-")}</div></div></div>` : `
   <div class="section" style="padding-top:12px;padding-bottom:0;"><input class="form-control" id="ecSearch" placeholder="ค้นหา ชื่อ / ตำแหน่ง" value="${esc(search)}" style="max-width:280px;"></div>
   <div class="section mt-4"><div class="card"><div class="table-wrap">
@@ -200,12 +200,17 @@ function openContract(r) {
   };
   const done = (msg) => { toast(msg, "success"); close(); draw(); };
   const foot = () => {
+    // ผู้แทนบริษัท = มีสิทธิ์ลงนาม · พยาน = ผู้มีสิทธิ์ลงนาม หรือ HR ที่ทำสัญญา (ค่าเริ่มต้น = คนออกสัญญาเอง ถ้าตั้งลายเซ็นแล้ว)
+    const sgList = signers.filter(s => s.can_sign !== false), me0 = currentUser?.id;
+    const sgSel = r?.signer_id || (sgList.find(s => s.user_id !== me0) || sgList[0])?.user_id || "";
+    const wtSel = r?.witness_id || (signers.find(s => s.user_id === me0 && s.user_id !== sgSel) || signers.find(s => s.user_id !== sgSel))?.user_id || "";
+    const noPair = !sgList.length ? "ยังไม่มีผู้มีสิทธิ์ลงนามสัญญาจ้างที่ตั้งลายเซ็นแล้ว" : "ต้องมีพยานอีกคน (คนออกสัญญาเป็นพยานได้ — ตั้งลายเซ็นของคุณก่อน)";
     const st = r?.status || "draft", me = currentUser?.id, myTurn = st === "pending" && ((r.signer_id === me && !r.signed_at) || (r.witness_id === me && !r.witnessed_at));
     $("#ecFoot").innerHTML = editable ? `${r ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกสัญญา</button>` : ""}
       <button class="btn btn-secondary" data-save>บันทึกร่าง</button><button class="btn btn-secondary" data-print>พิมพ์ร่าง</button>
-      <select class="form-control" id="ecSg" style="max-width:220px;">${signers.map(s => `<option value="${s.user_id}" ${(r?.signer_id || "") === s.user_id ? "selected" : ""}>ผู้แทนบริษัท: ${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีผู้ลงนาม</option>`}</select>
-      <select class="form-control" id="ecWt" style="max-width:200px;">${signers.map((s, i) => `<option value="${s.user_id}" ${(r?.witness_id ? r.witness_id === s.user_id : i === 1) ? "selected" : ""}>พยาน: ${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีพยาน</option>`}</select>
-      <button class="btn btn-primary" data-submit ${signers.length >= 2 ? "" : "disabled title='ต้องมีผู้มีสิทธิ์ลงนามที่ตั้งลายเซ็นแล้วอย่างน้อย 2 คน'"}>ส่งลงนาม</button>`
+      <select class="form-control" id="ecSg" style="max-width:220px;">${sgList.map(s => `<option value="${s.user_id}" ${sgSel === s.user_id ? "selected" : ""}>ผู้แทนบริษัท: ${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีผู้ลงนาม</option>`}</select>
+      <select class="form-control" id="ecWt" style="max-width:200px;">${signers.map(s => `<option value="${s.user_id}" ${wtSel === s.user_id ? "selected" : ""}>พยาน: ${s.user_id === me ? "ฉัน · " : ""}${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีพยาน</option>`}</select>
+      <button class="btn btn-primary" data-submit ${sgList.length && signers.some(s => s.user_id !== sgSel) ? "" : `disabled title="${esc(noPair)}"`}>ส่งลงนาม</button>`
     : myTurn ? `<button class="btn btn-danger" data-reject style="margin-right:auto;">ส่งกลับแก้ไข</button><button class="btn btn-primary" data-sign>✓ ลงนาม${r.signer_id === me && !r.signed_at ? "ในนามบริษัท" : "เป็นพยาน"}</button>`
     : st === "signed" && canWrite() ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกสัญญา</button><span class="text-muted" style="font-size:12.5px;">ใส่เลขบัตรเต็มด้านซ้ายก่อนพิมพ์ฉบับจริง</span><button class="btn btn-primary" data-print>พิมพ์ฉบับลงนาม / PDF</button>`
     : st === "pending" && canWrite() ? `<span class="text-muted" style="margin-right:auto;">รอ ${[!r.signed_at && nameOf(r.signer_id), !r.witnessed_at && "พยาน " + nameOf(r.witness_id)].filter(Boolean).join(" และ ")} ลงนาม</span>
@@ -223,7 +228,11 @@ function openContract(r) {
       const sg = $("#ecSg").value, wt = $("#ecWt").value; if (!sg || !wt) return toast("เลือกผู้แทนบริษัทและพยาน", "error"); if (sg === wt) return toast("ผู้แทนบริษัทกับพยานต้องเป็นคนละคน", "error");
       if (!(await save())) return;
       const { data, error } = await supabase.rpc("ec_submit", { p_id: r.id, p_signer: sg, p_witness: wt }); if (error) return toast(error.message, "error");
-      Object.assign(r, data); done(`ส่งลงนามแล้ว · ${await sendMail(r, "ec_sign")}`);
+      Object.assign(r, data);
+      // คนออกสัญญาเป็นพยานเอง → ลงนามพยานเลย อีเมลไปถึงผู้แทนบริษัทคนเดียว
+      if (wt === currentUser?.id && confirm("คุณเป็นพยานของสัญญานี้ — ลงนามพยานด้วยลายเซ็นที่ตั้งไว้เลยไหม?")) {
+        const s2 = await supabase.rpc("ec_sign", { p_id: r.id }); if (s2.error) toast(s2.error.message, "error"); else Object.assign(r, s2.data); }
+      done(`ส่งลงนามแล้ว · ${await sendMail(r, "ec_sign")}`);
     });
     el.querySelector("[data-resend]")?.addEventListener("click", async () => toast(await sendMail(r, "ec_sign"), "success"));
     el.querySelector("[data-sign]")?.addEventListener("click", async () => {

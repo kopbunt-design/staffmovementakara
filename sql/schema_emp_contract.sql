@@ -67,7 +67,9 @@ begin
   if not has_perm('data.empcontract.write') then raise exception 'ไม่มีสิทธิ์ทำสัญญาจ้าง'; end if;
   if p_signer is null or p_witness is null then raise exception 'เลือกผู้ลงนามและพยานก่อน'; end if;
   if p_signer = p_witness then raise exception 'ผู้ลงนามกับพยานต้องเป็นคนละคน'; end if;
-  if not user_has_perm(p_signer, 'data.empcontract.sign') or not user_has_perm(p_witness, 'data.empcontract.sign') then raise exception 'ผู้ที่เลือกไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
+  if not user_has_perm(p_signer, 'data.empcontract.sign') then raise exception 'ผู้แทนบริษัทที่เลือกไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
+  -- พยาน: ผู้มีสิทธิ์ลงนาม หรือ HR ที่ทำสัญญา (คนออกสัญญาเป็นพยานได้ — user 2026-10-15)
+  if not (user_has_perm(p_witness, 'data.empcontract.sign') or user_has_perm(p_witness, 'data.empcontract.write')) then raise exception 'พยานที่เลือกไม่มีสิทธิ์'; end if;
   perform set_config('ec.deciding', 'on', true);
   update emp_contracts set status = 'pending', signer_id = p_signer, witness_id = p_witness, signer = null, witness = null,
          signed_at = null, witnessed_at = null, reject_reason = null, requested_by = auth.uid(),
@@ -82,8 +84,8 @@ create or replace function ec_sign(p_id bigint)
 returns emp_contracts language plpgsql security definer set search_path = public as $$
 declare c emp_contracts; s letter_signers; snap jsonb;
 begin
-  if not has_perm('data.empcontract.sign') then raise exception 'ไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
   select * into c from emp_contracts where id = p_id for update;
+  if not (has_perm('data.empcontract.sign') or (c.witness_id = auth.uid() and has_perm('data.empcontract.write'))) then raise exception 'ไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
   if c.status is distinct from 'pending' then raise exception 'สัญญานี้ไม่ได้รอลงนาม'; end if;
   select * into s from letter_signers where user_id = auth.uid();
   if s.signature_path is null then raise exception 'ยังไม่ได้อัปโหลดลายเซ็น — ตั้งค่าที่ “ลายเซ็นของฉัน” ก่อน'; end if;
@@ -103,8 +105,8 @@ create or replace function ec_reject(p_id bigint, p_reason text)
 returns emp_contracts language plpgsql security definer set search_path = public as $$
 declare c emp_contracts;
 begin
-  if not has_perm('data.empcontract.sign') then raise exception 'ไม่มีสิทธิ์'; end if;
   select * into c from emp_contracts where id = p_id for update;
+  if not (has_perm('data.empcontract.sign') or (c.witness_id = auth.uid() and has_perm('data.empcontract.write'))) then raise exception 'ไม่มีสิทธิ์'; end if;
   if c.status is distinct from 'pending' or auth.uid() not in (c.signer_id, c.witness_id) then raise exception 'สัญญานี้ไม่ได้รอลายเซ็นของคุณ'; end if;
   perform set_config('ec.deciding', 'on', true);
   update emp_contracts set status = 'rejected', reject_reason = coalesce(nullif(trim(p_reason), ''), 'ส่งกลับแก้ไข'),
@@ -112,13 +114,15 @@ begin
   return c;
 end $$;
 
+-- can_sign = ลงนามในนามบริษัทได้ · ที่เหลือ (HR ที่ทำสัญญา) เป็นพยานได้อย่างเดียว · ต้องตั้งลายเซ็นแล้ว
+drop function if exists ec_signers();
 create or replace function ec_signers()
-returns table (user_id uuid, name text, title text, email text)
+returns table (user_id uuid, name text, title text, email text, can_sign boolean)
 language sql security definer stable set search_path = public as $$
-  select g.user_id, coalesce(nullif(g.name_th,''), g.name_en), coalesce(nullif(g.title_th,''), g.title_en), g.email
+  select g.user_id, coalesce(nullif(g.name_th,''), g.name_en), coalesce(nullif(g.title_th,''), g.title_en), g.email, user_has_perm(g.user_id, 'data.empcontract.sign')
     from letter_signers g
    where (has_perm('data.empcontract.write') or has_perm('data.empcontract.sign')) and g.signature_path is not null
-     and user_has_perm(g.user_id, 'data.empcontract.sign')
+     and (user_has_perm(g.user_id, 'data.empcontract.sign') or user_has_perm(g.user_id, 'data.empcontract.write'))
    order by 2;
 $$;
 revoke all on function ec_submit(bigint, uuid, uuid), ec_sign(bigint), ec_reject(bigint, text), ec_signers() from public, anon;
