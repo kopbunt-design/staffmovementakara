@@ -33,6 +33,10 @@ eq(M.parseIdCard(ocr), { id: good, idOk: true, title_th: "นาย", name_th: "
 const raw = "บัตรประจ\u0E4D\u0E32ตัวประชาชน Thai National ID Card\n\nเลขประจ\u0E4D\u0E32ตัวประชาชน     1  1000 00000 01  1\nIdentification Number\na ๓     a                           =\nขอตวและชซอสกุล นาย ทดสอบ สมมต\n\nName Mr. Test\n\nLast name Sample\n\nเกิดวันที่ 7 ม.ค. 2518\n\nDate of Birth 7 Jan. 1975\n\nศาสนา พุทธ\nที่อยู่ 12/3 หมู่ 4 ต.เขาทราย\n\nอ.ทับคล้อ จ.พิจิตร\n\n1 n.w. 2565";
 const R = M.parseIdCard(raw);
 eq([R.id, R.title_th, R.name_th, R.name_en, R.birth_date, R.address], ["1100000000011", "นาย", "ทดสอบ สมมต", "Test Sample", "1975-01-07", "12/3 หมู่ 4 ต.เขาทราย อ.ทับคล้อ จ.พิจิตร"], "ผล OCR จริง: ป้ายเพี้ยนก็ยังได้ชื่อ · ที่อยู่ไม่กินวันออกบัตร");
+// PDF สำเนาบัตร (Tesseract จริง): ป้ายที่อยู่อ่านเป็น "fing" → หาจาก ต./อ./จ. แทน
+const raw2 = "ชือตัวและชื่อสกุล นาง ใจดี มีสุข\n\nName Mrs. Jaidee\n\nLast name Meesuk\n\nเกิดวันที่ 9 มี.ค. 2530\n\nDate of Birth 9 Mar. 1987\nfing 5 ny 2 ต.ท้ายดง\n\nอ.วังโป่ง จ.เพชรบูรณ์";
+const R2 = M.parseIdCard(raw2);
+eq([R2.title_th, R2.name_th, R2.name_en, R2.birth_date, R2.address], ["นาง", "ใจดี มีสุข", "Jaidee Meesuk", "1987-03-09", "5 ny 2 ต.ท้ายดง อ.วังโป่ง จ.เพชรบูรณ์"], "ป้ายที่อยู่เพี้ยน → ยังหาที่อยู่เจอ");
 eq(M.parseIdCard("เกิดวันที่ 9 มี.ค. 2530\nนางสาว ใจดี มีสุข\n9999 99999 9999").birth_date, "1987-03-09", "วันเกิดภาษาไทย (พ.ศ. → ค.ศ.)");
 eq(M.parseIdCard(`${bad}\n${good}`).id, good, "หลายชุดเลข → เลือกชุดที่เลขตรวจสอบถูก");
 

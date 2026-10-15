@@ -77,9 +77,22 @@ function draw() {
 let tessP = null;
 const loadTess = () => tessP ||= new Promise((ok, no) => { if (window.Tesseract) return ok(window.Tesseract);
   const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"; s.onload = () => ok(window.Tesseract); s.onerror = () => { tessP = null; no(new Error("โหลดตัวอ่านภาพไม่สำเร็จ")); }; document.head.appendChild(s); });
-// ขยาย + ขาวดำ + เพิ่มความคมชัด ก่อนอ่าน (ตัวอักษรไทยบนบัตรเล็ก และพื้นหลังมีลาย)
-async function prepImage(file) {
-  const img = await createImageBitmap(file), scale = Math.min(3, 2200 / img.width), c = document.createElement("canvas");
+// PDF (สำเนาบัตรที่สแกนเป็น PDF): ถ้ามีตัวหนังสือในไฟล์ใช้เลย · ไม่มีก็วาดหน้าแรกเป็นภาพแล้วอ่าน
+let pdfP = null;
+const loadPdf = () => pdfP ||= new Promise((ok, no) => { if (window.pdfjsLib) return ok(window.pdfjsLib);
+  const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
+  s.onerror = () => { pdfP = null; no(new Error("โหลดตัวอ่าน PDF ไม่สำเร็จ")); }; document.head.appendChild(s); });
+async function pdfFirstPage(file) {
+  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, page = await doc.getPage(1);
+  const tc = await page.getTextContent(), text = tc.items.map(i => i.str + (i.hasEOL ? "\n" : " ")).join("");
+  const vp = page.getViewport({ scale: 3 }), c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+  await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+  return { text, canvas: c };
+}
+// ขยาย + ขาวดำ + เพิ่มความคมชัด ก่อนอ่าน (ตัวอักษรไทยบนบัตรเล็ก และพื้นหลังมีลาย) · src = ไฟล์รูป หรือ canvas
+async function prepImage(src) {
+  const img = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src), scale = Math.min(3, Math.max(1, 2200 / img.width)), c = document.createElement("canvas");
   c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
   const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
   const px = g.getImageData(0, 0, c.width, c.height), a = px.data; let lo = 255, hi = 0;
@@ -89,7 +102,13 @@ async function prepImage(file) {
   g.putImageData(px, 0, 0); return c;
 }
 async function readIdCard(file, onProgress) {
-  const T = await loadTess(), canvas = await prepImage(file);
+  let src = file;
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    const pg = await pdfFirstPage(file), fromText = parseIdCard(pg.text);
+    if (fromText.idOk && fromText.name_th) return { ...fromText, raw: pg.text };   // PDF ที่มีตัวหนังสืออยู่แล้ว ไม่ต้องอ่านภาพ
+    src = pg.canvas;
+  }
+  const T = await loadTess(), canvas = await prepImage(src);
   const w = await T.createWorker(["tha", "eng"], 1, { logger: m => m.status === "recognizing text" && onProgress?.(Math.round(m.progress * 100)) });
   try { const { data } = await w.recognize(canvas); return { ...parseIdCard(data.text), raw: data.text }; } finally { await w.terminate(); }
 }
@@ -122,8 +141,8 @@ function openContract(r) {
   const form = () => {
     const idOk = idFull && idValid(idFull), match = idFull && d.id_last5 && idFull.replace(/\D/g, "").slice(-5) !== d.id_last5;
     $("#ecForm").innerHTML = `
-      ${editable ? `<div class="lt-hint" style="margin-top:0;"><b>อ่านจากรูปบัตรประชาชน</b> — อ่านในเครื่องนี้ รูปไม่ถูกส่งขึ้นที่ไหน · อ่านแล้วตรวจช่องสีเหลืองทุกช่อง
-        <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><label class="btn btn-sm btn-secondary" style="cursor:pointer;">📷 เลือกรูปบัตร<input type="file" id="ecImg" accept="image/*" hidden></label><span id="ecOcr" class="text-muted"></span></div></div>` : ""}
+      ${editable ? `<div class="lt-hint" style="margin-top:0;"><b>อ่านจากบัตรประชาชน</b> (รูปถ่าย หรือ PDF สำเนาบัตร) — อ่านในเครื่องนี้ ไฟล์ไม่ถูกส่งขึ้นที่ไหน · อ่านแล้วตรวจช่องสีเหลืองทุกช่อง
+        <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><label class="btn btn-sm btn-secondary" style="cursor:pointer;">📷 เลือกรูป / PDF บัตร<input type="file" id="ecImg" accept="image/*,application/pdf,.pdf" hidden></label><span id="ecOcr" class="text-muted"></span></div></div>` : ""}
       <label class="lt-f"><span>สถานที่ทำงาน</span><select class="form-control" data-k="location" ${editable ? "" : "disabled"}>${Object.entries(LOC).map(([k, v]) => `<option value="${k}" ${d.location === k ? "selected" : ""}>${v.label}</option>`).join("")}</select></label>
       ${f("contract_date", "สัญญาทำขึ้นเมื่อวันที่", "date")}
       <div class="lt-sub">พนักงาน</div>

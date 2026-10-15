@@ -112,9 +112,11 @@ export function parseIdCard(text) {
   else { const bt = t.match(/เกิดวันที่\s*(\d{1,2})\s*([ก-๙.]+)\s*(\d{4})/); const mi = bt ? TH_MON.findIndex(m => bt[2].replace(/\s/g, "").startsWith(m.replace(/\.$/, ""))) : -1;
     if (bt && mi >= 0) out.birth_date = iso(+bt[3] - 543, mi + 1, +bt[1]); }
   // ที่อยู่: ตั้งแต่ "ที่อยู่" จนก่อนบรรทัดวันออกบัตร/วันหมดอายุ
-  const ai = lines.findIndex(l => /^ที่อยู่/.test(l));
+  // ป้าย "ที่อยู่" อ่านเพี้ยนได้ (เช่นเป็นตัวอังกฤษ) → สำรอง: บรรทัดแรกที่มี ต./ตำบล/แขวง หลังวันเกิด
+  let ai = lines.findIndex(l => /^ที่อยู่/.test(l));
+  if (ai < 0) { const bi = lines.findIndex(l => /Birth|เกิดวันที่/.test(l)); ai = lines.findIndex((l, i) => i > bi && /(^|\s)(ต\.|ตำบล|แขวง)\s*[ก-๙]/.test(l)); }
   if (ai >= 0) { const parts = [];
     for (let i = ai; i < lines.length && parts.length < 3; i++) { if (i > ai && (/วันออกบัตร|Date of Issue|วันบัตรหมดอายุ|Date of Expiry|เจ้าพนักงาน/.test(lines[i]) || /^\d{1,2}\s+\S{2,6}\s+25\d\d\b/.test(lines[i]))) break; parts.push(lines[i]); }
-    out.address = parts.join(" ").replace(/^ที่อยู่\s*/, "").replace(/\s+/g, " ").trim(); }
+    out.address = parts.join(" ").replace(/^ที่อยู่\s*/, "").replace(/^[A-Za-z]+\s+(?=\d)/, "").replace(/\s+/g, " ").trim(); }
   return out;
 }
