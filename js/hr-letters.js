@@ -76,6 +76,8 @@ const img = (src, cls) => src ? `<img class="${cls}" src="${src}" alt="">` : "";
 
 export function letterPages(kind, d, opts = {}) {
   const { docNo = "", signer = null, art = null, draft = true } = opts;
+  // อนุมัติแล้ว: วันที่บนหนังสือ = วันที่ผู้ลงนามกดอนุมัติ (ผู้ใช้ 2026-10-15) · ร่าง/รออนุมัติ: วันที่ในฟอร์ม
+  d = { ...d, issue_date: opts.issued || d.issue_date };
   const I = { ...LETTER_IMG, ...(opts.img || {}) };
   const K = KINDS[kind]; if (!K) return "";
   const wm = draft ? `<div class="lt-wm">${K.lang === "th" ? "ร่าง · รออนุมัติ" : "DRAFT"}</div>` : "";
@@ -439,9 +441,11 @@ async function letterImgs() {
   }
   return (imgCache = out);
 }
+// วันที่ตามเวลาไทย — approved_at เป็น UTC ถ้าตัดสตริงตรง ๆ อนุมัติก่อน 07:00 จะได้วันก่อนหน้า
+const bkkDate = ts => ts ? new Date(new Date(ts).getTime() + 7 * 3600e3).toISOString().slice(0, 10) : null;
 async function optsFor(r) {
   const approved = r.status === "approved" && r.signer;
-  return { docNo: r.doc_no || "", img: await letterImgs(), draft: !approved, signer: approved ? r.signer : null,
+  return { docNo: r.doc_no || "", img: await letterImgs(), draft: !approved, signer: approved ? r.signer : null, issued: approved ? bkkDate(r.approved_at) : null,
            art: approved ? { signature: await assetData(r.signer.signature_path), seal: await assetData(r.signer.seal_path) } : null };
 }
 
@@ -492,7 +496,9 @@ function openLetter(r) {
         `<option value="${k}" ${k === kind ? "selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
       <div class="lt-f"><span>ดึงข้อมูลจากทะเบียนพนักงาน</span>${comboHTML("ltEmp", [], d.emp_code || "", "พิมพ์ชื่อไทย/อังกฤษ หรือรหัส")}</div>
       <div class="lt-hint">ทุกช่องแก้ได้ · ${offer ? "ผู้สมัครยังไม่อยู่ในทะเบียน พิมพ์เองได้เลย" : "ชื่อ/ตำแหน่ง/สังกัดในทะเบียนเป็นภาษาอังกฤษ — หนังสือภาษาไทยแก้เป็นไทยก่อนส่ง"}</div>` : ""}
-      ${f("issue_date", "วันที่ออกหนังสือ", "date")}
+      ${r?.status === "approved" ? `<label class="lt-f"><span>วันที่ออกหนังสือ</span><input class="form-control" value="${esc(thDate(bkkDate(r.approved_at)))} (วันที่อนุมัติ)" disabled></label>`
+        : f("issue_date", "วันที่ออกหนังสือ", "date", `title="ตอนผู้ลงนามกดอนุมัติ วันที่บนหนังสือจะเปลี่ยนเป็นวันที่อนุมัติเอง"`)}
+      ${r?.status === "approved" ? "" : `<div class="lt-hint" style="margin-top:-6px">เมื่อผู้ลงนามกดอนุมัติ วันที่บนหนังสือจะเป็นวันที่อนุมัติ</div>`}
       ${offer ? `<div class="lt-2">${f("title_en", "คำนำหน้า (Mr./Ms./Miss)")}${f("name_en", "ชื่อ-นามสกุล (อังกฤษ)")}</div>
         ${f("position", "Position")}${f("salary", "Monthly Base Salary (THB)", "number")}
         <div class="lt-2">${f("commencement", "Commencement Date", "date")}${f("probation_days", "Probation (days)", "number")}</div>

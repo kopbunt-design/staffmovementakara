@@ -41,6 +41,9 @@ has(th, "5 มกราคม 2569 ถึงปัจจุบัน", "ระ�
 has(th, "data:image/png;base64,AA", "อนุมัติแล้วมีลายเซ็น");
 not(th, "lt-wm", "อนุมัติแล้วไม่มีลายน้ำร่าง");
 
+has(th, "ออกให้ ณ วันที่ 30 กันยายน 2569", "ไม่มีวันที่อนุมัติ → ใช้วันที่ในฟอร์ม");
+const thA = M.letterPages("cert_th", { issue_date: "2026-09-30", name_th: "นายทดสอบ", incomes: [] }, { draft: false, issued: "2026-10-15", signer: { name_th: "ก" }, art: {} });
+has(thA, "ออกให้ ณ วันที่ 15 ตุลาคม 2569", "อนุมัติแล้ว → วันที่ผู้ลงนามกดอนุมัติ");
 const draft = M.letterPages("cert_th", { issue_date: "2026-09-30", name_th: "นายทดสอบ", incomes: [] }, { draft: true });
 has(draft, "ร่าง · รออนุมัติ", "ยังไม่อนุมัติ → มีลายน้ำ");
 not(draft, "lt-sig\"", "ยังไม่อนุมัติ → ไม่มีลายเซ็น");
