@@ -59,6 +59,11 @@ h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underlin
 .draft{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:56px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700}`;
 
 // d = ข้อมูลสัญญา · opts.idFull = เลขบัตรเต็ม (ถ้าไม่ใส่จะแสดงแค่ 5 ตัวท้าย) · opts.sig = { signer:{name,img}, witness:{name,img} } · opts.draft
+// วลีในตัวสัญญาที่ตัดบรรทัดกลางแล้วอ่านแปลก (เบราว์เซอร์ตัดตามพจนานุกรม เช่น "ดังต่อ|ไปนี้") — ให้อยู่บรรทัดเดียวกัน
+const KEEP = ["ดังต่อไปนี้", "รายละเอียด", "อีกฝ่ายหนึ่ง", "เป็นต้นไป"].sort((a, b) => b.length - a.length);
+const KEEP_RE = new RegExp(`(${KEEP.join("|")})`, "g");
+// เฉพาะข้อความนอกแท็ก และนอก <style>/<title>
+const keepPhrases = html => html.replace(/(<style[\s\S]*?<\/style>|<title>[\s\S]*?<\/title>|<[^>]+>)|([^<]+)/g, (m, tag, txt) => tag ? tag : txt.replace(KEEP_RE, '<span class="nw">$1</span>'));
 export function contractHTML(d0, opts = {}) {
   // ค่าที่กรอก: ห้ามตัดบรรทัดกลางคำ (ภาษาไทยไม่มีช่องว่างระหว่างคำ เบราว์เซอร์เลยตัด "มีระ|คุณ") — ตัดได้เฉพาะที่ช่องว่าง เหมือน Word
   const d = fill(d0), v = x => `<span class="v">${String(x ?? "").split(/(\s+)/).map(t => !t || /^\s+$/.test(t) ? esc(t) : `<span class="nw">${esc(t)}</span>`).join("")}</span>`, page = n => `<div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page ${n} of 4</span></div>`;
@@ -68,7 +73,7 @@ export function contractHTML(d0, opts = {}) {
   const pos = `${d.position_th}${d.position_en ? ` (${d.position_en})` : ""}`;
   const signRow = (s, role, nameFallback, last) => `<tr><td>ลงชื่อ&nbsp;</td><td class="line">${s?.img ? `<img src="${esc(s.img)}" alt="">` : ""}</td><td>&nbsp;&nbsp;${role}</td></tr>
     <tr><td></td><td class="nm">(${esc(s?.name || nameFallback || "")})</td><td></td></tr>${last ? "" : `<tr><td colspan="3" class="gap"></td></tr>`}`;
-  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(opts.title || "สัญญาจ้างงาน")}</title>
+  return keepPhrases(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(opts.title || "สัญญาจ้างงาน")}</title>
   <style>${CSS}</style></head><body>
   <section class="pg">${wm}${hd}<h1>สัญญาจ้างงาน</h1><p class="r">เขียนที่ ${COMPANY.name}</p>
     <p class="ind j">สัญญาฉบับนี้ทำขึ้นเมื่อวันที่ ${v(thLong(d.contract_date))} ระหว่าง ${COMPANY.name} สำนักงาน ${COMPANY.address} ซึ่งต่อไปในสัญญาฉบับนี้เรียกว่า "<b>บริษัท</b>" ฝ่ายหนึ่ง<b>และ</b> ${v(who)} บัตรประจำตัวประชาชนเลขที่ ${v(id)} ที่อยู่ ${v(d.address || "")} ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า "<b>พนักงาน</b>" อีกฝ่ายหนึ่ง</p>
@@ -98,7 +103,7 @@ ${page(3)}</section>
     <h3>14. การดัดแปลงแก้ไข</h3><p class="j">สัญญาฉบับนี้อาจแก้ไข แทนที่ หรือทำให้เป็นโมฆะได้ก็ต่อเมื่อคู่สัญญาทั้งสองฝ่ายได้ลงนามเป็นลายลักษณ์อักษร นอกจากนี้ความเสียหายทางกายภาพหรือการสูญหายของเอกสารนี้จะไม่ถูกตีความว่าเป็นการแก้ไขหรือยุติข้อตกลงที่มีอยู่ในที่นี้</p>
     <p class="ind j">พนักงานจะต้องปฏิบัติตามระเบียบ และข้อบังคับการทำงานของบริษัท อันไม่ขัดต่อพระราชบัญญัติคุ้มครองแรงงาน และขนบธรรมเนียมประเพณีอันดีงามในสังคม <b>คู่สัญญา</b>ได้อ่าน และทำความเข้าใจในสัญญาจ้างนี้โดยตลอดแล้ว จึงได้ลงนามไว้ต่อหน้าพยานเป็นสำคัญ</p>
     <div class="sign"><table>${signRow(opts.sig?.signer, "ในนามบริษัท / ทำแทนบริษัท")}${signRow(null, "พนักงาน", who)}${signRow(opts.sig?.witness, "พยาน", "", true)}</table></div>${page(4)}</section>
-  </body></html>`;
+  </body></html>`);
 }
 
 // ---------------------------------------------------------------- อ่านข้อความจากบัตรประชาชน (ผล OCR)
