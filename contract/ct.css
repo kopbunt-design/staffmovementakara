@@ -1,0 +1,29 @@
+/* Contract Pay — ส่วนเฉพาะ ต่อจาก /expense/spend.css + /uniform/uni.css (แบบ Figma หน้า "Contract Pay — ค่าจ้างเหมา 3%") */
+.stepper{display:flex;align-items:center;gap:16px;padding:16px 24px;margin-bottom:20px}
+.stepper .s{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.stepper .s i{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;font-style:normal;font-size:13px;font-weight:600;background:#F1F3F6;color:var(--ink4)}
+.stepper .s.done i{background:var(--green-50);color:var(--green)}.stepper .s.now i{background:var(--blue);color:#fff}
+.stepper .s b{display:block;font-weight:500}.stepper .s.todo b{color:var(--ink3)}
+.stepper .s span{font-size:12px;color:var(--ink3)}
+.stepper .ln{width:40px;height:2px;background:var(--line2);flex:none}.stepper .ln.done{background:var(--green)}
+.checks{display:flex;flex-direction:column;gap:10px}
+.ck{display:flex;align-items:center;gap:12px;border-radius:10px;padding:10px 12px}
+.ck svg{flex:none}.ck .t{flex:1;min-width:0}.ck b{display:block;font-weight:500}.ck span{font-size:13px;color:var(--ink2)}
+.ck.block{background:var(--red-50);color:var(--red)}.ck.warn{background:var(--amber-50);color:var(--amber)}.ck.info{background:var(--blue-50);color:var(--blue)}.ck.ok{background:var(--green-50);color:var(--green)}
+.ck b,.ck span{color:inherit}.ck span{opacity:.85}
+.who{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.who button{border:1px solid currentColor;background:#fff;border-radius:99px;padding:1px 10px;font-size:12px;cursor:pointer;color:inherit}
+.who button.on{background:currentColor}.who button.on span{color:#fff}
+.dl{display:inline-flex;align-items:center;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:500;white-space:nowrap}
+.dl.up{background:var(--amber-50);color:var(--amber)}.dl.dn{background:var(--green-50);color:var(--green)}.dl.eq{background:#F1F3F6;color:var(--ink3)}.dl.new{background:var(--blue-50);color:var(--blue-dark)}
+.grid-in{width:110px;text-align:right;padding:5px 8px}
+.tbl td.pos{color:var(--green)}.tbl td.neg{color:var(--red)}
+.docs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.contract{background:var(--amber-50);border-radius:var(--r-lg);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.contract.ok{background:var(--green-50)}.contract.none{background:var(--bg)}
+.contract .trk{background:#fff}.contract .trk i{background:#DC6803}.contract.ok .trk i{background:var(--green)}
+.kvg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.kvg span{display:block;font-size:12px;color:var(--ink3)}.kvg b{font-weight:500}
+.recur{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:var(--r-md);padding:8px 12px}
+.recur span{flex:1;font-size:13px}.recur b{font-variant-numeric:tabular-nums}
+.h{font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--ink3);text-transform:uppercase}

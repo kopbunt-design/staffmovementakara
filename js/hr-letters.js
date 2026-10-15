@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-config.js";
 import { allEmployees, can, esc as escText, toast, currentUser, notify, userRole } from "./app.js";
-import { bahtText } from "./contract-docs.js";
+import { bahtText } from "./contract-calc.js";
 import { comboHTML, bindCombo } from "./combobox.js";
 import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
 import { masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions } from "./masterdata-admin.js";

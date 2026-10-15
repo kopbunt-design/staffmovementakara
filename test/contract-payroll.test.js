@@ -1,11 +1,9 @@
-// เทสการคำนวณค่าจ้างเหมา — ดึง calcItem/runTotals จริงจาก js/contract-payroll.js
+// เทสการคำนวณค่าจ้างเหมา — ดึงฟังก์ชันจริงจาก js/contract-calc.js (ใช้โดยเว็บ /contract)
 // รัน:  osascript -l JavaScript test/contract-payroll.test.js
 ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
-const src  = read('js/contract-payroll.js');
-const body = src.slice(src.indexOf('const round2 ='), src.indexOf('// ---------------------------------------------------------------------------\n// state'))
-  .replace(/^export /gm, '');
-const { calcItem, runTotals, recurringFor, adjustFromRecurring } = new Function(`${body}; return { calcItem, runTotals, recurringFor, adjustFromRecurring };`)();
+const CC = new Function(read('js/contract-calc.js').replace(/^export /gm, '') + '; return { calcItem, runTotals, recurringFor, adjustFromRecurring, bahtText, preChecks, inPeriod, kbankPCT, tis620, KBANK_H_LEN, KBANK_D_LEN };')();
+const { calcItem, runTotals, recurringFor, adjustFromRecurring } = CC;
 
 let P=0,F=0;
 const t=(n,got,want)=>{ if(JSON.stringify(got)===JSON.stringify(want)) P++;
@@ -88,12 +86,34 @@ t("รวมงวด: ภาษีรวม", tot.wht, 4265.06);
 t("รวมงวด: สุทธิ = จ้าง − ภาษี", tot.net, Math.round((142168.56-4265.06)*100)/100);
 t("งวดว่าง", runTotals([]).count, 0);
 
+
+// ===== ตรวจก่อนจ่าย =====
+const it = (id, net, o = {}) => ({ worker_id: id, net_amount: net, wht_amount: 30, tax_id: "1234567890123", bank_account: "0123456789", address: "x", ...o });
+let ck = CC.preChecks({ items: [it(1, 1000), it(2, 1000, { tax_id: "" }), it(3, 1000, { bank_account: "12-3" })], period: "2026-10", today: "2026-10-15" });
+t("ไม่มีเลขภาษี + บัญชีไม่ครบ = ต้องแก้", ck.map(c => [c.key, c.block, c.ids]), [["tax", true, [2]], ["bank", true, [3]]]);
+ck = CC.preChecks({ items: [it(1, 1300), it(2, 1100)], prev: [it(1, 1000), it(2, 1000)], ok: [], period: "2026-10", today: "2026-10-15" });
+t("ยอดต่างเดือนก่อนเกิน 20% ต้องยืนยัน", ck.map(c => [c.key, c.block, c.ids, c.pct]), [["var", true, [1], { 1: 30 }]]);
+ck = CC.preChecks({ items: [it(1, 1300)], prev: [it(1, 1000)], ok: [1], period: "2026-10", today: "2026-10-15" });
+t("ยืนยันแล้วไม่บล็อก", ck.map(c => [c.key, c.block, c.confirmed]), [["var", false, 1]]);
+ck = CC.preChecks({ items: [it(1, 1000)], workers: [{ id: 1, end_date: "2026-11-14" }], period: "2026-10", today: "2026-10-15" });
+t("สัญญาหมดใน 30 วัน = เตือน ไม่บล็อก", ck.map(c => [c.key, c.block]), [["exp", false]]);
+t("คนในงวด: สัญญาคร่อมเดือน", [CC.inPeriod({ is_active: true, start_date: "2026-10-31" }, "2026-10"), CC.inPeriod({ is_active: true, end_date: "2026-09-30" }, "2026-10"), CC.inPeriod({ is_active: true, end_date: "2026-10-01" }, "2026-10")], [true, false, true]);
+
+// ===== ไฟล์โอนกสิกร (PCT) — ข้อมูลสมมติ ตำแหน่งตามไฟล์ตัวอย่าง =====
+const kb = CC.kbankPCT({ account: "1112223334", company: "บริษัท ทดสอบ จำกัด", created: "2026-10-28", payDate: "2026-10-31",
+  items: [{ bank_account: "0001112223", net_amount: 14550, name_en: "Test Person", worker_code: "SUB0001" }, { bank_account: "000-1-11222-4", net_amount: 970.5, name_en: "Second Test", worker_code: "SUB0002" },
+          { bank_account: "", net_amount: 500, name_en: "No Account", worker_code: "SUB0003" }] });
+const L = kb.text.split("\r\n");
+t("หัวไฟล์ยาว 178 · แถวยาว 742 · ลงท้าย CRLF", [L[0].length, L[1].length, L[2].length, L[3]], [CC.KBANK_H_LEN, CC.KBANK_D_LEN, CC.KBANK_D_LEN, ""]);
+t("หัว: บัญชี ยอดรวมสตางค์ วันที่ จำนวน", [L[0].slice(0, 4), L[0].slice(40, 50), L[0].slice(51, 66), L[0].slice(67, 73), L[0].slice(148, 173)], ["HPCT", "1112223334", "000000001552050", "261028", "261031000000000000000002N"]);
+t("แถว: ลำดับ บัญชี เงิน ชื่อ อ้างอิง", [L[2].slice(0, 7), L[2].slice(21, 31), L[2].slice(32, 47), L[2].slice(79, 90), L[2].slice(129, 145), L[2].slice(305, 344)],
+  ["D000002", "0001112224", "000000000097050", "Second Test", "261031000SUB0002", "0000000000.000000000000.000000000000.00"]);
+t("ไม่มีบัญชี = ไม่อยู่ในไฟล์", [kb.count, kb.skipped.map(i => i.worker_code)], [2, ["SUB0003"]]);
+t("TIS-620: ไทย 1 ไบต์/ตัว", Array.from(CC.tis620("กฮ A")), [0xA1, 0xCE, 0x20, 0x41]);
 console.log(F ? `ไม่ผ่าน ${F} เคส (ผ่าน ${P})` : `ผ่านทั้งหมด ${P} เคส`);
 
 // ===== จำนวนเงินเป็นตัวหนังสือ (ใช้ใน 50 ทวิ) =====
-const dsrc = read('js/contract-docs.js');
-const dbody = dsrc.slice(dsrc.indexOf('export function bahtText'), dsrc.indexOf('const CSS =')).replace(/^export /gm,'');
-const { bahtText } = new Function(`${dbody}; return { bahtText };`)();
+const { bahtText } = CC;
 t("ศูนย์",        bahtText(0),        "ศูนย์บาทถ้วน");
 t("หนึ่งบาท",     bahtText(1),        "หนึ่งบาทถ้วน");
 t("ยี่สิบ",       bahtText(20),       "ยี่สิบบาทถ้วน");

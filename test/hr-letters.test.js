@@ -5,8 +5,8 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const strip = s => s.split("\n").filter(l => !/^\s*import\s/.test(l)).join("\n").replace(/^export /gm, "");
-// เอาแค่ bahtText จาก contract-docs.js (ไฟล์นั้นมีตัวแปรชื่อซ้ำกับไฟล์หนังสือ)
-const cd = strip(read(`${ROOT}/js/contract-docs.js`));
+// เอาแค่ bahtText จาก contract-calc.js (ไฟล์นั้นมีตัวแปรชื่อซ้ำกับไฟล์หนังสือ)
+const cd = strip(read(`${ROOT}/js/contract-calc.js`));
 const baht = cd.slice(cd.indexOf("function bahtText"), cd.indexOf("\n}\n", cd.indexOf("function bahtText")) + 3);
 // JXA ไม่มี btoa/atob — ใช้ของ Foundation แทน (เทียบเท่าในเบราว์เซอร์)
 const btoa = s => $.NSString.alloc.initWithString(s).dataUsingEncoding($.NSISOLatin1StringEncoding).base64EncodedStringWithOptions(0).js;

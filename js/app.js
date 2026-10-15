@@ -253,6 +253,8 @@ export function navigate(page) {
   if (page === "expense") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/expense/"; return; }
   // สต๊อกยูนิฟอร์มย้ายไปเป็นเว็บแยก /uniform (2026-10-14) — ฐานข้อมูลเดิม
   if (page === "uniform") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/uniform/"; return; }
+  // ค่าจ้างเหมา 3% ย้ายไปเป็นเว็บแยก /contract (2026-10-15) — ฐานข้อมูลเดิม
+  if (page === "contractpay") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/contract/"; return; }
   currentPage = page;
   navOpen = null;
   import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
@@ -373,7 +375,6 @@ async function renderPage(page) {
   else if(page==="payrollexp") (await import("./payroll-summary.js")).renderPayrollExpense();
   else if(page==="payrollbuild") (await import("./payroll-build-ui.js")).renderPayrollBuild();
   else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
-  else if(page==="contractpay") (await import("./contract-payroll.js")).renderContractPayroll();
   else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
   else if(page==="docregister") (await import("./doc-register.js")).renderDocRegister();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();

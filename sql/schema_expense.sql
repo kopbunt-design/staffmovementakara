@@ -294,19 +294,20 @@ begin
 end $$;
 
 -- ------------------------------------------------------------------ 6. ลายเซ็น: ให้ผู้ใช้ HR Invoice Hub อ่าน/ตั้งของตัวเองได้
---   (ชุดเดียวกับ schema_hr_letters.sql ข้อ 12 และ schema_fund_approval.sql — แก้ให้ตรงกันทุกไฟล์)
+--   (ชุดเดียวกับ schema_hr_letters.sql ข้อ 12 · schema_fund_approval.sql · schema_contract_web.sql — แก้ให้ตรงกันทุกไฟล์)
 drop policy if exists "ls_read" on letter_signers;
-create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
+create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense')
+  or has_perm('page.contractpay') or has_perm('data.contract.approve'));
 drop policy if exists "la_read" on storage.objects;
 create policy "la_read" on storage.objects for select
   using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')
-         or has_perm('page.fundforms') or has_perm('page.expense')));
+         or has_perm('page.fundforms') or has_perm('page.expense') or has_perm('page.contractpay') or has_perm('data.contract.approve')));
 drop policy if exists "ls_write" on letter_signers;
 create policy "ls_write" on letter_signers for all
   using ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve'))) or get_my_role() = 'admin')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve'))) or get_my_role() = 'admin')
   with check ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve'))) or get_my_role() = 'admin');
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve'))) or get_my_role() = 'admin');
 drop policy if exists "la_write"  on storage.objects;
 drop policy if exists "la_update" on storage.objects;
 drop policy if exists "la_delete" on storage.objects;
@@ -314,17 +315,17 @@ create policy "la_write" on storage.objects for insert with check (bucket_id = '
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
 create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and (
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
 create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and (
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
 
 -- ------------------------------------------------------------------ 7. สิทธิ์
 insert into permissions (key, category, label, description, sort_order) values

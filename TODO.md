@@ -2,7 +2,13 @@
 
 อัปเดตล่าสุด: 2026-08-28
 
-## 💰 ค่าจ้างเหมา (Contract Payroll) — ทำจนจบในเว็บแล้ว · ⚠️ ยังไม่ได้รัน SQL
+## 💰 ค่าจ้างเหมา (Contract Payroll) — ย้ายเป็นเว็บแยก /contract (2026-10-15) · ⚠️ ต้องรัน sql/schema_contract_web.sql
+
+รัน schema_contract_payroll.sql + schema_contract_items.sql แล้ว (2026-10-15) · หน้าเดิมในระบบ HR ลบแล้ว (เมนูพาไป /contract)
+**⬜ เฟส 2:** ลิงก์อนุมัติทางอีเมล (ไม่ต้อง login แบบ invoice) · ลิงก์สลิป/50 ทวิ ให้ผู้รับจ้างทางอีเมล · แนบไฟล์สัญญา
+**⬜ ทดสอบไฟล์ PCT กับ K-Cash Connect ด้วยไฟล์เล็กก่อนใช้จริง**
+
+(บันทึกเดิมด้านล่าง — ไฟล์ js/contract-payroll.js / contract-docs.js ไม่มีแล้ว ตรรกะอยู่ใน js/contract-calc.js)
 
 เมนูใหม่ `contractpay` ในกลุ่ม "เงินเดือน · ค่าตอบแทน" — คิดค่าจ้างที่ปรึกษา/ลูกจ้างชั่วคราว/ผู้รับเหมา
 **ต้องรัน `sql/schema_contract_payroll.sql` ก่อนใช้**

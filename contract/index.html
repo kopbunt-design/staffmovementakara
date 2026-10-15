@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract Pay · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- ปุ่ม การ์ด ตาราง ใช้ชุดเดียวกับ HR Invoice Hub · แผงด้านขวาใช้ของเว็บยูนิฟอร์ม · ส่วนเฉพาะอยู่ใน ct.css -->
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+<link rel="stylesheet" href="/uniform/uni.css?v=1">
+<link rel="stylesheet" href="/contract/ct.css?v=1">
+</head>
+<body>
+<!--
+  Contract Pay — ค่าจ้างเหมา 3% (ที่ปรึกษา · ลูกจ้างชั่วคราว · ผู้รับเหมา) · เว็บแยกจากระบบ HR (/contract) ใช้ session เดียวกัน
+  ฐานข้อมูล: sql/schema_contract_payroll.sql + schema_contract_items.sql + schema_contract_web.sql · ตรรกะ: js/contract-calc.js (มีเทส)
+  แบบหน้าจอ: Figma หน้า "Contract Pay — ค่าจ้างเหมา 3%"
+-->
+<div class="sp-shell">
+  <aside class="sp-side">
+    <div class="sp-brand">
+      <img src="/assets/logo.png" alt="Akara Resources">
+      <div><b>CONTRACT PAY</b> · ค่าจ้างเหมา 3%</div>
+    </div>
+    <nav class="sp-nav" id="spNav">
+      <a href="#/runs" data-r="runs"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>งวดจ่าย<em id="navTodo"></em></a>
+      <a href="#/people" data-r="people"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>รายชื่อผู้รับจ้าง<em id="navExp"></em></a>
+      <a href="#/codes" data-r="codes"><svg viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>รายการได้ / หัก</a>
+      <a href="#/settings" data-r="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>ตั้งค่า</a>
+    </nav>
+    <a class="sp-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+    <div class="sp-user" id="spUser"></div>
+  </aside>
+  <main class="sp-main" id="spMain"><div class="sp-loading">กำลังโหลด…</div></main>
+</div>
+<div id="spModal"></div>
+<div class="sp-toasts" id="spToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/contract/ct.js?v=1"></script>
+</body>
+</html>

@@ -17,6 +17,14 @@
       "destination": "/uniform/index.html"
     },
     {
+      "source": "/contract",
+      "destination": "/contract/index.html"
+    },
+    {
+      "source": "/contract/",
+      "destination": "/contract/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -69,6 +77,15 @@
     },
     {
       "source": "/uniform/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/contract/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

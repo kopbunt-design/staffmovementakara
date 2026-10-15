@@ -29,7 +29,7 @@ HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and
 - `expense/` must NOT import `js/app.js` (or anything that imports it, e.g. `combobox.js`, `hr-letters.js`) — that would boot the HR app inside it.
 - Money: VAT 7% and WHT (0/1/2/3/5% for the whole invoice) are both computed on the pre-VAT amount, rounded per line, then summed — matches the old Excel exactly.
 - **Approver signs from the email without logging in**: `expense/approve.html?t=<token>` + `expense/approve.js` (no `spend.js` import). A token is issued by trigger each time an invoice enters `approval` (`exp_approve_tokens`, no RLS policies — only `exp_link_get` / `exp_link_decide` / `exp_approve_link` and the edge function read it), single use, 14 days. The page shows the real A4 (`invoiceDoc` in `doc.js`) and attachments; file and signature URLs come from `letter-notify` (`action: "exp_files"` + token), which therefore must have JWT verification **off** (it checks sessions itself). It signs as the approver HR chose, so the `exp_approve` mail goes to that approver only — `to_extra`/`cc` are dropped for it. Afterwards `letter-notify` is called with `exp_token` (no session) to mail the preparer.
-- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql` and `schema_expense.sql` — change all three together.
+- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql`, `schema_expense.sql` and `schema_contract_web.sql` — change all four together.
 
 ## Uniform Stock (`uniform/`) — separate app at `/uniform`
 
@@ -37,6 +37,16 @@ Moved out of the HR app on 2026-10-14 (user wanted a modern look; the HR app's o
 - `uniform/uni.js` (all UI, hash routes `#/overview` `#/people` `#/history[/itemId]` `#/items`; receive/issue/return/adjust in one right-hand drawer), `uniform/uni.css` (stock-specific styles on top of `/expense/spend.css`, which it links — a change there affects both apps).
 - Same rule as `expense/`: must NOT import `js/app.js`.
 - DB unchanged: `sql/schema_uniform.sql` (run 2026-10-14). Balances always come from the `uniform_balance` view (sum of `uniform_move`), never a stored column; a constraint trigger blocks issuing more than is on hand. New item types/sizes are added on the "รายการของ" page, not in SQL. Employee profile's uniform tab still reads the same tables.
+
+## Contract Pay (`contract/`) — separate app at `/contract`
+
+Consultants / casual workers / contractors paid monthly with 3% withholding (ภ.ง.ด.3). Moved out of the HR app on 2026-10-15; `navigate("contractpay")` redirects there. They are NOT employees (`contract_workers`, never in headcount reports).
+- `contract/ct.js` (UI: `#/runs` `#/run/<id>` `#/people` `#/codes` `#/settings`), `contract/doc.js` (official 50 ทวิ form + slips), `contract/ct.css` (on top of `/expense/spend.css` + `/uniform/uni.css`). Pure logic in `js/contract-calc.js` (tested by `test/contract-payroll.test.js`; also exports `bahtText` used by `hr-letters.js`). Must NOT import `js/app.js`.
+- Run flow: draft → calculated → pending (HR picks an approver from `ct_signers()`) → approved → locked. Only the chosen approver can approve, via `ct_decide` (trigger `guard_contract_run` enforces transitions); numbers can't change while pending/approved/locked. **Approving = signing every 50 ทวิ of the run** with the approver's `letter_signers` signature; the certificate date is the approval date (Bangkok time).
+- 50 ทวิ is issued **every pay run** (ม.3 เตรส income, row 5 "ค่าจ้างทำของ/ค่าบริการ", ภ.ง.ด.3 ticked — user 2026-10-15), not annually like employees' 40(1). Book = BE year/month, number = order of taxed people by worker_code (same order as the ภ.ง.ด.3 file).
+- Pre-pay checks (`preChecks`): missing 13-digit tax ID or non-10-digit KBank account block submission; net differing from last month by >20% blocks until HR confirms each person (`variance_ok`); contracts ending within 30 days and missing addresses are notes.
+- KBank bank file (`kbankPCT` + `tis620`): fixed width, header 178 / detail 742 chars, TIS-620, CRLF, amounts in satang, dates YYMMDD (AD). Built from the user's real sample (2026-10-15) and byte-identical on the detail line; fields of unknown meaning are copied from the sample — test-upload a small file before relying on it.
+- Company info (tax ID 0107556000582, address, debit account 2371009208) lives in `contract_settings`, editable on the settings page. DB: `sql/schema_contract_web.sql` on top of `schema_contract_payroll.sql` + `schema_contract_items.sql`. Not yet built: approver email link and per-worker slip/50 ทวิ links (phase 2).
 
 ## Gotchas
 
