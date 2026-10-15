@@ -109,6 +109,15 @@
           "value": "no-cache, must-revalidate"
         }
       ]
+    },
+    {
+      "source": "/econtract/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     }
   ]
 }

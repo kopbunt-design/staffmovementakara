@@ -20,7 +20,7 @@ const ST = { draft: ["ร่าง", "var(--muted)", "#f1f5f9"], pending: ["ร�
 const badge = s => { const [t, c, b] = ST[s] || [s, "var(--muted)", "#f1f5f9"]; return `<span class="badge" style="color:${c};background:${b};">${t}</span>`; };
 const canWrite = () => can("data.empcontract.write"), canSign = () => can("data.empcontract.sign");
 const DEFAULT_MAIL = [{ key: "ec_sign", label: "ขอลงนามสัญญาจ้าง", subject: "[ขอลงนาม] สัญญาจ้างงาน — {{person}}", html: `<p>มีสัญญาจ้างงานรอลงนามจากท่าน: {{person}} · {{kind}}</p><p><a href="{{link}}">เปิดสัญญา</a></p>` }];
-const MAIL_TO = { ec_sign: "ผู้แทนบริษัทและพยานที่ยังไม่ได้ลงนาม", ec_signed: "HR คนที่ส่งลงนาม", ec_rejected: "HR คนที่ส่งลงนาม" };
+const MAIL_TO = { ec_sign: "ผู้แทนบริษัท ({{link}} = ลิงก์ลงนามไม่ต้อง login) และพยาน (ลิงก์เข้าระบบ) — ส่งแยกฉบับ", ec_signed: "HR คนที่ส่งลงนาม", ec_rejected: "HR คนที่ส่งลงนาม" };
 
 let rows = [], signers = [], mailCfg = { mode: "outlook" }, mailTpl = [], tab = "all", tplKey = "ec_sign", search = "";
 const nameOf = uid => signers.find(s => s.user_id === uid)?.name || "—";
@@ -191,14 +191,26 @@ function openContract(r) {
     if (res.error) { toast("บันทึกไม่สำเร็จ: " + res.error.message, "error"); return null; }
     if (r) Object.assign(r, res.data); else { r = res.data; rows.unshift(r); }
     d = { ...r }; return r; };
+  // ec_sign ส่งแยกฉบับ: ผู้แทนบริษัทได้ลิงก์ลงนามไม่ต้อง login (/econtract/sign.html) · พยานได้ลิงก์เข้าระบบ
   const sendMail = async (c, action) => {
-    if (mailCfg.mode === "auto") { try { const { data, error } = await supabase.functions.invoke("letter-notify", { body: { ec_id: c.id, action } }); if (error) throw error; if (data?.sent) return `ส่งอีเมลถึง ${data.to} แล้ว`; } catch { /* ใช้ไฟล์เมล */ } }
+    const roles = action === "ec_sign" ? [!c.signed_at && "signer", !c.witnessed_at && "witness"].filter(Boolean) : [null];
+    const out = [];
+    for (const role of roles) out.push(await sendOne(c, action, role));
+    return out.join(" · ");
+  };
+  const sendOne = async (c, action, role) => {
+    if (mailCfg.mode === "auto") { try { const { data, error } = await supabase.functions.invoke("letter-notify", { body: { ec_id: c.id, action, role } }); if (error) throw error; if (data?.sent) return `ส่งอีเมลถึง ${data.to} แล้ว`; } catch { /* ใช้ไฟล์เมล */ } }
     const t = mailTpl.find(x => x.key === action); if (!t) return "แจ้งในระบบแล้ว";
-    const to = action === "ec_sign" ? [c.signed_at ? "" : signers.find(s => s.user_id === c.signer_id)?.email, c.witnessed_at ? "" : signers.find(s => s.user_id === c.witness_id)?.email].join(",") : c.requested_email || "";
-    const v = { doc_no: "", kind: `สัญญาจ้างงาน · ${c.position_th}`, person: who(c), emp_code: `เริ่มงาน ${thLong(c.start_date)}`, link: `${location.origin}/?econtract=${c.id}`,
-      reason: c.reject_reason || "-", requester: currentUser?.email || "", approver: action === "ec_sign" ? [nameOf(c.signer_id), nameOf(c.witness_id)].join(" และ ") : (signers.find(s => s.user_id === currentUser?.id)?.name || "") };
-    downloadEml(mailList(to, t.to_extra || ""), renderMail(t.subject, v, false), renderMail(t.html, v, true), `สัญญาจ้าง ${who(c)}.eml`, mailList(t.cc || ""));
-    return "ดาวน์โหลดไฟล์เมลแล้ว — เปิดใน Outlook แล้วกด Send";
+    const uid = role === "signer" ? c.signer_id : c.witness_id;
+    const to = action === "ec_sign" ? signers.find(s => s.user_id === uid)?.email || "" : c.requested_email || "";
+    let link = `${location.origin}/?econtract=${c.id}`;
+    if (role === "signer") { const { data: tk } = await supabase.rpc("ec_sign_link", { p_id: c.id }); if (tk) link = `${location.origin}/econtract/sign.html?t=${tk}`; }
+    const v = { doc_no: "", kind: `สัญญาจ้างงาน · ${c.position_th}`, person: who(c), emp_code: `เริ่มงาน ${thLong(c.start_date)}`, link,
+      reason: c.reject_reason || "-", requester: currentUser?.email || "", approver: action === "ec_sign" ? nameOf(uid) : (signers.find(s => s.user_id === currentUser?.id)?.name || "") };
+    const direct = link.includes("/econtract/sign.html");   // ลิงก์ลงนามแทนบริษัท → ไม่ใส่ผู้รับเพิ่ม/สำเนา
+    downloadEml(mailList(to, direct ? "" : t.to_extra || ""), renderMail(t.subject, v, false), renderMail(t.html, v, true),
+      `สัญญาจ้าง ${who(c)}${role ? (role === "signer" ? " (ผู้แทนบริษัท)" : " (พยาน)") : ""}.eml`, direct ? [] : mailList(t.cc || ""));
+    return `ดาวน์โหลดไฟล์เมล${role === "signer" ? "ถึงผู้แทนบริษัท" : role === "witness" ? "ถึงพยาน" : ""}แล้ว — เปิดใน Outlook แล้วกด Send`;
   };
   const done = (msg) => { toast(msg, "success"); close(); draw(); };
   const foot = () => {

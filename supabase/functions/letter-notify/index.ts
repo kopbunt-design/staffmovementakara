@@ -10,6 +10,9 @@
 //                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
 //                         exp_approve ส่งลิงก์อนุมัติไม่ต้อง login (/expense/approve.html?t=...) ถึงผู้อนุมัติ
 //   exp_token (ไม่ต้อง login) → หน้า approve.html แจ้งผู้จัดทำหลังผู้อนุมัติกดจากลิงก์ (ภายใน 30 นาทีหลังกด)
+//   ec_token + action = "ec_files" → ลิงก์ชั่วคราวของรูปลายเซ็นผู้แทน/พยาน ให้หน้า /econtract/sign.html (ไม่ต้อง login)
+//   ec_token (ไม่ต้อง login) → หลังผู้แทนกดจากลิงก์: แจ้ง HR ผู้ส่ง (ลงนามครบ/ส่งกลับ) หรือแจ้งพยานที่ยังไม่ลงนาม
+//   ec_id + action = "ec_sign" + role = "signer" | "witness" → ผู้แทนได้ลิงก์ลงนามไม่ต้อง login · พยานได้ลิงก์เข้าระบบ (ส่งแยกกัน)
 //   exp_token + action = "exp_files" → ลิงก์ชั่วคราว (1 ชม.) ของไฟล์แนบ + รูปลายเซ็น ให้หน้า approve.html แสดงใบ A4 / เปิดไฟล์แนบ
 //   ⚠️ หน้า approve.html เรียกโดยไม่ได้ login → ต้องปิด "Enforce JWT verification" ของฟังก์ชันนี้
 //      (ฟังก์ชันตรวจ session เองทุกทางอยู่แล้ว ยกเว้นทาง exp_token ที่ตรวจด้วย token แทน)
@@ -47,7 +50,7 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-    const { letter_id, fund_id, exp_id, exp_token, ec_id, action: action_ } = await req.json();
+    const { letter_id, fund_id, exp_id, exp_token, ec_id, ec_token, role, action: action_ } = await req.json();
     let action = action_;
     // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
     let caller: any = null, user: any = null;
@@ -63,7 +66,14 @@ Deno.serve(async (req) => {
       for (const k of ["preparer", "reviewer", "approver"]) sig[k] = await sign("letter-assets", x?.[k]?.signature_path);
       return json({ files, sig });
     }
-    if (!exp_token) {
+    if (ec_token && action === "ec_files") {
+      const { data: t } = await admin.from("ec_sign_tokens").select("contract_id,expires_at").eq("token", String(ec_token)).maybeSingle();
+      if (!t || new Date(t.expires_at) <= new Date()) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" }, 403);
+      const { data: c } = await admin.from("emp_contracts").select("signer,witness").eq("id", t.contract_id).single();
+      const sign = async (path?: string | null) => path ? (await admin.storage.from("letter-assets").createSignedUrl(path, 3600)).data?.signedUrl || null : null;
+      return json({ sig: { signer: await sign(c?.signer?.signature_path), witness: await sign(c?.witness?.signature_path) } });
+    }
+    if (!exp_token && !ec_token) {
       const auth = req.headers.get("Authorization");
       if (!auth) return json({ error: "Missing authorization header" }, 401);
       // อ่านด้วยสิทธิ์ของผู้เรียก — ถ้าเขาอ่านหนังสือฉบับนี้ไม่ได้ (RLS) ก็ส่งเมลเรื่องนี้ไม่ได้
@@ -129,21 +139,44 @@ Deno.serve(async (req) => {
         requester: action === "exp_approve" ? rev.name : prep.name, approver: decider });
       if (!ok) return json({ sent: false, reason: "no_template" });
       if (action === "exp_approve" && link.includes("approve.html")) { extraTo = []; cc = []; }
-    } else if (ec_id) {
-      // สัญญาจ้างงาน — อ่านด้วยสิทธิ์ผู้เรียก (RLS: HR ที่ทำสัญญา หรือผู้ลงนาม/พยานของฉบับนั้น)
-      const { data: c, error } = await caller.from("emp_contracts").select("*").eq("id", ec_id).single();
-      if (error || !c) return json({ error: "ไม่พบสัญญา หรือไม่มีสิทธิ์" }, 403);
+    } else if (ec_id || ec_token) {
+      // สัญญาจ้างงาน — อ่านด้วยสิทธิ์ผู้เรียก (RLS: HR ที่ทำสัญญา หรือผู้ลงนาม/พยานของฉบับนั้น) · หรือ token ที่ผู้แทนเพิ่งใช้ (ภายใน 30 นาที)
+      let c: any = null, who = role;
+      if (ec_token) {
+        const { data: t } = await admin.from("ec_sign_tokens").select("contract_id,used_at").eq("token", String(ec_token)).maybeSingle();
+        if (!t?.used_at || Date.now() - new Date(t.used_at).getTime() > 30 * 60e3) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดเวลาแจ้งผล" }, 403);
+        c = (await admin.from("emp_contracts").select("*").eq("id", t.contract_id).single()).data;
+        action = c?.status === "signed" ? "ec_signed" : c?.status === "rejected" ? "ec_rejected" : c?.status === "pending" && !c.witnessed_at ? "ec_sign" : "";
+        who = "witness";
+        if (!action) return json({ error: "สัญญานี้ไม่ได้อยู่ในสถานะที่ต้องแจ้ง" }, 400);
+      } else {
+        const { data, error } = await caller.from("emp_contracts").select("*").eq("id", ec_id).single();
+        if (error || !data) return json({ error: "ไม่พบสัญญา หรือไม่มีสิทธิ์" }, 403);
+        c = data;
+      }
       const sg = await nameOf(c.signer_id), wt = await nameOf(c.witness_id), rq = await nameOf(c.requested_by);
+      let link = `${appUrl}/?econtract=${c.id}`;
       if (action === "ec_sign") {
         if (c.status !== "pending") return json({ error: "สัญญาไม่ได้รอลงนาม" }, 400);
-        to = [c.signed_at ? "" : sg.email, c.witnessed_at ? "" : wt.email].filter(Boolean).join(",");
+        // ผู้แทนกับพยานได้ลิงก์คนละแบบ → ส่งแยกฉบับ (role) · ไม่ระบุ = คนที่ยังไม่ลงนาม เริ่มจากผู้แทน
+        if (!who) who = !c.signed_at ? "signer" : "witness";
+        if (who === "signer") {
+          if (c.signed_at) return json({ error: "ผู้แทนบริษัทลงนามแล้ว" }, 400);
+          to = sg.email;
+          const { data: t } = await admin.from("ec_sign_tokens").select("token,used_at,expires_at").eq("contract_id", c.id).maybeSingle();
+          if (t && !t.used_at && new Date(t.expires_at) > new Date()) link = `${appUrl}/econtract/sign.html?t=${t.token}`;
+        } else {
+          if (c.witnessed_at) return json({ error: "พยานลงนามแล้ว" }, 400);
+          to = wt.email;
+        }
       } else if (action === "ec_signed" || action === "ec_rejected") to = c.requested_email || rq.email;
       else return json({ error: "action ไม่ถูกต้อง" }, 400);
-      const me = await nameOf(user?.id || null);
+      const me = ec_token ? sg : await nameOf(user?.id || null);
       const ok = await tplVars(action, { doc_no: "", kind: `สัญญาจ้างงาน · ${c.position_th || ""}`, person: `${c.title_th || ""}${c.name_th || ""}`,
-        emp_code: c.start_date ? `เริ่มงาน ${c.start_date}` : "", link: `${appUrl}/?econtract=${c.id}`, reason: c.reject_reason || "-",
-        requester: rq.name, approver: action === "ec_sign" ? [sg.name, wt.name].filter(Boolean).join(" และ ") : me.name });
+        emp_code: c.start_date ? `เริ่มงาน ${c.start_date}` : "", link, reason: c.reject_reason || "-",
+        requester: rq.name, approver: action === "ec_sign" ? (who === "signer" ? sg.name : wt.name) : me.name });
       if (!ok) return json({ sent: false, reason: "no_template" });
+      if (link.includes("/econtract/sign.html")) { extraTo = []; cc = []; }   // ลิงก์ลงนามแทนบริษัทไปถึงผู้แทนคนเดียว
     } else if (fund_id) {
       // อ่านด้วยสิทธิ์ผู้เรียก — ต้องเปิดหน้าแบบฟอร์มกองทุนได้ (RLS) ถึงส่งเมลเรื่องนี้ได้
       const { data: f, error } = await caller.from("fund_form_submission").select("*").eq("id", fund_id).single();

@@ -135,6 +135,95 @@ $$;
 revoke all on function ec_submit(bigint, uuid, uuid), ec_sign(bigint), ec_reject(bigint, text), ec_signers() from public, anon;
 grant execute on function ec_submit(bigint, uuid, uuid), ec_sign(bigint), ec_reject(bigint, text), ec_signers() to authenticated;
 
+-- ------------------------------------------------------------------ ลิงก์ลงนามสำหรับผู้แทนบริษัท — กดจากอีเมลได้เลยไม่ต้อง login (user 2026-10-15)
+--   แบบเดียวกับ HR Invoice Hub (exp_approve_tokens): ส่งลงนามเมื่อไร ออกลิงก์ลับใหม่ /econtract/sign.html?t=<token>
+--   ใช้ได้ครั้งเดียว · 14 วัน · ใช้ไม่ได้ทันทีถ้าสัญญาถูกส่งกลับ/ยกเลิก หรือผู้แทนลงนามในระบบแล้ว
+--   ลายเซ็นที่ลง = ของผู้แทนบริษัทที่ HR เลือก → ลิงก์ต้องไปถึงผู้แทนคนเดียว (พยานลงนามในระบบ)
+--   ตาราง token ไม่มี policy → อ่านได้เฉพาะฟังก์ชันด้านล่างและ Edge Function · หน้าลิงก์ไม่เห็นเลขบัตรเต็ม
+create table if not exists ec_sign_tokens (
+  contract_id bigint primary key references emp_contracts(id) on delete cascade,
+  token       text not null unique,
+  expires_at  timestamptz not null,
+  used_at     timestamptz,
+  created_at  timestamptz default now()
+);
+alter table ec_sign_tokens enable row level security;
+revoke all on ec_sign_tokens from anon, authenticated;
+
+create or replace function ec_token_issue() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'pending' and old.status is distinct from 'pending' then
+    insert into ec_sign_tokens (contract_id, token, expires_at)
+    values (new.id, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), now() + interval '14 days')
+    on conflict (contract_id) do update set token = excluded.token, expires_at = excluded.expires_at, used_at = null, created_at = now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists ec_token_issue on emp_contracts;
+create trigger ec_token_issue after update on emp_contracts for each row execute function ec_token_issue();
+
+-- หน้าลงนาม (ไม่ login): state = open | expired | closed · ไม่ส่งเลขบัตรเต็ม / อีเมลผู้ส่ง
+create or replace function ec_link_get(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare t ec_sign_tokens; c emp_contracts;
+begin
+  if coalesce(length(p_token), 0) < 40 then return jsonb_build_object('error', 'ลิงก์ไม่ถูกต้อง'); end if;
+  select * into t from ec_sign_tokens where token = p_token;
+  if t.contract_id is null then return jsonb_build_object('error', 'ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว'); end if;
+  select * into c from emp_contracts where id = t.contract_id;
+  return (to_jsonb(c) - 'id_card' - 'requested_email' - 'signer' - 'witness') || jsonb_build_object(
+    'state', case when c.status = 'pending' and c.signed_at is null and t.used_at is null and t.expires_at > now() then 'open'
+                  when c.status = 'pending' and c.signed_at is null and t.used_at is null then 'expired' else 'closed' end,
+    'signer_name', (select coalesce(nullif(g.name_th,''), g.name_en) from letter_signers g where g.user_id = c.signer_id),
+    'witness_name', (select coalesce(nullif(g.name_th,''), g.name_en) from letter_signers g where g.user_id = c.witness_id),
+    'signer', c.signer - 'signature_path', 'witness', c.witness - 'signature_path', 'expires_at', t.expires_at);
+end $$;
+
+-- ลงนาม / ส่งกลับจากลิงก์ — ในนามผู้แทนบริษัทที่ HR เลือก
+create or replace function ec_link_decide(p_token text, p_ok boolean, p_reason text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare t ec_sign_tokens; c emp_contracts; s letter_signers;
+begin
+  select * into t from ec_sign_tokens where token = p_token for update;
+  if t.contract_id is null then raise exception 'ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว'; end if;
+  if t.used_at is not null then raise exception 'ลิงก์นี้ใช้ไปแล้ว'; end if;
+  if t.expires_at <= now() then raise exception 'ลิงก์หมดอายุแล้ว — เข้าสู่ระบบเพื่อลงนามแทน'; end if;
+  select * into c from emp_contracts where id = t.contract_id for update;
+  if c.status <> 'pending' or c.signed_at is not null then raise exception 'สัญญานี้ไม่ได้รอลายเซ็นผู้แทนบริษัทแล้ว'; end if;
+  if not user_has_perm(c.signer_id, 'data.empcontract.sign') then raise exception 'ผู้แทนบริษัทของสัญญานี้ไม่มีสิทธิ์ลงนามแล้ว — ติดต่อ HR'; end if;
+  perform set_config('ec.deciding', 'on', true);
+  if p_ok then
+    select * into s from letter_signers where user_id = c.signer_id;
+    if s.signature_path is null then raise exception 'ผู้แทนบริษัทยังไม่ได้ตั้งลายเซ็น — ติดต่อ HR'; end if;
+    update emp_contracts set signer = jsonb_build_object('name_th', s.name_th, 'title_th', s.title_th, 'signature_path', s.signature_path, 'via', 'email_link'),
+           signed_at = now(), updated_at = now() where id = c.id;
+    update emp_contracts set status = 'signed' where id = c.id and witnessed_at is not null;
+  else
+    if nullif(trim(p_reason), '') is null then raise exception 'กรุณาระบุเหตุผลที่ส่งกลับ'; end if;
+    update emp_contracts set status = 'rejected', reject_reason = trim(p_reason), signer = null, witness = null,
+           signed_at = null, witnessed_at = null, updated_at = now() where id = c.id;
+  end if;
+  update ec_sign_tokens set used_at = now() where contract_id = c.id;
+  select * into c from emp_contracts where id = c.id;
+  return jsonb_build_object('status', c.status, 'name', coalesce(c.title_th, '') || c.name_th);
+end $$;
+
+-- ลิงก์สำหรับใส่เมลแบบ Outlook (.eml) — ให้เฉพาะ HR คนที่ส่งลงนาม หรือตัวผู้แทนเอง
+create or replace function ec_sign_link(p_id bigint) returns text
+language sql stable security definer set search_path = public as $$
+  select t.token from ec_sign_tokens t join emp_contracts c on c.id = t.contract_id
+   where c.id = p_id and c.status = 'pending' and c.signed_at is null and t.used_at is null and t.expires_at > now()
+     and auth.uid() in (c.requested_by, c.signer_id);
+$$;
+revoke all on function ec_link_get(text), ec_link_decide(text, boolean, text), ec_sign_link(bigint) from public;
+grant execute on function ec_link_get(text), ec_link_decide(text, boolean, text) to anon, authenticated;
+grant execute on function ec_sign_link(bigint) to authenticated;
+-- สัญญาที่รอลงนามอยู่แล้วตอนรันไฟล์นี้: ออกลิงก์ให้ด้วย (กด "ส่งอีเมลเตือน" ได้)
+insert into ec_sign_tokens (contract_id, token, expires_at)
+select id, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), now() + interval '14 days'
+  from emp_contracts where status = 'pending' and signed_at is null
+on conflict (contract_id) do nothing;
+
 alter table emp_contracts enable row level security;
 drop policy if exists "ec_read"   on emp_contracts;
 drop policy if exists "ec_insert" on emp_contracts;
