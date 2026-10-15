@@ -5,7 +5,7 @@ const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8St
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const strip = s => s.replace(/^import[^;]*;/gm, "").replace(/^export /gm, "");
 const calc = strip(read(`${ROOT}/js/contract-calc.js`));
-const M = new Function(`${calc}\n${strip(read(`${ROOT}/js/emp-contract-doc.js`))}; return { probationEnd, idValid, parseIdCard, contractHTML, fill, thLong, LOC };`)();
+const M = new Function(`${calc}\n${strip(read(`${ROOT}/js/emp-contract-doc.js`))}; return { probationEnd, idValid, parseIdCard, contractHTML, fill, thLong, LOC, mergeReads };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const has = (s, x, m) => eq(s.includes(x), true, m);
@@ -36,7 +36,14 @@ eq([R.id, R.title_th, R.name_th, R.name_en, R.birth_date, R.address], ["11000000
 // PDF สำเนาบัตร (Tesseract จริง): ป้ายที่อยู่อ่านเป็น "fing" → หาจาก ต./อ./จ. แทน
 const raw2 = "ชือตัวและชื่อสกุล นาง ใจดี มีสุข\n\nName Mrs. Jaidee\n\nLast name Meesuk\n\nเกิดวันที่ 9 มี.ค. 2530\n\nDate of Birth 9 Mar. 1987\nfing 5 ny 2 ต.ท้ายดง\n\nอ.วังโป่ง จ.เพชรบูรณ์";
 const R2 = M.parseIdCard(raw2);
-eq([R2.title_th, R2.name_th, R2.name_en, R2.birth_date, R2.address], ["นาง", "ใจดี มีสุข", "Jaidee Meesuk", "1987-03-09", "5 ny 2 ต.ท้ายดง อ.วังโป่ง จ.เพชรบูรณ์"], "ป้ายที่อยู่เพี้ยน → ยังหาที่อยู่เจอ");
+eq([R2.title_th, R2.name_th, R2.name_en, R2.birth_date, R2.address], ["นาง", "ใจดี มีสุข", "Jaidee Meesuk", "1987-03-09", "5 2 ต.ท้ายดง อ.วังโป่ง จ.เพชรบูรณ์"], "ป้ายที่อยู่เพี้ยน → ยังหาที่อยู่เจอ");
+// ภาพถ่ายสำเนาบัตร (รูปแบบเดียวกับที่ Tesseract อ่านไฟล์จริง ข้อมูลสมมติ): ป้ายชื่อ/คำนำหน้า/เดือนไทย/ป้ายที่อยู่เพี้ยนหมด · "Last name" อ่านเป็น "Lat nase"
+const raw3 = "บัตรประจําตัวประชาชน Thai National ID Card\nซึ่เน3เรื่อๆ WL ใจดี มีสุข /\nNae Miss Jaidee\nLat nase Meesuk\nร4 เกิดวันที่ 9 nA. 2530 ะ\n= อเ๒ of อ๒๕ 9 Mar. 1987 =\nศาสนา พุทธ / ู\not 5 หมู่ที 2 ตเท้ายดง 4.วังโป่ง / :\nจ.เพชรบูรณ์ rr\n18A 2560 - .=แ ANA 2569\n18 Dec. 2017 21 Jul. 2026";
+const R3 = M.parseIdCard(raw3);
+eq([R3.title_th, R3.name_th, R3.name_en, R3.birth_date, R3.address], ["นางสาว", "ใจดี มีสุข", "Jaidee Meesuk", "1987-03-09", "5 หมู่ที 2 ตเท้ายดง 4.วังโป่ง จ.เพชรบูรณ์"], "สำเนาภาพถ่าย: ชื่อจากบรรทัดก่อน Name · คำนำหน้าจาก Miss · ที่อยู่จาก หมู่ · ทิ้งเศษ");
+eq(M.parseIdCard("ไม่มีป้าย\n18 Dec. 2017\n9 Mar. 1987\n21 Jul. 2026").birth_date, "1987-03-09", "ป้ายวันเกิดหาย → วันที่อังกฤษที่ปีน้อยสุด");
+eq(M.mergeReads([{ id: bad, idOk: false, name_th: "ก ข", title_th: "นาย", name_en: "", birth_date: "", address: "" }, { id: good, idOk: true, name_th: "", name_en: "A B", birth_date: "1987-03-09", address: "" }, { address: "1 หมู่ 2" }]),
+  { id: good, idOk: true, name_th: "ก ข", name_en: "A B", birth_date: "1987-03-09", address: "1 หมู่ 2", title_th: "นาย" }, "รวมหลายรอบอ่าน: แต่ละช่องจากรอบที่มี · เลขบัตรเอาชุดที่ถูก");
 eq(M.parseIdCard("เกิดวันที่ 9 มี.ค. 2530\nนางสาว ใจดี มีสุข\n9999 99999 9999").birth_date, "1987-03-09", "วันเกิดภาษาไทย (พ.ศ. → ค.ศ.)");
 eq(M.parseIdCard(`${bad}\n${good}`).id, good, "หลายชุดเลข → เลือกชุดที่เลขตรวจสอบถูก");
 

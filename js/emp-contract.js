@@ -2,7 +2,8 @@ import { supabase } from "./supabase-config.js";
 import { esc, toast, can, currentUser, allEmployees } from "./app.js";
 import { renderMail, mailList, downloadEml } from "./hr-letters.js";
 import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
-import { contractHTML, LOC, fill, probationEnd, thLong, idValid, parseIdCard } from "./emp-contract-doc.js";
+import { contractHTML, LOC, fill, probationEnd, thLong, idValid } from "./emp-contract-doc.js";
+import { readIdCard, readRegion, complete } from "./idcard-read.js";
 
 // ============================================================================
 // สัญญาจ้างงาน (AKR-OHR-FM-006) — งานเอกสาร HR · sql/schema_emp_contract.sql
@@ -73,55 +74,26 @@ function draw() {
     link: `${location.origin}/?econtract=1`, reason: "แก้เงินเดือน", requester: "HR", approver: "ผู้แทนบริษัท" }, onSwitch: k => { tplKey = k; draw(); } });
 }
 
-// ---------------------------------------------------------------- อ่านบัตรประชาชนจากรูป (Tesseract.js ในเบราว์เซอร์)
-let tessP = null;
-const loadTess = () => tessP ||= new Promise((ok, no) => { if (window.Tesseract) return ok(window.Tesseract);
-  const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"; s.onload = () => ok(window.Tesseract); s.onerror = () => { tessP = null; no(new Error("โหลดตัวอ่านภาพไม่สำเร็จ")); }; document.head.appendChild(s); });
-// PDF (สำเนาบัตรที่สแกนเป็น PDF): ถ้ามีตัวหนังสือในไฟล์ใช้เลย · ไม่มีก็วาดหน้าแรกเป็นภาพแล้วอ่าน
-let pdfP = null;
-const loadPdf = () => pdfP ||= new Promise((ok, no) => { if (window.pdfjsLib) return ok(window.pdfjsLib);
-  const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
-  s.onerror = () => { pdfP = null; no(new Error("โหลดตัวอ่าน PDF ไม่สำเร็จ")); }; document.head.appendChild(s); });
-async function pdfPages(file, max = 3) {
-  const lib = await loadPdf(), doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise, out = [];
-  for (let n = 1; n <= Math.min(max, doc.numPages); n++) {
-    const page = await doc.getPage(n), tc = await page.getTextContent(), text = tc.items.map(i => i.str + (i.hasEOL ? "\n" : " ")).join("");
-    const vp = page.getViewport({ scale: 3 }), c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
-    await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
-    out.push({ text, canvas: c });
-  }
-  return out;
-}
-const score = r => ["id", "name_th", "name_en", "birth_date", "address"].filter(k => r[k]).length + (r.idOk ? 2 : 0);
-// ขยาย + ขาวดำ + เพิ่มความคมชัด ก่อนอ่าน (ตัวอักษรไทยบนบัตรเล็ก และพื้นหลังมีลาย) · src = ไฟล์รูป หรือ canvas
-async function prepImage(src) {
-  const img = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src), scale = Math.min(3, Math.max(1, 2200 / img.width)), c = document.createElement("canvas");
-  c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-  const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
-  const px = g.getImageData(0, 0, c.width, c.height), a = px.data; let lo = 255, hi = 0;
-  for (let i = 0; i < a.length; i += 4) { const y = .299 * a[i] + .587 * a[i + 1] + .114 * a[i + 2]; a[i] = y; if (y < lo) lo = y; if (y > hi) hi = y; }
-  const k = 255 / Math.max(1, hi - lo);
-  for (let i = 0; i < a.length; i += 4) { const y = Math.min(255, Math.max(0, (a[i] - lo) * k)); a[i] = a[i + 1] = a[i + 2] = y; }
-  g.putImageData(px, 0, 0); return c;
-}
-// PDF: ลองทีละหน้า (สูงสุด 3) — ข้อความในไฟล์ก่อน ไม่พอค่อยอ่านภาพ · เลือกหน้าที่อ่านได้มากสุด
-async function readIdCard(file, onProgress) {
-  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-  const pages = isPdf ? await pdfPages(file) : [{ text: "", canvas: null }];
-  let best = null, w = null;
-  try {
-    for (let i = 0; i < pages.length; i++) {
-      const pg = pages[i], fromText = parseIdCard(pg.text);
-      if (fromText.idOk && fromText.name_th) return { ...fromText, raw: pg.text, page: i + 1 };   // PDF ที่มีตัวหนังสืออยู่แล้ว
-      if (!w) { const T = await loadTess(); w = await T.createWorker(["tha", "eng"], 1, { logger: m => m.status === "recognizing text" && onProgress?.(Math.round(m.progress * 100), i + 1, pages.length) }); }
-      const { data } = await w.recognize(await prepImage(isPdf ? pg.canvas : file));
-      const r = { ...parseIdCard(data.text), raw: data.text, page: i + 1 };
-      if (!best || score(r) > score(best)) best = r;
-      if (best.idOk && best.name_th) break;
-    }
-  } finally { if (w) await w.terminate(); }
-  return best;
+// ---------------------------------------------------------------- อ่านบัตรประชาชน: js/idcard-read.js · อ่านไม่ครบ → HR ลากกรอบที่บัตรเอง
+function cropPicker(canvas, onPick) {
+  const el = document.createElement("div"); el.className = "modal-overlay"; el.style.zIndex = 1100;
+  el.innerHTML = `<div class="modal" style="max-width:min(900px,96vw);"><div class="modal-header"><div class="modal-title">ลากกรอบรอบหน้าบัตร</div><button class="modal-close" data-x>✕</button></div>
+    <div class="modal-body"><div class="text-muted" style="font-size:12.5px;margin-bottom:8px;">ลากเมาส์ (หรือนิ้ว) คลุมเฉพาะหน้าบัตรที่มีชื่อ เลขบัตร ที่อยู่ — ไม่ต้องรวมด้านหลังบัตรหรือลายมือ</div>
+      <div id="cpWrap" style="position:relative;touch-action:none;user-select:none;max-height:70vh;overflow:auto;"><img id="cpImg" style="display:block;width:100%;" draggable="false">
+      <div id="cpBox" style="position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);display:none;pointer-events:none;"></div></div></div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-x>ยกเลิก</button><button class="btn btn-primary" id="cpGo" disabled>อ่านส่วนที่เลือก</button></div></div>`;
+  document.getElementById("modalPortal").appendChild(el);
+  const $ = s => el.querySelector(s), img = $("#cpImg"), box = $("#cpBox"); let st = null, rect = null;
+  img.src = canvas.toDataURL("image/jpeg", .85);
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () => el.remove());
+  const pos = e => { const r = img.getBoundingClientRect(); return { x: Math.max(0, Math.min(r.width, e.clientX - r.left)), y: Math.max(0, Math.min(r.height, e.clientY - r.top)) }; };
+  const wrap = $("#cpWrap");
+  wrap.onpointerdown = e => { st = pos(e); wrap.setPointerCapture(e.pointerId); };
+  wrap.onpointermove = e => { if (!st) return; const q = pos(e), x = Math.min(st.x, q.x), y = Math.min(st.y, q.y), w = Math.abs(q.x - st.x), h = Math.abs(q.y - st.y);
+    Object.assign(box.style, { display: "block", left: x + img.offsetLeft + "px", top: y + img.offsetTop + "px", width: w + "px", height: h + "px" });
+    const k = canvas.width / img.getBoundingClientRect().width; rect = { x: x * k, y: y * k, w: w * k, h: h * k }; $("#cpGo").disabled = !(w > 20 && h > 20); };
+  wrap.onpointerup = () => { st = null; };
+  $("#cpGo").onclick = () => { el.remove(); onPick(rect); };
 }
 
 // ---------------------------------------------------------------- ตัวแก้สัญญา (ฟอร์มซ้าย · ตัวอย่างขวา)
@@ -181,19 +153,27 @@ function openContract(r) {
     $("#ecNoProb")?.addEventListener("change", e => { d.no_probation = e.target.checked; form(); preview(); });
     $("#ecId").oninput = e => { idFull = e.target.value.replace(/\D/g, "").slice(0, 13); const p = e.target.selectionStart; form(); preview(); const n = $("#ecId"); n.focus(); n.setSelectionRange(p, p); };
     $("#ecImg")?.addEventListener("change", async e => {
-      const file = e.target.files[0]; if (!file) return; const st = $("#ecOcr"); st.textContent = "กำลังโหลดตัวอ่านภาพ… (ครั้งแรกประมาณ 10–20 วินาที)";
-      try { const x = await readIdCard(file, (p, n, of) => { st.textContent = `กำลังอ่าน${of > 1 ? ` หน้า ${n}/${of}` : ""} ${p}%`; });
-        const got = { title_th: x.title_th, name_th: x.name_th, name_en: x.name_en, birth_date: x.birth_date, address: x.address };
-        const filled = Object.entries(got).filter(([, v]) => v); read = new Set(filled.map(([k]) => k));
-        for (const [k, v] of filled) d[k] = v;
-        if (x.id) { idFull = x.id; read.add("id"); }
-        form(); preview();
-        $("#ecOcr").innerHTML = `${read.size ? `อ่านได้ ${read.size} ช่อง${x.page > 1 ? ` (หน้า ${x.page})` : ""}${x.id && !x.idOk ? " · เลขบัตรอ่านไม่ชัด ตรวจอีกครั้ง" : ""} — ตรวจช่องสีเหลืองทุกช่อง`
-          : "อ่านข้อมูลบัตรไม่ออก — ลองรูปที่ชัดกว่า (ถ่ายตรง ไม่เอียง ไม่สะท้อนแสง) หรือกรอกเอง"}
-          <details style="margin-top:4px;"><summary style="cursor:pointer;">ดูข้อความที่ระบบอ่านได้</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;background:#fff;padding:6px;border-radius:6px;">${esc(x.raw || "(ว่าง)")}</pre></details>`;
-      } catch (er) { st.textContent = "อ่านไม่สำเร็จ: " + er.message + " — กรอกเองได้"; }
+      const file = e.target.files[0]; if (!file) return; e.target.value = ""; const st = $("#ecOcr"); st.textContent = "กำลังโหลดตัวอ่านภาพ… (ครั้งแรกประมาณ 10–20 วินาที)";
+      try { ocrDone(await readIdCard(file, t => { $("#ecOcr").textContent = `กำลังอ่าน · ${t}`; })); } catch (er) { st.textContent = "อ่านไม่สำเร็จ: " + er.message + " — กรอกเองได้"; }
     });
     $("#ecEmp")?.addEventListener("change", async e => { const { error } = await supabase.from("emp_contracts").update({ emp_code: e.target.value.trim() || null }).eq("id", r.id); if (error) toast(error.message, "error"); else { r.emp_code = e.target.value.trim() || null; toast("บันทึกรหัสพนักงานแล้ว", "success"); } });
+  };
+  // ผลอ่านบัตร → ใส่ช่อง (ทับเฉพาะช่องที่อ่านได้) · ยังไม่ครบ → ปุ่มลากกรอบเอง
+  let lastPage = null;
+  const ocrDone = x => {
+    const got = { title_th: x.title_th, name_th: x.name_th, name_en: x.name_en, birth_date: x.birth_date, address: x.address };
+    const filled = Object.entries(got).filter(([, v]) => v); for (const [k, v] of filled) { d[k] = v; read.add(k); }
+    if (x.id && (x.idOk || !idValid(idFull))) { idFull = x.id; read.add("id"); }
+    if (x.pages?.length) lastPage = x.pages[(x.page || 1) - 1]?.canvas || x.pages[0].canvas; else if (x.canvas) lastPage = x.canvas;
+    form(); preview();
+    const ok = complete({ ...d, id: idFull, idOk: idValid(idFull) });
+    $("#ecOcr").innerHTML = `${filled.length || x.id ? `อ่านได้ ${filled.length + (x.id ? 1 : 0)} ช่อง${x.page > 1 ? ` (หน้า ${x.page})` : ""}${x.id && !x.idOk ? " · เลขบัตรอ่านไม่ชัด ตรวจอีกครั้ง" : ""} — ตรวจช่องสีเหลืองทุกช่อง`
+      : "อ่านข้อมูลบัตรไม่ออก"}${lastPage ? ` ${ok ? "· ยังผิดอยู่?" : "·"} <button class="btn btn-sm ${ok ? "btn-secondary" : "btn-primary"}" id="ecCrop" type="button">✂ ลากกรอบที่บัตรแล้วอ่านใหม่</button>` : ""}
+      <details style="margin-top:4px;"><summary style="cursor:pointer;">ดูข้อความที่ระบบอ่านได้</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;background:#fff;padding:6px;border-radius:6px;">${esc(x.raw || "(ว่าง)")}</pre></details>`;
+    $("#ecCrop")?.addEventListener("click", () => cropPicker(lastPage, async rect => {
+      $("#ecOcr").textContent = "กำลังอ่านส่วนที่เลือก…";
+      try { ocrDone({ ...(await readRegion(lastPage, rect, t => { $("#ecOcr").textContent = t; })), pages: null, canvas: lastPage }); } catch (er) { $("#ecOcr").textContent = "อ่านไม่สำเร็จ: " + er.message; }
+    }));
   };
   const row = () => { const x = { location: d.location, contract_date: d.contract_date, title_th: d.title_th, name_th: (d.name_th || "").trim(), name_en: d.name_en?.trim() || null,
     birth_date: d.birth_date || null, address: d.address?.trim() || null, start_date: d.start_date, position_th: (d.position_th || "").trim(), position_en: d.position_en?.trim() || null,

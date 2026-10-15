@@ -118,19 +118,38 @@ export function parseIdCard(text) {
   const th = thLine.replace(/.*ชื่อตัวและชื่อสกุล\s*/, "").replace(/^.*?(?=(^|\s)(นางสาว|นาย|นาง|น\.ส\.)\s+[ก-๙])/, "").trim().match(/^(นางสาว|นาย|นาง|น\.ส\.)?\s*(.+)$/);
   if (th) { out.title_th = th[1] === "น.ส." ? "นางสาว" : th[1] || ""; out.name_th = th[2].replace(/\s+/g, " ").trim(); }
   // ชื่ออังกฤษ: "Name Mr. Somchai" + "Last name Jaidee"
-  const fn = t.match(/Name\s+(?:Mr|Mrs|Miss|Ms)\.?\s+([A-Za-z][A-Za-z' -]*)/), ln = t.match(/Last\s*name\s+([A-Za-z][A-Za-z' -]*)/i);
-  if (fn) out.name_en = [fn[1].trim(), ln ? ln[1].trim() : ""].filter(Boolean).join(" ");
+  const fn = t.match(/N[a-z]{1,3}\s+(Mr|Mrs|Miss|Ms)\.?\s+([A-Za-z][A-Za-z' -]*)/), ln = t.match(/Last\s*name\s+([A-Za-z][A-Za-z' -]*)/i) || t.match(/\bLa[a-z]{0,2}\s+n[a-z]{2,3}\s+([A-Z][A-Za-z'-]+)/);   // ป้ายเพี้ยน เช่น "Lat nase"
+  if (fn) out.name_en = [fn[2].trim(), ln ? ln[1].trim() : ""].filter(Boolean).join(" ");
+  // ทั้งป้ายและคำนำหน้าไทยเพี้ยน (ภาพถ่ายสำเนา) → ชื่อไทย = คำไทย 2 คำท้ายของบรรทัดก่อน "Name" · คำนำหน้าเอาจาก Mr/Miss/Mrs
+  if (!out.name_th && fn) { const ni = lines.findIndex(l => /N[a-z]{1,3}\s+(Mr|Mrs|Miss|Ms)\b/.test(l)), m = ni > 0 && lines[ni - 1].match(/([ก-๙]{2,})\s+([ก-๙]{2,})[^ก-๙]*$/);
+    if (m) out.name_th = `${m[1]} ${m[2]}`; }
+  if (out.name_th && !out.title_th && fn) out.title_th = { Mr: "นาย", Mrs: "นาง", Miss: "นางสาว", Ms: "นางสาว" }[fn[1]];
   // วันเกิด: อังกฤษก่อน (Date of Birth 7 Jan. 1975) ไม่เจอค่อยไทย (เกิดวันที่ 7 ม.ค. 2518)
   const be = t.match(/Birth\s+(\d{1,2})\s*([A-Za-z]{3})[a-z]*\.?\s*(\d{4})/i);
   if (be && EN_MON[be[2].toLowerCase()]) out.birth_date = iso(+be[3], EN_MON[be[2].toLowerCase()], +be[1]);
   else { const bt = t.match(/เกิดวันที่\s*(\d{1,2})\s*([ก-๙.]+)\s*(\d{4})/); const mi = bt ? TH_MON.findIndex(m => bt[2].replace(/\s/g, "").startsWith(m.replace(/\.$/, ""))) : -1;
     if (bt && mi >= 0) out.birth_date = iso(+bt[3] - 543, mi + 1, +bt[1]); }
+  // ป้ายวันเกิดเพี้ยนทั้งไทยและอังกฤษ (ภาพถ่ายสำเนา) → วันที่อังกฤษที่ปีน้อยสุดบนบัตร (วันออก/หมดอายุบัตรอยู่หลังวันเกิดเสมอ)
+  if (!out.birth_date) { const ds = [...t.matchAll(/(?<!\d)(\d{1,2})\s*([A-Za-z]{3})[a-z]*\.?\s*((?:19|20)\d\d)(?!\d)/g)].filter(m => EN_MON[m[2].toLowerCase()]).sort((x, y) => x[3] - y[3]);
+    if (ds[0]) out.birth_date = iso(+ds[0][3], EN_MON[ds[0][2].toLowerCase()], +ds[0][1]); }
   // ที่อยู่: ตั้งแต่ "ที่อยู่" จนก่อนบรรทัดวันออกบัตร/วันหมดอายุ
   // ป้าย "ที่อยู่" อ่านเพี้ยนได้ (เช่นเป็นตัวอังกฤษ) → สำรอง: บรรทัดแรกที่มี ต./ตำบล/แขวง หลังวันเกิด
   let ai = lines.findIndex(l => /^ที่อยู่/.test(l));
-  if (ai < 0) { const bi = lines.findIndex(l => /Birth|เกิดวันที่/.test(l)); ai = lines.findIndex((l, i) => i > bi && /(^|\s)(ต\.|ตำบล|แขวง)\s*[ก-๙]/.test(l)); }
+  if (ai < 0) { const bi = lines.findIndex(l => /Birth|เกิดวันที่/.test(l)); ai = lines.findIndex((l, i) => i > bi && /(^|\s)(ต\.|ตำบล|แขวง)\s*[ก-๙]|หมู่\S{0,3}\s*\d/.test(l)); }
   if (ai >= 0) { const parts = [];
-    for (let i = ai; i < lines.length && parts.length < 3; i++) { if (i > ai && (/วันออกบัตร|Date of Issue|วันบัตรหมดอายุ|Date of Expiry|เจ้าพนักงาน/.test(lines[i]) || /^\d{1,2}\s+\S{2,6}\s+25\d\d\b/.test(lines[i]))) break; parts.push(lines[i]); }
-    out.address = parts.join(" ").replace(/^ที่อยู่\s*/, "").replace(/^[A-Za-z]+\s+(?=\d)/, "").replace(/\s+/g, " ").trim(); }
+    for (let i = ai; i < lines.length && parts.length < 3; i++) { if (i > ai && (/วันออกบัตร|Date of Issue|วันบัตรหมดอายุ|Date of Expiry|เจ้าพนักงาน/.test(lines[i]) || /^\d{1,2}\s+\S{2,6}\s+25\d\d\b/.test(lines[i]) || /(?<!\d)25[4-9]\d(?!\d)/.test(lines[i]) && !/[ก-๙]{2,}\.[ก-๙]/.test(lines[i]))) break; parts.push(lines[i]); }
+    out.address = parts.join(" ").replace(/^ที่อยู่\s*/, "").replace(/^[A-Za-z]+\s+(?=\d)/, "")
+      .split(/\s+/).filter(w => /[\dก-๙]/.test(w)).join(" ").trim(); }   // ทิ้งเศษที่ไม่มีทั้งตัวไทยและตัวเลข (เช่น "/ :" "rr" จากลายมือทับ)
+  return out;
+}
+
+// รวมผลหลายรอบอ่าน (ทั้งหน้า / ตัดเฉพาะบัตร) — แต่ละช่องเอาจากรอบที่อ่านได้ดีสุดที่มีช่องนั้น · เลขบัตรเอาชุดที่เลขตรวจสอบถูกก่อน
+export const readScore = r => r ? ["id", "name_th", "name_en", "birth_date", "address"].filter(k => r[k]).length + (r.idOk ? 2 : 0) : -1;
+export function mergeReads(list) {
+  const rs = list.filter(Boolean).sort((a, b) => readScore(b) - readScore(a)), out = { ...(rs[0] || {}) };
+  const idr = rs.find(r => r.idOk); if (idr) { out.id = idr.id; out.idOk = true; }
+  for (const k of ["id", "name_en", "birth_date", "address"]) if (!out[k]) out[k] = rs.find(r => r[k])?.[k] || "";
+  if (!out.name_th) { const r = rs.find(r => r.name_th); if (r) { out.name_th = r.name_th; out.title_th = r.title_th; } }
+  if (!out.title_th) out.title_th = rs.find(r => r.title_th)?.title_th || "";
   return out;
 }
