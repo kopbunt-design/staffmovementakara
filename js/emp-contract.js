@@ -204,13 +204,17 @@ function openContract(r) {
     const sgList = signers.filter(s => s.can_sign !== false), me0 = currentUser?.id;
     const sgSel = r?.signer_id || (sgList.find(s => s.user_id !== me0) || sgList[0])?.user_id || "";
     const wtSel = r?.witness_id || (signers.find(s => s.user_id === me0 && s.user_id !== sgSel) || signers.find(s => s.user_id !== sgSel))?.user_id || "";
-    const noPair = !sgList.length ? "ยังไม่มีผู้มีสิทธิ์ลงนามสัญญาจ้างที่ตั้งลายเซ็นแล้ว" : "ต้องมีพยานอีกคน (คนออกสัญญาเป็นพยานได้ — ตั้งลายเซ็นของคุณก่อน)";
+    const canPair = sgList.length > 0 && signers.some(s => s.user_id !== sgSel);
+    const noPair = !sgList.length ? "ยังไม่มีผู้แทนบริษัท — ให้ Admin ให้สิทธิ์ “ลงนามสัญญาจ้างงาน” และให้คนนั้นตั้งลายเซ็นก่อน"
+      : sgList.length === 1 && sgList[0].user_id === me0 ? "ส่งไม่ได้: ผู้แทนบริษัทกับพยานต้องเป็นคนละคน — ต้องมีผู้แทนบริษัทอีกคน (มีสิทธิ์ “ลงนามสัญญาจ้างงาน” + ตั้งลายเซ็นแล้ว)"
+      : "ต้องมีพยานอีกคน — คนออกสัญญาเป็นพยานได้ ตั้งลายเซ็นของคุณก่อน";
     const st = r?.status || "draft", me = currentUser?.id, myTurn = st === "pending" && ((r.signer_id === me && !r.signed_at) || (r.witness_id === me && !r.witnessed_at));
     $("#ecFoot").innerHTML = editable ? `${r ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกสัญญา</button>` : ""}
       <button class="btn btn-secondary" data-save>บันทึกร่าง</button><button class="btn btn-secondary" data-print>พิมพ์ร่าง</button>
       <select class="form-control" id="ecSg" style="max-width:220px;">${sgList.map(s => `<option value="${s.user_id}" ${sgSel === s.user_id ? "selected" : ""}>ผู้แทนบริษัท: ${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีผู้ลงนาม</option>`}</select>
       <select class="form-control" id="ecWt" style="max-width:200px;">${signers.map(s => `<option value="${s.user_id}" ${wtSel === s.user_id ? "selected" : ""}>พยาน: ${s.user_id === me ? "ฉัน · " : ""}${esc(s.name)}</option>`).join("") || `<option value="">ยังไม่มีพยาน</option>`}</select>
-      <button class="btn btn-primary" data-submit ${sgList.length && signers.some(s => s.user_id !== sgSel) ? "" : `disabled title="${esc(noPair)}"`}>ส่งลงนาม</button>`
+      ${canPair ? "" : `<span style="font-size:12px;color:var(--red);max-width:260px;line-height:1.35;">${esc(noPair)}</span>`}
+      <button class="btn btn-primary" data-submit ${canPair ? "" : "disabled"}>ส่งลงนาม</button>`
     : myTurn ? `<button class="btn btn-danger" data-reject style="margin-right:auto;">ส่งกลับแก้ไข</button><button class="btn btn-primary" data-sign>✓ ลงนาม${r.signer_id === me && !r.signed_at ? "ในนามบริษัท" : "เป็นพยาน"}</button>`
     : st === "signed" && canWrite() ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกสัญญา</button><span class="text-muted" style="font-size:12.5px;">ใส่เลขบัตรเต็มด้านซ้ายก่อนพิมพ์ฉบับจริง</span><button class="btn btn-primary" data-print>พิมพ์ฉบับลงนาม / PDF</button>`
     : st === "pending" && canWrite() ? `<span class="text-muted" style="margin-right:auto;">รอ ${[!r.signed_at && nameOf(r.signer_id), !r.witnessed_at && "พยาน " + nameOf(r.witness_id)].filter(Boolean).join(" และ ")} ลงนาม</span>
