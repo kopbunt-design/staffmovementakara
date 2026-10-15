@@ -48,6 +48,14 @@ Consultants / casual workers / contractors paid monthly with 3% withholding (ภ
 - KBank bank file (`kbankPCT` + `tis620`): fixed width, header 178 / detail 742 chars, TIS-620, CRLF, amounts in satang, dates YYMMDD (AD). Built from the user's real sample (2026-10-15) and byte-identical on the detail line; fields of unknown meaning are copied from the sample — test-upload a small file before relying on it.
 - Company info (tax ID 0107556000582, address, debit account 2371009208) lives in `contract_settings`, editable on the settings page. DB: `sql/schema_contract_web.sql` on top of `schema_contract_payroll.sql` + `schema_contract_items.sql`. Not yet built: approver email link and per-worker slip/50 ทวิ links (phase 2).
 
+## SUB Register (`sub/`) — separate app at `/sub`
+
+Workers sent by contractor companies to the site (not employees, not the 3% contract workers). HR-only updates; the point is the **monthly headcount report by company** (user, 2026-10-15). `navigate("sub")` redirects there.
+- `sub/sb.js` (UI: `#/overview` `#/people[/companyId]` `#/companies` `#/report` `#/import`), styles reuse spend/uni/ct CSS. Pure logic in `js/sub-calc.js` (tested by `test/sub.test.js`). Must NOT import `js/app.js`. DB: `sql/schema_sub.sql` (`sub_companies`, `sub_workers`, `sub_worker_log` filled by trigger). Perms `page.sub` / `data.sub.write`.
+- Source files: one folder per company under OneDrive `Dow/SUB`, "ข้อมูลบัตรผู้รับเหมา - <company>.xlsx"; **the most recently modified file per folder wins** (often a "Copy of …"). Import = pick the whole SUB folder (`webkitdirectory`) → `pickLatest` → `parseSheet` → `diffImport` (match SUB No., else company+name) → preview → apply. Status, nationality and area are only in the free-text note ("ออก", "ชาวต่างชาติ", "HQ", "KM.20") — `noteFlags`. A Company column naming another known company moves the row there (Epiroc folder has 2 Valentis rows).
+- AC NO. = access-control number, Card Back Number = number on the back of the card (user confirmed). ID card / passport: only the last 5 digits are stored.
+- Report: `left_on` = last working day → counted as leaving in that month and excluded from that month-end; `start_date` empty = present before the first import. Opening + joined − left = ending.
+
 ## Gotchas
 
 - **Supabase key is intentionally hardcoded** in `js/supabase-config.js` (URL + anon/publishable key). This is a publishable key protected by RLS — do not "fix" this by moving it to env vars or a `.env` file; that would break the static Vercel deploy, which has no build step to inject env vars.

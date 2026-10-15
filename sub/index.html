@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUB Register · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- ใช้ชุดเดียวกับ HR Invoice Hub / ยูนิฟอร์ม / ค่าจ้างเหมา -->
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+<link rel="stylesheet" href="/uniform/uni.css?v=1">
+<link rel="stylesheet" href="/contract/ct.css?v=1">
+<style>
+.co-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.co{border:1px solid var(--line);border-radius:var(--r-lg);background:#fff;padding:14px 16px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px}
+.co:hover{border-color:var(--line2);box-shadow:var(--shadow)}
+.co b{font-size:15px;font-weight:600}.co .n{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}.co small{color:var(--ink3);font-size:12px}
+.sect{font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:.3px;margin:6px 0 -4px;grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.lic{display:grid;grid-template-columns:1fr 1fr 140px auto;gap:8px;align-items:end}
+.imp{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.imp:last-child{border-bottom:none}.imp b{width:220px}.imp .n{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+</style>
+</head>
+<body>
+<!--
+  SUB Register — ทะเบียนคนจากบริษัทผู้รับเหมา (/sub) · ใช้ session เดียวกับระบบ HR · HR อัปเดตเท่านั้น
+  ฐานข้อมูล: sql/schema_sub.sql · ตรรกะ: js/sub-calc.js (มีเทส test/sub.test.js)
+-->
+<div class="sp-shell">
+  <aside class="sp-side">
+    <div class="sp-brand">
+      <img src="/assets/logo.png" alt="Akara Resources">
+      <div><b>SUB REGISTER</b> · ทะเบียนผู้รับเหมา</div>
+    </div>
+    <nav class="sp-nav" id="spNav">
+      <a href="#/overview" data-r="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>ภาพรวม<em id="navExp"></em></a>
+      <a href="#/people" data-r="people"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>รายชื่อ</a>
+      <a href="#/companies" data-r="companies"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01"/></svg>บริษัทผู้รับเหมา</a>
+      <a href="#/report" data-r="report"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>รายงานรายเดือน</a>
+      <a href="#/import" data-r="import"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>นำเข้าไฟล์</a>
+    </nav>
+    <a class="sp-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+    <div class="sp-user" id="spUser"></div>
+  </aside>
+  <main class="sp-main" id="spMain"><div class="sp-loading">กำลังโหลด…</div></main>
+</div>
+<div id="spModal"></div>
+<div class="sp-toasts" id="spToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/sub/sb.js?v=1"></script>
+</body>
+</html>

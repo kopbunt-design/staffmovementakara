@@ -25,6 +25,14 @@
       "destination": "/contract/index.html"
     },
     {
+      "source": "/sub",
+      "destination": "/sub/index.html"
+    },
+    {
+      "source": "/sub/",
+      "destination": "/sub/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -86,6 +94,15 @@
     },
     {
       "source": "/contract/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sub/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
