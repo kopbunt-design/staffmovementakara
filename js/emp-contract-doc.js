@@ -51,7 +51,7 @@ const CSS = `@font-face{font-family:ECTH;src:local('TH Sarabun New'),local('THSa
 .ft span:first-child{padding-left:10mm}.ft span:nth-child(2){text-align:center}.ft span:last-child{text-align:right;padding-right:13.6mm}
 .c{margin-left:10mm}p,h3,.kv{margin:0 0 19px 10mm}.j{text-align:justify}.ind{text-indent:15mm;margin-bottom:32px}
 h1{text-align:center;font-size:24px;font-weight:700;line-height:34px;margin:0 0 14px}.r{text-align:right;margin-bottom:22px}
-h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.v{color:#0000ff;font-weight:700}
+h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.v{color:#0000ff;font-weight:700}.nw{white-space:nowrap}
 .kv{margin-bottom:15px}.kv span{display:inline-block;padding-right:6mm}.sub{text-indent:15mm;margin-bottom:6px}
 .sign{margin-top:16mm;margin-left:50.8mm}.sign table{border-collapse:collapse}.sign td{padding:0;vertical-align:bottom;white-space:nowrap}
 .sign .line{width:63.5mm;border-bottom:1px solid #000;height:15mm;text-align:center;position:relative}.sign .line img{max-height:15mm;max-width:58mm;position:absolute;left:50%;bottom:-2mm;transform:translateX(-50%)}
@@ -60,7 +60,8 @@ h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underlin
 
 // d = ข้อมูลสัญญา · opts.idFull = เลขบัตรเต็ม (ถ้าไม่ใส่จะแสดงแค่ 5 ตัวท้าย) · opts.sig = { signer:{name,img}, witness:{name,img} } · opts.draft
 export function contractHTML(d0, opts = {}) {
-  const d = fill(d0), v = x => `<span class="v">${esc(x)}</span>`, page = n => `<div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page ${n} of 4</span></div>`;
+  // ค่าที่กรอก: ห้ามตัดบรรทัดกลางคำ (ภาษาไทยไม่มีช่องว่างระหว่างคำ เบราว์เซอร์เลยตัด "มีระ|คุณ") — ตัดได้เฉพาะที่ช่องว่าง เหมือน Word
+  const d = fill(d0), v = x => `<span class="v">${String(x ?? "").split(/(\s+)/).map(t => !t || /^\s+$/.test(t) ? esc(t) : `<span class="nw">${esc(t)}</span>`).join("")}</span>`, page = n => `<div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page ${n} of 4</span></div>`;
   const hd = `<div class="hd"><img src="${esc(opts.logo || "/assets/logo.png")}" alt=""><i></i><span>Chatree Gold Mine</span></div>`, wm = opts.draft ? `<div class="draft">${esc(opts.draft)}</div>` : "";
   const id = opts.idFull ? String(opts.idFull).replace(/\D/g, "") : d.id_last5 ? `xxxxxxxx${d.id_last5}` : "…………………";
   const who = `${d.title_th || ""}${d.name_th || ""}`, sal = Number(d.salary || 0);

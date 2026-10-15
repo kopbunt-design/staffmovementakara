@@ -8,7 +8,7 @@ const calc = strip(read(`${ROOT}/js/contract-calc.js`));
 const M = new Function(`${calc}\n${strip(read(`${ROOT}/js/emp-contract-doc.js`))}; return { probationEnd, idValid, parseIdCard, contractHTML, fill, thLong, LOC, mergeReads };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
-const has = (s, x, m) => eq(s.includes(x), true, m);
+const text = h => h.replace(/<[^>]+>/g, ""), has = (s, x, m) => eq(text(s).includes(x), true, m);
 
 eq(M.probationEnd("2026-09-14"), "2027-01-10", "ทดลองงานถึงวันที่ 119 (ตรงกับสัญญาตัวอย่าง 14 ก.ย. 69 → 10 ม.ค. 70)");
 eq(M.thLong("2027-01-10"), "10 มกราคม 2570", "วันที่ไทยเต็ม");
@@ -50,7 +50,8 @@ eq(M.parseIdCard(`${bad}\n${good}`).id, good, "หลายชุดเลข �
 const d = { location: "bkk", contract_date: "2026-09-14", title_th: "นาย", name_th: "ทดสอบ สมมติ", id_last5: good.slice(-5), address: "12/3 หมู่ 4",
   start_date: "2026-09-14", position_th: "เจ้าหน้าที่", position_en: "Officer", job_level: "S1", salary: 25500 };
 const h = M.contractHTML(d, { idFull: good });
-has(h, `บัตรประจำตัวประชาชนเลขที่ <span class="v">${good}</span>`, "เลขบัตรเต็มเมื่อพิมพ์ฉบับจริง");
+has(h, `บัตรประจำตัวประชาชนเลขที่ ${good}`, "เลขบัตรเต็มเมื่อพิมพ์ฉบับจริง");
+eq(/<span class="nw">สมมติ<\/span>/.test(h), true, "ค่าที่กรอกห้ามตัดบรรทัดกลางคำ (นามสกุลไม่ตกบรรทัดครึ่งคำ)");
 has(h, "25,500 บาท (สองหมื่นห้าพันห้าร้อยบาทถ้วน)", "เงินเดือนพร้อมตัวหนังสือ");
 has(h, "8.30 น. – 17.30 น.", "กรุงเทพ: เวลาทำงาน 8.30–17.30");
 has(h, "อาคารสปริงทาวเวอร์", "กรุงเทพ: สถานที่ทำงาน");
