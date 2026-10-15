@@ -120,20 +120,21 @@ begin
   end loop;
 end $$;
 
--- ------------------------------------------------------------- 5. ลายเซ็น (ชุดเดียวกับท้าย schema_hr_letters.sql / schema_fund_approval.sql / schema_expense.sql — แก้ให้ตรงกันทุกไฟล์)
+-- ------------------------------------------------------------- 5. ลายเซ็น (ชุดเดียวกับท้าย schema_hr_letters.sql / schema_fund_approval.sql / schema_expense.sql / schema_emp_contract.sql — แก้ให้ตรงกันทุกไฟล์)
 drop policy if exists "ls_read" on letter_signers;
 create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense')
-  or has_perm('page.contractpay') or has_perm('data.contract.approve'));
+  or has_perm('page.contractpay') or has_perm('data.contract.approve') or has_perm('page.empcontract') or has_perm('data.empcontract.sign'));
 drop policy if exists "la_read" on storage.objects;
 create policy "la_read" on storage.objects for select
   using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')
-         or has_perm('page.fundforms') or has_perm('page.expense') or has_perm('page.contractpay') or has_perm('data.contract.approve')));
+         or has_perm('page.fundforms') or has_perm('page.expense') or has_perm('page.contractpay') or has_perm('data.contract.approve')
+         or has_perm('data.empcontract.write') or has_perm('data.empcontract.sign')));
 drop policy if exists "ls_write" on letter_signers;
 create policy "ls_write" on letter_signers for all
   using ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve'))) or get_my_role() = 'admin')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign'))) or get_my_role() = 'admin')
   with check ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve'))) or get_my_role() = 'admin');
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign'))) or get_my_role() = 'admin');
 drop policy if exists "la_write"  on storage.objects;
 drop policy if exists "la_update" on storage.objects;
 drop policy if exists "la_delete" on storage.objects;
@@ -141,17 +142,17 @@ create policy "la_write" on storage.objects for insert with check (bucket_id = '
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
 create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and (
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
 create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and (
   ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
   or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
       and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
-           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve')))))));
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
 
 -- รายชื่อผู้อนุมัติให้ HR เลือก (เฉพาะคนที่มีสิทธิ์อนุมัติและอัปโหลดลายเซ็นแล้ว)
 create or replace function ct_signers()

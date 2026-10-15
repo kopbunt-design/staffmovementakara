@@ -16,6 +16,7 @@ const META = {
   dashboard:       ["ภาพรวมกำลังคนและความเคลื่อนไหวล่าสุด", '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'],
   employees:       ["ทะเบียนพนักงานและประวัติรายคน", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
   movements:       ["บันทึกและอนุมัติการเข้า–ออก–ย้าย", '<path d="M4 7h13l-3.5-3.5"/><path d="M20 17H7l3.5 3.5"/>'],
+  empcontract:     ["สัญญาจ้างงาน กรุงเทพ / พิจิตร · ลงนามออนไลน์", '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M8 17c1.5-1.5 2.5-1.5 3 0s1.5 1 3-1"/>'],
   sub:             ["คนจากบริษัทผู้รับเหมา · รายงานรายเดือน", '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/>'],
   uniform:         ["รับเข้า จ่ายออก ยอดคงเหลือ", '<path d="M8 3 4 5.5 2.5 10l3 1.2V21h13V11.2l3-1.2L20 5.5 16 3a4 4 0 0 1-8 0Z"/>'],
   fundforms:       ["คำเชิญและคำขอ PVD / สกล.5", '<path d="M12 3 4 6.5V12c0 4.4 3.3 8 8 9 4.7-1 8-4.6 8-9V6.5Z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/>'],
@@ -43,7 +44,7 @@ const META = {
 // คำอธิบายภาษาอังกฤษ (ปุ่ม EN) — ชื่อเมนูแปลจากแถบข้างอยู่แล้ว ตรงนี้แปลเฉพาะส่วนที่หน้าหลักมีเอง
 const META_EN = {
   dashboard: "Workforce snapshot and latest movements", employees: "Employee records and profiles",
-  movements: "Record and approve joiners, leavers, transfers", uniform: "Stock in, issue out, balances", sub: "Contractor workers by company, monthly headcount",
+  movements: "Record and approve joiners, leavers, transfers", uniform: "Stock in, issue out, balances", sub: "Contractor workers by company, monthly headcount", empcontract: "Employment agreements, signed online",
   fundforms: "PVD / WEF invitations and requests", shiftallow: "Calculate shift pay from timesheets",
   shiftcompare: "Compare shift pay between two months", diligence: "Diligence allowance from TigerSoft time data", otaudit: "Check OT requests against TigerSoft", otreport: "OT (level O) and diligence (O/S) PDFs by department", payroll: "Monthly payroll report",
   payrollexp: "Payroll cost history", payrollbuild: "Build the register from raw payroll files",

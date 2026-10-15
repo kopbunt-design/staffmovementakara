@@ -1,0 +1,192 @@
+-- ============================================================================
+-- สัญญาจ้างงาน (AKR-OHR-FM-006) — หน้า "สัญญาจ้างงาน" (js/emp-contract.js) · ผู้ใช้ขอ 2026-10-15
+-- รันใน Supabase SQL editor · รันซ้ำได้ปลอดภัย (idempotent)
+--
+--   ผู้สมัครยังไม่อยู่ในทะเบียน → HR กรอกเอง หรืออ่านจากรูปบัตรประชาชน (อ่านในเบราว์เซอร์ รูปไม่ถูกส่งขึ้นไหน)
+--   ไม่รันเลขเอกสาร · 2 สถานที่: สำนักงานกรุงเทพ / พิจิตร (เวลาทำงานและสถานที่ต่างกัน)
+--   ลงนามออนไลน์: ผู้แทนบริษัท + พยาน (ลายเซ็นจาก letter_signers) · พนักงานเซ็นมือบนฉบับพิมพ์
+--   ⚠️ เก็บเลขบัตรประชาชนแค่ 5 ตัวท้าย (ผู้ใช้เลือก) — พิมพ์ฉบับจริงต้องใส่เลขเต็มอีกครั้ง (ระบบตรวจกับ 5 ตัวท้าย)
+--   ⚠️ มีเงินเดือน → อ่านได้เฉพาะ HR ที่แก้สัญญาได้ และผู้ลงนาม/พยานของฉบับนั้น
+-- ============================================================================
+
+create table if not exists emp_contracts (
+  id             bigint generated always as identity primary key,
+  location       text not null default 'phichit' check (location in ('bkk','phichit')),
+  contract_date  date not null default current_date,    -- สัญญาทำขึ้นเมื่อวันที่
+  title_th       text,                                   -- นาย / นาง / นางสาว
+  name_th        text not null,                          -- ชื่อ-สกุล (ไม่รวมคำนำหน้า)
+  name_en        text,
+  id_last5       text check (id_last5 is null or id_last5 ~ '^\d{5}$'),
+  birth_date     date,
+  address        text,
+  start_date     date not null,
+  position_th    text not null, position_en text,
+  job_level      text,
+  salary         numeric not null check (salary > 0),
+  work_days      text, work_hours text, break_time text, workplace text,   -- ว่าง = ตามสถานที่
+  probation_end  date,                                   -- ว่าง = วันที่ 119 นับวันเริ่มงานเป็นวันที่ 1
+  emp_code       text,                                   -- ใส่ทีหลังเมื่อมีรหัสพนักงาน
+  remark         text,
+  status         text not null default 'draft' check (status in ('draft','pending','signed','rejected','cancelled')),
+  signer_id      uuid, witness_id uuid,
+  signer         jsonb, witness jsonb,                   -- สำเนาชื่อ/ลายเซ็น ณ ตอนลงนาม
+  signed_at      timestamptz, witnessed_at timestamptz,
+  reject_reason  text,
+  requested_by   uuid, requested_email text, submitted_at timestamptz,
+  created_by     uuid default auth.uid(),
+  created_at     timestamptz default now(), updated_at timestamptz default now()
+);
+create index if not exists ec_status_idx on emp_contracts (status, created_at desc);
+
+-- เนื้อหาแก้ได้เฉพาะร่าง/ส่งกลับ · สถานะและลายเซ็นเปลี่ยนผ่าน ec_* เท่านั้น
+create or replace function emp_contracts_guard() returns trigger language plpgsql as $$
+begin
+  if current_setting('ec.deciding', true) = 'on' then return new; end if;
+  if new.status is distinct from old.status and not (new.status = 'cancelled' or (old.status = 'rejected' and new.status = 'draft')) then
+    raise exception 'เปลี่ยนสถานะสัญญาได้ผ่านปุ่มในระบบเท่านั้น';
+  end if;
+  if (new.signer, new.witness, new.signed_at, new.witnessed_at, new.signer_id, new.witness_id)
+     is distinct from (old.signer, old.witness, old.signed_at, old.witnessed_at, old.signer_id, old.witness_id) then
+    raise exception 'ข้อมูลการลงนามแก้ไขไม่ได้';
+  end if;
+  if old.status in ('pending','signed','cancelled') and new.status <> 'cancelled'
+     and (to_jsonb(new) - 'updated_at' - 'emp_code' - 'remark') is distinct from (to_jsonb(old) - 'updated_at' - 'emp_code' - 'remark') then
+    raise exception 'สัญญาที่ส่งลงนาม/ลงนามแล้วแก้เนื้อหาไม่ได้ — ให้ผู้ลงนามส่งกลับ หรือยกเลิกแล้วทำฉบับใหม่';
+  end if;
+  return new;
+end $$;
+drop trigger if exists ec_guard on emp_contracts;
+create trigger ec_guard before update on emp_contracts for each row execute function emp_contracts_guard();
+
+create or replace function ec_submit(p_id bigint, p_signer uuid, p_witness uuid)
+returns emp_contracts language plpgsql security definer set search_path = public as $$
+declare c emp_contracts;
+begin
+  if not has_perm('data.empcontract.write') then raise exception 'ไม่มีสิทธิ์ทำสัญญาจ้าง'; end if;
+  if p_signer is null or p_witness is null then raise exception 'เลือกผู้ลงนามและพยานก่อน'; end if;
+  if p_signer = p_witness then raise exception 'ผู้ลงนามกับพยานต้องเป็นคนละคน'; end if;
+  if not user_has_perm(p_signer, 'data.empcontract.sign') or not user_has_perm(p_witness, 'data.empcontract.sign') then raise exception 'ผู้ที่เลือกไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
+  perform set_config('ec.deciding', 'on', true);
+  update emp_contracts set status = 'pending', signer_id = p_signer, witness_id = p_witness, signer = null, witness = null,
+         signed_at = null, witnessed_at = null, reject_reason = null, requested_by = auth.uid(),
+         requested_email = (select email from auth.users where id = auth.uid()), submitted_at = now(), updated_at = now()
+   where id = p_id and status in ('draft','rejected') returning * into c;
+  if c.id is null then raise exception 'ส่งได้เฉพาะสัญญาที่เป็นร่างหรือถูกส่งกลับ'; end if;
+  return c;
+end $$;
+
+-- ลงนาม: ผู้ที่ถูกเลือก (ผู้แทนบริษัท หรือ พยาน) · ครบทั้งสองคน = ลงนามแล้ว
+create or replace function ec_sign(p_id bigint)
+returns emp_contracts language plpgsql security definer set search_path = public as $$
+declare c emp_contracts; s letter_signers; snap jsonb;
+begin
+  if not has_perm('data.empcontract.sign') then raise exception 'ไม่มีสิทธิ์ลงนามสัญญาจ้าง'; end if;
+  select * into c from emp_contracts where id = p_id for update;
+  if c.status is distinct from 'pending' then raise exception 'สัญญานี้ไม่ได้รอลงนาม'; end if;
+  select * into s from letter_signers where user_id = auth.uid();
+  if s.signature_path is null then raise exception 'ยังไม่ได้อัปโหลดลายเซ็น — ตั้งค่าที่ “ลายเซ็นของฉัน” ก่อน'; end if;
+  snap := jsonb_build_object('name_th', s.name_th, 'title_th', s.title_th, 'signature_path', s.signature_path);
+  perform set_config('ec.deciding', 'on', true);
+  if c.signer_id = auth.uid() and c.signed_at is null then
+    update emp_contracts set signer = snap, signed_at = now() where id = p_id;
+  elsif c.witness_id = auth.uid() and c.witnessed_at is null then
+    update emp_contracts set witness = snap, witnessed_at = now() where id = p_id;
+  else raise exception 'สัญญานี้ไม่ได้รอลายเซ็นของคุณ'; end if;
+  update emp_contracts set status = 'signed', updated_at = now() where id = p_id and signed_at is not null and witnessed_at is not null;
+  select * into c from emp_contracts where id = p_id;
+  return c;
+end $$;
+
+create or replace function ec_reject(p_id bigint, p_reason text)
+returns emp_contracts language plpgsql security definer set search_path = public as $$
+declare c emp_contracts;
+begin
+  if not has_perm('data.empcontract.sign') then raise exception 'ไม่มีสิทธิ์'; end if;
+  select * into c from emp_contracts where id = p_id for update;
+  if c.status is distinct from 'pending' or auth.uid() not in (c.signer_id, c.witness_id) then raise exception 'สัญญานี้ไม่ได้รอลายเซ็นของคุณ'; end if;
+  perform set_config('ec.deciding', 'on', true);
+  update emp_contracts set status = 'rejected', reject_reason = coalesce(nullif(trim(p_reason), ''), 'ส่งกลับแก้ไข'),
+         signer = null, witness = null, signed_at = null, witnessed_at = null, updated_at = now() where id = p_id returning * into c;
+  return c;
+end $$;
+
+create or replace function ec_signers()
+returns table (user_id uuid, name text, title text, email text)
+language sql security definer stable set search_path = public as $$
+  select g.user_id, coalesce(nullif(g.name_th,''), g.name_en), coalesce(nullif(g.title_th,''), g.title_en), g.email
+    from letter_signers g
+   where (has_perm('data.empcontract.write') or has_perm('data.empcontract.sign')) and g.signature_path is not null
+     and user_has_perm(g.user_id, 'data.empcontract.sign')
+   order by 2;
+$$;
+revoke all on function ec_submit(bigint, uuid, uuid), ec_sign(bigint), ec_reject(bigint, text), ec_signers() from public, anon;
+grant execute on function ec_submit(bigint, uuid, uuid), ec_sign(bigint), ec_reject(bigint, text), ec_signers() to authenticated;
+
+alter table emp_contracts enable row level security;
+drop policy if exists "ec_read"   on emp_contracts;
+drop policy if exists "ec_insert" on emp_contracts;
+drop policy if exists "ec_update" on emp_contracts;
+create policy "ec_read"   on emp_contracts for select using (has_perm('data.empcontract.write') or auth.uid() in (signer_id, witness_id));
+create policy "ec_insert" on emp_contracts for insert with check (has_perm('data.empcontract.write'));
+create policy "ec_update" on emp_contracts for update using (has_perm('data.empcontract.write')) with check (has_perm('data.empcontract.write'));
+
+insert into permissions (key, category, label, description, sort_order) values
+  ('page.empcontract',       'page', 'สัญญาจ้างงาน',        'ทำสัญญาจ้างงานและลงนามออนไลน์', 26),
+  ('data.empcontract.write', 'data', 'ทำสัญญาจ้างงาน',      'สร้าง แก้ ส่งลงนาม พิมพ์สัญญาจ้าง (เห็นเงินเดือนในสัญญา)', 43),
+  ('data.empcontract.sign',  'data', 'ลงนามสัญญาจ้างงาน',   'ลงนามในนามบริษัทหรือเป็นพยานในสัญญาจ้าง', 44)
+on conflict (key) do update set label = excluded.label, description = excluded.description, sort_order = excluded.sort_order;
+insert into role_permissions (role_key, perm_key)
+select r.key, p.key from app_roles r cross join (values ('page.empcontract'), ('data.empcontract.write'), ('data.empcontract.sign')) as p(key)
+where r.key = 'admin' on conflict do nothing;
+
+-- แบบอีเมล (แก้ได้ในหน้าสัญญาจ้าง → ตั้งค่า) · ตัวแปรชุดเดียวกับแบบอื่น
+insert into mail_templates (key, label, subject, html) values
+  ('ec_sign', 'ขอลงนามสัญญาจ้าง', '[ขอลงนาม] สัญญาจ้างงาน — {{person}}',
+   '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b"><p><b>มีสัญญาจ้างงานรอลงนามจากท่าน</b></p><p>{{person}} · {{kind}} · {{emp_code}}</p><p><a href="{{link}}">เปิดสัญญาเพื่อลงนาม</a></p><p style="color:#64748b;font-size:12px">ส่งโดย {{requester}}</p></div>'),
+  ('ec_signed', 'แจ้งลงนามครบแล้ว', '[ลงนามแล้ว] สัญญาจ้างงาน — {{person}}',
+   '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px"><p><b>สัญญาจ้างงานลงนามครบแล้ว</b> (ผู้แทนบริษัทและพยาน)</p><p>{{person}} · {{kind}}</p><p><a href="{{link}}">เปิดสัญญาเพื่อพิมพ์ให้พนักงานลงนาม</a></p></div>'),
+  ('ec_rejected', 'แจ้งส่งกลับแก้ไขสัญญา', '[ส่งกลับแก้ไข] สัญญาจ้างงาน — {{person}}',
+   '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px"><p><b>สัญญาจ้างงานถูกส่งกลับให้แก้ไข</b> โดย {{approver}}</p><p>{{person}} · {{kind}}</p><p>เหตุผล: {{reason}}</p><p><a href="{{link}}">เปิดสัญญา</a></p></div>')
+on conflict (key) do nothing;
+
+-- ============================================================================
+-- สิทธิ์ลายเซ็น + แบบอีเมลรวมทุกระบบ — ชุดเดียวกันทุกไฟล์ (schema_hr_letters / schema_fund_approval / schema_expense / schema_contract_web / schema_emp_contract)
+-- ============================================================================
+drop policy if exists "mt_read"  on mail_templates;
+drop policy if exists "mt_write" on mail_templates;
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
+drop policy if exists "ls_read" on letter_signers;
+create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense')
+  or has_perm('page.contractpay') or has_perm('data.contract.approve') or has_perm('page.empcontract') or has_perm('data.empcontract.sign'));
+drop policy if exists "la_read" on storage.objects;
+create policy "la_read" on storage.objects for select
+  using (bucket_id = 'letter-assets' and (has_perm('data.letters.write') or has_perm('data.letters.approve')
+         or has_perm('page.fundforms') or has_perm('page.expense') or has_perm('page.contractpay') or has_perm('data.contract.approve')
+         or has_perm('data.empcontract.write') or has_perm('data.empcontract.sign')));
+drop policy if exists "ls_write" on letter_signers;
+create policy "ls_write" on letter_signers for all
+  using ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign'))) or get_my_role() = 'admin')
+  with check ((user_id = auth.uid() and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+          or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign'))) or get_my_role() = 'admin');
+drop policy if exists "la_write"  on storage.objects;
+drop policy if exists "la_update" on storage.objects;
+drop policy if exists "la_delete" on storage.objects;
+create policy "la_write" on storage.objects for insert with check (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
+create policy "la_update" on storage.objects for update using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
+create policy "la_delete" on storage.objects for delete using (bucket_id = 'letter-assets' and (
+  ((storage.foldername(name))[1] = 'seal' and has_perm('data.letters.approve'))
+  or ((storage.foldername(name))[1] = 'signatures' and (get_my_role() = 'admin' or ((storage.foldername(name))[2] = auth.uid()::text
+      and (has_perm('data.letters.approve') or has_perm('data.fundforms.write') or has_perm('data.fundforms.approve')
+           or has_perm('data.expense.write') or has_perm('data.expense.review') or has_perm('data.expense.approve') or has_perm('data.contract.approve') or has_perm('data.empcontract.sign')))))));
+
+select key, label from permissions where key like '%empcontract%';

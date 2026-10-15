@@ -29,7 +29,7 @@ HR's own invoices (HRIN###/YYYY) and HR department spend. Same Vercel deploy and
 - `expense/` must NOT import `js/app.js` (or anything that imports it, e.g. `combobox.js`, `hr-letters.js`) — that would boot the HR app inside it.
 - Money: VAT 7% and WHT (0/1/2/3/5% for the whole invoice) are both computed on the pre-VAT amount, rounded per line, then summed — matches the old Excel exactly.
 - **Approver signs from the email without logging in**: `expense/approve.html?t=<token>` + `expense/approve.js` (no `spend.js` import). A token is issued by trigger each time an invoice enters `approval` (`exp_approve_tokens`, no RLS policies — only `exp_link_get` / `exp_link_decide` / `exp_approve_link` and the edge function read it), single use, 14 days. The page shows the real A4 (`invoiceDoc` in `doc.js`) and attachments; file and signature URLs come from `letter-notify` (`action: "exp_files"` + token), which therefore must have JWT verification **off** (it checks sessions itself). It signs as the approver HR chose, so the `exp_approve` mail goes to that approver only — `to_extra`/`cc` are dropped for it. Afterwards `letter-notify` is called with `exp_token` (no session) to mail the preparer.
-- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql`, `schema_expense.sql` and `schema_contract_web.sql` — change all four together.
+- DB: `sql/schema_expense.sql`. Status/number/signatures change only through `exp_submit` / `exp_decide` / `exp_action` / `exp_link_decide` (trigger-enforced). Signatures reuse `letter_signers`; the signature and mail-template policies are defined identically at the end of `schema_hr_letters.sql`, `schema_fund_approval.sql`, `schema_expense.sql`, `schema_contract_web.sql` and `schema_emp_contract.sql` — change all five together.
 
 ## Uniform Stock (`uniform/`) — separate app at `/uniform`
 
@@ -55,6 +55,14 @@ Workers sent by contractor companies to the site (not employees, not the 3% cont
 - Source files: one folder per company under OneDrive `Dow/SUB`, "ข้อมูลบัตรผู้รับเหมา - <company>.xlsx"; **the most recently modified file per folder wins** (often a "Copy of …"). Import = pick the whole SUB folder (`webkitdirectory`) → `pickLatest` → `parseSheet` → `diffImport` (match SUB No., else company+name) → preview → apply. Status, nationality and area are only in the free-text note ("ออก", "ชาวต่างชาติ", "HQ", "KM.20") — `noteFlags`. A Company column naming another known company moves the row there (Epiroc folder has 2 Valentis rows).
 - AC NO. = access-control number, Card Back Number = number on the back of the card (user confirmed). ID card / passport: only the last 5 digits are stored.
 - Report: `left_on` = last working day → counted as leaving in that month and excluded from that month-end; `start_date` empty = present before the first import. Opening + joined − left = ending.
+
+## Employment Agreement (`js/emp-contract.js`, page `empcontract`, under งานเอกสาร HR)
+
+Form AKR-OHR-FM-006 Rev. 00 (user, 2026-10-15). Two locations with different hours/workplace (`LOC` in `js/emp-contract-doc.js`: Bangkok office 8.30–17.30, Phichit 7.30–17.00). No document number. Candidates aren't in the employee register, so HR types the data or reads it from an ID-card photo: Tesseract.js (tha+eng, loaded from jsDelivr on demand) runs in the browser — the photo is never uploaded — then `parseIdCard` extracts ID (mod-11 check digit), Thai/English name, birth date and address; filled fields are highlighted for HR to check.
+- Only the last 5 ID digits are stored (`id_last5`); printing the signed copy requires the full ID again and checks it against those 5 digits.
+- Signing: HR picks a company signer and a witness (`ec_signers()`, perm `data.empcontract.sign`, signature from `letter_signers`); `ec_submit` → each signs via `ec_sign` → both signed = `signed`; `ec_reject` sends it back. Content is locked once submitted (trigger `emp_contracts_guard`). The employee signs by hand on the printout.
+- Emails: templates `ec_sign` / `ec_signed` / `ec_rejected` edited on the page's settings tab; sent by `letter-notify` (`ec_id`) in auto mode, otherwise an .eml download. Probation end = day 119 counting the start date as day 1.
+- Salary is in the row, so RLS lets only `data.empcontract.write` holders and that contract's signer/witness read it. DB: `sql/schema_emp_contract.sql` (also carries the shared signature + mail-template policies — now five files to keep identical).
 
 ## Gotchas
 

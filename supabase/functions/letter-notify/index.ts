@@ -4,6 +4,7 @@
 //   action = "approved" | "rejected" → แจ้งคนที่ส่งขออนุมัติ
 //   action = "test"     → ส่งเมลทดสอบหาคนที่กด (ปุ่ม "ทดสอบส่งเมล" ในหน้าตั้งค่า)
 //   fund_id + action = "fund_request" | "fund_approved" | "fund_rejected"
+//   ec_id + action = "ec_sign" (ถึงผู้แทนบริษัท + พยานที่ยังไม่เซ็น) | "ec_signed" | "ec_rejected" (ถึง HR ที่ส่ง) — สัญญาจ้างงาน
 //                       → แบบฟอร์มกองทุนสำรองเลี้ยงชีพ: ขอคณะกรรมการลงนาม / แจ้ง HR ผล (schema_fund_approval.sql)
 //   exp_id + action = "exp_review" | "exp_approve" | "exp_approved" | "exp_rejected"
 //                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
@@ -46,7 +47,7 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-    const { letter_id, fund_id, exp_id, exp_token, action: action_ } = await req.json();
+    const { letter_id, fund_id, exp_id, exp_token, ec_id, action: action_ } = await req.json();
     let action = action_;
     // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
     let caller: any = null, user: any = null;
@@ -128,6 +129,21 @@ Deno.serve(async (req) => {
         requester: action === "exp_approve" ? rev.name : prep.name, approver: decider });
       if (!ok) return json({ sent: false, reason: "no_template" });
       if (action === "exp_approve" && link.includes("approve.html")) { extraTo = []; cc = []; }
+    } else if (ec_id) {
+      // สัญญาจ้างงาน — อ่านด้วยสิทธิ์ผู้เรียก (RLS: HR ที่ทำสัญญา หรือผู้ลงนาม/พยานของฉบับนั้น)
+      const { data: c, error } = await caller.from("emp_contracts").select("*").eq("id", ec_id).single();
+      if (error || !c) return json({ error: "ไม่พบสัญญา หรือไม่มีสิทธิ์" }, 403);
+      const sg = await nameOf(c.signer_id), wt = await nameOf(c.witness_id), rq = await nameOf(c.requested_by);
+      if (action === "ec_sign") {
+        if (c.status !== "pending") return json({ error: "สัญญาไม่ได้รอลงนาม" }, 400);
+        to = [c.signed_at ? "" : sg.email, c.witnessed_at ? "" : wt.email].filter(Boolean).join(",");
+      } else if (action === "ec_signed" || action === "ec_rejected") to = c.requested_email || rq.email;
+      else return json({ error: "action ไม่ถูกต้อง" }, 400);
+      const me = await nameOf(user?.id || null);
+      const ok = await tplVars(action, { doc_no: "", kind: `สัญญาจ้างงาน · ${c.position_th || ""}`, person: `${c.title_th || ""}${c.name_th || ""}`,
+        emp_code: c.start_date ? `เริ่มงาน ${c.start_date}` : "", link: `${appUrl}/?econtract=${c.id}`, reason: c.reject_reason || "-",
+        requester: rq.name, approver: action === "ec_sign" ? [sg.name, wt.name].filter(Boolean).join(" และ ") : me.name });
+      if (!ok) return json({ sent: false, reason: "no_template" });
     } else if (fund_id) {
       // อ่านด้วยสิทธิ์ผู้เรียก — ต้องเปิดหน้าแบบฟอร์มกองทุนได้ (RLS) ถึงส่งเมลเรื่องนี้ได้
       const { data: f, error } = await caller.from("fund_form_submission").select("*").eq("id", fund_id).single();
