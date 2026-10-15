@@ -39,11 +39,11 @@ export function idValid(id) {
 //   ฟอนต์: ใช้ TH Sarabun New ในเครื่องก่อน ไม่มีค่อยโหลดจาก jsDelivr (font-th-sarabun-new@1.0.0) — ไฟล์เว็บฟอนต์ตัวใหญ่กว่าจริง จึงย่อ (size-adjust)
 //   ให้ตัดบรรทัดตรงกับฉบับพิมพ์จริงที่สแกนมา
 const FONT = "https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/";
-const CSS = `@font-face{font-family:ECTH;src:local('TH Sarabun New'),local('THSarabunNew')}
-@font-face{font-family:ECTH;font-weight:700;src:local('TH Sarabun New Bold'),local('THSarabunNew-Bold'),local('THSarabunNew Bold')}
-@font-face{font-family:ECTHW;src:url(${FONT}THSarabunNew-webfont.woff) format('woff');size-adjust:72%}
+// ฟอนต์จากเว็บตัวเดียวทุกเครื่อง — เดิมใช้ TH Sarabun New ในเครื่องก่อน แต่ Windows (มีฟอนต์จาก Office) กับ Mac (ไม่มี) กว้างไม่เท่ากัน
+// ตัดบรรทัดคนละที่ (user 2026-10-15) → ไม่ใช้ local() แล้ว
+const CSS = `@font-face{font-family:ECTHW;src:url(${FONT}THSarabunNew-webfont.woff) format('woff');size-adjust:72%}
 @font-face{font-family:ECTHW;font-weight:700;src:url(${FONT}THSarabunNew_bold-webfont.woff) format('woff');size-adjust:72%}
-@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:ECTH,ECTHW,'Sarabun',sans-serif;color:#000;font-size:18.67px;line-height:26px}
+@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:ECTHW,'Sarabun',sans-serif;color:#000;font-size:18.67px;line-height:26px}
 .pg{width:210mm;height:297mm;padding:31mm 15.5mm 0 16.5mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
 .hd{position:absolute;left:8mm;right:13mm;top:11.5mm;height:14mm;display:flex;align-items:flex-end}.hd img{height:13.5mm;display:block}
 .hd i{flex:1;border-bottom:3px solid #2457a6;margin:0 0 .4mm -1mm}.hd span{position:absolute;right:0;bottom:2mm;font-size:18.67px;line-height:1;color:#2b3445}
