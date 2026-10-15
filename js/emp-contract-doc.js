@@ -49,7 +49,7 @@ const CSS = `@font-face{font-family:ECTHW;src:url(${FONT}THSarabunNew-webfont.wo
 .hd i{flex:1;border-bottom:3px solid #2457a6;margin:0 0 .4mm -1mm}.hd span{position:absolute;right:0;bottom:2mm;font-size:18.67px;line-height:1;color:#2b3445}
 .ft{position:absolute;left:8mm;right:9mm;top:267.5mm;border-top:4px solid #2457a6;padding-top:1mm;display:grid;grid-template-columns:1fr 1fr 1fr;font-size:14.67px;line-height:1.3;color:#222}
 .ft span:first-child{padding-left:10mm}.ft span:nth-child(2){text-align:center}.ft span:last-child{text-align:right;padding-right:13.6mm}
-.c{margin-left:10mm}p,h3,.kv{margin:0 0 19px 10mm}.j{text-align:justify}.ind{text-indent:15mm;margin-bottom:32px}
+.c{margin-left:10mm}p,h3,.kv{margin:0 0 19px 10mm}.j{text-align:justify;text-justify:inter-character}.ind{text-indent:15mm;margin-bottom:32px}
 h1{text-align:center;font-size:24px;font-weight:700;line-height:34px;margin:0 0 14px}.r{text-align:right;margin-bottom:22px}
 h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.v{color:#0000ff;font-weight:700}.nw{white-space:nowrap}
 .kv{margin-bottom:15px}.kv>span:first-child{display:inline-block;padding-right:6mm}.sub{text-indent:15mm;margin-bottom:6px}
@@ -59,8 +59,9 @@ h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underlin
 .draft{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:56px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700}`;
 
 // d = ข้อมูลสัญญา · opts.idFull = เลขบัตรเต็ม (ถ้าไม่ใส่จะแสดงแค่ 5 ตัวท้าย) · opts.sig = { signer:{name,img}, witness:{name,img} } · opts.draft
+// จัดเต็มบรรทัดแบบ Word (Thai Distributed) = text-justify:inter-character — ไม่งั้นยืดแค่ช่องว่าง เกิดรูโหว่ (user 2026-10-15)
 // วลีในตัวสัญญาที่ตัดบรรทัดกลางแล้วอ่านแปลก (เบราว์เซอร์ตัดตามพจนานุกรม เช่น "ดังต่อ|ไปนี้") — ให้อยู่บรรทัดเดียวกัน
-const KEEP = ["ดังต่อไปนี้", "รายละเอียด", "อีกฝ่ายหนึ่ง", "เป็นต้นไป"].sort((a, b) => b.length - a.length);
+const KEEP = ["ดังต่อไปนี้", "รายละเอียด", "อีกฝ่ายหนึ่ง", "เป็นต้นไป", "สัญญาจ้างงาน", "การจ้างงาน"].sort((a, b) => b.length - a.length);
 const KEEP_RE = new RegExp(`(${KEEP.join("|")})`, "g");
 // เฉพาะข้อความนอกแท็ก และนอก <style>/<title>
 const keepPhrases = html => html.replace(/(<style[\s\S]*?<\/style>|<title>[\s\S]*?<\/title>|<[^>]+>)|([^<]+)/g, (m, tag, txt) => tag ? tag : txt.replace(KEEP_RE, '<span class="nw">$1</span>'));
