@@ -277,6 +277,40 @@ function wirePicker(inp, list, onPick) {
   };
 }
 
+// แก้ / ลบรายการที่บันทึกไปแล้ว — ยอดคงเหลือคิดใหม่จากรายการเสมอ · DB กันยอดติดลบอีกชั้น (trigger)
+function editMove(id) {
+  const m = S.moves.find(x => x.id === id); if (!m || !canWrite()) return;
+  const k = KIND[m.move_type] || { label: m.move_type }, it = itemOf(m.item_id);
+  const sizes = S.bal.filter(b => it && b.item_type === it.item_type && (b.is_active || b.id === m.item_id));
+  const e = m.emp_code ? empOf(m.emp_code) : null;
+  const el = modal(`แก้ไขรายการ${esc(k.label)}`, `
+    ${m.emp_code ? `<div class="note">${esc(e ? empName(e) : m.emp_name || "")} · ${esc(m.emp_code)}</div>` : ""}
+    <div class="grid2"><label class="fld"><span>ของ</span><select class="in" id="emItem">${sizes.map(b => `<option value="${b.id}" ${b.id === m.item_id ? "selected" : ""}>${esc(itemName(b))} (เหลือ ${n0(b.qty)})</option>`).join("")}</select></label>
+      <label class="fld"><span>จำนวน${m.move_type === "adjust" ? " (บวก/ลบ)" : ""}</span><input class="in" id="emQty" type="number" step="1" value="${m.move_type === "adjust" ? m.qty : Math.abs(m.qty)}"></label>
+      <label class="fld"><span>วันที่</span><input class="in" id="emDate" type="date" value="${esc(m.moved_on)}"></label>
+      <label class="fld"><span>หมายเหตุ</span><input class="in" id="emNote" value="${esc(m.note || "")}"></label></div>
+    <div class="hint">แก้แล้วยอดคงเหลือคิดใหม่ทันที · ถ้าแก้แล้วยอดติดลบ ระบบจะไม่ยอมบันทึก</div>`,
+    `<button class="btn btn-d" id="emDel" style="margin-right:auto">ลบรายการนี้</button><button class="btn btn-g" data-x>ยกเลิก</button><button class="btn btn-p" id="emSave">บันทึก</button>`);
+  el.querySelectorAll("[data-x]").forEach(x => x.onclick = () => el.remove());
+  const errMsg = error => error.message.includes("ติดลบ") ? error.message.split("ERROR:").pop().trim() : "ไม่สำเร็จ: " + error.message;
+  el.querySelector("#emSave").onclick = async () => {
+    const raw = Math.trunc(Number(el.querySelector("#emQty").value));
+    if (!raw) return toast("จำนวนต้องไม่เป็น 0", "err");
+    if (m.move_type !== "adjust" && raw < 0) return toast("จำนวนต้องมากกว่า 0", "err");
+    const qty = m.move_type === "issue" ? -Math.abs(raw) : m.move_type === "adjust" ? raw : Math.abs(raw);
+    const { error } = await supabase.from("uniform_move").update({ item_id: +el.querySelector("#emItem").value, qty, moved_on: el.querySelector("#emDate").value || m.moved_on,
+      note: el.querySelector("#emNote").value.trim() || null }).eq("id", m.id);
+    if (error) return toast(errMsg(error), "err");
+    el.remove(); await loadAll(); route(); toast("แก้ไขแล้ว", "ok");
+  };
+  el.querySelector("#emDel").onclick = async () => {
+    if (!confirm(`ลบรายการ${k.label} ${itemName(it)} ${Math.abs(m.qty)} ชิ้น (${thDate(m.moved_on)})?`)) return;
+    const { error } = await supabase.from("uniform_move").delete().eq("id", m.id);
+    if (error) return toast(errMsg(error), "err");
+    el.remove(); await loadAll(); route(); toast("ลบแล้ว", "ok");
+  };
+}
+
 // ---------------------------------------------------------------- ใครเบิกอะไรไป
 function renderPeople() {
   const q = (S.filt.pq || "").toLowerCase();
@@ -292,13 +326,14 @@ function renderPeople() {
     <div class="filters"><label class="fld" style="width:340px"><span>ค้นหา</span><input class="in" id="pq" placeholder="รหัส / ชื่อ / แผนก" value="${esc(S.filt.pq || "")}"></label></div>
     <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>พนักงาน</th><th>แผนก</th><th>รายการ</th><th class="n">ถืออยู่</th><th>ล่าสุด</th>${canWrite() ? "<th></th>" : ""}</tr></thead><tbody>
     ${list.map(p => `<tr><td><b>${esc(p.name || p.code)}</b><div class="sub">${esc(p.code)}${p.left ? ` · <span style="color:var(--red)">ออกแล้ว</span>` : ""}</div></td><td>${esc(p.dept || "-")}</td>
-      <td><div class="tags">${p.rows.map(m => `<span class="tag${m.move_type === "return" ? " ret" : ""}">${esc(itemName(itemOf(m.item_id)))} <b>${m.move_type === "return" ? "คืน " : ""}${Math.abs(m.qty)}</b><em>${thDate(m.moved_on)}</em></span>`).join("")}</div></td>
+      <td><div class="tags">${p.rows.map(m => `<span class="tag${m.move_type === "return" ? " ret" : ""}${canWrite() ? " ed" : ""}" ${canWrite() ? `data-mv-ed="${m.id}" title="กดเพื่อแก้ไข / ลบ"` : ""}>${esc(itemName(itemOf(m.item_id)))} <b>${m.move_type === "return" ? "คืน " : ""}${Math.abs(m.qty)}</b><em>${thDate(m.moved_on)}</em></span>`).join("")}</div></td>
       <td class="n"><b>${n0(p.held)}</b></td><td style="white-space:nowrap">${thDate(p.last)}</td>
       ${canWrite() ? `<td style="white-space:nowrap"><button class="btn btn-s btn-sm" data-ret="${esc(p.code)}">รับคืน</button> <button class="btn btn-s btn-sm" data-iss="${esc(p.code)}">จ่ายเพิ่ม</button></td>` : ""}</tr>`).join("")
       || `<tr><td colspan="6" class="empty">${q ? "ไม่พบพนักงานที่ตรงกับที่ค้น" : "ยังไม่มีการเบิก"}</td></tr>`}</tbody></table></div>`;
   const m = $("#spMain");
   const pq = m.querySelector("#pq"); pq.oninput = () => { S.filt.pq = pq.value; const pos = pq.selectionStart; renderPeople(); const n = $("#pq"); n.focus(); n.setSelectionRange(pos, pos); };
   m.querySelectorAll("[data-ret]").forEach(b => b.onclick = () => openMove("return", { emp: b.dataset.ret }));
+  m.querySelectorAll("[data-mv-ed]").forEach(b => b.onclick = () => editMove(+b.dataset.mvEd));
   m.querySelectorAll("[data-iss]").forEach(b => b.onclick = () => openMove("issue", { emp: b.dataset.iss }));
   wireMoveBtns(m);
 }
@@ -325,12 +360,12 @@ function renderHistory(itemArg) {
       <label class="fld"><span>เดือน</span>${sel("hm", months.map(m => [m, `${TH_M[+m.slice(5) - 1]} ${+m.slice(0, 4) + 543}`]), f.ym, "ทุกเดือน")}</label>
       <label class="fld" style="flex:1;min-width:220px"><span>ค้นหา</span><input class="in" id="hq" placeholder="รหัส / ชื่อ / หมายเหตุ" value="${esc(f.q)}"></label>
     </div>
-    <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th><th>ชนิด</th><th>ของ</th><th class="n">จำนวน</th><th>พนักงาน</th><th>หมายเหตุ</th></tr></thead><tbody>
+    <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th><th>ชนิด</th><th>ของ</th><th class="n">จำนวน</th><th>พนักงาน</th><th>หมายเหตุ</th>${canWrite() ? "<th></th>" : ""}</tr></thead><tbody>
     ${shown.map(m => { const k = m.move_type, c = { issue: "b", receive: "g", return: "w", adjust: "n" }[k] || "n";
       return `<tr><td style="white-space:nowrap">${thDate(m.moved_on)}</td><td><span class="bd ${c}">${esc(KIND[k]?.label || k)}</span></td>
         <td>${esc(itemName(itemOf(m.item_id)))}</td><td class="n"><b style="color:${m.qty > 0 ? "var(--green)" : "var(--red)"}">${m.qty > 0 ? "+" : "−"}${n0(Math.abs(m.qty))}</b></td>
         <td>${m.emp_code ? `${esc(m.emp_name || (empOf(m.emp_code) ? empName(empOf(m.emp_code)) : ""))}<div class="sub">${esc(m.emp_code)}</div>` : `<span class="hint">—</span>`}</td>
-        <td class="hint">${esc(m.note || "")}</td></tr>`; }).join("") || `<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table>
+        <td class="hint">${esc(m.note || "")}</td>${canWrite() ? `<td><button class="btn btn-s btn-sm" data-mv-ed="${m.id}">แก้ไข</button></td>` : ""}</tr>`; }).join("") || `<tr><td colspan="7" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table>
     ${rows.length > shown.length ? `<div class="more"><button class="btn btn-g btn-sm" id="hmore">แสดงเพิ่ม (${n0(rows.length - shown.length)})</button></div>` : ""}</div>`;
   const m = $("#spMain"), set = (k, v) => { f[k] = v; if (k === "type") f.item = ""; S.filt.hn = 200; if (location.hash !== "#/history") history.replaceState(null, "", "#/history"); renderHistory(); };
   m.querySelector("#hk").onchange = e => set("kind", e.target.value);
@@ -339,6 +374,7 @@ function renderHistory(itemArg) {
   m.querySelector("#hm").onchange = e => set("ym", e.target.value);
   const hq = m.querySelector("#hq"); hq.oninput = () => { f.q = hq.value; const pos = hq.selectionStart; renderHistory(); const n = $("#hq"); n.focus(); n.setSelectionRange(pos, pos); };
   m.querySelector("#hmore")?.addEventListener("click", () => { S.filt.hn = (S.filt.hn || 200) + 500; renderHistory(); });
+  m.querySelectorAll("[data-mv-ed]").forEach(b => b.onclick = () => editMove(+b.dataset.mvEd));
   wireMoveBtns(m);
 }
 
