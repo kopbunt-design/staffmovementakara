@@ -52,7 +52,7 @@ const CSS = `@font-face{font-family:ECTH;src:local('TH Sarabun New'),local('THSa
 .c{margin-left:10mm}p,h3,.kv{margin:0 0 19px 10mm}.j{text-align:justify}.ind{text-indent:15mm;margin-bottom:32px}
 h1{text-align:center;font-size:24px;font-weight:700;line-height:34px;margin:0 0 14px}.r{text-align:right;margin-bottom:22px}
 h3{margin-bottom:13px;font-size:18.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.v{color:#0000ff;font-weight:700}.nw{white-space:nowrap}
-.kv{margin-bottom:15px}.kv span{display:inline-block;padding-right:6mm}.sub{text-indent:15mm;margin-bottom:6px}
+.kv{margin-bottom:15px}.kv>span:first-child{display:inline-block;padding-right:6mm}.sub{text-indent:15mm;margin-bottom:6px}
 .sign{margin-top:16mm;margin-left:50.8mm}.sign table{border-collapse:collapse}.sign td{padding:0;vertical-align:bottom;white-space:nowrap}
 .sign .line{width:63.5mm;border-bottom:1px solid #000;height:15mm;text-align:center;position:relative}.sign .line img{max-height:15mm;max-width:58mm;position:absolute;left:50%;bottom:-2mm;transform:translateX(-50%)}
 .sign .nm{text-align:center;padding-top:2px}.sign .gap{height:20mm}
