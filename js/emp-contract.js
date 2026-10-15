@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { esc, toast, can, currentUser, allEmployees } from "./app.js";
+import { esc as escText, toast, can, currentUser, allEmployees } from "./app.js";
 import { renderMail, mailList, downloadEml } from "./hr-letters.js";
 import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
 import { contractHTML, LOC, fill, probationEnd, thLong, idValid } from "./emp-contract-doc.js";
@@ -13,6 +13,8 @@ import { readIdCard, readRegion, complete } from "./idcard-read.js";
 //   ไม่รันเลขเอกสาร · อีเมลใช้แบบ ec_sign / ec_signed / ec_rejected (แก้ได้ที่แท็บตั้งค่า)
 // ============================================================================
 
+// esc ของ app.js รับแต่ข้อความ — เงินเดือนเป็นตัวเลข (เปิดร่างที่บันทึกแล้วจอว่าง 2026-10-15)
+const esc = v => escText(v == null ? "" : String(v));
 const ST = { draft: ["ร่าง", "var(--muted)", "#f1f5f9"], pending: ["รอลงนาม", "var(--amber)", "var(--amber-light)"], signed: ["ลงนามแล้ว", "var(--green)", "var(--green-light)"],
   rejected: ["ส่งกลับแก้ไข", "var(--red)", "var(--red-light)"], cancelled: ["ยกเลิก", "var(--muted)", "#f1f5f9"] };
 const badge = s => { const [t, c, b] = ST[s] || [s, "var(--muted)", "#f1f5f9"]; return `<span class="badge" style="color:${c};background:${b};">${t}</span>`; };
