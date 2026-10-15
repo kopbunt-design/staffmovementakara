@@ -398,10 +398,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
-        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
-        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";

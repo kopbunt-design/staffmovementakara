@@ -54,7 +54,7 @@ const META_EN = {
   settings: "Master data: divisions, departments, positions, levels",
 };
 const GROUP_EN = {
-  "grp.records": "People, movements and benefits", "grp.pay": "Shift pay, payroll, approvals, contract pay",
+  "grp.records": "People, movements and benefits", "grp.sub": "Contractor-company workers, monthly headcount", "grp.pay": "Shift pay, payroll, approvals, contract pay",
   "grp.reports": "Dashboard, headcount, movement, analytics", "grp.plan": "Position quotas and vacancies",
   "grp.docs": "Document numbers, certificates, offer letters",
   "grp.system": "Users, access and master data",
@@ -129,6 +129,7 @@ function tile(it, tone) {
 // ผูกด้วย key ของหัวหมวดในแถบข้าง (data-i18n) ไม่ใช่ชื่อ — ชื่อเปลี่ยนตามภาษา ไทย/EN
 const GROUP_META = {
   "grp.records":       ["ข้อมูลพนักงาน ความเคลื่อนไหว สวัสดิการ", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
+  "grp.sub":            ["คนจากบริษัทผู้รับเหมา · รายงานรายเดือน", '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01"/>'],
   "grp.pay": ["ค่ากะ เงินเดือน ใบอนุมัติ ค่าจ้างเหมา", '<rect x="2.5" y="6" width="19" height="12.5" rx="2.5"/><circle cx="12" cy="12.25" r="2.75"/><path d="M6 9.5v.01M18 15v.01"/>'],
   "grp.reports":        ["ภาพรวม headcount movement วิเคราะห์", '<path d="M3 3v18h18"/><path d="M7.5 16v-4M12 16V8M16.5 16v-6"/>'],
   "grp.plan":     ["โควตาตำแหน่งและอัตราว่าง", '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'],
@@ -190,7 +191,8 @@ function draw() {
 
   pg.querySelectorAll("[data-go]").forEach(b => b.onclick = () => navigate(b.dataset.go));
   wireTasks(pg);
-  pg.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => openFolder(+b.dataset.cat, b));
+  // หมวดที่มีเมนูเดียว (เช่น ผู้รับเหมา SUB) กดแล้วเข้าเลย ไม่ต้องเปิดแผงก่อน
+  pg.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { const g = groupsCache[+b.dataset.cat]; g?.items.length === 1 ? navigate(g.items[0].page) : openFolder(+b.dataset.cat, b); });
   const inp = pg.querySelector("#hmQ");
   inp.oninput = () => { query = inp.value; const pos = inp.selectionStart; draw();
     const n = document.getElementById("hmQ"); n.focus(); n.setSelectionRange(pos, pos); };
