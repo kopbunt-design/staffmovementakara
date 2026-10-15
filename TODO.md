@@ -2,7 +2,7 @@
 
 อัปเดตล่าสุด: 2026-08-28
 
-## 💰 ค่าจ้างเหมา (Contract Payroll) — ย้ายเป็นเว็บแยก /contract (2026-10-15) · ⚠️ ต้องรัน sql/schema_contract_web.sql
+## 💰 ค่าจ้างเหมา (Contract Payroll) — ย้ายเป็นเว็บแยก /contract (2026-10-15) · schema_contract_web.sql รันแล้ว
 
 รัน schema_contract_payroll.sql + schema_contract_items.sql แล้ว (2026-10-15) · หน้าเดิมในระบบ HR ลบแล้ว (เมนูพาไป /contract)
 **⬜ เฟส 2:** ลิงก์อนุมัติทางอีเมล (ไม่ต้อง login แบบ invoice) · ลิงก์สลิป/50 ทวิ ให้ผู้รับจ้างทางอีเมล · แนบไฟล์สัญญา
