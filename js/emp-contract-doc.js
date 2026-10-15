@@ -33,22 +33,24 @@ export function idValid(id) {
 }
 
 // ---------------------------------------------------------------- เอกสาร 4 หน้า
-const CSS = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,'Sarabun',sans-serif;color:#222;font-size:14.4px;line-height:2}
-.pg{width:210mm;height:297mm;padding:12mm 22mm 0 25mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
-.hd{display:flex;align-items:flex-end;gap:0;border-bottom:3px solid #1f5fa8;padding-bottom:1mm;margin-bottom:8mm}.hd img{height:15mm;margin-bottom:-1mm}
-.hd span{margin-left:auto;font-size:13px;color:#1f3c66}
-.ft{position:absolute;left:25mm;right:22mm;bottom:12mm;border-top:3px solid #1f5fa8;padding-top:1mm;display:flex;justify-content:space-between;font-size:11px;color:#333}
-h1{text-align:center;font-size:19px;font-weight:700;margin:2mm 0 3mm}.r{text-align:right}.ind{text-indent:18mm}.j{text-align:justify}
-h3{font-size:14.4px;font-weight:400;text-decoration:underline;text-underline-offset:3px;margin:4mm 0 1mm}.v{color:#233f8e;font-weight:700}p{margin:0 0 2.5mm}
-.kv{display:grid;grid-template-columns:42mm 1fr;margin:1.5mm 0}.sub{padding-left:14mm}
-.sign{margin-top:18mm;text-align:center}.sign .b{margin:0 auto 12mm;width:170mm;white-space:nowrap}.sign .ln{display:flex;align-items:flex-end;justify-content:center;gap:2mm;height:16mm}
-.sign .ln img{max-height:16mm;max-width:60mm;margin-bottom:-3mm}.sign .dots{display:inline-block;width:70mm;border-bottom:1px dotted #333}
+// วัดจากต้นฉบับสแกน (A4 = 794×1123 px): ตัวหนังสือ Tahoma ~9.5pt บรรทัดละ 27px · ขอบซ้าย 26.5 มม. ขวา 15.5 มม. · หัวกระดาษ/ท้ายกระดาษกว้างกว่าเนื้อหา
+const CSS = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,'Sarabun',sans-serif;color:#1d1d1d;font-size:12.67px;line-height:27px}
+.pg{width:210mm;height:297mm;padding:33mm 15.5mm 0 26.5mm;position:relative;page-break-after:always;overflow:hidden}.pg:last-child{page-break-after:auto}
+.hd{position:absolute;left:8mm;right:13mm;top:11.5mm;height:14mm;display:flex;align-items:flex-end}.hd img{height:13.5mm;display:block}
+.hd i{flex:1;border-bottom:3px solid #2457a6;margin:0 0 .4mm -1mm}.hd span{position:absolute;right:0;bottom:2mm;font-size:11.5px;line-height:1;color:#2b3445}
+.ft{position:absolute;left:8mm;right:9mm;top:267.5mm;border-top:4px solid #2457a6;padding-top:1.2mm;display:grid;grid-template-columns:1fr 1fr 1fr;font:9.5px/1.3 Arial,Helvetica,sans-serif;color:#333}
+.ft span:first-child{padding-left:12mm}.ft span:nth-child(2){text-align:center}.ft span:last-child{text-align:right;padding-right:16mm}
+h1{text-align:center;font-size:16.5px;font-weight:700;margin:0 0 22px;line-height:27px}.r{text-align:right;margin:0 0 26px}.ind{text-indent:16mm}.j{text-align:justify}
+p{margin:0 0 20px}h3{font-size:12.67px;font-weight:700;text-decoration:underline;text-underline-offset:3px;margin:26px 0 13px}.v{color:#233f8e;font-weight:700}
+.kv{margin:0 0 17px}.kv span{display:inline-block;min-width:28mm;padding-right:2mm}.sub{padding-left:10.5mm;margin-bottom:12px}
+.sign{margin-top:24mm;text-align:center}.sign .b{margin:0 auto 22mm;white-space:nowrap}.sign .ln{display:flex;align-items:flex-end;justify-content:center;gap:1mm;height:16mm}
+.sign .ln img{max-height:16mm;max-width:60mm;margin-bottom:-3mm}.sign .dots{display:inline-block;width:72mm;border-bottom:1px dotted #333}
 .draft{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:56px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700}`;
 
 // d = ข้อมูลสัญญา · opts.idFull = เลขบัตรเต็ม (ถ้าไม่ใส่จะแสดงแค่ 5 ตัวท้าย) · opts.sig = { signer:{name,img}, witness:{name,img} } · opts.draft
 export function contractHTML(d0, opts = {}) {
   const d = fill(d0), v = x => `<span class="v">${esc(x)}</span>`, page = n => `<div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page ${n} of 4</span></div>`;
-  const hd = `<div class="hd"><img src="${esc(opts.logo || "/assets/logo.png")}" alt=""><span>Chatree Gold Mine</span></div>`, wm = opts.draft ? `<div class="draft">${esc(opts.draft)}</div>` : "";
+  const hd = `<div class="hd"><img src="${esc(opts.logo || "/assets/logo.png")}" alt=""><i></i><span>Chatree Gold Mine</span></div>`, wm = opts.draft ? `<div class="draft">${esc(opts.draft)}</div>` : "";
   const id = opts.idFull ? String(opts.idFull).replace(/\D/g, "") : d.id_last5 ? `xxxxxxxx${d.id_last5}` : "…………………";
   const who = `${d.title_th || ""}${d.name_th || ""}`, sal = Number(d.salary || 0);
   const pos = `${d.position_th}${d.position_en ? ` (${d.position_en})` : ""}`;
@@ -56,12 +58,12 @@ export function contractHTML(d0, opts = {}) {
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(opts.title || "สัญญาจ้างงาน")}</title>
   <style>${CSS}</style></head><body>
   <section class="pg">${wm}${hd}<h1>สัญญาจ้างงาน</h1><p class="r">เขียนที่ ${COMPANY.name}</p>
-    <p class="ind j">สัญญาฉบับนี้ทำขึ้นเมื่อวันที่ ${v(thLong(d.contract_date))} ระหว่าง ${COMPANY.name} สำนักงาน${COMPANY.address} ซึ่งต่อไปในสัญญาฉบับนี้เรียกว่า "<b>บริษัท</b>" ฝ่ายหนึ่ง<b>และ</b> ${v(who)} บัตรประจำตัวประชาชนเลขที่ ${v(id)} ที่อยู่ ${v(d.address || "")} ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า "<b>พนักงาน</b>" อีกฝ่ายหนึ่ง</p>
+    <p class="ind j">สัญญาฉบับนี้ทำขึ้นเมื่อวันที่ ${v(thLong(d.contract_date))} ระหว่าง ${COMPANY.name} สำนักงาน ${COMPANY.address} ซึ่งต่อไปในสัญญาฉบับนี้เรียกว่า "<b>บริษัท</b>" ฝ่ายหนึ่ง<b>และ</b> ${v(who)} บัตรประจำตัวประชาชนเลขที่ ${v(id)} ที่อยู่ ${v(d.address || "")} ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า "<b>พนักงาน</b>" อีกฝ่ายหนึ่ง</p>
     <p class="ind j"><b>บริษัท</b> และ <b>พนักงาน</b> ซึ่งต่อไปในสัญญาฉบับนี้จะเรียกว่า “<b>คู่สัญญา</b>” ได้ตกลงในสัญญาร่วมกันโดยมีรายละเอียดดังต่อไปนี้</p>
     <h3>1. สัญญาจ้างงาน</h3><p class="j"><b>บริษัท</b>ตกลงจ้าง และ <b>พนักงาน</b>ตกลงรับจ้าง ตั้งแต่วันที่ ${v(thLong(d.start_date))} เป็นต้นไป พนักงานรับทราบว่ารายละเอียดข้อมูลในสัญญาจ้างงาน ข้อมูลเงินเดือน สวัสดิการต่าง ๆ เป็นความลับ ไม่สามารถเปิดเผยให้กับบุคคลอื่นรับทราบได้ทุกกรณี <b>หากมีข้อสงสัยเรื่องค่าตอบแทน ค่าจ้างและอื่น ๆ พนักงานจะต้องติดต่อสอบถามโดยตรงจากฝ่ายทรัพยากรบุคคลเท่านั้น</b> หากพนักงานฝ่าฝืน ถือเป็นความผิดทางวินัยขั้นร้ายแรง บริษัทมีสิทธิ์เลิกจ้างโดยไม่จ่ายค่าชดเชย</p>
     <h3>2. ตำแหน่งหน้าที่ และค่าตอบแทน</h3>
-    <div class="kv"><span>ตำแหน่งงาน :</span>${v(pos)}</div><div class="kv"><span>ระดับตำแหน่งงาน :</span>${v(d.job_level || "")}</div>
-    <div class="kv"><span>เงินเดือนพื้นฐาน :</span>${v(`${sal.toLocaleString("en-US")} บาท (${bahtText(sal)})`)}</div>
+    <div class="kv"><span>ตำแหน่งงาน :</span>${v(pos)}</div><div class="kv"><span style="min-width:0">ระดับตำแหน่งงาน :</span>${v(d.job_level || "")}</div>
+    <div class="kv"><span style="min-width:30.5mm">เงินเดือนพื้นฐาน :</span>${v(`${sal.toLocaleString("en-US")} บาท (${bahtText(sal)})`)}</div>
     <p class="j">โดยบริษัทตกลงจ่ายค่าตอบแทนผ่านบัญชีธนาคารของพนักงาน ซึ่งเปิดไว้กับธนาคารที่บริษัทได้แจ้งให้พนักงานทราบ ทุกวันที่ 25 ของเดือน บริษัทจะหักเงินค่าตอบแทนของพนักงานเพื่อชำระภาษีเงินได้ ประกันสังคม หรือเพื่อชำระเงินอื่น ๆ ตามที่กฎหมายกำหนด บริษัทอาจพิจารณาเปลี่ยนแปลงกำหนดวันจ่ายค่าตอบแทนตามความเหมาะสม โดยยึดแนวทางตามข้อกฎหมายเป็นตัวกำหนด</p>
     <h3>3. สวัสดิการและสิทธิประโยชน์</h3><p>เป็นไปตามเงื่อนไขที่บริษัทระบุไว้ในหมวดสวัสดิการและสิทธิประโยชน์ตามรายละเอียดคู่มือพนักงาน</p>${page(1)}</section>
   <section class="pg">${wm}${hd}
