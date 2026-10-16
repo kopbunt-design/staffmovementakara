@@ -1231,3 +1231,10 @@ thead .cp-sticky{z-index:3}
 .mv-org-t tr.chg th::after{content:"เปลี่ยน";margin-left:6px;font-size:10px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:8px;padding:1px 6px}
 .mv-org-t tr.chg td:last-child .form-control{border-color:#F59E0B;background:#FFFBEB}
 @media(max-width:640px){.mv-org-t tbody th{width:auto}.mv-org-t thead{display:none}.mv-org-t tr{display:grid;grid-template-columns:1fr 1fr}.mv-org-t tbody th{grid-column:1/-1}}
+/* รอยืนยันการพ้นสภาพ (2026-10-16) */
+.sep-pend{border-color:#FCD34D;background:#FFFBEB}
+.sep-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.sep-h b{display:block;color:#92400E;font-size:14px}.sep-h span{font-size:12px;color:#92400E;opacity:.85}
+.sep-pend .data-table{background:#fff;border-radius:8px;overflow:hidden}
+.sep-due{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:#B42318;background:#FEE4E2;border-radius:8px;padding:1px 7px}
+.sep-wait{display:inline-block;margin-left:6px;font-size:11px;color:var(--muted);background:#F1F5F9;border-radius:8px;padding:1px 7px}

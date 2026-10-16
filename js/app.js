@@ -1071,6 +1071,11 @@ let movFilter="", movFilterType="", movFilterMonth="";
 const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment","Salary Adjustment"];
 // ประเภทที่ทำให้พ้นสภาพ — คนหนึ่งมีได้ครั้งเดียว (ใช้กันบันทึกซ้ำ)
 const SEPARATION_TYPES = ["Resignation","Termination","Retirement"];
+const SEP_STATUS = { Resignation:"Resigned", Termination:"Terminated", Retirement:"Retired" };
+const todayLocal = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
+// รอยืนยันการพ้นสภาพ — มีคอลัมน์ sep_confirmed_at แล้วเท่านั้น (ยังไม่รัน sql/schema_movement_confirm.sql = ไม่มีรายการรอ)
+const pendingSeps = () => allMovements.some(m=>"sep_confirmed_at" in m)
+  ? allMovements.filter(m=>SEPARATION_TYPES.includes(m.type) && !m.sep_confirmed_at).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))) : [];
 // ฟอร์ม: ตารางหน่วยงานปัจจุบัน/ใหม่ (user 2026-10-16 — แยก Division / Department / Section / Team)
 const MV_ORG_ROWS = [["division","Division · ฝ่าย"],["department","Department"],["section","Section · แผนก"],["team","Team · ทีม"],["position","ตำแหน่ง"],["job_level","Job Level"]];
 const MV_ORG_FORM_TYPES = [...ORG_MOV_TYPES, "New Hire"];
@@ -1081,7 +1086,8 @@ const MV_ORG_LEVELS = ["division","department","section","team"];
 function empUpdateFromMovement(type, toDept, date, jobLevel) {
   const upd = {};
   if(["Resignation","Termination","Retirement"].includes(type)){
-    upd.status = {Resignation:"Resigned",Termination:"Terminated",Retirement:"Retired"}[type];
+    // ไม่เปลี่ยนสถานะตอนบันทึก (user 2026-10-16) — เก็บแค่วันพ้นสภาพ · สถานะเปลี่ยนตอน HR กดยืนยันใน "รอยืนยันการพ้นสภาพ"
+    // รายงานกำลังคนนับจาก end_date อยู่แล้ว ตัวเลขจึงไม่ขึ้นกับสถานะ
     if(date) upd.end_date = date;
   } else if(type==="Transfer"){
     if(toDept) upd.department = toDept;
@@ -1120,6 +1126,20 @@ export function renderMovements() {
       <button class="btn btn-primary" onclick="window._openMovModal()">+ บันทึกรายการ</button>
     </div>
   </div>
+  ${(()=>{ const pend = pendingSeps(), today = todayLocal(), due = pend.filter(m=>m.date && m.date<=today), w = can("data.movement.create");
+    if(!pend.length) return "";
+    const left = d => Math.round((Date.parse(d)-Date.parse(today))/864e5);
+    return `<div class="section" style="padding-top:12px;padding-bottom:0;"><div class="card sep-pend"><div class="card-body">
+      <div class="sep-h"><div><b>รอยืนยันการพ้นสภาพ (${pend.length})</b><span>บันทึกไว้แล้ว — สถานะพนักงานยังเป็น Active จนกว่า HR กดยืนยัน · กดยืนยันได้ตั้งแต่วันที่มีผล</span></div>
+        ${w&&due.length>1?`<button class="btn btn-primary btn-sm" onclick="window._confirmSepAll()">ยืนยันทั้งหมดที่ถึงกำหนด (${due.length})</button>`:""}</div>
+      <table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th>วันที่มีผล</th><th>บันทึกโดย</th><th></th></tr></thead><tbody>
+      ${pend.map(m=>{ const ok = m.date && m.date<=today;
+        return `<tr><td><b style="color:var(--blue);font-size:12px;">${esc(m.emp_code||"-")}</b></td><td style="font-weight:600;">${esc(m.name||"-")}</td><td>${movBadge(m.type)}</td>
+          <td>${fmtDate(m.date)} ${m.date?(ok?`<span class="sep-due">ถึงกำหนดแล้ว</span>`:`<span class="sep-wait">อีก ${left(m.date)} วัน</span>`):`<span class="sep-wait">ไม่มีวันที่มีผล</span>`}</td>
+          <td class="text-muted">${esc(m.recorded_by||"-")}</td>
+          <td style="white-space:nowrap;">${w?`<button class="btn btn-sm ${ok?"btn-primary":"btn-secondary"}" ${ok?"":"disabled"} title="${ok?"เปลี่ยนสถานะพนักงานเป็น "+esc(SEP_STATUS[m.type]):"ยังไม่ถึงวันที่มีผล"}" onclick="window._confirmSep('${m.id}')">ยืนยัน</button>
+            <button class="btn btn-secondary btn-sm" onclick="window._withdrawSep('${m.id}')" title="พนักงานเปลี่ยนใจ / บันทึกผิด">ยกเลิกการ${esc(MOV_TH[m.type]||"พ้นสภาพ")}</button>`:""}</td></tr>`; }).join("")}
+      </tbody></table></div></div></div>`; })()}
   <div class="search-bar">
     <div class="search-input-wrap">
       <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -1127,7 +1147,7 @@ export function renderMovements() {
     </div>
     <select class="filter-select" onchange="window._movType(this.value)">
       <option value="">ทุกประเภท</option>
-      ${["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment"].map(t=>`<option value="${t}" ${t===movFilterType?"selected":""}>${t}</option>`).join("")}
+      ${MOV_TYPES.map(t=>`<option value="${t}" ${t===movFilterType?"selected":""}>${t}</option>`).join("")}
     </select>
     <select class="filter-select" onchange="window._movMonth(this.value)">
       <option value="">ทุกเดือน</option>
@@ -1158,6 +1178,46 @@ export function renderMovements() {
   window._movType = v => { movFilterType=v; renderMovements(); };
   window._movMonth = v => { movFilterMonth=v; renderMovements(); };
   window._openMovModal = () => openMovModal(null);
+  // ยืนยันการพ้นสภาพ → สถานะพนักงานเปลี่ยน (Resigned / Terminated / Retired) + วันพ้นสภาพ
+  const confirmOne = async m => {
+    const who = currentUser?.user_metadata?.full_name||currentUser?.email||"";
+    const { error } = await supabase.from("movements").update({ sep_confirmed_at: new Date().toISOString(), sep_confirmed_by: who }).eq("id", m.id);
+    if(error) return error;
+    if(m.emp_code){
+      const upd = { status: SEP_STATUS[m.type], updated_at: new Date().toISOString(), ...(m.date ? { end_date: m.date } : {}) };
+      const { error: e2 } = await supabase.from("employees").update(upd).eq("emp_code", m.emp_code);
+      if(e2) return e2;
+      const e = allEmployees.find(x=>x.emp_code===m.emp_code); if(e) Object.assign(e, upd);
+    }
+    Object.assign(m, { sep_confirmed_at: new Date().toISOString(), sep_confirmed_by: who });
+    return null;
+  };
+  window._confirmSep = async id => {
+    const m = allMovements.find(x=>String(x.id)===String(id)); if(!m) return;
+    if(m.date && m.date > todayLocal()) return toast("ยังไม่ถึงวันที่มีผล","error");
+    if(!confirm(`ยืนยัน${MOV_TH[m.type]||m.type}ของ ${m.name}? สถานะพนักงานจะเปลี่ยนเป็น ${SEP_STATUS[m.type]} (พ้นสภาพ ${fmtDate(m.date)})`)) return;
+    const err = await confirmOne(m); if(err) return toast("ยืนยันไม่สำเร็จ: "+err.message,"error");
+    toast(`ยืนยันแล้ว — ${m.name} เป็น ${SEP_STATUS[m.type]}`,"success"); renderMovements();
+  };
+  window._confirmSepAll = async () => {
+    const due = pendingSeps().filter(m=>m.date && m.date<=todayLocal());
+    if(!due.length || !confirm(`ยืนยันการพ้นสภาพ ${due.length} รายการที่ถึงกำหนดแล้ว?\n${due.map(m=>`· ${m.name} (${MOV_TH[m.type]||m.type} ${fmtDate(m.date)})`).join("\n")}`)) return;
+    let n = 0; for(const m of due){ const err = await confirmOne(m); if(err){ toast(`${m.name}: ${err.message}`,"error"); break; } n++; }
+    toast(`ยืนยันแล้ว ${n} รายการ`,"success"); renderMovements();
+  };
+  // เปลี่ยนใจ / บันทึกผิด: ลบรายการ + ล้างวันพ้นสภาพที่บันทึกไว้จากรายการนี้
+  window._withdrawSep = async id => {
+    const m = allMovements.find(x=>String(x.id)===String(id)); if(!m) return;
+    if(!confirm(`ยกเลิกการ${MOV_TH[m.type]||"พ้นสภาพ"}ของ ${m.name}?\nรายการนี้จะถูกลบ และล้างวันพ้นสภาพ (${fmtDate(m.date)}) ออกจากทะเบียนพนักงาน`)) return;
+    const { error } = await supabase.from("movements").delete().eq("id", m.id);
+    if(error) return toast("ไม่สำเร็จ: "+error.message,"error");
+    const e = allEmployees.find(x=>x.emp_code===m.emp_code);
+    if(e && (!e.end_date || e.end_date===m.date)){
+      const upd = { end_date: null, status: "Active", updated_at: new Date().toISOString() };
+      await supabase.from("employees").update(upd).eq("emp_code", m.emp_code); Object.assign(e, upd);
+    }
+    toast(`ยกเลิกแล้ว — ${m.name} ยังเป็นพนักงาน Active`,"success");
+  };
   window._editMov = id => openMovModal(allMovements.find(m=>m.id===id));
   window._exportMovCSV = exportMovCSV;
   window._movTemplate = movTemplate;
