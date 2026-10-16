@@ -118,6 +118,15 @@
           "value": "no-cache, must-revalidate"
         }
       ]
+    },
+    {
+      "source": "/paf/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     }
   ]
 }

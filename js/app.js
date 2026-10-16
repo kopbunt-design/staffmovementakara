@@ -232,7 +232,7 @@ function toggleNotifPanel(force) {
 })();
 
 export const MOV_COLORS = {
-  "Transfer":["#2B5AC7","#EEF3FB"],"Promotion":["#6D28D9","#EDE9FE"],
+  "Transfer":["#2B5AC7","#EEF3FB"],"Promotion":["#6D28D9","#EDE9FE"],"Salary Adjustment":["#B45309","#FEF3C7"],
   "Demotion":["#C0392B","#FDECEA"],"Resignation":["#C0392B","#FDECEA"],
   "Termination":["#991b1b","#fee2e2"],"New Hire":["#0D7C4B","#E6F5EE"],
   "Retirement":["#D97706","#FEF7E8"],"Secondment":["#2B5AC7","#EEF3FB"],
@@ -241,11 +241,11 @@ export const movBadge = type => { const [c,bg]=MOV_COLORS[type]||["#64748B","#f1
 // ป้ายภาษาไทยของประเภทความเคลื่อนไหว (ใช้ในหน้า Dashboard ให้ภาษาสม่ำเสมอ)
 export const MOV_TH = {
   "New Hire":"เข้าใหม่","Resignation":"ลาออก","Termination":"เลิกจ้าง","Retirement":"เกษียณ",
-  "Transfer":"โอนย้าย","Promotion":"เลื่อนตำแหน่ง","Demotion":"ปรับลดตำแหน่ง","Secondment":"ยืมตัว",
+  "Transfer":"โอนย้าย","Promotion":"เลื่อนตำแหน่ง","Demotion":"ปรับลดตำแหน่ง","Secondment":"ยืมตัว","Salary Adjustment":"ปรับเงินเดือน",
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","docregister","letters","empcontract","expense","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","docregister","letters","empcontract","paf","expense","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
@@ -381,6 +381,7 @@ async function renderPage(page) {
   else if(page==="docregister") (await import("./doc-register.js")).renderDocRegister();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();
   else if(page==="empcontract") (await import("./emp-contract.js")).renderEmpContract();
+  else if(page==="paf") (await import("./paf.js")).renderPaf();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
   else if(page==="diligence") (await import("./diligence.js")).renderDiligence();
   else if(page==="otaudit") (await import("./otaudit.js")).renderOtAudit();
@@ -399,10 +400,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
-        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
-        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
@@ -610,7 +611,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
   startRealtime();
   // ลิงก์จากอีเมลขออนุมัติหนังสือ (?letter=ID) → เปิดหน้าออกหนังสือ (หน้านั้นเปิดฉบับที่ระบุเอง)
   const qp = new URLSearchParams(location.search);
-  navigate(qp.get("letter") ? "letters" : qp.get("fund") ? "fundforms" : qp.get("econtract") ? "empcontract" : "home");
+  navigate(qp.get("letter") ? "letters" : qp.get("fund") ? "fundforms" : qp.get("econtract") ? "empcontract" : qp.get("paf") ? "paf" : "home");
   if (session.user.user_metadata?.must_change_password) openPwModal(true);
 });
 
@@ -1031,7 +1032,7 @@ function renderDashboard() {
 
 // ===== MOVEMENTS =====
 let movFilter="", movFilterType="", movFilterMonth="";
-const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment"];
+const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment","Salary Adjustment"];
 // ประเภทที่ทำให้พ้นสภาพ — คนหนึ่งมีได้ครั้งเดียว (ใช้กันบันทึกซ้ำ)
 const SEPARATION_TYPES = ["Resignation","Termination","Retirement"];
 

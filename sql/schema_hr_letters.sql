@@ -580,5 +580,5 @@ drop policy if exists "ms_read"  on mail_settings;
 create policy "ms_read"  on mail_settings for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
 drop policy if exists "mt_read"  on mail_templates;
 drop policy if exists "mt_write" on mail_templates;
-create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
-create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));

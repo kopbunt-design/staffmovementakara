@@ -245,7 +245,7 @@ where r.key = 'admin' on conflict do nothing;
 -- ตาราง mail_templates จำกัดชื่อแบบไว้ (ชุดเดียวกับ schema_expense.sql / schema_fund_approval.sql — เพิ่มแบบใหม่ต้องแก้ทุกไฟล์)
 alter table mail_templates drop constraint if exists mail_templates_key_check;
 alter table mail_templates add constraint mail_templates_key_check
-  check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected'));
+  check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected','paf_request','paf_approved','paf_rejected'));
 insert into mail_templates (key, label, subject, html) values
   ('ec_sign', 'ขอลงนามสัญญาจ้าง', '[ขอลงนาม] สัญญาจ้างงาน — {{person}}',
    '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;color:#1e293b"><p><b>มีสัญญาจ้างงานรอลงนามจากท่าน</b></p><p>{{person}} · {{kind}} · {{emp_code}}</p><p><a href="{{link}}">เปิดสัญญาเพื่อลงนาม</a></p><p style="color:#64748b;font-size:12px">ส่งโดย {{requester}}</p></div>'),
@@ -256,12 +256,12 @@ insert into mail_templates (key, label, subject, html) values
 on conflict (key) do nothing;
 
 -- ============================================================================
--- สิทธิ์ลายเซ็น + แบบอีเมลรวมทุกระบบ — ชุดเดียวกันทุกไฟล์ (schema_hr_letters / schema_fund_approval / schema_expense / schema_contract_web / schema_emp_contract)
+-- สิทธิ์ลายเซ็น + แบบอีเมลรวมทุกระบบ — ชุดเดียวกันทุกไฟล์ (schema_hr_letters / schema_fund_approval / schema_expense / schema_contract_web / schema_emp_contract / schema_paf)
 -- ============================================================================
 drop policy if exists "mt_read"  on mail_templates;
 drop policy if exists "mt_write" on mail_templates;
-create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
-create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));
 drop policy if exists "ls_read" on letter_signers;
 create policy "ls_read" on letter_signers for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense')
   or has_perm('page.contractpay') or has_perm('data.contract.approve') or has_perm('page.empcontract') or has_perm('data.empcontract.sign'));

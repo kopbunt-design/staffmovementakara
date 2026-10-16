@@ -10,6 +10,8 @@
 //                       → HR Invoice Hub ใบแจ้งหนี้: ขอตรวจ / ขออนุมัติ / แจ้งผู้จัดทำ (schema_expense.sql)
 //                         exp_approve ส่งลิงก์อนุมัติไม่ต้อง login (/expense/approve.html?t=...) ถึงผู้อนุมัติ
 //   exp_token (ไม่ต้อง login) → หน้า approve.html แจ้งผู้จัดทำหลังผู้อนุมัติกดจากลิงก์ (ภายใน 30 นาทีหลังกด)
+//   paf_id + action = "paf_request" → ผู้อนุมัติขั้นที่รออยู่ ได้ลิงก์ /paf/approve.html?t=… (ไม่ต้อง login) · "paf_approved" / "paf_rejected" → HR ผู้ส่ง
+//   paf_token (ไม่ต้อง login) → หลังผู้อนุมัติกดจากลิงก์: ขอขั้นถัดไป หรือแจ้ง HR (อนุมัติครบ/ส่งกลับ)
 //   ec_token + action = "ec_files" → ลิงก์ชั่วคราวของรูปลายเซ็นผู้แทน/พยาน ให้หน้า /econtract/sign.html (ไม่ต้อง login)
 //   ec_token (ไม่ต้อง login) → หลังผู้แทนกดจากลิงก์: แจ้ง HR ผู้ส่ง (ลงนามครบ/ส่งกลับ) หรือแจ้งพยานที่ยังไม่ลงนาม
 //   ec_id + action = "ec_sign" + role = "signer" | "witness" → ผู้แทนได้ลิงก์ลงนามไม่ต้อง login · พยานได้ลิงก์เข้าระบบ (ส่งแยกกัน)
@@ -50,7 +52,7 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-    const { letter_id, fund_id, exp_id, exp_token, ec_id, ec_token, role, action: action_ } = await req.json();
+    const { letter_id, fund_id, exp_id, exp_token, ec_id, ec_token, paf_id, paf_token, role, action: action_ } = await req.json();
     let action = action_;
     // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
     let caller: any = null, user: any = null;
@@ -73,7 +75,7 @@ Deno.serve(async (req) => {
       const sign = async (path?: string | null) => path ? (await admin.storage.from("letter-assets").createSignedUrl(path, 3600)).data?.signedUrl || null : null;
       return json({ sig: { signer: await sign(c?.signer?.signature_path), witness: await sign(c?.witness?.signature_path) } });
     }
-    if (!exp_token && !ec_token) {
+    if (!exp_token && !ec_token && !paf_token) {
       const auth = req.headers.get("Authorization");
       if (!auth) return json({ error: "Missing authorization header" }, 401);
       // อ่านด้วยสิทธิ์ของผู้เรียก — ถ้าเขาอ่านหนังสือฉบับนี้ไม่ได้ (RLS) ก็ส่งเมลเรื่องนี้ไม่ได้
@@ -177,6 +179,34 @@ Deno.serve(async (req) => {
         requester: rq.name, approver: action === "ec_sign" ? (who === "signer" ? sg.name : wt.name) : me.name });
       if (!ok) return json({ sent: false, reason: "no_template" });
       if (link.includes("/econtract/sign.html")) { extraTo = []; cc = []; }   // ลิงก์ลงนามแทนบริษัทไปถึงผู้แทนคนเดียว
+    } else if (paf_id || paf_token) {
+      // Personnel Action Form — อ่านด้วยสิทธิ์ผู้เรียก (RLS: data.paf.write) · หรือ token ที่ผู้อนุมัติเพิ่งใช้ (ภายใน 30 นาที)
+      let f: any = null;
+      if (paf_token) {
+        const { data: t } = await admin.from("paf_tokens").select("paf_id,used_at").eq("token", String(paf_token)).maybeSingle();
+        if (!t?.used_at || Date.now() - new Date(t.used_at).getTime() > 30 * 60e3) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดเวลาแจ้งผล" }, 403);
+        f = (await admin.from("paf_forms").select("*").eq("id", t.paf_id).single()).data;
+        action = f?.status === "approved" ? "paf_approved" : f?.status === "rejected" ? "paf_rejected" : f?.status === "pending" ? "paf_request" : "";
+        if (!action) return json({ error: "PAF นี้ไม่ได้อยู่ในสถานะที่ต้องแจ้ง" }, 400);
+      } else {
+        const { data, error } = await caller.from("paf_forms").select("*").eq("id", paf_id).single();
+        if (error || !data) return json({ error: "ไม่พบ PAF หรือไม่มีสิทธิ์" }, 403);
+        f = data;
+      }
+      const cur = (f.steps || []).find((s: any) => s.step === f.cur_step) || {};
+      const { data: lg } = await admin.from("paf_log").select("actor_name,action").eq("paf_id", f.id).order("at", { ascending: false }).limit(1);
+      let link = `${appUrl}/?paf=${f.id}`;
+      if (action === "paf_request") {
+        if (f.status !== "pending") return json({ error: "PAF ไม่ได้รออนุมัติ" }, 400);
+        to = cur.email || "";
+        const { data: t } = await admin.from("paf_tokens").select("token,used_at,expires_at").eq("paf_id", f.id).eq("step", f.cur_step).maybeSingle();
+        if (t && !t.used_at && new Date(t.expires_at) > new Date()) link = `${appUrl}/paf/approve.html?t=${t.token}`;
+      } else if (action === "paf_approved" || action === "paf_rejected") to = f.requested_email || "";
+      else return json({ error: "action ไม่ถูกต้อง" }, 400);
+      const ok = await tplVars(action, { doc_no: f.doc_no || "", kind: f.subject_th || "Personnel Action Form", person: f.name_th || "", emp_code: `(${f.emp_code})`,
+        link, reason: f.reject_reason || "-", requester: f.requested_name || "", approver: action === "paf_request" ? (cur.name_th || "") : (lg?.[0]?.actor_name || "") });
+      if (!ok) return json({ sent: false, reason: "no_template" });
+      if (link.includes("/paf/approve.html")) { extraTo = []; cc = []; }   // ลิงก์อนุมัติไปถึงผู้อนุมัติคนเดียว
     } else if (fund_id) {
       // อ่านด้วยสิทธิ์ผู้เรียก — ต้องเปิดหน้าแบบฟอร์มกองทุนได้ (RLS) ถึงส่งเมลเรื่องนี้ได้
       const { data: f, error } = await caller.from("fund_form_submission").select("*").eq("id", fund_id).single();

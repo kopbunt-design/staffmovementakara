@@ -344,7 +344,7 @@ on conflict do nothing;
 -- ------------------------------------------------------------------ 8. อีเมลแจ้งเตือน (ผ่าน Edge Function letter-notify · โหมด Outlook = ไฟล์ .eml)
 --   ตัวแปร: {{doc_no}}=เลขที่ · {{person}}=ผู้ขาย · {{kind}}=รายการแรก/หมวด · {{emp_code}}=ยอดชำระ · {{requester}} {{approver}} {{reason}} {{link}}
 alter table mail_templates drop constraint if exists mail_templates_key_check;
-alter table mail_templates add constraint mail_templates_key_check check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected'));
+alter table mail_templates add constraint mail_templates_key_check check (key in ('request','approved','rejected','fund_request','fund_approved','fund_rejected','exp_review','exp_approve','exp_approved','exp_rejected','ec_sign','ec_signed','ec_rejected','paf_request','paf_approved','paf_rejected'));
 insert into mail_templates (key, label, subject, html) values
 ('exp_review', 'HR Invoice Hub: ขอให้ตรวจ', '[ขอตรวจ] ใบแจ้งหนี้ {{doc_no}} — {{person}}', $h$<!-- akara-exp-v1 · Outlook-safe -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2F7" style="background:#EEF2F7;"><tr><td align="center" style="padding:28px 12px;">
@@ -405,8 +405,8 @@ drop policy if exists "ms_read"  on mail_settings;
 create policy "ms_read"  on mail_settings for select using (has_perm('page.letters') or has_perm('page.fundforms') or has_perm('page.expense'));
 drop policy if exists "mt_read"  on mail_templates;
 drop policy if exists "mt_write" on mail_templates;
-create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
-create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')));
+create policy "mt_read"  on mail_templates for select using (has_perm('page.letters') or (key like 'fund\_%' and has_perm('page.fundforms')) or (key like 'exp\_%' and has_perm('page.expense')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));
+create policy "mt_write" on mail_templates for update using (has_perm('data.letters.approve') or (key like 'fund\_%' and has_perm('data.fundforms.write')) or (key like 'exp\_%' and has_perm('data.expense.write')) or (key like 'ec\_%' and has_perm('data.empcontract.write')) or (key like 'paf\_%' and has_perm('data.paf.write')));
 
 -- ------------------------------------------------------------------ 9. ไฟล์แนบ (ใบเสร็จร้านค้า / รายชื่อ ฯลฯ) — เก็บแบบส่วนตัว
 create table if not exists exp_files (

@@ -65,6 +65,14 @@ Form AKR-OHR-FM-006 Rev. 00 (user, 2026-10-15). Typography follows the Word file
 - Emails: templates `ec_sign` / `ec_signed` / `ec_rejected` edited on the page's settings tab; sent by `letter-notify` (`ec_id`) in auto mode, otherwise an .eml download. Probation end = day 119 counting the start date as day 1.
 - Salary is in the row, so RLS lets only `data.empcontract.write` holders and that contract's signer/witness read it. DB: `sql/schema_emp_contract.sql` (also carries the shared signature + mail-template policies — now five files to keep identical).
 
+## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
+
+Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).
+- Flow: HR submits → step 1 HR Manager → step 2 GM. Approvers are **not system users**: `paf_approvers` (name/title/emp code/email, default per step) is managed on the page's ผู้อนุมัติ tab and copied into `paf_forms.steps` at submit. Each step gets its own single-use 14-day token (`paf_tokens`, no RLS policies) → `paf/approve.html?t=` + `paf/approve.js` shows the A4 to preview and approves/returns via `paf_link_get` / `paf_link_decide`. Status/number/steps change only through `paf_*` functions (trigger `paf_guard`).
+- Number: series `PAF` in the document register (PAF-###-YYYY via `doc_issue`, so the submitter also needs `data.docregister.write`), issued at first submit; resubmitting after a return keeps it; cancelling voids it in the register.
+- Final approval runs `paf_apply`: inserts a `movements` row (type from `mov_type`, suggested by `suggestMovType`: level up/down → Promotion/Demotion, org change → Transfer, salary only → the new **Salary Adjustment** type, which no headcount report counts) and updates `employees` (position, level, org, salary, effective_date) immediately.
+- Emails: `paf_request` (to the waiting step only, to_extra/cc dropped), `paf_approved` / `paf_rejected` (to the submitting HR); `letter-notify` branches `paf_id` (session) and `paf_token` (after a link click). Each decision also posts a bell notification (doc no only) — in Outlook mode that's HR's cue to send the next step's .eml. Mail-template keys and the `mt_*` policies are in the shared block, now six files: `schema_paf.sql` too.
+
 ## Gotchas
 
 - **Supabase key is intentionally hardcoded** in `js/supabase-config.js` (URL + anon/publishable key). This is a publishable key protected by RLS — do not "fix" this by moving it to env vars or a `.env` file; that would break the static Vercel deploy, which has no build step to inject env vars.
