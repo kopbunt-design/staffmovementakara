@@ -78,6 +78,41 @@ export const lastDayOfMonth = ym => {
   const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return `${ym}-${String(d).padStart(2,"0")}`;
 };
+// ===== หน่วยงาน ณ วันที่ (user 2026-10-16: "แยก division/department/section/team ให้ยึดวันที่มีผล") =====
+// ทะเบียนพนักงานเก็บแค่หน่วยงานปัจจุบัน — รายงานย้อนหลังต้องย้อนกลับด้วยรายการ Transfer/Promotion/Demotion/Secondment
+// ที่มีผล "หลัง" วันที่ถาม: วันที่มีผล = วันแรกที่อยู่หน่วยงานใหม่ ก่อนหน้านั้นยังนับที่หน่วยงานเดิม
+// movement.org_from (บันทึกตั้งแต่ 2026-10-16) = หน่วยงานก่อนย้ายครบทุกช่อง · รายการเก่ามีแค่ from_dept "แผนก / ตำแหน่ง"
+//   → ย้อนได้เฉพาะ department + position (division เดาจาก master department · section/team ไม่รู้ = ว่าง)
+// เปลี่ยนเฉพาะช่องหน่วยงาน — job_level ไม่ย้อน (ตารางหลักแยกตามระดับจะได้ไม่ขยับ)
+export const ORG_KEYS = ["division","department","section","team","position"];
+export const ORG_MOV_TYPES = ["Transfer","Promotion","Demotion","Secondment"];
+export function makeOrgAt(movs, depts = []) {
+  const by = new Map();
+  for (const m of movs || []) {
+    if (!m.emp_code || !m.date || !ORG_MOV_TYPES.includes(m.type)) continue;
+    (by.get(m.emp_code) || by.set(m.emp_code, []).get(m.emp_code)).push(m);
+  }
+  // ใหม่ → เก่า (วันเดียวกันใช้ลำดับที่บันทึก) เพื่อย้อนทีละรายการ
+  for (const l of by.values()) l.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  const divOf = dep => { const d = depts.find(x => x.name === dep); return d?.master_divisions?.name || d?.division || ""; };
+  return (e, iso) => {
+    const l = e && by.get(e.emp_code);
+    if (!l || !iso) return e;
+    const later = l.filter(m => String(m.date).slice(0, 10) > iso);
+    if (!later.length) return e;
+    const s = { ...e };
+    for (const m of later) {
+      const of = m.org_from && typeof m.org_from === "object" ? m.org_from : null;
+      if (of) { for (const k of ORG_KEYS) if (k in of) s[k] = of[k] ?? ""; continue; }
+      const [dep, pos] = String(m.from_dept || "").split(" / ").map(x => x.trim());
+      if (dep && dep !== s.department) { s.department = dep; s.division = divOf(dep) || s.division; s.section = ""; s.team = ""; }
+      if (pos) s.position = pos;
+    }
+    return s;
+  };
+}
+// หน่วยงานของพนักงานตอนนี้ ไว้เก็บเป็น org_from ตอนบันทึก movement
+export const orgSnapshot = e => e ? Object.fromEntries([...ORG_KEYS, "job_level"].map(k => [k, e[k] ?? null])) : null;
 export const sepYM = dateStr => {
   if (!dateStr) return "";
   const d = new Date(String(dateStr).substring(0,10) + "T00:00:00Z");
@@ -1363,10 +1398,14 @@ function openMovModal(entry=null) {
       }
     }
 
+    // หน่วยงานก่อนย้าย (ครบทุกช่อง) — รายงานย้อนหลังใช้ย้อนว่าก่อนวันที่มีผลอยู่หน่วยงานไหน · เก็บตอนบันทึกครั้งแรกเท่านั้น
+    if(!existId && ORG_MOV_TYPES.includes(type)){ const cur = allEmployees.find(e=>e.emp_code===empCode); if(cur) data.org_from = orgSnapshot(cur); }
     const write = d => existId
       ? supabase.from("movements").update({...d, updated_at: new Date().toISOString()}).eq("id", existId)
       : supabase.from("movements").insert(d);
     let { error } = await write(data);
+    // ยังไม่ได้รัน sql/schema_movement_org.sql → บันทึกแบบเดิมไปก่อน (รายงานย้อนได้แค่แผนก/ตำแหน่งจาก from_dept)
+    if(error && /org_from/.test(error.message)){ delete data.org_from; ({ error } = await write(data)); }
     // ยังไม่ได้รัน sql/schema_movement_joblevel.sql → บันทึกรายการได้ก่อน (ไม่มีคอลัมน์ job_level) แต่ยังอัปเดตระดับพนักงานให้
     if(error && /job_level/.test(error.message)){ const { job_level, ...rest } = data; ({ error } = await write(rest)); if(!error) toast("บันทึกแล้ว — แต่ยังไม่ได้เก็บ Job Level ในรายการนี้ (รัน sql/schema_movement_joblevel.sql)","info"); }
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
@@ -1474,6 +1513,10 @@ async function movImport(inputEl){
       });
       if(!batch.length){ toast("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E17\u0E35\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07"+(errors.length?": "+errors[0]:""),"error"); return; }
       // เก็บ Job Level ใหม่ไว้ในรายการด้วย — ถ้ายังไม่ได้รัน sql/schema_movement_joblevel.sql (ไม่มีคอลัมน์) ตัดออกแล้วนำเข้าแบบเดิม
+      // หน่วยงานก่อนย้าย — ใส่ได้ถูกเฉพาะคนที่มีรายการย้ายรายการเดียวในไฟล์ (หลายรายการ: ย้อนจาก from_dept แทน)
+      const nOrg = {}; batch.forEach(m=>{ if(ORG_MOV_TYPES.includes(m.type)) nOrg[m.emp_code]=(nOrg[m.emp_code]||0)+1; });
+      batch.forEach(m=>{ const cur = nOrg[m.emp_code]===1 && allEmployees.find(e=>e.emp_code===m.emp_code); if(cur) m.org_from = orgSnapshot(cur); });
+      if(batch.some(m=>m.org_from)){ const t = await supabase.from("movements").select("org_from").limit(1); if(t.error) batch.forEach(m=>{ delete m.org_from; }); }
       let { error } = await supabase.from("movements").insert(batch.map(m=>({...m, job_level: m.job_level||null})));
       if(error && /job_level/.test(error.message)) ({ error } = await supabase.from("movements").insert(batch.map(({job_level, ...m})=>m)));
       if(error){ toast("Import \u0E44\u0E21\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08: "+error.message,"error"); return; }

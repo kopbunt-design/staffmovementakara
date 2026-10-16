@@ -167,6 +167,9 @@ begin
   return f;
 end $$;
 
+-- หน่วยงานก่อนย้าย (ชุดเดียวกับ schema_movement_org.sql) — รายงานแยกหน่วยงานย้อนตามวันที่มีผล
+alter table movements add column if not exists org_from jsonb;
+
 -- อนุมัติครบ → Movement + อัปเดตทะเบียนพนักงาน (ภายในเท่านั้น)
 create or replace function paf_apply(p_id bigint) returns void
 language plpgsql security definer set search_path = public as $$
@@ -176,9 +179,11 @@ begin
   if f.mov_type is null or f.mov_type = 'none' then return; end if;
   frm := concat_ws(' / ', nullif(f.department, ''), nullif(f.position, ''));
   dst := concat_ws(' / ', coalesce(nullif(f.department_to, ''), nullif(f.department, '')), coalesce(nullif(f.position_to, ''), nullif(f.position, '')));
-  insert into movements (emp_code, name, type, date, from_dept, to_dept, reason, salary, job_level, recorded_by, created_by)
+  insert into movements (emp_code, name, type, date, from_dept, to_dept, reason, salary, job_level, recorded_by, created_by, org_from)
   values (f.emp_code, coalesce(f.name_th, f.emp_code), f.mov_type, f.effective_date, nullif(frm, ''), nullif(dst, ''),
-          concat_ws(' · ', f.doc_no, nullif(f.subject_th, '')), f.salary_to, nullif(f.job_level_to, ''), concat('PAF ', f.doc_no), f.requested_by)
+          concat_ws(' · ', f.doc_no, nullif(f.subject_th, '')), f.salary_to, nullif(f.job_level_to, ''), concat('PAF ', f.doc_no), f.requested_by,
+          (select jsonb_build_object('division', e.division, 'department', e.department, 'section', e.section, 'team', e.team, 'position', e.position, 'job_level', e.job_level)
+             from employees e where e.emp_code = f.emp_code))
   returning id into mid;
   update employees set
     position   = coalesce(nullif(f.position_to, ''), position),

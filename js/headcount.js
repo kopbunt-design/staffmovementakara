@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, esc, toast } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, esc, toast } from "./app.js";
+import { masterDepartments } from "./masterdata-admin.js";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const GRP = [
@@ -33,6 +34,7 @@ function buildPeriodMonths(mode, num) {
 }
 
 function buildData(periodYMs) {
+  orgAtFn=makeOrgAt(allMovements, masterDepartments);
   const now=new Date();
   const curYM=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const rows=[];
@@ -92,6 +94,10 @@ const ORG_LEVELS=[
 ];
 const UNSET="(ไม่ระบุ)";
 const orgOf=(e,field)=>String(e?.[field]??"").trim()||UNSET;
+// หน่วยงาน ณ สิ้นเดือนนั้น (ย้อนจาก Movement ที่มีผลหลังสิ้นเดือน) — ย้ายแผนกมีผล 1 ส.ค. → ถึง ก.ค. ยังนับที่แผนกเดิม
+// ตั้งใหม่ทุกครั้งที่สร้างตาราง (buildData) · ค่าเริ่มต้นไม่ย้อน
+let orgAtFn=e=>e;
+const orgIn=(e,field,ym)=>orgOf(orgAtFn(e,lastDayOfMonth(ym)),field);
 
 // สรุปทั้งช่วงเวลาแยกตามหน่วยงาน — ใช้รายชื่อชุดเดียวกับตารางหลัก ยอดรวมจึงตรงกันเสมอ
 // headcount = เดือนล่าสุดที่มีข้อมูล · turnover = คนออกทั้งช่วง ÷ headcount เฉลี่ยของหน่วยงานนั้น
@@ -106,19 +112,19 @@ function buildBreakdown(rows,field){
     return U.get(name);
   };
   function blank(){ const o={}; GRP.forEach(g=>o[g.key]=0); return o; }
-  const add=(list,unitKey,grpKey,forKey)=>{
+  const add=(list,ym,unitKey,grpKey,forKey)=>{
     for(const e of list){
-      const u=get(orgOf(e,field)); u[unitKey]++;
+      const u=get(orgIn(e,field,ym)); u[unitKey]++;
       const k=grp(e.job_level); if(k) u[grpKey][k]++;
       if(isForeign(e)) u[forKey]++;
     }
   };
   for(const r of dataRows){
-    add(r._new,"nT","nG","nF"); add(r._vol,"vT","vG","vF"); add(r._inv,"iT","iG","iF");
+    add(r._new,r.ym,"nT","nG","nF"); add(r._vol,r.ym,"vT","vG","vF"); add(r._inv,r.ym,"iT","iG","iF");
     // headcount เฉลี่ย: นับหัวทุกเดือนแล้วหารจำนวนเดือนทีหลัง
-    for(const e of r._act) get(orgOf(e,field)).hcSum++;
+    for(const e of r._act) get(orgIn(e,field,r.ym)).hcSum++;
   }
-  add(last._act,"hT","hG","hF");   // headcount ณ สิ้นเดือนล่าสุด
+  add(last._act,last.ym,"hT","hG","hF");   // headcount ณ สิ้นเดือนล่าสุด
   const months=dataRows.length;
   const units=[...U.values()].map(u=>{
     const rT=u.vT+u.iT, avg=u.hcSum/months;
@@ -146,7 +152,7 @@ function buildMonthlyMatrix(rows,field,metricKey){
   for(const r of rows){
     if(r.future) continue;
     for(const e of m.pick(r)){
-      const n=orgOf(e,field);
+      const n=orgIn(e,field,r.ym);
       const row=cells.get(n)||{}; row[r.ym]=(row[r.ym]||0)+1; cells.set(n,row);
     }
   }

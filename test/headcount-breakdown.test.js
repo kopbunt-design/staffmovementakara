@@ -39,6 +39,12 @@ const M = new Function(`
   const ORG_LEVELS = ${extractConst(HC,"ORG_LEVELS")};
   const UNSET = ${extractConst(HC,"UNSET")};
   const orgOf = ${extractConst(HC,"orgOf")};
+  let orgAtFn = e => e;
+  const setOrgAt = f => { orgAtFn = f; };
+  const orgIn = ${extractConst(HC,"orgIn")};
+  const ORG_KEYS = ${extractConst(APP,"ORG_KEYS")};
+  const ORG_MOV_TYPES = ${extractConst(APP,"ORG_MOV_TYPES")};
+  ${extractFn(APP,"makeOrgAt")}
   ${extractFn(HC,"isForeign")}
   ${extractFn(HC,"buildBreakdown")}
   const BRK_METRICS = ${extractConst(HC,"BRK_METRICS")};
@@ -46,7 +52,7 @@ const M = new Function(`
   const lastDayOfMonth = ${extractConst(APP,"lastDayOfMonth")};
   ${extractFn(APP,"isActiveAtMonthEnd")}
   const sepYM = ${extractConst(APP,"sepYM")};
-  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM, isForeign, buildMonthlyMatrix, BRK_METRICS };
+  return { buildBreakdown, orgOf, UNSET, ORG_LEVELS, GRP, isActiveAtMonthEnd, sepYM, isForeign, buildMonthlyMatrix, BRK_METRICS, makeOrgAt, setOrgAt };
 `)();
 
 // ---------- ระดับหน่วยงานครบ 4 ระดับ ----------
@@ -282,6 +288,28 @@ eq(M.BRK_METRICS.filter(m=>m.flow).map(m=>m.key), ["new","out"],
   const rows=[mkRow("2026-01","January",{a:[e("A","","O1"),e("B","","O1"),e("C","Mining","O1")]})];
   const mx=M.buildMonthlyMatrix(rows,"division","hc");
   eq(mx.units[mx.units.length-1].name, M.UNSET, "(ไม่ระบุ) อยู่แถวสุดท้าย แม้จะมีคนมากกว่า");
+}
+
+// ---------- หน่วยงานยึดวันที่มีผล (user 2026-10-16) ----------
+// ย้ายแผนกมีผล 1 ส.ค. 69: ทะเบียนเก็บแผนกใหม่แล้ว แต่รายงาน ก.ค. ต้องยังนับที่แผนกเดิม
+{
+  const emp = { emp_code:"T1", division:"Mining", department:"Mining Ops", section:"Pit", team:"A", position:"Geology Assistant", job_level:"O1", status:"Active", join_date:"2024-01-01" };
+  const movs = [{ emp_code:"T1", type:"Transfer", date:"2026-08-01", from_dept:"Exploration / Geological Assistant", to_dept:"Mining Ops / Geology Assistant" }];
+  const at = M.makeOrgAt(movs, [{ name:"Exploration", master_divisions:{ name:"Exploration Div" } }]);
+  eq([at(emp,"2026-07-31").department, at(emp,"2026-07-31").division, at(emp,"2026-07-31").position, at(emp,"2026-07-31").section],
+     ["Exploration","Exploration Div","Geological Assistant",""], "ก่อนวันที่มีผล = หน่วยงานเดิม (รายการเก่ามีแค่แผนก/ตำแหน่ง · แผนกย่อยไม่รู้ = ว่าง)");
+  eq(at(emp,"2026-08-01").department, "Mining Ops", "ตั้งแต่วันที่มีผล = หน่วยงานใหม่");
+  eq(at(emp,"2026-07-31").job_level, "O1", "ระดับไม่ย้อน");
+  const at2 = M.makeOrgAt([{ emp_code:"T1", type:"Transfer", date:"2026-08-01", org_from:{ division:"Exploration Div", department:"Exploration", section:"Core", team:"B", position:"Geological Assistant", job_level:"O1" } },
+                          { emp_code:"T1", type:"Promotion", date:"2026-09-01", org_from:{ division:"Mining", department:"Mining Ops", section:"Pit", team:"A", position:"Geology Assistant" } }]);
+  eq([at2(emp,"2026-07-31").section, at2(emp,"2026-08-31").position, at2(emp,"2026-09-30").position], ["Core","Geology Assistant","Geology Assistant"], "org_from ย้อนครบทุกช่อง หลายรายการซ้อนกัน");
+  eq(M.makeOrgAt([{ emp_code:"T1", type:"Resignation", date:"2026-08-01", from_dept:"X / Y" }])(emp,"2026-07-31").department, "Mining Ops", "ลาออกไม่ใช่การย้ายหน่วยงาน");
+  // ตารางแยกตามหน่วยงานรายเดือน: ก.ค. อยู่ Exploration · ส.ค. อยู่ Mining Ops
+  M.setOrgAt(at);
+  const rowsT = [{ ym:"2026-07", month:"July", _act:[emp], _new:[], _vol:[], _inv:[] }, { ym:"2026-08", month:"August", _act:[emp], _new:[], _vol:[], _inv:[] }];
+  const mx = M.buildMonthlyMatrix(rowsT, "department", "hc");
+  eq(mx.units.map(u => [u.name, u.by]).sort(), [["Exploration", { "2026-07":1 }], ["Mining Ops", { "2026-08":1 }]].sort(), "รายเดือน: ย้ายแผนกขึ้นเดือนที่มีผล ไม่ย้อนทั้งปี");
+  M.setOrgAt(e => e);
 }
 
 console.log(`\n${P} passed, ${F} failed`);

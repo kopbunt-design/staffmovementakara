@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, esc, fmtDate, toast } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, esc, fmtDate, toast } from "./app.js";
+import { masterDepartments } from "./masterdata-admin.js";
 
 const MONTHS_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -10,26 +11,31 @@ const hcAtMonth = ym => hcAtMonthEnd(allEmployees, ym);
 function fd2(d){if(!d)return"—";const s=String(d).substring(0,10);const[y,m,dd]=s.split("-");return`${dd} ${MONTHS_EN[Number(m)-1]?.substring(0,3)} ${y}`;}
 
 function empName(e){ return e?`${e.firstname_en||""} ${e.lastname_en||""}`.trim()||`${e.firstname_th||""} ${e.lastname_th||""}`.trim():""; }
+const getDiv=e=>{const d=e?.division||"";return(d&&d!=="-")?d:"Other";};
 function empDept(e){ if(!e) return ""; const d=e.department||""; if(d&&d!=="-") return d; return e.section||e.division||""; }
 
 function buildReport(ym){
   const pYM=prevYM(ym);
+  // หน่วยงานยึดวันที่มีผล (2026-10-16): เข้าใหม่ = หน่วยงาน ณ วันเริ่มงาน · พ้นสภาพ = ณ วันทำงานวันสุดท้าย · ยกมา = ณ สิ้นเดือนก่อน
+  const at=makeOrgAt(allMovements, masterDepartments);
+  const dayBefore=d=>d?new Date(Date.parse(String(d).slice(0,10)+"T00:00:00Z")-864e5).toISOString().slice(0,10):lastDayOfMonth(ym);
+  const asOf=(e,d)=>e?at(e,String(d||lastDayOfMonth(ym)).slice(0,10)):e;
   const openingHC=hcAtMonth(pYM), endingHC=hcAtMonth(ym);
   const movMonth=allMovements.filter(m=>movYM(m)===ym);
 
   const movNewCodes=new Set(movMonth.filter(m=>m.type==="New Hire").map(m=>m.emp_code));
   const empNewOnly=allEmployees.filter(e=>(e.join_date||"").substring(0,7)===ym&&!movNewCodes.has(e.emp_code));
   const newJoiners=[
-    ...movMonth.filter(m=>m.type==="New Hire").map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date};}),
-    ...empNewOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.join_date}))
+    ...movMonth.filter(m=>m.type==="New Hire").map(m=>{const e=asOf(allEmployees.find(x=>x.emp_code===m.emp_code),m.date);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),division:e?getDiv(e):"Other",date:m.date};}),
+    ...empNewOnly.map(e0=>{const e=asOf(e0,e0.join_date);return{emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),division:getDiv(e),date:e.join_date};})
   ];
 
   const movSepCodes=new Set(allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>m.emp_code));
   const empSepOnly=allEmployees.filter(e=>sepYM(e.end_date)===ym&&["Resigned","Retired","Terminated"].includes(e.status)&&!movSepCodes.has(e.emp_code));
   const typeMap={Resigned:"Resignation",Retired:"Retirement",Terminated:"Termination"};
   const separations=[
-    ...allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=allEmployees.find(x=>x.emp_code===m.emp_code);return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),date:m.date,reason:m.type};}),
-    ...empSepOnly.map(e=>({emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),date:e.end_date,reason:typeMap[e.status]||e.status}))
+    ...allMovements.filter(m=>sepYM(m.date)===ym&&["Resignation","Retirement","Termination"].includes(m.type)).map(m=>{const e=asOf(allEmployees.find(x=>x.emp_code===m.emp_code),dayBefore(m.date));return{emp_code:m.emp_code,name:empName(e)||m.name||"",position:e?.position||"",department:empDept(e),division:e?getDiv(e):"Other",date:m.date,reason:m.type};}),
+    ...empSepOnly.map(e0=>{const e=asOf(e0,dayBefore(e0.end_date));return{emp_code:e.emp_code,name:empName(e),position:e.position||"",department:empDept(e),division:getDiv(e),date:e.end_date,reason:typeMap[e.status]||e.status};})
   ].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
 
   const internalTypes=["Transfer","Promotion","Demotion","Secondment"];
@@ -38,11 +44,10 @@ function buildReport(ym){
     return{emp_code:m.emp_code,name:empName(e)||m.name||"",type:m.type,from:m.from_dept||"",to:m.to_dept||"",date:m.date,remark:m.reason||""};
   });
 
-  const getDiv=e=>{const d=e.division||"";return(d&&d!=="-")?d:"Other";};
   const divMap={};
-  openingHC.forEach(e=>{const d=getDiv(e);divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].open++;});
-  newJoiners.forEach(j=>{const e=allEmployees.find(x=>x.emp_code===j.emp_code);const d=e?getDiv(e):"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].join++;});
-  separations.forEach(s=>{const e=allEmployees.find(x=>x.emp_code===s.emp_code);const d=e?getDiv(e):"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].sep++;});
+  openingHC.forEach(e=>{const d=getDiv(asOf(e,lastDayOfMonth(pYM)));divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].open++;});
+  newJoiners.forEach(j=>{const d=j.division||"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].join++;});
+  separations.forEach(s=>{const d=s.division||"Other";divMap[d]=divMap[d]||{open:0,join:0,sep:0};divMap[d].sep++;});
   const divs=Object.entries(divMap).filter(([n])=>n!=="Other"||divMap[n].open>0).map(([name,v])=>({name,open:v.open,join:v.join,sep:v.sep,net:v.join-v.sep,end:v.open+v.join-v.sep})).sort((a,b)=>b.open-a.open);
 
   return{openingHC:openingHC.length,endingHC:endingHC.length,newJoiners,separations,internals,
