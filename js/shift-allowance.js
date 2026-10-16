@@ -355,9 +355,13 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     const unpaidSickDays = byDate.filter(d => d.unpaidSick).length;
     const suspendDays = days.filter(d => d.status === "SUSPENDED").length;
 
-    // Pass 1: นับตระกูลกะที่ใช้ในวันที่จ่ายได้ (นับไว้แสดงเสมอเพื่อความโปร่งใส)
+    // Pass 1: นับตระกูลกะ/รหัสกะจาก "วันที่มาทำงานจริง" เท่านั้น (นับไว้แสดงเสมอเพื่อความโปร่งใส)
+    // รหัสกะที่ติดมากับวันหยุด/วันลา ไม่ได้มาทำกะนั้นจริง จึงไม่นับ (user 2026-10-16: AKR24041143 ทำแค่ D01
+    // แต่วันหยุดมี N01 ติดอยู่ → เดิมนับเป็น ดึก+เช้า ได้ 1,200 ทั้งที่ควรเป็น 0) · วันหยุด/วันลายังจ่ายเงินตามปกติ
+    // ทั้งเดือนไม่มีวันมาทำงานเลย (เช่น ลาป่วยยาว) → ใช้รหัสที่จัดไว้ในวันที่จ่ายได้แทน เพื่อให้ HR อนุมัติจ่ายได้ตามกติกาเดิม
+    const hasWorked = days.some(d => d.status === "WORKED");
     const famUsed = new Set(), codesUsed = new Set();
-    for (const d of days) if (PAYABLE.has(d.status)) {
+    for (const d of days) if (hasWorked ? d.status === "WORKED" : PAYABLE.has(d.status)) {
       if (d.family) famUsed.add(d.family);
       if (d.code) codesUsed.add(d.code);
     }
@@ -389,8 +393,9 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     // แต่ถ้า N03 + วันหยุด/วันลาที่จ่ายได้ เกิน 15 วัน = อยู่กะดึกทั้งเดือน -> จ่ายเต็มอัตราไปเลย
     const pso = PAY_ON_SHIFT_ONLY.find(p => p.codes.length === codesUsed.size && p.codes.every(c => codesUsed.has(c)));
     const shiftOnly = !!pso;
+    // วันกะนั้น + วันหยุด/วันลาที่จ่ายได้ (วันที่ไม่ได้มาทำงาน นับหมดไม่ว่าจะมีรหัสอะไรติดมา)
     const n03AndOff = pso ? days.filter(d => PAYABLE.has(d.status)
-      && (d.code === pso.payCode || !d.code)).length : 0;
+      && (d.code === pso.payCode || d.status !== "WORKED")).length : 0;
     const shiftOnlyFull = shiftOnly && n03AndOff > N03_FULL_THRESHOLD;
     const payShiftDaysOnly = shiftOnly && !shiftOnlyFull;
 
