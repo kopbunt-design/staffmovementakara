@@ -219,7 +219,7 @@ body{background:#e9edf3}
 .of-stars{font-size:10pt;margin-top:6.9mm}.of-p.g6{margin-top:6.4mm}
 .of-signed{margin-top:15.8mm}.of-p.g7{margin-top:9mm}.of-p.g8{margin-top:2.8mm}
 .of-mail{color:#0563C1}
-.of-sig{top:-10.8mm;height:11mm;max-width:46mm;left:0;transform:none;object-position:left bottom}   /* จดหมายธุรกิจ: ลายเซ็นชิดซ้ายตรงกับชื่อ (user 2026-10-16) */
+.of-sig{top:-15.6mm;height:16mm;max-width:62mm;left:0;transform:none;object-position:left bottom}   /* จดหมายธุรกิจ: ลายเซ็นชิดซ้ายตรงกับชื่อ (user 2026-10-16) */
 .of-seal{position:absolute;left:45.8mm;top:-32.3mm;height:32mm}
 .of-sched-h{left:20mm;top:30.2mm;font-size:12pt;font-weight:700;line-height:4.7mm}
 .of-sched-wrap{left:20mm;right:17.4mm;top:43.5mm}
