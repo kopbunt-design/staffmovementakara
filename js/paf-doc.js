@@ -83,9 +83,9 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #444;padding:3p
 .k{width:22%;font-weight:600}.k small{display:block;font-weight:700;font-size:11.5px}.v{text-align:center;vertical-align:middle}.v small{display:block}
 .blk{margin-top:2.5mm}.subj .k{width:18%}.subj .v b{font-size:14px}
 .cond th{background:#e6e6e6;font-weight:600;text-align:center;width:50%}.cond th small{display:block;font-weight:700}
-.cond td{height:72mm;font-size:12px}.cond p{margin:0 0 5px}.cond .nt{margin-top:10px;white-space:pre-wrap}
+.cond td{height:30mm;font-size:12px}.cond p{margin:0 0 5px}.cond .nt{margin-top:10px;white-space:pre-wrap}
 .eff .k{width:26%}
-h4{margin:4mm 0 1.5mm;font-size:12.5px;color:#2457a6}
+h4{margin:3mm 0 1.2mm;font-size:12.5px;color:#2457a6}
 h4 span{font-weight:600;color:#6b7a99;font-size:11.5px;margin-left:4px}
 .log th{background:#eef2f8;font-weight:600;font-size:11.5px;text-align:left;color:#334;line-height:1.25}.log th small{display:block;font-weight:500;font-size:10px;color:#6b7a99}
 .log td{font-size:11.5px}.log .n{width:7mm;text-align:center}.log .w small,.log .a small{display:block;color:#666;font-size:10px}
@@ -98,14 +98,21 @@ h4 span{font-weight:600;color:#6b7a99;font-size:11.5px;margin-left:4px}
 .ban.ok{border-color:#86efac;background:#f0fdf4;color:#166534}.ban.ok i{background:#16a34a}
 .ban.wait{border-color:#fcd34d;background:#fffbeb;color:#92400e}.ban.wait i{background:#d97706}
 .ban.no{border-color:#fca5a5;background:#fef2f2;color:#991b1b}.ban.no i{background:#dc2626}
-.ack{margin-top:4mm}.ack .k{width:24%}.ack td{height:13mm;vertical-align:middle}.ack .d{width:10%}.ack .dv{width:16%;text-align:center}
-.ft{margin-top:auto;padding-top:5mm;display:flex;justify-content:space-between;font-size:10.5px;color:#444}
+.ack{margin-top:3mm}.ack .k{width:24%}.ack td{height:13mm;vertical-align:middle}.ack .d{width:10%}.ack .dv{width:16%;text-align:center}
+.ft{margin-top:auto;padding-top:4mm;display:flex;justify-content:space-between;font-size:10.5px;color:#444}
 .draft{position:absolute;top:38%;left:0;right:0;text-align:center;font-size:64px;color:rgba(200,0,0,.10);transform:rotate(-24deg);font-weight:700;pointer-events:none}
-@media print{.pg{min-height:0;height:297mm}}`;
+@media print{.pg{min-height:0;height:297mm;overflow:hidden}}`;
 
 // สองภาษา — GM เป็นชาวต่างชาติ (user 2026-10-16) · ส่วนอื่นของใบมีอังกฤษอยู่แล้ว
 const ACT = { submit: ["ยื่นคำขอ · Submitted", ""], approve: ["อนุมัติ · Approved", "ok"], reject: ["ส่งกลับแก้ไข · Returned", "no"], cancel: ["ยกเลิก · Cancelled", "no"], ack: ["พนักงานรับทราบ · Acknowledged", ""] };
 
+// ให้ใบอยู่หน้าเดียวเสมอ (user 2026-10-16 "หน้ามันตก" — บันทึกอนุมัติ 3 แถว + สองภาษาดันล้นหน้า):
+// กล่องสภาพการจ้างขยายเติมที่ว่าง (สูงสุด 75mm แบบใบจริง) · ถ้ายังล้น (หมายเหตุยาวมาก) ย่อทั้งหน้าให้พอดี
+const FIT = `(function(){var p=document.querySelector('.pg'),td=[].slice.call(document.querySelectorAll('.cond td'));if(!p||!td.length)return;
+function fit(){var mm=p.getBoundingClientRect().width/210,H=297*mm;p.style.zoom='';p.style.minHeight='0';p.style.height='auto';td.forEach(function(t){t.style.height='30mm'});
+var room=H-p.getBoundingClientRect().height-1;if(room>0)td.forEach(function(t){t.style.height=Math.min(30*mm+room,75*mm)+'px'});
+var h=p.getBoundingClientRect().height;p.style.minHeight='';p.style.height='';if(h>H+1)p.style.zoom=String(H/h)}
+fit();if(document.fonts)document.fonts.ready.then(fit);addEventListener('load',fit);})();`;
 // f = แถว paf_forms · log = แถว paf_log (เรียงตามเวลา) · opts.logo, opts.draft, opts.printedBy
 export function pafHTML(f, log = [], opts = {}) {
   const { cur, rev } = conditionLines(f), steps = Array.isArray(f.steps) && f.steps.length ? f.steps : [];
@@ -147,5 +154,5 @@ export function pafHTML(f, log = [], opts = {}) {
   ${ban}
   <table class="ack"><tr><td class="k">พนักงานลงนามรับทราบ<small>Employee Acknowledgement</small></td><td></td><td class="d k">วันที่<small>Date</small></td><td class="dv">${f.ack_date ? esc(thLong(f.ack_date)) : ""}</td></tr></table>
   <div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page 1 of 1</span></div>
-</section></body></html>`;
+</section><script>${FIT}</script></body></html>`;
 }
