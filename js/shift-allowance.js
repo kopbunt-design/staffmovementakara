@@ -365,11 +365,13 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     // แต่วันหยุดมี N01 ติดอยู่ → เดิมนับเป็น ดึก+เช้า ได้ 1,200 ทั้งที่ควรเป็น 0) · วันหยุด/วันลายังจ่ายเงินตามปกติ
     // ทั้งเดือนไม่มีวันมาทำงานเลย (เช่น ลาป่วยยาว) → ใช้รหัสที่จัดไว้ในวันที่จ่ายได้แทน เพื่อให้ HR อนุมัติจ่ายได้ตามกติกาเดิม
     const hasWorked = days.some(d => d.status === "WORKED");
-    const famUsed = new Set(), codesUsed = new Set();
+    const famUsed = new Set(), codesUsed = new Set(), codeDays = {};
     for (const d of days) if (hasWorked ? d.status === "WORKED" : PAYABLE.has(d.status)) {
       if (d.family) famUsed.add(d.family);
-      if (d.code) codesUsed.add(d.code);
+      if (d.code) { codesUsed.add(d.code); codeDays[d.code] = (codeDays[d.code] || 0) + 1; }
     }
+    // แสดงในตาราง: รหัสกะที่นับ × จำนวนวัน (เช่น D01×22 · F08×4) — ให้ HR เห็นทันทีว่าทำไมได้เรตนี้
+    const codeMix = Object.entries(codeDays).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c}×${n}`).join(" · ");
     // ปกติกะเดียว = 0 แต่บางกะจ่ายแม้ทำกะเดียวทั้งเดือน (เช่น N03) — ตั้งค่าได้ที่ master_shift_codes.solo_rate
     const soloCode = codesUsed.size === 1 ? [...codesUsed][0] : null;
     const soloRate = soloCode ? (soloMap[soloCode] || 0) : 0;
@@ -477,7 +479,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       wholeMonth,
       clippedDays: outOfPeriod.length, sickDays, maxSickRun, unpaidSickDays,
       suspendDays, workedDays, noWorkedDay,
-      shiftOnly: payShiftDaysOnly, shiftOnlyFull, shiftPayCode: pso?.payCode || "", isProcess: isProc, approvedNoWork: approved,
+      shiftOnly: payShiftDaysOnly, shiftOnlyFull, shiftPayCode: pso?.payCode || "", codeMix, isProcess: isProc, approvedNoWork: approved,
       noPayPair: noPayPair ? noPayPair.join(" + ") : "",
       payDays, noPayDays, checkDays, absentDays,
       total: round2(total),
@@ -1023,7 +1025,7 @@ function renderResults() {
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
             <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
-            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำ NOR สลับ ${esc(r.shiftPayCode)} — จ่ายเฉพาะวันที่เข้า ${esc(r.shiftPayCode)}">เฉพาะวัน ${esc(r.shiftPayCode)}</span>`:""}${r.shiftOnlyFull?` <span class="badge badge-blue" title="อยู่ ${esc(r.shiftPayCode)} เกิน ${N03_FULL_THRESHOLD} วัน (รวมวันหยุด) — จ่ายเต็มอัตรา">${esc(r.shiftPayCode)} เต็มเดือน</span>`:""}${r.noPayPair?` <span class="badge badge-gray" title="ทั้งเดือนใช้แค่ ${esc(r.noPayPair)} — ไม่คิดค่ากะ">${esc(r.noPayPair)} ไม่คิดค่ากะ</span>`:""}${r.isProcess?` <span class="badge badge-gray" title="สาย Process — วัน ${PROCESS_NO_PAY_CODE} ไม่จ่าย">Process</span>`:""}${r.approvedNoWork?` <span class="badge badge-green" title="HR อนุมัติจ่ายทั้งที่ไม่มีวันทำงานจริง">อนุมัติแล้ว</span>`:""}</td>
+            <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำ NOR สลับ ${esc(r.shiftPayCode)} — จ่ายเฉพาะวันที่เข้า ${esc(r.shiftPayCode)}">เฉพาะวัน ${esc(r.shiftPayCode)}</span>`:""}${r.shiftOnlyFull?` <span class="badge badge-blue" title="อยู่ ${esc(r.shiftPayCode)} เกิน ${N03_FULL_THRESHOLD} วัน (รวมวันหยุด) — จ่ายเต็มอัตรา">${esc(r.shiftPayCode)} เต็มเดือน</span>`:""}${r.noPayPair?` <span class="badge badge-gray" title="ทั้งเดือนใช้แค่ ${esc(r.noPayPair)} — ไม่คิดค่ากะ">${esc(r.noPayPair)} ไม่คิดค่ากะ</span>`:""}${r.isProcess?` <span class="badge badge-gray" title="สาย Process — วัน ${PROCESS_NO_PAY_CODE} ไม่จ่าย">Process</span>`:""}${r.approvedNoWork?` <span class="badge badge-green" title="HR อนุมัติจ่ายทั้งที่ไม่มีวันทำงานจริง">อนุมัติแล้ว</span>`:""}${r.codeMix?`<div class="text-muted" style="font-size:11px;margin-top:2px;" title="รหัสกะในวันที่มาทำงานจริง × จำนวนวัน (ใช้นับตระกูลกะ)">${esc(r.codeMix)}</div>`:""}</td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>
             <td class="text-right ${r.checkDays?'':'text-muted'}" ${r.checkDays?'style="color:var(--gold-dark);font-weight:700;"':''}>${r.checkDays||"-"}</td>
