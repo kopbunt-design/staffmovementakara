@@ -219,7 +219,7 @@ body{background:#e9edf3}
 .of-stars{font-size:10pt;margin-top:6.9mm}.of-p.g6{margin-top:6.4mm}
 .of-signed{margin-top:15.8mm}.of-p.g7{margin-top:9mm}.of-p.g8{margin-top:2.8mm}
 .of-mail{color:#0563C1}
-.of-sig{top:-17.6mm;height:18.5mm;max-width:72mm;left:-1mm;transform:none;object-position:left bottom;mix-blend-mode:multiply}   /* ตามตัวอย่างฉบับเซ็นจริง (user 2026-10-16): ใหญ่ ตรง ชิดซ้าย หางลงมาใกล้ชื่อ */   /* จดหมายธุรกิจ: ลายเซ็นชิดซ้ายตรงกับชื่อ (user 2026-10-16) */
+.of-sig{top:-14.2mm;height:14mm;max-width:56mm;left:-1mm;transform:none;object-position:left bottom;mix-blend-mode:multiply}   /* ตามตัวอย่างฉบับเซ็นจริง (user 2026-10-16): ตรง ชิดซ้าย จบเหนือชื่อพอดี · 11 มม. เล็กไป 18.5 มม. ใหญ่ไปทับชื่อ */   /* จดหมายธุรกิจ: ลายเซ็นชิดซ้ายตรงกับชื่อ (user 2026-10-16) */
 .of-seal{position:absolute;left:40mm;top:-30.5mm;height:32mm;transform:rotate(4deg);mix-blend-mode:multiply;z-index:1}   /* ตราทับปลายลายเซ็นแบบประทับจริง หมึกซ้อนกันได้ (multiply) */
 .of-sched-h{left:20mm;top:30.2mm;font-size:12pt;font-weight:700;line-height:4.7mm}
 .of-sched-wrap{left:20mm;right:17.4mm;top:43.5mm}
