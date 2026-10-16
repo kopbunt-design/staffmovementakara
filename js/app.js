@@ -1261,7 +1261,7 @@ export function combineToDept(toDept, toPos, fromDept){
 
 // เพิ่มตำแหน่งใหม่เข้า master_positions แล้วคืน item ให้ combobox เลือกต่อทันที
 // รหัสตั้งให้อัตโนมัติเพราะคอลัมน์ code เป็น unique not null — เปลี่ยนเป็นรหัสจริงได้ที่หน้า Settings
-async function addMasterPosition(name){
+export async function addMasterPosition(name){
   const clean = String(name||"").trim();
   if(!clean) return null;
   // รหัสขึ้นต้น POS- = ตำแหน่งที่เพิ่มในระบบนี้เอง ยังไม่มีรหัสใน TigerSoft — HR ไล่ดูได้ว่าตัวไหนต้องไปเปิดใน TigerSoft

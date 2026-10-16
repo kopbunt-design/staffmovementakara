@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { esc as escText, toast, can, currentUser, allEmployees } from "./app.js";
+import { esc as escText, toast, can, currentUser, allEmployees, addMasterPosition } from "./app.js";
 import { renderMail, mailList, downloadEml } from "./hr-letters.js";
 import { tplEditorHTML, wireTplEditor } from "./mail-templates.js";
 import { comboHTML, bindCombo, toItems } from "./combobox.js";
@@ -155,7 +155,8 @@ async function openForm(r) {
   const was = k => d[k] ? `<span class="text-muted" style="font-weight:400;"> · เดิม ${esc(d[k])}</span>` : "";
   const items = {
     pos: toItems(masterPositions), lv: toItems(masterJobLevels), div: toItems(masterDivisions), dep: toItems(masterDepartments), sec: toItems(masterSections), team: toItems(masterTeams) };
-  const combo = (id, k, label, list) => `<div class="lt-f"><span>${label}${was(k.replace(/_to$/, ""))}</span>${editable ? comboHTML(id, list, d[k] || "", "ว่าง = ไม่เปลี่ยน") : `<input class="form-control" value="${esc(d[k] || "")}" disabled>`}</div>`;
+  const combo = (id, k, label, list) => `<div class="lt-f"><span>${label}${was(k.replace(/_to$/, ""))}</span>${editable ? comboHTML(id, list, d[k] || "",
+    k === "position_to" ? "ว่าง = ไม่เปลี่ยน · ตำแหน่งใหม่พิมพ์ได้เลย" : "ว่าง = ไม่เปลี่ยน") : `<input class="form-control" value="${esc(d[k] || "")}" disabled>`}</div>`;
   const form = () => {
     const sug = suggestMovType(d), mt = d.mov_type || sug, { rev } = conditionLines(d);
     $("#pfForm").innerHTML = `
@@ -191,7 +192,13 @@ async function openForm(r) {
     });
     if ($("#pfEmp_txt") && d.emp_code) { const e = allEmployees.find(x => x.emp_code === d.emp_code); if (e) $("#pfEmp_txt").value = empNameTH(e); }
     for (const [id, k, list] of [["pfPos", "position_to", items.pos], ["pfLv", "job_level_to", items.lv], ["pfDiv", "division_to", items.div], ["pfDep", "department_to", items.dep], ["pfSec", "section_to", items.sec], ["pfTeam", "team_to", items.team]])
-      if ($(`#${id}`)) bindCombo(id, list, v => { d[k] = v || null; form(); preview(); }, { allowFree: true });
+      if ($(`#${id}`)) {
+        // ตำแหน่งที่ยังไม่มี: พิมพ์เองได้ (allowFree) · ผู้ดูแลข้อมูลหลักกดเพิ่มเข้า master ได้จากรายการ
+        bindCombo(id, list, v => { d[k] = v || null; form(); preview(); },
+          { allowFree: true, ...(k === "position_to" && can("data.masterdata.write") ? { onCreate: addMasterPosition } : {}) });
+        // พิมพ์เองแล้วกดออก ช่องจะไม่เรียก onChange — อ่านค่าเองหลังช่องเก็บข้อความ (ไม่วาดฟอร์มใหม่ จะได้ไม่เสียโฟกัสช่องถัดไป)
+        $(`#${id}_txt`)?.addEventListener("blur", () => setTimeout(() => { const v = $(`#${id}`)?.value?.trim() || null; if (v !== (d[k] || null)) { d[k] = v; preview(); } }, 160));
+      }
   };
   const steps = () => STEPS.map(s => { const a = approvers.find(x => x.id === +$(`#pfAp${s.step}`)?.value);
     return a ? { step: s.step, label: s.label, name_th: a.name_th, name_en: a.name_en, title_th: a.title_th, title_en: a.title_en, emp_code: a.emp_code, email: a.email } : null; });

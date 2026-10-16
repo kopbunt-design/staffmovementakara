@@ -3,7 +3,7 @@
 ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
-const M = new Function(`${read(`${ROOT}/js/paf-doc.js`).replace(/^export /gm, "")}; return { suggestMovType, conditionLines, levelRank, thStamp, thLong, enLong, pafHTML };`)();
+const M = new Function(`${read(`${ROOT}/js/paf-doc.js`).replace(/^export /gm, "")}; return { suggestMovType, conditionLines, levelRank, thStamp, enStamp, thLong, enLong, pafHTML };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const has = (s, x, m) => eq(s.includes(x), true, m);
@@ -23,6 +23,7 @@ eq(c.cur, ["Monthly Salary: THB 20,000 (อัตราเงินเดือ�
 eq(c.rev, ["Monthly Salary: THB 23,215.5 (อัตราเงินเดือน 23,215.5 บาท)", "Job Level: O4 (ระดับตำแหน่ง O4)"], "สภาพการจ้างใหม่");
 eq(M.thStamp("2026-10-06T02:25:00Z"), "6 ต.ค. 69 09:25", "เวลาในบันทึกการอนุมัติ = เวลาไทย");
 eq(M.thStamp("2026-10-06T18:30:00Z"), "7 ต.ค. 69 01:30", "ข้ามเที่ยงคืนตามเวลาไทย");
+eq(M.enStamp("2026-10-06T02:25:00Z"), "6 Oct 2026 09:25", "เวลาอังกฤษ (เวลาไทย)");
 eq([M.thLong("2026-10-01"), M.enLong("2026-10-01")], ["1 ตุลาคม 2569", "1 October 2026"], "วันที่มีผลสองภาษา");
 
 const f = { ...base, status: "pending", cur_step: 2, doc_no: "PAF-001-2026", salary_to: 22000, subject_th: "พิจารณาอนุมัติปรับเงินเดือน", effective_date: "2026-10-01",
@@ -31,10 +32,11 @@ const log = [{ action: "submit", at: "2026-10-06T02:25:00Z", actor_name: "HR ท
 const h = M.pafHTML(f, log);
 has(h, "เลขที่ / No. <b>PAF-001-2026</b>", "เลขที่บนหัวใบ");
 has(h, "AKR-OHR-FM-031 Rev. 00", "รหัสแบบฟอร์ม");
-has(h, "รอพิจารณา</span> ขั้น 2", "ขั้นที่รออยู่แสดงในบันทึก");
-has(h, "รออนุมัติขั้นที่ 2 — GM ทดสอบ", "แถบสถานะรออนุมัติ");
+has(h, "รอพิจารณา · Pending</span><small>ขั้น 2 · Step 2</small>", "ขั้นที่รออยู่แสดงในบันทึก (สองภาษา)");
+has(h, "Approval Record", "หัวบันทึกการอนุมัติมีอังกฤษ");
+has(h, "รออนุมัติขั้นที่ 2 · Awaiting step 2 approval — GM ทดสอบ", "แถบสถานะรออนุมัติ (สองภาษา)");
 has(h, "&lt;b&gt;ok&lt;/b&gt;", "หมายเหตุถูก escape");
 has(h, "Processing</td>", "ฝ่ายซ้ำกับ department ไม่แสดงซ้ำ");
-has(M.pafHTML({ ...f, status: "approved", cur_step: null, approved_at: "2026-10-07T03:00:00Z" }, log), "อนุมัติครบทุกขั้นแล้ว", "แถบอนุมัติครบ");
+has(M.pafHTML({ ...f, status: "approved", cur_step: null, approved_at: "2026-10-07T03:00:00Z" }, log), "อนุมัติครบทุกขั้นแล้ว · Fully approved", "แถบอนุมัติครบ (สองภาษา)");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

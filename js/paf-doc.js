@@ -31,6 +31,12 @@ export const thStamp = ts => {
   const t = new Date(new Date(ts).getTime() + 7 * 3600e3), p = n => String(n).padStart(2, "0");
   return `${t.getUTCDate()} ${TH_M[t.getUTCMonth()]} ${String(t.getUTCFullYear() + 543).slice(-2)} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
+const EN_M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+export const enStamp = ts => {
+  if (!ts) return "";
+  const t = new Date(new Date(ts).getTime() + 7 * 3600e3), p = n => String(n).padStart(2, "0");
+  return `${t.getUTCDate()} ${EN_M[t.getUTCMonth()]} ${t.getUTCFullYear()} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const money = n => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const has = v => v !== null && v !== undefined && String(v).trim() !== "";
@@ -80,8 +86,10 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #444;padding:3p
 .cond td{height:72mm;font-size:12px}.cond p{margin:0 0 5px}.cond .nt{margin-top:10px;white-space:pre-wrap}
 .eff .k{width:26%}
 h4{margin:4mm 0 1.5mm;font-size:12.5px;color:#2457a6}
-.log th{background:#eef2f8;font-weight:600;font-size:11.5px;text-align:left;color:#334}.log td{font-size:11.5px}.log .n{width:7mm;text-align:center}
-.log .w{width:28mm;white-space:nowrap}.log .a{width:30mm}.log .p small{display:block;color:#555;font-size:10.5px}
+h4 span{font-weight:600;color:#6b7a99;font-size:11.5px;margin-left:4px}
+.log th{background:#eef2f8;font-weight:600;font-size:11.5px;text-align:left;color:#334;line-height:1.25}.log th small{display:block;font-weight:500;font-size:10px;color:#6b7a99}
+.log td{font-size:11.5px}.log .n{width:7mm;text-align:center}.log .w small,.log .a small{display:block;color:#666;font-size:10px}
+.log .w{width:30mm;white-space:nowrap}.log .a{width:38mm}.log .p small{display:block;color:#555;font-size:10.5px}
 .tag{display:inline-block;padding:0 7px;border-radius:9px;font-size:10.5px;font-weight:600;background:#eef1f5;color:#334}
 .tag.ok{background:#dcfce7;color:#166534}.tag.no{background:#fee2e2;color:#991b1b}.tag.wait{background:#fef3c7;color:#92400e}
 .log tr.pend td{color:#888}
@@ -95,7 +103,8 @@ h4{margin:4mm 0 1.5mm;font-size:12.5px;color:#2457a6}
 .draft{position:absolute;top:38%;left:0;right:0;text-align:center;font-size:64px;color:rgba(200,0,0,.10);transform:rotate(-24deg);font-weight:700;pointer-events:none}
 @media print{.pg{min-height:0;height:297mm}}`;
 
-const ACT = { submit: ["ยื่นคำขอ", ""], approve: ["อนุมัติ", "ok"], reject: ["ส่งกลับแก้ไข", "no"], cancel: ["ยกเลิก", "no"], ack: ["พนักงานรับทราบ", ""] };
+// สองภาษา — GM เป็นชาวต่างชาติ (user 2026-10-16) · ส่วนอื่นของใบมีอังกฤษอยู่แล้ว
+const ACT = { submit: ["ยื่นคำขอ · Submitted", ""], approve: ["อนุมัติ · Approved", "ok"], reject: ["ส่งกลับแก้ไข · Returned", "no"], cancel: ["ยกเลิก · Cancelled", "no"], ack: ["พนักงานรับทราบ · Acknowledged", ""] };
 
 // f = แถว paf_forms · log = แถว paf_log (เรียงตามเวลา) · opts.logo, opts.draft, opts.printedBy
 export function pafHTML(f, log = [], opts = {}) {
@@ -103,19 +112,21 @@ export function pafHTML(f, log = [], opts = {}) {
   const lg = log.filter(l => l.action !== "ack");
   const rows = lg.map((l, i) => {
     const [t, c] = ACT[l.action] || [l.action, ""];
-    return `<tr><td class="n">${i + 1}</td><td class="w">${esc(thStamp(l.at))}</td><td class="a"><span class="tag ${c}">${t}</span>${l.action === "approve" || l.action === "reject" ? ` ขั้น ${l.step}` : ""}</td>
-      <td class="p"><b>${esc(l.actor_name || "-")}</b>${l.actor_detail ? `<small>${esc(l.actor_detail)}</small>` : ""}</td><td>${esc(l.remark || "")}</td></tr>`;
+    const st = l.step && steps.find(s => s.step === l.step), en = st?.name_en && st.name_en !== l.actor_name ? st.name_en : "";
+    return `<tr><td class="n">${i + 1}</td><td class="w">${esc(thStamp(l.at))}<small>${esc(enStamp(l.at))}</small></td><td class="a"><span class="tag ${c}">${t}</span>${l.action === "approve" || l.action === "reject" ? `<small>ขั้น ${l.step} · Step ${l.step}</small>` : ""}</td>
+      <td class="p"><b>${esc(l.actor_name || "-")}</b>${en ? `<small>${esc(en)}</small>` : ""}${l.actor_detail ? `<small>${esc(l.actor_detail)}</small>` : ""}${st?.title_en ? `<small>${esc(st.title_en)}</small>` : ""}</td><td>${esc(l.remark || "")}</td></tr>`;
   });
   // ขั้นที่ยังไม่ถึง — แสดงเป็นแถวจาง ๆ ให้เห็นลำดับทั้งหมด
   if (f.status === "pending") for (const s of steps.filter(s => s.step >= (f.cur_step || 1)))
-    rows.push(`<tr class="pend"><td class="n">${rows.length + 1}</td><td class="w">—</td><td class="a"><span class="tag wait">${s.step === f.cur_step ? "รอพิจารณา" : "ลำดับถัดไป"}</span> ขั้น ${s.step}</td>
-      <td class="p"><b>${esc(s.name_th || "-")}</b><small>${esc([s.emp_code, s.title_th || s.label].filter(Boolean).join(" · "))}</small></td><td></td></tr>`);
+    rows.push(`<tr class="pend"><td class="n">${rows.length + 1}</td><td class="w">—</td><td class="a"><span class="tag wait">${s.step === f.cur_step ? "รอพิจารณา · Pending" : "ลำดับถัดไป · Next"}</span><small>ขั้น ${s.step} · Step ${s.step}</small></td>
+      <td class="p"><b>${esc(s.name_th || "-")}</b>${s.name_en && s.name_en !== s.name_th ? `<small>${esc(s.name_en)}</small>` : ""}<small>${esc([s.emp_code, s.title_th || s.label].filter(Boolean).join(" · "))}</small>${s.title_en ? `<small>${esc(s.title_en)}</small>` : ""}</td><td></td></tr>`);
   const last = [...lg].reverse().find(l => l.action === "approve");
   const cur1 = steps.find(s => s.step === f.cur_step);
-  const ban = f.status === "approved" ? `<div class="ban ok"><i>✓</i><div><b>อนุมัติครบทุกขั้นแล้ว</b>อนุมัติในระบบเมื่อ ${esc(thStamp(f.approved_at || last?.at))}</div></div>`
-    : f.status === "pending" ? `<div class="ban wait"><i>…</i><div><b>รออนุมัติขั้นที่ ${f.cur_step}${cur1 ? ` — ${esc(cur1.name_th)}` : ""}</b>ใบนี้ยังไม่มีผลจนกว่าจะอนุมัติครบทุกขั้น</div></div>`
-    : f.status === "rejected" ? `<div class="ban no"><i>!</i><div><b>ส่งกลับแก้ไข</b>${esc(f.reject_reason || "")}</div></div>`
-    : f.status === "cancelled" ? `<div class="ban no"><i>✕</i><div><b>ยกเลิกแล้ว</b>${esc(f.cancel_reason || "")}</div></div>` : "";
+  const at = f.approved_at || last?.at;
+  const ban = f.status === "approved" ? `<div class="ban ok"><i>✓</i><div><b>อนุมัติครบทุกขั้นแล้ว · Fully approved</b>อนุมัติในระบบเมื่อ ${esc(thStamp(at))} · Approved in system on ${esc(enStamp(at))}</div></div>`
+    : f.status === "pending" ? `<div class="ban wait"><i>…</i><div><b>รออนุมัติขั้นที่ ${f.cur_step} · Awaiting step ${f.cur_step} approval${cur1 ? ` — ${esc(cur1.name_en || cur1.name_th)}` : ""}</b>ใบนี้ยังไม่มีผลจนกว่าจะอนุมัติครบทุกขั้น · Not effective until all steps are approved</div></div>`
+    : f.status === "rejected" ? `<div class="ban no"><i>!</i><div><b>ส่งกลับแก้ไข · Returned for revision</b>${esc(f.reject_reason || "")}</div></div>`
+    : f.status === "cancelled" ? `<div class="ban no"><i>✕</i><div><b>ยกเลิกแล้ว · Cancelled</b>${esc(f.cancel_reason || "")}</div></div>` : "";
   const uniq = a => [...new Set(a.filter(Boolean))].join(" / ") || "-", org = uniq([f.division, f.department]), sec = uniq([f.section, f.team]);
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(f.doc_no || "Personnel Action Form")}</title><style>${CSS}</style></head><body>
 <section class="pg">${opts.draft ? `<div class="draft">${esc(opts.draft)}</div>` : ""}
@@ -130,9 +141,9 @@ export function pafHTML(f, log = [], opts = {}) {
     <tr><td>${cur.map(x => `<p>${esc(x)}</p>`).join("")}</td><td>${rev.map(x => `<p>${esc(x)}</p>`).join("")}
       ${f.note_en || f.note_th ? `<div class="nt">${f.note_en ? `Note: ${esc(f.note_en)}` : ""}${f.note_en && f.note_th ? "\n" : ""}${esc(f.note_th || "")}</div>` : ""}</td></tr></table>
   <table class="blk eff"><tr><td class="k">วันที่มีผล<small>Effective Date</small></td><td class="v">${esc(thLong(f.effective_date))}<small>${esc(enLong(f.effective_date))}</small></td></tr></table>
-  <h4>บันทึกการอนุมัติ</h4>
-  <table class="log"><tr><th class="n">ที่</th><th class="w">เมื่อ</th><th class="a">กระบวนการพิจารณา</th><th>ผู้ดำเนินการ</th><th>หมายเหตุ</th></tr>
-    ${rows.join("") || `<tr><td colspan="5" style="text-align:center;color:#888">ยังไม่ได้ส่งอนุมัติ</td></tr>`}</table>
+  <h4>บันทึกการอนุมัติ <span>Approval Record</span></h4>
+  <table class="log"><tr><th class="n">ที่<small>No.</small></th><th class="w">เมื่อ<small>Date &amp; Time</small></th><th class="a">กระบวนการพิจารณา<small>Action</small></th><th>ผู้ดำเนินการ<small>Action By</small></th><th>หมายเหตุ<small>Remark</small></th></tr>
+    ${rows.join("") || `<tr><td colspan="5" style="text-align:center;color:#888">ยังไม่ได้ส่งอนุมัติ · Not yet submitted</td></tr>`}</table>
   ${ban}
   <table class="ack"><tr><td class="k">พนักงานลงนามรับทราบ<small>Employee Acknowledgement</small></td><td></td><td class="d k">วันที่<small>Date</small></td><td class="dv">${f.ack_date ? esc(thLong(f.ack_date)) : ""}</td></tr></table>
   <div class="ft"><span>${FORM.code}</span><span>${FORM.effective}</span><span>Page 1 of 1</span></div>
