@@ -219,7 +219,7 @@ body{background:#e9edf3}
 .of-stars{font-size:10pt;margin-top:6.9mm}.of-p.g6{margin-top:6.4mm}
 .of-signed{margin-top:15.8mm}.of-p.g7{margin-top:9mm}.of-p.g8{margin-top:2.8mm}
 .of-mail{color:#0563C1}
-.of-sig{top:-10.8mm;height:11mm;max-width:46mm}
+.of-sig{top:-10.8mm;height:11mm;max-width:46mm;left:0;transform:none;object-position:left bottom}   /* จดหมายธุรกิจ: ลายเซ็นชิดซ้ายตรงกับชื่อ (user 2026-10-16) */
 .of-seal{position:absolute;left:45.8mm;top:-32.3mm;height:32mm}
 .of-sched-h{left:20mm;top:30.2mm;font-size:12pt;font-weight:700;line-height:4.7mm}
 .of-sched-wrap{left:20mm;right:17.4mm;top:43.5mm}
@@ -228,7 +228,7 @@ body{background:#e9edf3}
 .of-sched td{border:.75pt solid #000;padding:0 2mm;vertical-align:middle}
 .of-sched td:first-child{width:46mm}
 .of-after{margin-top:7.6mm;font-size:10pt;line-height:4.6mm;text-align:justify}
-.of-initial{position:absolute;left:187mm;top:286.5mm;height:8mm;z-index:3}
+.of-initial{position:absolute;right:12mm;top:286.5mm;height:8mm;max-width:30mm;object-fit:contain;object-position:right bottom;z-index:3}   /* ยึดขอบขวา — เดิม left:187mm ลายเซ็นกว้างเลยตกขอบกระดาษ */
 .lt-wm{position:absolute;inset:0;display:grid;place-items:center;font:700 88px "THSarabunNewWeb",sans-serif;color:rgba(192,57,43,.10);transform:rotate(-28deg);pointer-events:none;z-index:5}
 @media print{body{background:#fff}.lt-page{margin:0}}
 `;
