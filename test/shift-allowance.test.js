@@ -411,6 +411,17 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   eq(one(month("E1",2026,7, shifts)).shiftOnly, false, "NOR+F08+บ่าย -> กติกาปกติ (3 ตระกูล)");
 }
 
+{
+  // เคสจริง AKR24041143 ก.ย. 69: ทำ D01 + เข้า F08 ไม่กี่วัน (+ N01 ตั้งไว้ในวันหยุด) → จ่ายเฉพาะวัน F08
+  const base = month("E1",2026,9, Array.from({length:30}, (_,i) => i < 4 ? "F08" : "D01"));
+  const rows = base.map((r, i) => [6,13,20,27].includes(i) ? { ...r, Shift: "N01", Day_Type: "H", Check_In: "", Check_Out: "" } : r);
+  const r = one(rows);
+  eq([r.shiftOnly, r.payDays, r.total], [true, 4, 160], "D01 + F08 4 วัน → จ่ายเฉพาะ 4 วัน F08 = 40 x 4 = 160");
+  const r2 = one(month("E1",2026,9, Array.from({length:30}, (_,i) => i < 3 ? "F08" : ["D01","D02","NOR"][i%3])));
+  eq([r2.shiftOnly, r2.total], [true, 120], "F08 กับกะเช้าหลายรหัส (D01/D02/NOR) → ยังจ่ายเฉพาะวัน F08");
+  eq(one(month("E1",2026,9, Array.from({length:30}, (_,i) => i < 3 ? "F08" : ["D01","A01"][i%2]))).shiftOnly, false, "F08 + กะบ่าย → กติกาปกติ (หมุนจริง)");
+}
+
 // ---------- รหัสกะที่ติดมากับวันหยุด (ไม่ได้มาทำงาน) ไม่นับเป็นตระกูลกะ (user 2026-10-16) ----------
 // วันหยุดที่มีรหัสกะติดมา: Day_Type H · ไม่มีเวลาเข้า-ออก
 const offWith = (rows, idx, code) => rows.map((r, i) => idx.includes(i) ? { ...r, Shift: code, Day_Type: "H", Check_In: "", Check_Out: "" } : r);

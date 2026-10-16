@@ -31,7 +31,9 @@ const SICK_RUN_WARN = 3;
 // NOR = เวลางานปกติ ไม่ถือเป็นการเข้ากะ จึงไม่จ่ายวัน NOR (ผู้ใช้ยืนยัน 2026-08-18)
 // ใช้เฉพาะคู่นี้เท่านั้น — NOR คู่กับกะอื่นยังใช้กติกาเฉลี่ยทั้งเดือนตามปกติ
 // NOR + F08 ใช้กติกาเดียวกัน (user 2026-10-16: เข้า F08 ไม่ถึง 6 วันแต่ได้เต็มเดือนแบบ 2 กะ)
-const PAY_ON_SHIFT_ONLY = [{ codes: ["NOR","N03"], payCode: "N03" }, { codes: ["NOR","F08"], payCode: "F08" }];
+// F08 คู่กับ "กะเช้ารหัสไหนก็ได้" (NOR / D01 / D02 / D03 / F03 / F04) — user 2026-10-16: เคส D01 + F08 ไม่กี่วันยังได้เต็ม 1,200
+//   withFamily = รหัสอื่นที่อยู่คู่ได้ต้องเป็นตระกูลนี้ทั้งหมด · N03 ยังจำกัดเฉพาะคู่ NOR ตามที่ยืนยันไว้เดิม
+const PAY_ON_SHIFT_ONLY = [{ codes: ["NOR","N03"], payCode: "N03" }, { payCode: "F08", withFamily: "DAY" }];
 // ...แต่ถ้าเข้า N03 (รวมวันหยุด/วันลาที่จ่ายได้) เกินจำนวนนี้ = ถือว่าอยู่กะดึกทั้งเดือน จ่ายเต็มอัตราไปเลย
 const N03_FULL_THRESHOLD = 15;
 // คู่รหัสกะที่ "ไม่คิดค่ากะเลย" ถ้าทั้งเดือนใช้แค่รหัสในชุดนี้
@@ -391,7 +393,9 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 
     // ทำ NOR สลับ N03 เท่านั้น -> ปกติจ่ายเฉพาะวันที่เข้า N03 (วัน NOR ไม่จ่าย)
     // แต่ถ้า N03 + วันหยุด/วันลาที่จ่ายได้ เกิน 15 วัน = อยู่กะดึกทั้งเดือน -> จ่ายเต็มอัตราไปเลย
-    const pso = PAY_ON_SHIFT_ONLY.find(p => p.codes.length === codesUsed.size && p.codes.every(c => codesUsed.has(c)));
+    const pso = PAY_ON_SHIFT_ONLY.find(p => p.withFamily
+      ? codesUsed.has(p.payCode) && codesUsed.size > 1 && [...codesUsed].every(c => c === p.payCode || famMap[c] === p.withFamily)
+      : p.codes.length === codesUsed.size && p.codes.every(c => codesUsed.has(c)));
     const shiftOnly = !!pso;
     // วันกะนั้น + วันหยุด/วันลาที่จ่ายได้ (วันที่ไม่ได้มาทำงาน นับหมดไม่ว่าจะมีรหัสอะไรติดมา)
     const n03AndOff = pso ? days.filter(d => PAYABLE.has(d.status)
@@ -871,7 +875,7 @@ function renderResults() {
   const warns = [];
   if (soloN)     warns.push(`${soloN} คนได้ค่ากะจากกฎกะเดี่ยว (ทำกะเดียวทั้งเดือนแต่กะนั้นจ่าย)`);
   const shiftOnlyN = all.filter(r=>r.shiftOnly).length;
-  if (shiftOnlyN) warns.push(`${shiftOnlyN} คนทำ NOR สลับ ${PAY_ON_SHIFT_ONLY.map(p => p.payCode).join(" / ")} → จ่ายเฉพาะวันที่เข้ากะนั้น`);
+  if (shiftOnlyN) warns.push(`${shiftOnlyN} คนทำกะเช้า/NOR สลับ ${PAY_ON_SHIFT_ONLY.map(p => p.payCode).join(" / ")} → จ่ายเฉพาะวันที่เข้ากะนั้น`);
   if (suspendN)  warns.push(`${suspendN} วันถูกพักงาน ไม่นับเป็นวันจ่าย`);
   const noPayN = all.filter(r=>r.noPayPair).length;
   if (noPayN) warns.push(`${noPayN} คนใช้แค่ ${NO_PAY_CODE_SETS[0].join("+")} ทั้งเดือน → ไม่คิดค่ากะ`);
