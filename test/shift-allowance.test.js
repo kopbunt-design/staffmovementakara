@@ -394,6 +394,23 @@ eq(one(month("E2",2026,7, jul31(["N03"]))).total, 0, "N03 กะเดียว 
   eq([r.shiftOnly, r.payDays, r.total], [true, 8, 320], "วันหยุดไม่มีรหัสกะ -> ยังเข้าเกณฑ์ จ่าย 8 วัน");
 }
 
+// ---------- NOR สลับ F08 (กะดึกใหม่ · user 2026-10-16): กติกาเดียวกับ NOR+N03 ----------
+{
+  // เคสจริง: เข้า F08 ไม่ถึง 6 วัน แต่เดิมได้เต็ม 1,200 แบบ 2 กะ
+  const shifts = Array.from({length:31}, (_,i) => i < 5 ? "F08" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.monthlyRate, r.shiftOnly, r.payDays, r.total], [1200, true, 5, 200], "NOR+F08 5 วัน -> จ่ายเฉพาะ 5 วัน F08 = 40 x 5 = 200 (ไม่ใช่เต็ม 1,200)");
+}
+{
+  const shifts = Array.from({length:31}, (_,i) => i < 18 ? "F08" : "NOR");
+  const r = one(month("E1",2026,7, shifts));
+  eq([r.shiftOnlyFull, r.total], [true, 1200], "NOR+F08 18 วัน (> 15) -> เต็ม 1,200 แบบ N03");
+}
+{
+  const shifts = Array.from({length:31}, (_,i) => ["NOR","F08","A01"][i%3]);
+  eq(one(month("E1",2026,7, shifts)).shiftOnly, false, "NOR+F08+บ่าย -> กติกาปกติ (3 ตระกูล)");
+}
+
 // ---------- N03 เกิน 15 วัน (รวมวันหยุด) -> จ่ายเต็มอัตรา ----------
 {
   // N03 20 วัน + NOR 11 วัน -> 20 > 15 -> จ่ายเต็ม 1,200 ไม่ pro-rate
