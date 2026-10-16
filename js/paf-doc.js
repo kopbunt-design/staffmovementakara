@@ -81,7 +81,7 @@ const CSS = `@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@
 .ttl{margin-top:5mm;background:#e6e6e6;border:1px solid #444;text-align:center;padding:6px 0 5px}.ttl b{font-size:15px;display:block}.ttl span{font-size:12px;font-weight:600}
 table{width:100%;border-collapse:collapse}td,th{border:1px solid #444;padding:3px 6px;vertical-align:top}
 .k{width:22%;font-weight:600}.k small{display:block;font-weight:700;font-size:11.5px}.v{text-align:center;vertical-align:middle}.v small{display:block}
-.blk{margin-top:2.5mm}.subj .k{width:18%}.subj .v b{font-size:14px}
+.blk{margin-top:2.5mm}.subj .k{width:22%}.subj .v b{font-size:14px}
 .cond th{background:#e6e6e6;font-weight:600;text-align:center;width:50%}.cond th small{display:block;font-weight:700}
 .cond td{height:30mm;font-size:12px}.cond p{margin:0 0 5px}.cond .nt{margin-top:10px;white-space:pre-wrap}
 .eff .k{width:26%}
