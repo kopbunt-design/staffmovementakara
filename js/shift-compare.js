@@ -4,6 +4,7 @@
 // ถ้ารวมจาก total เฉย ๆ ยอดที่ HR แก้มือไว้จะไม่ถูกนับ แล้วสองหน้าจะรายงานตัวเลขคนละชุด
 import { esc, toast, can } from "./app.js";
 import { supabase } from "./supabase-config.js";
+import { SHIFT_RULES_UPDATED } from "./shift-allowance.js";
 
 const fmtB = n => Number(n||0).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = n => (n > 0 ? "+" : "") + fmtB(n);
@@ -114,6 +115,13 @@ function paint() {
       <button class="btn btn-secondary btn-sm" onclick="window._scExport()">📤 Export</button>
     </div>
   </div>
+  ${(() => {   // เดือนที่บันทึกก่อนกติกาเปลี่ยน = ยอดตามกติกาเก่า — เตือนก่อนเอาไปใช้ (user 2026-10-16 งงว่าทำไมยังได้เต็มเดือน)
+    const savedAt = rows => rows.reduce((m, r) => (r.created_at || "") > m ? r.created_at : m, "");
+    const old = [[mA, rowsA], [mB, rowsB]].filter(([m, r]) => m && r.length && savedAt(r).slice(0, 10) < SHIFT_RULES_UPDATED);
+    return old.length ? `<div class="section" style="padding-top:12px;padding-bottom:0;"><div style="border:1px solid #FECDCA;background:#FEF3F2;color:#B42318;border-radius:10px;padding:10px 14px;font-size:13px;">
+      <b>⚠️ ${old.map(([m]) => esc(m)).join(" และ ")} บันทึกไว้ก่อนกติกาค่ากะเปลี่ยน (${esc(SHIFT_RULES_UPDATED)})</b> — ตัวเลขเดือนนี้ยังเป็นตามกติกาเก่า
+      (เช่น เข้า F08 ไม่กี่วันได้เต็มเดือน / รหัสกะในวันหยุดถูกนับเป็นตระกูลกะ) · ไปหน้าคำนวณค่ากะ อัปโหลดไฟล์เดือนนั้นใหม่แล้วกด 💾 บันทึก จากนั้นกลับมาเทียบอีกครั้ง</div></div>` : "";
+  })()}
 
   <div class="section">
     <div class="sc-pick">
