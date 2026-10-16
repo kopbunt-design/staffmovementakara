@@ -2,6 +2,7 @@ import { supabase } from "./supabase-config.js";
 import { logout } from "./auth.js";
 import { loadMasterData, masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels } from "./masterdata-admin.js";
 import { comboHTML, bindCombo, setComboItems, toItems } from "./combobox.js";
+import { runChecks, checksPanelHTML } from "./data-checks.js";
 
 // ===== SHARED STATE =====
 export let currentUser = null;
@@ -128,6 +129,23 @@ export function isActiveAtMonthEnd(e, ym) {
   return true;
 }
 export const hcAtMonthEnd = (emps, ym) => emps.filter(e => isActiveAtMonthEnd(e, ym));
+// ===== ตรวจข้อมูล "เอ๊ะใจ" (js/data-checks.js) — Headcount / Movement Report / Staff Movement ใช้ชุดเดียวกัน =====
+export function dataChecksHTML(ym, opts = {}) {
+  const d = new Date(), today = new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+  const res = runChecks({ employees: allEmployees, movements: allMovements, today, ym,
+    masters: { departments: masterDepartments, sections: masterSections, teams: masterTeams } },
+    { sepYM, movYM, lastDayOfMonth, hcAtMonthEnd, orgAt: makeOrgAt(allMovements, masterDepartments) });
+  return checksPanelHTML(res, opts);
+}
+// ปุ่มในแผงตรวจ: เปิดทะเบียนพนักงาน / เปิดรายการ Movement ที่ต้องแก้ (ต่อสายครั้งเดียวต่อหน้า)
+export function wireDataChecks(root) {
+  if (!root || root._chkWired) return; root._chkWired = true;
+  root.addEventListener("click", ev => {
+    const e = ev.target.closest("[data-chk-emp]"), m = ev.target.closest("[data-chk-mov]");
+    if (e) { ev.preventDefault(); import("./employee-profile.js").then(x => x.openEmployee(e.dataset.chkEmp)); }
+    if (m) { ev.preventDefault(); const id = m.dataset.chkMov; navigate("movements"); setTimeout(() => { const mv = allMovements.find(x => String(x.id) === String(id)); if (mv) openMovModal(mv); }, 300); }
+  });
+}
 export const initials = n => { const p=(n||"").trim().split(/\s+/); return ((p[0]||"")[0]||"").toUpperCase()+((p[1]||"")[0]||"").toUpperCase()||"?"; };
 export const avatarColor = n => { const pal=["#2B5AC7","#0D7C4B","#6D28D9","#C0392B","#D97706","#1A3E9A"]; let h=0; for(const c of (n||"")) h=(h*31+c.charCodeAt(0))>>>0; return pal[h%pal.length]; };
 export const timeAgo = ts => { const s=Math.floor((Date.now()-new Date(ts).getTime())/1000); if(s<60) return "เมื่อสักครู่"; if(s<3600) return Math.floor(s/60)+" นาทีที่แล้ว"; if(s<86400) return Math.floor(s/3600)+" ชม.ที่แล้ว"; return Math.floor(s/86400)+" วันที่แล้ว"; };
@@ -1140,6 +1158,7 @@ export function renderMovements() {
           <td style="white-space:nowrap;">${w?`<button class="btn btn-sm ${ok?"btn-primary":"btn-secondary"}" ${ok?"":"disabled"} title="${ok?"เปลี่ยนสถานะพนักงานเป็น "+esc(SEP_STATUS[m.type]):"ยังไม่ถึงวันที่มีผล"}" onclick="window._confirmSep('${m.id}')">ยืนยัน</button>
             <button class="btn btn-secondary btn-sm" onclick="window._withdrawSep('${m.id}')" title="พนักงานเปลี่ยนใจ / บันทึกผิด">ยกเลิกการ${esc(MOV_TH[m.type]||"พ้นสภาพ")}</button>`:""}</td></tr>`; }).join("")}
       </tbody></table></div></div></div>`; })()}
+  <div class="section" style="padding-top:12px;padding-bottom:0;">${dataChecksHTML(null, { scope:"ทะเบียนพนักงาน + รายการ Movement ทั้งหมด", open:false })}</div>
   <div class="search-bar">
     <div class="search-input-wrap">
       <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -1177,6 +1196,7 @@ export function renderMovements() {
   window._movSearch = v => { movFilter=v; keepFocus(renderMovements); };
   window._movType = v => { movFilterType=v; renderMovements(); };
   window._movMonth = v => { movFilterMonth=v; renderMovements(); };
+  wireDataChecks(pg);
   window._openMovModal = () => openMovModal(null);
   // ยืนยันการพ้นสภาพ → สถานะพนักงานเปลี่ยน (Resigned / Terminated / Retired) + วันพ้นสภาพ
   const confirmOne = async m => {

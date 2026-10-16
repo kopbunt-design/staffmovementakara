@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, esc, toast } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, dataChecksHTML, wireDataChecks, esc, toast } from "./app.js";
 import { masterDepartments } from "./masterdata-admin.js";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -232,6 +232,7 @@ const CSS=`<style>
 
 export function renderHeadcount() {
   const pg=document.getElementById("pageHeadcount");
+  wireDataChecks(pg);
   const now=new Date();
   const curY=now.getFullYear();
   let mode="calendar"; // "calendar" or "fy"
@@ -304,6 +305,7 @@ export function renderHeadcount() {
         </button>
       </div>
     </div>
+    <div style="margin-bottom:20px">${(()=>{ const ds=rows.filter(r=>!r.future); const last=ds[ds.length-1]; return dataChecksHTML(last?last.ym:null, { scope: last?`เดือนล่าสุด ${last.month}`:"" }); })()}</div>
 
     <div class="hc-kpi">
       <div class="hc-kpi-card"><div class="hc-kpi-icon" style="background:#dbeafe;color:#2563eb;">${ICON_HC}</div><div><div class="hc-kpi-label">Avg. Headcount</div><div class="hc-kpi-val" style="color:#1a365d;">${avg}<span class="hc-kpi-unit">คน</span></div></div></div>

@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-config.js";
-import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, esc, fmtDate, toast } from "./app.js";
+import { allEmployees, allMovements, movYM, sepYM, hcAtMonthEnd, lastDayOfMonth, makeOrgAt, dataChecksHTML, wireDataChecks, esc, fmtDate, toast } from "./app.js";
 import { masterDepartments } from "./masterdata-admin.js";
 
 const MONTHS_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -118,6 +118,7 @@ const IC={
 
 export function renderMovementReport(){
   const pg=document.getElementById("pageMovreport");
+  wireDataChecks(pg);
   const now=new Date();
   const curY=now.getFullYear();
   let selYM=`${curY}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -137,7 +138,7 @@ export function renderMovementReport(){
     const net=r.endingHC-r.openingHC;
     const opts=monthOptions();
 
-    pg.innerHTML=`${CSS}<div class="mr-wrap">
+    pg.innerHTML=`${CSS}<div class="mr-wrap"><div style="margin-bottom:16px">${dataChecksHTML(selYM, { scope:`เดือน ${MONTHS_EN[sm-1]} ${sy}` })}</div>
     <div class="page-header" style="margin-bottom:20px;">
       <div>
         <div class="page-heading" style="font-size:22px;font-weight:800;letter-spacing:-.3px;">STAFF MOVEMENT REPORT</div>

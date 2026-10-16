@@ -1238,3 +1238,16 @@ thead .cp-sticky{z-index:3}
 .sep-pend .data-table{background:#fff;border-radius:8px;overflow:hidden}
 .sep-due{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:#B42318;background:#FEE4E2;border-radius:8px;padding:1px 7px}
 .sep-wait{display:inline-block;margin-left:6px;font-size:11px;color:var(--muted);background:#F1F5F9;border-radius:8px;padding:1px 7px}
+/* ตรวจข้อมูล "เอ๊ะใจ" (js/data-checks.js · 2026-10-16) */
+.dck{border:1px solid var(--bd,#A6F4C5);background:var(--bg,#ECFDF3);border-radius:10px;padding:10px 14px;font-size:13px}
+.dck.ok{display:flex;gap:10px;align-items:center;color:#067647}.dck.ok span{color:var(--muted);font-size:12px}
+.dck>summary{cursor:pointer;color:var(--c);list-style:none;display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}.dck>summary::-webkit-details-marker{display:none}
+.dck>summary::before{content:"▸";transition:transform .15s}.dck[open]>summary::before{transform:rotate(90deg)}
+.dck>summary span{font-size:12.5px;font-weight:600}
+.dck-g{background:#fff;border:1px solid var(--bd);border-radius:8px;margin-top:8px;padding:8px 12px}
+.dck-g>summary{cursor:pointer;display:flex;gap:8px;align-items:center}.dck-g>summary i{font-style:normal;font-size:11px;font-weight:700;color:var(--c);background:var(--bg);border-radius:8px;padding:1px 8px}
+.dck-g>summary b{flex:1;font-weight:600}.dck-g>summary em{font-style:normal;font-weight:700;color:var(--c)}
+.dck-why{font-size:12px;color:var(--muted);margin:6px 0}
+.dck-g table{width:100%;border-collapse:collapse;font-size:12.5px}.dck-g td{padding:5px 6px;border-top:1px solid #f1f5f9;vertical-align:top}
+.dck-g td:first-child{white-space:nowrap;width:1%}.dck-g td:last-child{white-space:nowrap;text-align:right;width:1%}
+.dck-g button{border:1px solid var(--border);background:#fff;border-radius:6px;padding:2px 8px;font-size:12px;cursor:pointer;margin-left:4px}.dck-g button:hover{border-color:var(--blue)}
