@@ -7,3 +7,5 @@
 --   รายการเก่าที่ไม่มี org_from: ย้อนได้แค่แผนก + ตำแหน่ง จาก from_dept ("แผนก / ตำแหน่ง")
 -- ============================================================================
 alter table movements add column if not exists org_from jsonb;
+-- หน่วยงานใหม่ครบทุกช่อง (ฟอร์มแยก Division / Department / Section / Team · 2026-10-16) — to_dept "แผนก / ตำแหน่ง" ยังเก็บไว้ให้รายงานเดิม
+alter table movements add column if not exists org_to jsonb;

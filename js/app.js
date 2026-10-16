@@ -1,7 +1,7 @@
 import { supabase } from "./supabase-config.js";
 import { logout } from "./auth.js";
-import { loadMasterData, masterDepartments, masterPositions, masterJobLevels } from "./masterdata-admin.js";
-import { comboHTML, bindCombo, toItems } from "./combobox.js";
+import { loadMasterData, masterDivisions, masterDepartments, masterSections, masterTeams, masterPositions, masterJobLevels } from "./masterdata-admin.js";
+import { comboHTML, bindCombo, setComboItems, toItems } from "./combobox.js";
 
 // ===== SHARED STATE =====
 export let currentUser = null;
@@ -1071,6 +1071,10 @@ let movFilter="", movFilterType="", movFilterMonth="";
 const MOV_TYPES = ["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment","Salary Adjustment"];
 // ประเภทที่ทำให้พ้นสภาพ — คนหนึ่งมีได้ครั้งเดียว (ใช้กันบันทึกซ้ำ)
 const SEPARATION_TYPES = ["Resignation","Termination","Retirement"];
+// ฟอร์ม: ตารางหน่วยงานปัจจุบัน/ใหม่ (user 2026-10-16 — แยก Division / Department / Section / Team)
+const MV_ORG_ROWS = [["division","Division · ฝ่าย"],["department","Department"],["section","Section · แผนก"],["team","Team · ทีม"],["position","ตำแหน่ง"],["job_level","Job Level"]];
+const MV_ORG_FORM_TYPES = [...ORG_MOV_TYPES, "New Hire"];
+const MV_ORG_LEVELS = ["division","department","section","team"];
 
 // object อัปเดตพนักงานตามประเภท movement (ใช้ร่วมทั้งฟอร์มและ import bulk)
 // jobLevel: ระดับใหม่ (optional) — ถ้ามีจะอัปเดต job_level ให้สำหรับประเภทที่ยังทำงานอยู่
@@ -1202,8 +1206,14 @@ async function addMasterPosition(name){
 
 function openMovModal(entry=null) {
   const isEdit = !!entry?.id;
-  // to_dept เก็บรวมเป็น "แผนก / ตำแหน่ง" มาแต่เดิม -> แยกกลับมาใส่ 2 ช่อง
+  // to_dept เก็บรวมเป็น "แผนก / ตำแหน่ง" มาแต่เดิม -> รายการเก่าที่ไม่มี org_to แยกกลับมาใส่ 2 ช่อง
   const [toDept="", toPos=""] = String(entry?.to_dept||"").split(" / ");
+  // หน่วยงาน "ปัจจุบัน" (ก่อนรายการนี้) กับ "ใหม่" — แก้รายการเดิม: ใช้ที่บันทึกไว้ (org_from / org_to) ก่อน
+  const empNow = allEmployees.find(e=>e.emp_code&&e.emp_code===entry?.emp_code);
+  // รายการเก่าไม่มี org_from: ย้อนหน่วยงานของพนักงาน ณ วันก่อนวันที่มีผลของรายการนี้ (ทะเบียนตอนนี้เป็นหน่วยงานหลังย้ายแล้ว)
+  const dayBefore = d => new Date(Date.parse(String(d).slice(0,10)+"T00:00:00Z")-864e5).toISOString().slice(0,10);
+  let orgCur = entry?.org_from || orgSnapshot(entry?.date && empNow ? makeOrgAt(allMovements, masterDepartments)(empNow, dayBefore(entry.date)) : empNow) || {};
+  const orgNew = { ...orgCur, ...(entry?.org_to || (entry ? { ...(toDept?{department:toDept}:{}), ...(toPos?{position:toPos}:{}), ...(entry.job_level?{job_level:entry.job_level}:{}) } : {})) };
   // รายชื่อสำหรับช่องค้นหา — เตรียมข้อความที่ใช้ค้นไว้ล่วงหน้า จะได้กรองเร็วแม้พนักงานหลายร้อยคน
   const empPick = allEmployees.filter(e=>e.status==="Active"||!e.status).map(e=>{
     const nameTh=((e.firstname_th||"")+" "+(e.lastname_th||"")).trim();
@@ -1234,20 +1244,17 @@ function openMovModal(entry=null) {
           <div class="form-group"><label class="form-label">รหัสพนักงาน</label><input id="mv_code" class="form-control" value="${esc(entry?.emp_code||"")}" placeholder="AKR001"></div>
           <div class="form-group"><label class="form-label">ชื่อพนักงาน *</label><input id="mv_name" class="form-control" value="${esc(entry?.name||"")}" required></div>
           <div class="form-group"><label class="form-label">ประเภท *</label>
-            <select id="mv_type" class="form-control">${["Transfer","Promotion","Demotion","Resignation","Termination","New Hire","Retirement","Secondment"].map(t=>`<option ${t===(entry?.type||"Transfer")?"selected":""}>${t}</option>`).join("")}</select>
+            <select id="mv_type" class="form-control">${MOV_TYPES.map(t=>`<option ${t===(entry?.type||"Transfer")?"selected":""}>${t}</option>`).join("")}</select>
           </div>
           <div class="form-group"><label class="form-label">วันที่มีผล</label><input id="mv_date" type="date" class="form-control" value="${esc(entry?.date||"")}"></div>
-          <div class="form-group"><label class="form-label">แผนก/ตำแหน่งเดิม</label><input id="mv_from" class="form-control" value="${esc(entry?.from_dept||"")}"></div>
-          <div class="form-group"><label class="form-label">แผนกใหม่ <span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่ย้ายแผนก = เว้นว่าง)</span></label>
-            ${comboHTML("mv_toDept", toItems(masterDepartments), toDept, "พิมพ์ค้นหาแผนก…")}
-          </div>
-          <div class="form-group"><label class="form-label">ตำแหน่งใหม่
-            ${can("data.masterdata.write")?`<span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่มีในลิสต์ = พิมพ์แล้วกดเพิ่มได้เลย)</span>`:""}</label>
-            ${comboHTML("mv_toPos", toItems(masterPositions), toPos, "พิมพ์ค้นหาตำแหน่ง…")}
-          </div>
-          <div class="form-group"><label class="form-label">Job Level ใหม่ <span style="font-weight:400;color:var(--muted);font-size:11px;">(ไม่เปลี่ยน = เว้นว่าง)</span>
-            <span id="mv_jlNow" style="font-weight:400;color:var(--muted);font-size:11px;margin-left:4px;">${(()=>{ const cur=allEmployees.find(e=>e.emp_code&&e.emp_code===entry?.emp_code)?.job_level; return cur?`· ปัจจุบัน ${esc(cur)}`:""; })()}</span></label>
-            <select id="mv_jl" class="form-control"><option value="">— ไม่เปลี่ยน —</option>${[...new Set([...masterJobLevels.map(j=>j.name),entry?.job_level].filter(Boolean))].map(n=>`<option value="${esc(n)}" ${n===entry?.job_level?"selected":""}>${esc(n)}</option>`).join("")}</select>
+          <div class="form-group col-span-2 mv-org" id="mv_orgWrap">
+            <div class="mv-org-h"><b>หน่วยงาน / ตำแหน่ง</b><span>ช่อง “ใหม่” ตั้งต้นเท่าค่าปัจจุบัน — แก้เฉพาะที่เปลี่ยน · ทุกช่องเปลี่ยนพร้อมกันในวันที่มีผล</span></div>
+            <table class="mv-org-t"><thead><tr><th></th><th>ปัจจุบัน</th><th>ใหม่</th></tr></thead><tbody>
+              ${MV_ORG_ROWS.map(([k,l])=>`<tr data-org="${k}"><th>${l}</th><td id="mv_cur_${k}">—</td><td>${k==="job_level"
+                ? `<select id="mv_new_job_level" class="form-control"><option value="">—</option>${[...new Set([...masterJobLevels.map(j=>j.name),orgNew.job_level].filter(Boolean))].map(n=>`<option value="${esc(n)}" ${n===orgNew.job_level?"selected":""}>${esc(n)}</option>`).join("")}</select>`
+                : comboHTML(`mv_new_${k}`, [], orgNew[k]||"", k==="position"&&can("data.masterdata.write")?"พิมพ์ค้นหา · ไม่มีในลิสต์กดเพิ่มได้":"พิมพ์ค้นหา…")}</td></tr>`).join("")}
+            </tbody></table>
+            <input type="hidden" id="mv_from" value="${esc(entry?.from_dept||"")}">
           </div>
           <div class="form-group col-span-2"><label class="form-label">เหตุผล / หมายเหตุ</label><textarea id="mv_reason" class="form-control">${esc(entry?.reason||"")}</textarea></div>
           ${can("field.salary.read")?`
@@ -1275,13 +1282,58 @@ function openMovModal(entry=null) {
     </div>
   </div>`;
 
-  // แผนก/ตำแหน่งใหม่ — เลือกจากลิสต์ได้ และพิมพ์เองก็ได้ (คอลัมน์นี้เป็นข้อความอิสระอยู่แล้ว)
-  bindCombo("mv_toDept", toItems(masterDepartments), null, { allowFree:true });
-  bindCombo("mv_toPos",  toItems(masterPositions),   null, {
-    allowFree: true,
-    // เฉพาะ admin เท่านั้นที่เขียน master data ได้ (RLS) — คนอื่นพิมพ์เองได้แต่ไม่ขึ้นปุ่มเพิ่ม
-    onCreate: can("data.masterdata.write") ? addMasterPosition : null,
-  });
+  // ===== หน่วยงานใหม่: Division → Department → Section → Team เลือกแบบไล่ลำดับ (ลิสต์แคบลงตามช่องก่อนหน้า) =====
+  // พิมพ์ค่าที่ไม่มีในลิสต์ได้ (allowFree) · ตำแหน่งที่ไม่มี admin กดเพิ่มเข้า master ได้
+  const nv = k => document.getElementById(`mv_new_${k}`)?.value?.trim()||"";
+  const orgItems = {
+    division:  () => toItems(masterDivisions),
+    department:() => toItems(masterDepartments.filter(d=>!nv("division")||!d.master_divisions?.name||d.master_divisions.name===nv("division"))),
+    section:   () => toItems(masterSections.filter(s=>!nv("department")||!s.master_departments?.name||s.master_departments.name===nv("department"))),
+    team:      () => toItems(masterTeams.filter(t=>!nv("section")||!t.master_sections?.name||t.master_sections.name===nv("section"))),
+    position:  () => toItems(masterPositions),
+  };
+  const NEXT = { division:"department", department:"section", section:"team" };
+  const paintOrg = () => {
+    for(const [k] of MV_ORG_ROWS){
+      const tr = document.querySelector(`#mv_orgWrap tr[data-org="${k}"]`); if(!tr) continue;
+      const cur = String(orgCur[k]||""), now = k==="job_level" ? (document.getElementById("mv_new_job_level")?.value||"") : nv(k);
+      document.getElementById(`mv_cur_${k}`).textContent = cur || "—";
+      tr.classList.toggle("chg", MV_ORG_LEVELS.includes(k) ? now !== cur : !!now && now !== cur);
+    }
+  };
+  const bindOrg = k => bindCombo(`mv_new_${k}`, orgItems[k](), () => {
+    // เปลี่ยนช่องบน → ลิสต์ช่องล่างแคบลง (ค่าเดิมที่ไม่อยู่ในลิสต์ใหม่จะถูกล้าง)
+    let parentCleared = !nv(k);
+    for(let c = NEXT[k]; c; c = NEXT[c]){
+      const items = orgItems[c](), keep = !parentCleared && items.some(it=>it.value===nv(c));
+      parentCleared = !keep;
+      setComboItems(`mv_new_${c}`, items, nv(c));
+      // ช่องนี้พิมพ์เองได้ (allowFree) ตัวช่องจะคืนข้อความเดิมให้ — ค่าที่ไม่อยู่ใต้ช่องบนใหม่ต้องล้างทั้งค่าและข้อความ
+      if(!keep){ const h=document.getElementById(`mv_new_${c}`), t=document.getElementById(`mv_new_${c}_txt`); if(h) h.value=""; if(t) t.value=""; document.getElementById(`mv_new_${c}_cbx`)?.classList.remove("has-val"); }
+    }
+    paintOrg();
+  }, { allowFree:true, ...(k==="position" ? { onCreate: can("data.masterdata.write") ? addMasterPosition : null } : {}) });
+  for(const [k] of MV_ORG_ROWS) if(k!=="job_level") bindOrg(k);
+  // ลิสต์ช่องล่างคำนวณใหม่ทุกครั้งที่กดช่อง (capture → ทำก่อนตัวค้นหาของช่อง) — เผื่อช่องบนพิมพ์เองไม่ได้เลือกจากลิสต์
+  for(const k of ["department","section","team"]) document.getElementById(`mv_new_${k}_cbx`)?.addEventListener("focus", () => setComboItems(`mv_new_${k}`, orgItems[k](), nv(k)), true);
+  document.getElementById("mv_new_job_level")?.addEventListener("change", paintOrg);
+  // ตั้งค่าหน่วยงานปัจจุบัน/ใหม่ตามพนักงานที่เลือก
+  const setOrg = (cur, nw) => {
+    orgCur = cur || {};
+    for(const [k] of MV_ORG_ROWS){
+      if(k==="job_level"){ const s=document.getElementById("mv_new_job_level"); if(s){ if(nw[k]&&![...s.options].some(o=>o.value===nw[k])) s.add(new Option(nw[k],nw[k])); s.value=nw[k]||""; } continue; }
+      setComboItems(`mv_new_${k}`, orgItems[k](), "");
+      const h=document.getElementById(`mv_new_${k}`), t=document.getElementById(`mv_new_${k}_txt`);
+      if(h) h.value = nw[k]||""; if(t) t.value = nw[k]||"";
+      document.getElementById(`mv_new_${k}_cbx`)?.classList.toggle("has-val", !!nw[k]);
+    }
+    document.getElementById("mv_from").value = [orgCur.department, orgCur.position].filter(Boolean).join(" / ");
+    paintOrg();
+  };
+  // แสดงตารางหน่วยงานเฉพาะประเภทที่เกี่ยวกับหน่วยงาน (ลาออก/เลิกจ้าง/เกษียณ/ปรับเงินเดือน ไม่ต้อง)
+  const syncType = () => { const t=document.getElementById("mv_type").value; document.getElementById("mv_orgWrap").style.display = MV_ORG_FORM_TYPES.includes(t) ? "" : "none"; };
+  document.getElementById("mv_type").addEventListener("change", syncType); syncType();
+  setOrg(orgCur, orgNew);
 
   // ===== ช่องค้นหาพนักงาน (พิมพ์แล้วเลือกจากรายการ) =====
   // เดิมเป็น <select> ยาวหลายร้อยรายการ ซึ่งพิมพ์ค้นหาไม่ได้จริง ต้องไล่คลิกทีละตัว
@@ -1297,8 +1349,8 @@ function openMovModal(entry=null) {
       const e = list[i]; if(!e) return;
       document.getElementById("mv_code").value = e.code;
       document.getElementById("mv_name").value = e.name;
-      document.getElementById("mv_from").value = [e.dept,e.pos].filter(Boolean).join(" / ");
-      const jlNow = document.getElementById("mv_jlNow"); if(jlNow) jlNow.textContent = e.jl ? `· ปัจจุบัน ${e.jl}` : "";
+      const emp = allEmployees.find(x=>x.emp_code===e.code), snap = orgSnapshot(emp) || {};
+      setOrg(snap, { ...snap });
       box.value = `${e.code} - ${e.name}`;
       close();
     };
@@ -1358,6 +1410,11 @@ function openMovModal(entry=null) {
     const g = id => document.getElementById(id)?.value?.trim()||"";
     const name = g("mv_name"); if(!name){ toast("กรุณากรอกชื่อ","error"); return; }
     const type = g("mv_type"), empCode = g("mv_code");
+    // หน่วยงานเดิม/ใหม่จากตาราง (เฉพาะประเภทที่เกี่ยวกับหน่วยงาน)
+    const entry0 = existId ? allMovements.find(m=>String(m.id)===String(existId)) : null;
+    const orgForm = MV_ORG_FORM_TYPES.includes(type);
+    const orgFrom = Object.fromEntries(MV_ORG_ROWS.map(([k])=>[k, (document.getElementById(`mv_cur_${k}`)?.textContent||"").replace(/^—$/,"")]));
+    const orgTo = Object.fromEntries(MV_ORG_ROWS.map(([k])=>[k, k==="job_level" ? (document.getElementById("mv_new_job_level")?.value||"") : g(`mv_new_${k}`)]));
 
     // กันบันทึกการพ้นสภาพซ้ำ — คนหนึ่งพ้นสภาพได้ครั้งเดียว
     if(empCode && SEPARATION_TYPES.includes(type)){
@@ -1371,10 +1428,12 @@ function openMovModal(entry=null) {
 
     const data = {
       emp_code: empCode, name, type,
-      date: g("mv_date")||null, from_dept: g("mv_from"),
-      to_dept: combineToDept(g("mv_toDept"), g("mv_toPos"), g("mv_from")),
+      date: g("mv_date")||null, from_dept: orgForm ? g("mv_from") : (entry0?.from_dept||null),
+      // to_dept "แผนก / ตำแหน่ง" ยังเก็บไว้ (รายงาน/ส่งออกเดิมอ่านช่องนี้) · ครบทุกช่องอยู่ใน org_to
+      to_dept: orgForm ? combineToDept(orgTo.department, orgTo.position, g("mv_from")) : (entry0?.to_dept||null),
       reason: g("mv_reason"),
-      job_level: g("mv_jl")||null,                          // Job Level ใหม่ (ตำแหน่งเปลี่ยน ระดับเปลี่ยนด้วย) — ว่าง = ไม่เปลี่ยน
+      job_level: orgForm && orgTo.job_level && orgTo.job_level !== (orgFrom.job_level||"") ? orgTo.job_level : null,   // ระดับใหม่ — ไม่เปลี่ยน = ว่าง
+      ...(orgForm ? { org_to: orgTo } : {}),
       recorded_by: currentUser?.user_metadata?.full_name||currentUser?.email?.split("@")[0]||"",
       created_by: currentUser?.id,
       ...(can("field.salary.read") ? { salary: Number(document.getElementById("mv_sal")?.value)||null, cost_center: g("mv_cc") } : {})
@@ -1399,19 +1458,24 @@ function openMovModal(entry=null) {
     }
 
     // หน่วยงานก่อนย้าย (ครบทุกช่อง) — รายงานย้อนหลังใช้ย้อนว่าก่อนวันที่มีผลอยู่หน่วยงานไหน · เก็บตอนบันทึกครั้งแรกเท่านั้น
-    if(!existId && ORG_MOV_TYPES.includes(type)){ const cur = allEmployees.find(e=>e.emp_code===empCode); if(cur) data.org_from = orgSnapshot(cur); }
+    if(!existId && orgForm && empCode) data.org_from = orgFrom;
     const write = d => existId
       ? supabase.from("movements").update({...d, updated_at: new Date().toISOString()}).eq("id", existId)
       : supabase.from("movements").insert(d);
     let { error } = await write(data);
     // ยังไม่ได้รัน sql/schema_movement_org.sql → บันทึกแบบเดิมไปก่อน (รายงานย้อนได้แค่แผนก/ตำแหน่งจาก from_dept)
-    if(error && /org_from/.test(error.message)){ delete data.org_from; ({ error } = await write(data)); }
+    if(error && /org_from|org_to/.test(error.message)){ delete data.org_from; delete data.org_to; ({ error } = await write(data)); }
     // ยังไม่ได้รัน sql/schema_movement_joblevel.sql → บันทึกรายการได้ก่อน (ไม่มีคอลัมน์ job_level) แต่ยังอัปเดตระดับพนักงานให้
     if(error && /job_level/.test(error.message)){ const { job_level, ...rest } = data; ({ error } = await write(rest)); if(!error) toast("บันทึกแล้ว — แต่ยังไม่ได้เก็บ Job Level ในรายการนี้ (รัน sql/schema_movement_joblevel.sql)","info"); }
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
     // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
     if(data.emp_code){
-      const empUpdate = { updated_at: new Date().toISOString(), ...empUpdateFromMovement(data.type, data.to_dept, data.date, data.job_level) };
+      // ประเภทที่เกี่ยวกับหน่วยงาน: อัปเดตเฉพาะช่องที่เปลี่ยนจากตาราง (เดิมใส่ "แผนก / ตำแหน่ง" ทั้งก้อนลงช่องเดียว)
+      const empUpdate = { updated_at: new Date().toISOString(),
+        ...(orgForm ? { ...(type==="New Hire" ? empUpdateFromMovement(type, "", data.date, null) : (data.date ? { effective_date: data.date } : {})),
+              // ฝ่าย/แผนก/แผนกย่อย/ทีม: ว่าง = ล้าง (ย้ายแล้วไม่มีแผนกย่อย) · ตำแหน่ง/ระดับ: ว่าง = ไม่เปลี่ยน
+              ...Object.fromEntries(MV_ORG_ROWS.filter(([k])=>MV_ORG_LEVELS.includes(k) ? (orgTo[k]||"")!==(orgFrom[k]||"") : orgTo[k] && orgTo[k]!==(orgFrom[k]||"")).map(([k])=>[k, orgTo[k]||null])) }
+          : empUpdateFromMovement(data.type, data.to_dept, data.date, data.job_level)) };
       if(Object.keys(empUpdate).length>1){
         await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
       }

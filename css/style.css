@@ -1219,3 +1219,15 @@ thead .cp-sticky{z-index:3}
 .lt-mail-subj{font-weight:700;font-size:13.5px;margin:4px 0 6px;color:var(--navy)}
 @media(max-width:900px){.lt-mail-ed{grid-template-columns:1fr}}
 .pw-btn:hover{color:var(--blue);background:var(--blue-light);}
+/* Staff Movement: หน่วยงานปัจจุบัน / ใหม่ (2026-10-16) */
+.mv-org{border:1px solid var(--border);border-radius:var(--radius-sm,8px);padding:12px 14px;background:#fafbfc}
+.mv-org-h{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}.mv-org-h b{font-size:13px;color:var(--navy)}.mv-org-h span{font-size:11.5px;color:var(--muted)}
+.mv-org-t{width:100%;border-collapse:collapse;font-size:13px}
+.mv-org-t th,.mv-org-t td{padding:4px 6px;text-align:left;vertical-align:middle}
+.mv-org-t thead th{font-size:11px;color:var(--muted);font-weight:600}
+.mv-org-t tbody th{width:130px;font-weight:600;color:var(--text);white-space:nowrap}
+.mv-org-t tbody td:nth-child(2){width:32%;color:var(--muted)}
+.mv-org-t tr.chg td:nth-child(2){text-decoration:line-through}
+.mv-org-t tr.chg th::after{content:"เปลี่ยน";margin-left:6px;font-size:10px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:8px;padding:1px 6px}
+.mv-org-t tr.chg td:last-child .form-control{border-color:#F59E0B;background:#FFFBEB}
+@media(max-width:640px){.mv-org-t tbody th{width:auto}.mv-org-t thead{display:none}.mv-org-t tr{display:grid;grid-template-columns:1fr 1fr}.mv-org-t tbody th{grid-column:1/-1}}
