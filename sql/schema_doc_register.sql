@@ -108,12 +108,18 @@ drop policy if exists "doc_types_read"   on doc_types;
 drop policy if exists "doc_types_write"  on doc_types;
 drop policy if exists "doc_reg_read"     on doc_register;
 drop policy if exists "doc_reg_update"   on doc_register;
+-- ชั้นความลับ (สารบัญเอกสาร · ชุดเดียวกับ schema_doc_index.sql — แก้ให้ตรงกันทั้งสองไฟล์)
+alter table doc_register add column if not exists confidential boolean not null default false;
+create or replace function doc_visible(p_confidential boolean) returns boolean
+language sql stable set search_path = public as $$
+  select has_perm('page.docregister') and (not coalesce(p_confidential, false) or has_perm('data.doc.confidential'));
+$$;
 create policy "doc_series_read" on doc_series for select using (has_perm('page.docregister'));
 create policy "doc_types_read"  on doc_types  for select using (has_perm('page.docregister'));
 create policy "doc_types_write" on doc_types  for all
   using (has_perm('data.docregister.write')) with check (has_perm('data.docregister.write'));
-create policy "doc_reg_read"    on doc_register for select using (has_perm('page.docregister'));
-create policy "doc_reg_update"  on doc_register for update using (has_perm('data.docregister.write'));
+create policy "doc_reg_read"    on doc_register for select using (doc_visible(confidential));
+create policy "doc_reg_update"  on doc_register for update using (has_perm('data.docregister.write') and doc_visible(confidential));
 -- ไม่มี insert/delete policy โดยตั้งใจ: ออกเลขผ่าน doc_issue() / นำเข้าผ่าน doc_import() เท่านั้น · ลบไม่ได้เลย
 
 -- ------------------------------------------------------------ 5. ออกเลข

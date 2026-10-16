@@ -33,6 +33,14 @@
       "destination": "/sub/index.html"
     },
     {
+      "source": "/docs",
+      "destination": "/docs/index.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/docs/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -121,6 +129,15 @@
     },
     {
       "source": "/paf/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/docs/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

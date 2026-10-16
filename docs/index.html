@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>สารบัญเอกสาร · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- ปุ่ม การ์ด ตาราง ใช้ชุดเดียวกับ HR Invoice Hub · แผงด้านขวาใช้ของเว็บยูนิฟอร์ม · ส่วนเฉพาะอยู่ใน dx.css -->
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+<link rel="stylesheet" href="/uniform/uni.css?v=1">
+<link rel="stylesheet" href="/docs/dx.css?v=1">
+</head>
+<body>
+<!--
+  สารบัญเอกสาร HR (/docs) — เว็บแยกจากระบบ HR ใช้ session เดียวกัน · แทนหน้า "ทะเบียนเลขที่เอกสาร" เดิม (2026-10-16)
+  ฐานข้อมูล: sql/schema_doc_register.sql + sql/schema_doc_index.sql · ตรรกะ: js/doc-register-calc.js (มีเทส)
+  แบบหน้าจอ: Figma หน้า "Doc Index — สารบัญเอกสาร"
+-->
+<div class="sp-shell">
+  <aside class="sp-side">
+    <div class="sp-brand">
+      <img src="/assets/logo.png" alt="Akara Resources">
+      <div><b>DOC INDEX</b> · สารบัญเอกสาร HR</div>
+    </div>
+    <nav class="sp-nav" id="spNav">
+      <a href="#/index" data-r="index"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>สารบัญเอกสาร</a>
+      <a href="#/issue" data-r="issue"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>ออกเลขเอกสาร</a>
+      <a href="#/receive" data-r="receive"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>ลงรับเอกสาร</a>
+      <a href="#/nofile" data-r="nofile"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0ZM12 9v4M12 17h.01"/></svg>ยังไม่มีไฟล์แนบ<em id="navNoFile"></em></a>
+      <a href="#/settings" data-r="settings"><svg viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>ตั้งค่า</a>
+    </nav>
+    <a class="sp-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+    <div class="sp-user" id="spUser"></div>
+  </aside>
+  <main class="sp-main" id="spMain"><div class="sp-loading">กำลังโหลด…</div></main>
+</div>
+<div id="spModal"></div>
+<div class="sp-toasts" id="spToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/docs/dx.js?v=1"></script>
+</body>
+</html>

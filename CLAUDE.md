@@ -65,6 +65,15 @@ Form AKR-OHR-FM-006 Rev. 00 (user, 2026-10-15). Typography follows the Word file
 - Emails: templates `ec_sign` / `ec_signed` / `ec_rejected` edited on the page's settings tab; sent by `letter-notify` (`ec_id`) in auto mode, otherwise an .eml download. Probation end = day 119 counting the start date as day 1.
 - Salary is in the row, so RLS lets only `data.empcontract.write` holders and that contract's signer/witness read it. DB: `sql/schema_emp_contract.sql` (also carries the shared signature + mail-template policies — now five files to keep identical).
 
+## Document Index (`docs/`) — separate app at `/docs`
+
+Replaces the HR app's "ทะเบียนเลขที่เอกสาร" page (user, 2026-10-16); `navigate("docregister")` redirects here. Figma page "Doc Index — สารบัญเอกสาร". Must NOT import `js/app.js`.
+- `docs/dx.js` (UI: `#/index` `#/issue` `#/receive` `#/nofile` `#/settings`, document drawer), `docs/dx.css` (on top of spend.css + uni.css). Pure logic in `js/doc-register-calc.js` (old Excel import parser + `nextNo` / `filterDocs` / `storageName`; tested by `test/doc-register.test.js`). The old `js/doc-register.js` page is gone.
+- **One register:** every number from anywhere (manual issue, HR letters, PAF, incoming) goes through `doc_issue` into `doc_register`, so the index never needs syncing. `doc_sources()` tells which numbers came from `hr_letters` / `paf_forms` and their status; the drawer links back into the HR app (`/?letter=`, `/?paf=`, `/?letter_new=1` with `sessionStorage.letter_from_doc` to create a letter from a number).
+- **Incoming** = series `IN` (prefix RCV, `doc_series.direction = 'in'`), with `sender` / `received_date`; their own number goes in `ref_doc_no`.
+- **Confidential:** `doc_types.confidential` makes new numbers of that type confidential (trigger `doc_register_defaults`; salary certificates, termination, salary adjustment, PAF by default). Confidential rows *and* their files are visible only with `data.doc.confidential` (`doc_visible()` in RLS — defined identically in `schema_doc_register.sql` and `schema_doc_index.sql`); only that permission can clear the flag. No retention period yet (user's choice).
+- **Attachments:** bucket `doc-files/<doc_id>/<ts>-<ascii name>` + table `doc_files` (real name kept there); every open / upload / delete goes to `doc_access_log` via `doc_log()`. Max 20 MB per file. DB: `sql/schema_doc_index.sql` (after `schema_doc_register.sql`).
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).

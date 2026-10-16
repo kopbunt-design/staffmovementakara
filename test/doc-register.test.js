@@ -4,8 +4,8 @@
 ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
-const SRC = read(`${ROOT}/js/doc-register.js`).split("\n").filter(l => !/^\s*import\s/.test(l)).join("\n").replace(/^export /gm, "");
-const M = new Function(`${SRC}\nreturn { parseLogDate, mapDocType, parseDocLog };`)();
+const SRC = read(`${ROOT}/js/doc-register-calc.js`).split("\n").filter(l => !/^\s*import\s/.test(l)).join("\n").replace(/^export /gm, "");
+const M = new Function(`${SRC}\nreturn { parseLogDate, mapDocType, parseDocLog, nextNo, filterDocs, storageName };`)();
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -52,5 +52,22 @@ eq(r.rows[3].note.includes("96–98"), true, "เลขในช่วงจด�
 eq([r.rows[6].issued_date, r.rows[6].note], ["", "วันที่ในไฟล์เดิม: 16/16/2026"], "วันที่ผิด → เว้นว่าง เก็บข้อความเดิมไว้");
 eq([r.rows[7].type_label, r.rows[7].subject], ["บันทึกภายใน", "ปรับ Job Level ตำแหน่งทดสอบ"], "Memo");
 eq(r.skipped, [], "ไม่มีแถวที่อ่านไม่ออก");
+
+// ---------- สารบัญ ----------
+const D = [
+  { id: 1, series_code: "HR", year: 2026, seq: 117, doc_no: "HR-117-2026", type_label: "หนังสือรับรองเงินเดือน (ภาษาไทย)", subject: "วีซ่า", person_name: "ทดสอบ หนึ่ง", status: "active" },
+  { id: 2, series_code: "HR", year: 2026, seq: 116, doc_no: "HR-116-2026", type_label: "หนังสือรับรองการทำงาน (ภาษาอังกฤษ)", status: "void" },
+  { id: 3, series_code: "IN", year: 2026, seq: 14, doc_no: "RCV-014-2026", type_label: "หนังสือจากหน่วยงานราชการ", sender: "สำนักงานประกันสังคม", status: "active" },
+  { id: 4, series_code: "HR", year: 2025, seq: 300, doc_no: "HR-300-2025", type_label: "อื่น ๆ", status: "active" },
+];
+const dirOf = c => c === "IN" ? "in" : "out", ids = l => l.map(r => r.id);
+eq(M.nextNo(D, "HR", "HR", 2026), "HR-118-2026", "เลขถัดไปนับเฉพาะชุด+ปีนั้น (รวมเลขที่ยกเลิก)");
+eq(M.nextNo(D, "RCV", "IN", 2027), "RCV-001-2027", "ปีใหม่เริ่ม 001");
+eq(ids(M.filterDocs(D, {}, dirOf)), [1, 3, 4], "ซ่อนเลขที่ยกเลิกเป็นค่าเริ่มต้น");
+eq(ids(M.filterDocs(D, { voided: true, year: 2026 }, dirOf)), [1, 2, 3], "แสดงเลขยกเลิก + กรองปี");
+eq(ids(M.filterDocs(D, { dir: "in" }, dirOf)), [3], "เฉพาะหนังสือรับ");
+eq(ids(M.filterDocs(D, { q: "ประกันสังคม" }, dirOf)), [3], "ค้นจากผู้ส่ง");
+eq(ids(M.filterDocs(D, { nofile: true }, dirOf, new Map([[1, 2]]))), [3, 4], "ยังไม่มีไฟล์แนบ (ไม่นับเลขยกเลิก)");
+eq([M.storageName("PAF-001 ฉบับเซ็นแล้ว.PDF"), M.storageName("ไฟล์.pdf"), M.storageName("a b/c.docx")], ["PAF-001.pdf", "file.pdf", "a_b_c.docx"], "ชื่อไฟล์ใน storage เป็น ASCII");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

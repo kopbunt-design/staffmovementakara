@@ -255,6 +255,8 @@ export function navigate(page) {
   if (page === "uniform") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/uniform/"; return; }
   // ทะเบียนผู้รับเหมา (SUB) — เว็บแยก /sub (2026-10-15)
   if (page === "sub") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/sub/"; return; }
+  // ทะเบียนเลขที่เอกสาร → สารบัญเอกสาร เว็บแยก /docs (2026-10-16) — ตารางเดิม doc_register
+  if (page === "docregister") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/docs/"; return; }
   // ค่าจ้างเหมา 3% ย้ายไปเป็นเว็บแยก /contract (2026-10-15) — ฐานข้อมูลเดิม
   if (page === "contractpay") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/contract/"; return; }
   currentPage = page;
@@ -378,7 +380,6 @@ async function renderPage(page) {
   else if(page==="payrollbuild") (await import("./payroll-build-ui.js")).renderPayrollBuild();
   else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
   else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
-  else if(page==="docregister") (await import("./doc-register.js")).renderDocRegister();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();
   else if(page==="empcontract") (await import("./emp-contract.js")).renderEmpContract();
   else if(page==="paf") (await import("./paf.js")).renderPaf();
@@ -401,10 +402,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
-        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"ทะเบียนเลขที่เอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
+        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"สารบัญเอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
-        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Register", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
+        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Index", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
 function applyLang(lang) {
@@ -611,7 +612,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
   startRealtime();
   // ลิงก์จากอีเมลขออนุมัติหนังสือ (?letter=ID) → เปิดหน้าออกหนังสือ (หน้านั้นเปิดฉบับที่ระบุเอง)
   const qp = new URLSearchParams(location.search);
-  navigate(qp.get("letter") ? "letters" : qp.get("fund") ? "fundforms" : qp.get("econtract") ? "empcontract" : qp.get("paf") ? "paf" : "home");
+  navigate(qp.get("letter") || qp.get("letter_no") || qp.get("letter_new") ? "letters" : qp.get("fund") ? "fundforms" : qp.get("econtract") ? "empcontract" : qp.get("paf") ? "paf" : "home");
   if (session.user.user_metadata?.must_change_password) openPwModal(true);
 });
 

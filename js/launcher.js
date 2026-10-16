@@ -37,7 +37,7 @@ const META = {
   analytics:       ["วิเคราะห์ข้อมูลกำลังคนเชิงลึก", '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>'],
   letters:         ["หนังสือรับรอง ไทย/อังกฤษ · Offer Letter · ขออนุมัติ", '<path d="M4 6.5h16v11H4z"/><path d="m4 7 8 6 8-6"/>'],
   expense:         ["ใบแจ้งหนี้ HRIN · ค่าใช้จ่ายฝ่าย HR · งบประมาณ (เปิดเว็บ HR Invoice Hub)", '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'],
-  docregister:     ["ออกเลขหนังสือ HR / Memo และค้นย้อนหลัง", '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9.5 17V12M12.5 17v-5M9 12h4.5M8.5 14.5h5"/>'],
+  docregister:     ["สารบัญเอกสาร · ออกเลข / ลงรับ · แนบไฟล์ · เอกสารลับ", '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9.5 17V12M12.5 17v-5M9 12h4.5M8.5 14.5h5"/>'],
   vacancy:         ["โควตาตำแหน่งและอัตราว่าง", '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>'],
   users:           ["บัญชีผู้ใช้และสิทธิ์การเข้าถึง", '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.4 3.4-5.5 7-5.5s6.3 2.1 7 5.5"/>'],
   settings:        ["ข้อมูลหลัก: ฝ่าย แผนก ตำแหน่ง ระดับ", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>'],
@@ -52,7 +52,7 @@ const META_EN = {
   payrollapproval: "Summary for payroll approval", contractpay: "Consultant / contractor pay runs, 3% WHT",
   headcount: "Monthly headcount by unit", movreport: "Joiners, leavers and turnover",
   workforce: "Executive workforce overview", analytics: "In-depth workforce analysis",
-  vacancy: "Position quotas and vacancies", docregister: "Issue HR letter / memo numbers and search history", letters: "Certificates (TH/EN), offer letters, approval", expense: "HR invoices (HRIN), HR spend and budget — opens HR Invoice Hub", users: "User accounts and access",
+  vacancy: "Position quotas and vacancies", docregister: "Document index: numbers in and out, attachments, confidential files — opens Doc Index", letters: "Certificates (TH/EN), offer letters, approval", expense: "HR invoices (HRIN), HR spend and budget — opens HR Invoice Hub", users: "User accounts and access",
   settings: "Master data: divisions, departments, positions, levels",
 };
 const GROUP_EN = {

@@ -1,0 +1,26 @@
+/* สารบัญเอกสาร — ส่วนเฉพาะ ต่อจาก /expense/spend.css + /uniform/uni.css (แบบ Figma หน้า "Doc Index — สารบัญเอกสาร") */
+.no{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.no svg{width:14px;height:14px;stroke:var(--ink3);fill:none;stroke-width:2}
+.tbl tr.void td{opacity:.5}.tbl tr.void .no b{text-decoration:line-through}
+.tbl td .ty{font-weight:500;margin-bottom:4px}
+.fc{display:inline-flex;align-items:center;gap:5px;font-weight:500;white-space:nowrap}
+.fc svg{width:16px;height:16px;stroke:var(--ink3);fill:none;stroke-width:2}
+.fc.none{color:var(--amber);font-size:12.5px}
+.lock{display:inline-flex;align-items:center;gap:4px}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:8px 12px;font-size:13.5px}
+.kv dt{color:var(--ink3)}.kv dd{margin:0;font-weight:500;min-width:0;overflow-wrap:anywhere}
+.src{display:flex;align-items:center;gap:12px;border-radius:10px;padding:12px 14px;border:1px solid var(--line);background:var(--bg)}
+.src.ok{background:var(--green-50);border-color:#A6F4C5}.src.wait{background:var(--amber-50);border-color:#FDE68A}.src.no{background:var(--red-50);border-color:#FECDCA}
+.src .t{flex:1;min-width:0}.src b{display:block;font-weight:600}.src span{font-size:12px;color:var(--ink2)}
+.src.ok b{color:var(--green)}.src.wait b{color:var(--amber)}.src.no b{color:var(--red)}
+.fl{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.fl .t{flex:1;min-width:0}.fl b{display:block;font-weight:500;overflow-wrap:anywhere}.fl span{font-size:12px;color:var(--ink3)}
+.fl svg{flex:none;width:22px;height:22px;stroke:var(--ink3);fill:none;stroke-width:1.8}
+.dz{border:1.5px dashed var(--line2);border-radius:10px;background:var(--bg);padding:18px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+.dz.on{border-color:var(--blue);background:var(--blue-50)}.dz b{font-weight:500}.dz span{font-size:12px;color:var(--ink3)}
+.dz svg{width:24px;height:24px;stroke:var(--ink3);fill:none;stroke-width:1.8}
+.lg{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:4px 0}.lg span{color:var(--ink3);white-space:nowrap}
+.sec{display:flex;flex-direction:column;gap:10px}.sec>.h{font-size:12px;font-weight:500;color:var(--ink3);display:flex;justify-content:space-between}
+.big-no{font-size:28px;font-weight:700;color:var(--navy);letter-spacing:.4px;text-align:center}
+.tytbl .in{padding:6px 10px}
+@media (max-width:900px){.kv{grid-template-columns:84px 1fr}}
