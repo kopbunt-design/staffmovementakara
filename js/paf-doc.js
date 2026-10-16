@@ -84,7 +84,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #444;padding:3p
 .blk{margin-top:2.5mm}.subj .k{width:22%}.subj .v b{font-size:14px}
 .cond th{background:#e6e6e6;font-weight:600;text-align:center;width:50%}.cond th small{display:block;font-weight:700}
 .cond td{height:30mm;font-size:12px}.cond p{margin:0 0 5px}.cond .nt{margin-top:10px;white-space:pre-wrap}
-.eff .k{width:26%}
+.eff .k{width:22%}
 h4{margin:3mm 0 1.2mm;font-size:12.5px;color:#2457a6}
 h4 span{font-weight:600;color:#6b7a99;font-size:11.5px;margin-left:4px}
 .log th{background:#eef2f8;font-weight:600;font-size:11.5px;text-align:left;color:#334;line-height:1.25}.log th small{display:block;font-weight:500;font-size:10px;color:#6b7a99}
