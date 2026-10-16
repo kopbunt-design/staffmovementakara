@@ -192,7 +192,7 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
   <h1>คู่มือคิดค่ากะ</h1>
   <p class="lede">เอกสารนี้ใช้สอนวิธีคิดค่ากะทีละขั้น และใช้เปิดตรวจงานตอนคิดจริงได้ ทุกกติกาในนี้ยืนยันแล้วจากการเทียบกับยอดที่คิดมือของเดือนกรกฎาคม 2026 จนตรงทุกบาท</p>
   <div class="meta">
-    <span class="tag">อัปเดต 18 ส.ค. 2026</span>
+    <span class="tag">อัปเดต 16 ต.ค. 2026</span>
     <span class="tag">ใช้กับทุกเดือน</span>
     <span class="tag">ระบบคิดให้อัตโนมัติที่หน้า “คำนวณค่ากะ”</span>
   </div>
@@ -330,7 +330,7 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
       <tbody>
         <tr><td><b>เช้า</b></td><td class="codes">D01 · D02 · D03 · NOR · F03 · F04</td><td><span class="mono">NOR</span> คือเวลาทำงานปกติ ไม่ใช่กะ แต่ถูกนับอยู่ในตระกูลเช้า</td></tr>
         <tr><td><b>บ่าย</b></td><td class="codes">A01 · A02 · A03</td><td>—</td></tr>
-        <tr><td><b>ดึก</b></td><td class="codes">N01 · N02 · N03 · N05 · N07</td><td><span class="mono">N03</span> มีกติกาพิเศษ ดูหัวข้อถัดไป</td></tr>
+        <tr><td><b>ดึก</b></td><td class="codes">N01 · N02 · N03 · N05 · N07 · F08</td><td><span class="mono">N03</span> และ <span class="mono">F08</span> (กะดึกใหม่) มีกติกาพิเศษ ดูหัวข้อถัดไป</td></tr>
       </tbody>
     </table>
   </div>
@@ -344,7 +344,7 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
 <section>
   <div class="sec-head">
     <div class="eyebrow">ข้อยกเว้น</div>
-    <h2>เจ็ดเคสพิเศษที่ต้องจำ</h2>
+    <h2>แปดเคสพิเศษที่ต้องจำ</h2>
     <p style="color:var(--ink-2);">ทุกเคสนี้เกิดจากการเทียบกับยอดที่คิดมือจริง ไม่ใช่กติกาที่แต่งขึ้นเอง</p>
   </div>
 
@@ -368,6 +368,13 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
       <h3>อยู่กะดึกเกินครึ่งเดือน จ่ายเต็มไปเลย</h3>
       <p>นับวัน <span class="mono">N03</span> รวมกับวันหยุดและวันลาที่จ่ายได้ ถ้า <b>เกิน 15 วัน</b> ถือว่าอยู่กะดึกทั้งเดือน</p>
       <div class="out">ได้ <b>1,200</b> เต็ม ไม่ต้องเฉลี่ยรายวัน · 15 วันพอดียังไม่เข้าเกณฑ์</div>
+    </div>
+
+    <div class="exc">
+      <div class="exc-code">NOR + F08 · ใหม่ ต.ค. 2026</div>
+      <h3>กะดึกใหม่ F08 ใช้กติกาเดียวกับ NOR + N03</h3>
+      <p>ทั้งเดือนมีแค่ <span class="mono">NOR</span> กับ <span class="mono">F08</span> → จ่ายเฉพาะวันที่เข้า <span class="mono">F08</span> (1,200 ÷ 30 = 40 บาทต่อวัน) · ถ้า <span class="mono">F08</span> รวมวันหยุด/วันลาที่จ่ายได้ <b>เกิน 15 วัน</b> จ่ายเต็ม 1,200</p>
+      <div class="out">เคยมีคนเข้า F08 ไม่ถึง 6 วันแต่ได้เต็มเดือน 1,200 — ตอนนี้ได้ตามวันจริง เช่น 5 วัน = <b>200</b> · ระบบขึ้นป้าย “เฉพาะวัน F08”</div>
     </div>
 
     <div class="exc">
@@ -475,6 +482,17 @@ footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
         <div class="line"><span>เรตต่อเดือน</span><span class="v">0</span></div>
         <div class="line"><span>มาครบทุกวันก็ไม่ช่วย</span><span class="v">0 × 31 = 0</span></div>
         <div class="total"><span class="lbl">ได้รับ</span><span class="amt zero">0</span></div>
+      </div>
+    </div>
+
+    <div class="ex">
+      <div class="ex-h"><h3>ช · NOR สลับ F08 (กะดึกใหม่) ไม่กี่วัน</h3><span class="who">O1 · F08 5 วัน · NOR 26 วัน</span></div>
+      <div class="ex-b">
+        <div class="line"><span>ตระกูลที่หมุน</span><span class="v">เช้า+ดึก = 2</span></div>
+        <div class="line"><span>เรต / อัตรารายวัน</span><span class="v">1,200 → 40</span></div>
+        <div class="line"><span>F08 + วันหยุดที่จ่ายได้</span><span class="v">5 วัน (ไม่เกิน 15)</span></div>
+        <div class="line"><span>จ่ายเฉพาะวัน F08</span><span class="v">40 × 5 = 200</span></div>
+        <div class="total"><span class="lbl">ได้รับ</span><span class="amt paid">200</span></div>
       </div>
     </div>
 
