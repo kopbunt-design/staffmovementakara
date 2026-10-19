@@ -71,10 +71,10 @@ const sigOf = p => /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p?.signature 
 
 // ช่องลงชื่อ: เส้น / ชื่อในวงเล็บ / วันที่ อยู่ในคอลัมน์เดียวกัน ชื่อจึงอยู่กึ่งกลางเส้นพอดี
 // (เดิมจัดกลางทั้งกล่อง ชื่อเลยเยื้องจากเส้นเพราะคำว่า "ลงชื่อ" กับ "พนักงาน" ยาวไม่เท่ากัน)
-// pad = สัดส่วนขอบใสใต้หมึกในรูปลายเซ็น (0–1) — เลื่อนรูปลงให้หมึกแตะเส้น ไม่ลอย
-function sigBlock({ role, name = "", sig = "", date, w = "58mm", pad = 0 }) {
+// sigH = รูปลายเซ็นที่ตัดขอบใสแล้ว (fund-forms inkCrop) สูงกี่ mm — วางชิดล่างให้หมึกแตะเส้นพอดี ไม่ลอย/ไม่จม
+function sigBlock({ role, name = "", sig = "", date, w = "58mm", sigH = 0 }) {
   return `<div class="sg" style="grid-template-columns:auto ${w} auto">
-    <span>ลงชื่อ</span><span class="sg-l">${sig ? `<img src="${sig}" alt=""${pad > 0 ? ` style="bottom:calc(-1mm - ${(12 * Math.min(pad, 0.6)).toFixed(2)}mm)"` : ""}>` : ""}</span><span>${role}</span>
+    <span>ลงชื่อ</span><span class="sg-l">${sig ? `<img src="${sig}" alt=""${sigH > 0 ? ` style="height:${sigH.toFixed(2)}mm;bottom:-0.6mm;object-position:center bottom"` : ""}>` : ""}</span><span>${role}</span>
     <span></span><span class="sg-n">${name ? `( ${esc(name)} )` : `(<i class="sg-b"></i>)`}</span><span></span>
     ${date === undefined ? "" : `<span>วันที่</span><span class="sg-l sg-d">${esc(date)}</span><span></span>`}
   </div>`;
@@ -95,11 +95,11 @@ function committeeBox(sub, sig) {
 
 // พยาน = HR ที่ส่งฟอร์มให้กรรมการลงนาม (schema_fund_approval.sql ข้อ 3) — ยังไม่ส่ง เว้นช่องไว้เซ็นมือ
 // หน้าพนักงานไม่มีสิทธิ์อ่านรูปลายเซ็น จึงแสดงชื่อ+วันที่อย่างเดียว
-function witnessBlock(sub, sig, pad = 0) {
+function witnessBlock(sub, sig, sigH = 0) {
   const w = ["pending_approval", "approved", "sent"].includes(sub.status) ? sub.witness : null;
   if (!w) return sigBlock({ role: "พยาน", date: "" });
   const okSig = /^data:image\/(png|jpeg);base64,/.test(sig || "") ? sig : "";
-  return sigBlock({ role: "พยาน", name: w.name_th || "", sig: okSig, pad, date: (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.witnessed_at)) });
+  return sigBlock({ role: "พยาน", name: w.name_th || "", sig: okSig, sigH, date: (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.witnessed_at)) });
 }
 
 // ------------------------------------------------------------------- PVD
@@ -138,7 +138,7 @@ function pvdPage(sub, opts = {}) {
         ${sigBlock({ role: "พนักงาน", name: sub.emp_name, sig: sigOf(p),
                      date: sigOf(p) ? (d => `${d.d} ${d.m} ${d.y}`)(thaiDate(sub.submitted_at)) : "" })}
         <div class="gap"></div>
-        ${witnessBlock(sub, opts.witnessSig, opts.witnessPad)}
+        ${witnessBlock(sub, opts.witnessSig, opts.witnessSigH)}
       </div>
     </div>
     <div class="foot"><span>AKR-OHR-FM-020 Rev. 01</span><span>Effective Date:05-May-2026</span><span>Page 1 of 1</span></div>

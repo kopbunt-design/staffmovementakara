@@ -328,28 +328,38 @@ async function assetUrl(path) {
   const { data } = await supabase.storage.from("letter-assets").download(path);
   return data ? await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(data); }) : "";
 }
-// สัดส่วนแถวใสใต้หมึกของรูปลายเซ็น — ไฟล์ที่อัปโหลดมักมีขอบล่างเยอะ ลายเซ็นพยานเลยลอยเหนือเส้น
-function inkBottomPad(url) {
-  if (!url) return Promise.resolve(0);
+// ตัดขอบใส/ขาวรอบหมึกของรูปลายเซ็น — ไฟล์ที่อัปโหลดมีขอบไม่เท่ากัน ลายเซ็นพยานเลยลอยบ้างจมเส้นบ้าง
+// คืนรูปที่ตัดแล้ว + ความสูงหมึกเดิมบนกระดาษ (รูปเดิมสูง 12 mm กว้างไม่เกิน 58 mm) เพื่อให้ขนาดลายเซ็นเท่าเดิม
+function inkCrop(url) {
+  if (!url) return Promise.resolve({ url, h: 0 });
   return new Promise(res => {
     const im = new Image();
     im.onload = () => {
       try {
-        const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+        const W = im.naturalWidth, H = im.naturalHeight, c = document.createElement("canvas"); c.width = W; c.height = H;
         const g = c.getContext("2d"); g.drawImage(im, 0, 0);
-        const px = g.getImageData(0, 0, c.width, c.height).data;
-        const ink = i => px[i + 3] > 40 && (px[i] + px[i + 1] + px[i + 2]) < 600;   // ไม่ใส และไม่ใช่พื้นขาว
-        for (let y = c.height - 1; y >= 0; y--)
-          for (let x = 0; x < c.width; x++) if (ink((y * c.width + x) * 4)) return res((c.height - 1 - y) / c.height);
-        res(0);
-      } catch { res(0); }
+        const px = g.getImageData(0, 0, W, H).data;
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (px[i + 3] > 40 && px[i] + px[i + 1] + px[i + 2] < 600) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return res({ url, h: 0 });
+        const m = Math.round((y1 - y0) * 0.04), cx = Math.max(0, x0 - m), cy = Math.max(0, y0 - m);
+        const cw = Math.min(W, x1 + m + 1) - cx, ch = Math.min(H, y1 + m + 1) - cy;
+        const o = document.createElement("canvas"); o.width = cw; o.height = ch;
+        o.getContext("2d").drawImage(c, cx, cy, cw, ch, 0, 0, cw, ch);
+        const shown = Math.min(12, 58 * H / W);                       // รูปเดิมแสดงสูงจริงกี่ mm
+        res({ url: o.toDataURL("image/png"), h: Math.min(12, Math.max(6, shown * ch / H)) });
+      } catch { res({ url, h: 0 }); }
     };
-    im.onerror = () => res(0); im.src = url;
+    im.onerror = () => res({ url, h: 0 }); im.src = url;
   });
 }
 async function printForm(r) {
   const [committeeSig, witnessSig] = await Promise.all([assetUrl(r.committee?.signature_path), assetUrl(r.witness?.signature_path)]);
-  printSubmission(r, { committeeSig, witnessSig, witnessPad: await inkBottomPad(witnessSig) });
+  const w = await inkCrop(witnessSig);
+  printSubmission(r, { committeeSig, witnessSig: w.url, witnessSigH: w.h });
 }
 
 // หนึ่งคนยึดฉบับล่าสุดฉบับเดียว ไม่ว่าจะเป็นฟอร์มไหน — คนที่ได้ทั้งสองกองทุนต้องเลือกอย่างใดอย่างหนึ่ง
