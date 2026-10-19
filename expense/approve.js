@@ -5,6 +5,7 @@
 // ============================================================================
 import { supabase } from "../js/supabase-config.js";
 import { invoiceDoc } from "./doc.js";
+import { attachViewer, unviewedWarning } from "./attach-view.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -13,10 +14,10 @@ const thDate = iso => { if (!iso) return "-"; const d = new Date(String(iso).sli
 const thTime = iso => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "";
 const app = document.getElementById("app");
 const token = new URLSearchParams(location.search).get("t") || "";
-let D = null;
+let D = null, AV = null;
+const SEEN = new Set();   // ไฟล์แนบที่เปิดดูแล้ว — คงไว้เมื่อหน้าวาดใหม่
 // ไฟล์แนบ + รูปลายเซ็นอยู่ใน storage ส่วนตัว → ขอลิงก์ชั่วคราวจาก Edge Function ด้วย token (null = ยังโหลด, false = ขอไม่ได้)
 let X = null;
-const fmtSize = n => !n ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 const toData = url => fetch(url).then(r => r.ok ? r.blob() : null).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); })).catch(() => "");
 
 function toast(msg, type = "") {
@@ -59,12 +60,10 @@ function drawDoc() {
 function drawFiles() {
   const box = document.getElementById("apFiles"); if (!box) return;
   const files = D.files || [];
-  box.innerHTML = !files.length ? `<div class="hint">ไม่มีเอกสารแนบ</div>` : files.map(f => {
-    const url = X && X.files[f.id];
-    return `<div class="ap-file"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
-      <span><b>${esc(f.name)}</b><span class="hint">${fmtSize(f.size)}</span></span>
-      ${url ? `<a class="btn btn-s btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">เปิด</a>` : X === null ? `<span class="hint">กำลังโหลด…</span>` : `<span class="hint">เปิดไม่ได้</span>`}</div>`;
-  }).join("") + (X === false ? `<div class="note r" style="margin-top:10px">ตอนนี้เปิดไฟล์แนบจากลิงก์นี้ไม่ได้ — แจ้ง HR หรือ${D.id ? ` <a href="/expense/#/invoice/${D.id}" style="text-decoration:underline">เข้าสู่ระบบเพื่อดู</a>` : "เข้าสู่ระบบเพื่อดู"}</div>` : "");
+  if (X === null && files.length) { box.innerHTML = `<div class="hint">กำลังโหลดเอกสารแนบ…</div>`; return; }
+  if (X === false && files.length) { AV = null;
+    box.innerHTML = `<div class="note r">ตอนนี้เปิดไฟล์แนบจากลิงก์นี้ไม่ได้ — แจ้ง HR หรือ${D.id ? ` <a href="/expense/#/invoice/${D.id}" style="text-decoration:underline">เข้าสู่ระบบเพื่อดู</a>` : "เข้าสู่ระบบเพื่อดู"}</div>`; return; }
+  AV = attachViewer(box, files, async f => X.files[f.id] || "", SEEN);
 }
 
 function render() {
@@ -82,7 +81,7 @@ function render() {
   ${state}
   <div class="card card-b"><div class="card-t" style="justify-content:space-between">ใบแจ้งหนี้ <button class="btn btn-g btn-sm" id="apFull">เปิดเต็มจอ ↗</button></div>
     <div class="ap-doc" id="apDoc"></div></div>
-  <div class="card card-b"><div class="card-t">เอกสารแนบ <span class="hint">(${(d.files || []).length} ไฟล์)</span></div><div id="apFiles"></div></div>
+  <div class="card card-b"><div class="card-t">เอกสารแนบ <span class="hint">(${(d.files || []).length} ไฟล์)${(d.files || []).length ? " · ตรวจให้ครบก่อนอนุมัติ" : ""}</span></div><div id="apFiles"></div></div>
   ${d.preparer || d.reviewer ? `<div class="card card-b"><div class="card-t">ลงนามแล้ว</div><div class="ap-steps">
     ${signed(d.preparer, "จัดทำ")}${signed(d.reviewer, "ตรวจ")}${signed(d.approver, "อนุมัติ")}</div></div>` : ""}
   ${d.state === "open" ? `<div class="card card-b">
@@ -112,7 +111,7 @@ function rejectForm() {
 }
 
 async function decide(ok, reason = null) {
-  if (ok && !confirm(`อนุมัติใบแจ้งหนี้ ${D.inv_no} ยอด ${money(D.net)} บาท และลงลายเซ็นของ ${D.approver_name || "ผู้อนุมัติ"}?`)) return;
+  if (ok && !confirm(`${unviewedWarning(AV ? AV.unviewed() : [])}อนุมัติใบแจ้งหนี้ ${D.inv_no} ยอด ${money(D.net)} บาท และลงลายเซ็นของ ${D.approver_name || "ผู้อนุมัติ"}?`)) return;
   document.querySelectorAll(".ap-acts .btn").forEach(b => b.disabled = true);
   const { data, error } = await supabase.rpc("exp_link_decide", { p_token: token, p_ok: ok, p_reason: reason });
   if (error) { toast("ไม่สำเร็จ: " + error.message, "err"); document.querySelectorAll(".ap-acts .btn").forEach(b => b.disabled = false); return; }

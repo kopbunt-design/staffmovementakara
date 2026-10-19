@@ -7,6 +7,7 @@
 import { supabase } from "../js/supabase-config.js";
 import { lineCalc, invoiceTotals, amountWords, fiscalYear, parseInvoiceDb, round2, WHT_RATES } from "./calc.js";
 import { printInvoice } from "./doc.js";
+import { attachViewer, unviewedWarning } from "./attach-view.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -355,6 +356,7 @@ function drawEditor() {
         <label class="fld" style="margin-top:12px"><span>หมายเหตุ (พิมพ์ในใบ)</span><textarea class="in" id="edNote" ${ro} rows="2">${esc(inv.note || "")}</textarea></label></div>
         <div class="sums" id="edSums">${sumsHTML(tot, inv.wht_rate)}</div></div>
     </div>
+    ${E.files.length && inv.id ? `<div class="card card-b"><div class="card-t">เอกสารแนบ <span class="hint">(${E.files.length} ไฟล์)${isReviewer || isApprover ? " · ตรวจให้ครบก่อนลงนาม" : ""}</span></div><div id="edAttach"></div></div>` : ""}
   </div>
   <div class="ed-col">
     <div class="card card-b"><div class="card-t">ขั้นตอนลงนาม</div>
@@ -409,6 +411,8 @@ function wireEditor() {
     $("#edSubmit").onclick = submitFlow;
   }
   $("#edPrint").onclick = async () => { if (editable()) readForm(); await print(); };
+  E.av = $("#edAttach") ? attachViewer($("#edAttach"), E.files, async f => {
+    const { data } = await supabase.storage.from("expense-files").createSignedUrl(f.path, 600); return data?.signedUrl || ""; }, E.seen ||= new Set()) : null;
   $("#edYes")?.addEventListener("click", () => decide(true));
   $("#edNo")?.addEventListener("click", () => decide(false));
   $("#edRecall")?.addEventListener("click", () => act("recall", "ดึงกลับเป็นร่างแล้ว"));
@@ -514,6 +518,8 @@ function submitFlow() {
 async function decide(ok) {
   let reason = null;
   if (!ok) { reason = prompt("ส่งกลับให้ผู้จัดทำแก้ไข เพราะอะไร?", ""); if (reason === null) return; }
+  const warn = ok ? unviewedWarning(E.av ? E.av.unviewed() : []) : "";
+  if (warn && !confirm(`${warn}${E.inv.status === "review" ? "ยืนยันตรวจและลงนาม" : "อนุมัติและลงนาม"}ต่อเลยไหม?`)) return;
   const was = E.inv.status;
   const { data, error } = await supabase.rpc("exp_decide", { p_id: E.inv.id, p_ok: ok, p_reason: reason });
   if (error) { toast("ไม่สำเร็จ: " + error.message, "err"); return; }
