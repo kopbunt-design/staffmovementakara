@@ -328,9 +328,28 @@ async function assetUrl(path) {
   const { data } = await supabase.storage.from("letter-assets").download(path);
   return data ? await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(data); }) : "";
 }
+// สัดส่วนแถวใสใต้หมึกของรูปลายเซ็น — ไฟล์ที่อัปโหลดมักมีขอบล่างเยอะ ลายเซ็นพยานเลยลอยเหนือเส้น
+function inkBottomPad(url) {
+  if (!url) return Promise.resolve(0);
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+        const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        const ink = i => px[i + 3] > 40 && (px[i] + px[i + 1] + px[i + 2]) < 600;   // ไม่ใส และไม่ใช่พื้นขาว
+        for (let y = c.height - 1; y >= 0; y--)
+          for (let x = 0; x < c.width; x++) if (ink((y * c.width + x) * 4)) return res((c.height - 1 - y) / c.height);
+        res(0);
+      } catch { res(0); }
+    };
+    im.onerror = () => res(0); im.src = url;
+  });
+}
 async function printForm(r) {
   const [committeeSig, witnessSig] = await Promise.all([assetUrl(r.committee?.signature_path), assetUrl(r.witness?.signature_path)]);
-  printSubmission(r, { committeeSig, witnessSig });
+  printSubmission(r, { committeeSig, witnessSig, witnessPad: await inkBottomPad(witnessSig) });
 }
 
 // หนึ่งคนยึดฉบับล่าสุดฉบับเดียว ไม่ว่าจะเป็นฟอร์มไหน — คนที่ได้ทั้งสองกองทุนต้องเลือกอย่างใดอย่างหนึ่ง
