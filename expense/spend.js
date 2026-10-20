@@ -376,7 +376,8 @@ function drawEditor() {
         ${inv.id && inv.status === "draft" && !inv.inv_no ? `<button class="btn btn-d btn-sm" id="edDelete">ลบร่าง</button>` : ""}</div>` : ""}
     </div>
     <div class="card card-b"><div class="card-t">ไฟล์แนบ</div>
-      <div class="files">${E.files.map(f => `<a href="#" data-f="${f.id}"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>${esc(f.name)}</a>`).join("") || `<div class="hint">ยังไม่มีไฟล์แนบ</div>`}</div>
+      <div class="files">${E.files.map(f => `<div style="display:flex;align-items:center;gap:6px"><a href="#" data-f="${f.id}" style="flex:1;min-width:0"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>${esc(f.name)}</a>${ed ? `<button class="x" data-fdel="${f.id}" title="ลบไฟล์แนบนี้">✕</button>` : ""}</div>`).join("") || `<div class="hint">ยังไม่มีไฟล์แนบ</div>`}</div>
+      ${canWrite() && E.files.length && !ed && inv.id ? `<div class="hint" style="margin-top:6px">ลบ/เปลี่ยนไฟล์แนบได้ตอนเป็นร่างหรือถูกส่งกลับ — ถ้าส่งตรวจแล้ว กด “ดึงกลับเป็นร่าง” ก่อน</div>` : ""}
       ${canWrite() ? `<label class="btn btn-s btn-sm" style="margin-top:10px">แนบไฟล์<input type="file" id="edFile" hidden multiple></label>${inv.id ? "" : `<div class="hint" style="margin-top:6px">บันทึกร่างก่อน แล้วจึงแนบไฟล์</div>`}` : ""}
     </div>
   </div></div>`;
@@ -425,6 +426,7 @@ function wireEditor() {
     S.invoices = S.invoices.filter(i => i.id !== E.inv.id); toast("ลบร่างแล้ว", "ok"); location.hash = "#/invoices";
   });
   $("#edFile")?.addEventListener("change", e => upload([...e.target.files]));
+  document.querySelectorAll("[data-fdel]").forEach(b => b.onclick = () => removeFile(+b.dataset.fdel));
   document.querySelectorAll("[data-f]").forEach(a => a.onclick = async ev => { ev.preventDefault();
     const f = E.files.find(x => x.id === +a.dataset.f);
     const { data, error } = await supabase.storage.from("expense-files").createSignedUrl(f.path, 120);
@@ -540,6 +542,16 @@ function receiveFlow() {
     <label class="fld"><span>วันที่รับ</span><input class="in" type="date" id="rcDate" value="${todayISO()}"></label>`,
     `<button class="btn btn-s" data-x>ยกเลิก</button><button class="btn btn-p" data-ok>บันทึก</button>`);
   el.querySelector("[data-ok]").onclick = async () => { const n = el.querySelector("#rcName").value, d = el.querySelector("#rcDate").value; el.remove(); await act("receive", "บันทึกส่งบัญชีแล้ว", n, d || null); };
+}
+// ลบไฟล์แนบ (แนบผิด) — เฉพาะตอนแก้ใบได้ (ร่าง / ถูกส่งกลับ) · ลบแถวก่อน แล้วลบไฟล์ใน storage
+async function removeFile(id) {
+  const f = E.files.find(x => x.id === id); if (!f || !editable()) return;
+  if (!confirm(`ลบไฟล์แนบ “${f.name}”?`)) return;
+  const { error } = await supabase.from("exp_files").delete().eq("id", f.id);
+  if (error) { toast("ลบไม่สำเร็จ: " + error.message, "err"); return; }
+  await supabase.storage.from("expense-files").remove([f.path]);
+  E.files = E.files.filter(x => x.id !== f.id); E.seen?.delete(f.id);
+  drawEditor(); toast("ลบไฟล์แนบแล้ว", "ok");
 }
 async function upload(files) {
   if (!E.inv.id) { toast("บันทึกร่างก่อน แล้วจึงแนบไฟล์", "err"); return; }
