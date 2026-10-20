@@ -6,6 +6,7 @@
 // รวมเป็นยอดรวมแล้วทิ้งรายคนไปทันที — ไม่เคยส่งขึ้น Supabase และไม่เก็บลง localStorage
 // (ผู้ใช้กำหนดไว้ตั้งแต่ทำหน้า Payroll Report: "upload ยอดแต่ช่องเข้าไป เพราะข้อมูลเงินเดือนเป็นความลับ")
 import { esc, toast, can, allEmployees, sepYM, hcAtMonthEnd, lastDayOfMonth } from "./app.js";
+import { supabase } from "./supabase-config.js";
 
 const SHEET = "BeforeProcessYDP";
 
@@ -167,6 +168,56 @@ const forms = {
 };
 const F = () => forms[mode];
 
+// ---------- ใบลูกจ้างสัญญา: ดึงยอดจากงวดค่าจ้างเหมา (/contract) ของเดือนเดียวกัน (user 2026-10-20) ----------
+// ยอดรวมเท่านั้น (ไม่เก็บรายคน) · HR ยังแก้ทับได้ทุกช่อง · ดึงใหม่อัตโนมัติเมื่อเปิดใบนี้/เปลี่ยนงวด
+const CT_ST = { draft:"ร่าง", calculated:"คำนวณแล้ว", pending:"รออนุมัติ", approved:"อนุมัติแล้ว", locked:"ล็อกแล้ว" };
+let ctSrc = null;   // { period, id, status, count, net, sumOk } | { period, none:true } | { period, err }
+let ctBusy = "";    // งวดที่กำลังดึงอยู่ — กันยิงซ้ำตอนหน้าวาดใหม่ระหว่างรอ
+async function pullContract(quiet = false) {
+  const f = forms.contract, period = f.period;
+  if (!period || ctBusy === period) return;
+  ctBusy = period;
+  try {
+    const { data: run, error } = await supabase.from("contract_pay_run").select("id,period,status,pay_date").eq("period", period).maybeSingle();
+    if (error) throw error;
+    if (!run) { ctSrc = { period, none:true }; if (!quiet) toast(`ยังไม่มีงวดค่าจ้างเหมาเดือน ${period}`, "error"); return; }
+    const [items, adj, prev] = await Promise.all([
+      supabase.from("contract_pay_item").select("worker_id,base_amount,extra_amount,deduct_amount,wht_amount,net_amount").eq("run_id", run.id),
+      supabase.from("contract_pay_adjust").select("kind,label,amount").eq("run_id", run.id),
+      supabase.from("contract_pay_run").select("id").lt("period", period).order("period", { ascending:false }).limit(1).maybeSingle(),
+    ]);
+    if (items.error) throw items.error;
+    const it = items.data || [], ad = adj.data || [];
+    const prevIds = prev.data ? new Set(((await supabase.from("contract_pay_item").select("worker_id").eq("run_id", prev.data.id)).data || []).map(r => r.worker_id)) : null;
+    const sum = (list, k) => round2(list.reduce((s, r) => s + num(r[k]), 0));
+    const byLabel = kind => { const m = new Map(); for (const a of ad.filter(a => a.kind === kind)) m.set(a.label, round2((m.get(a.label) || 0) + num(a.amount))); return [...m].map(([label, amount]) => ({ label, amount:String(amount) })); };
+    const base = sum(it, "base_amount"), wht = sum(it, "wht_amount"), net = sum(it, "net_amount");
+    f.income = [{ label:"Fee", amount:String(base) }, ...byLabel("earning")];
+    f.deduct = [{ label:"Withholding Tax", amount:String(wht) }, ...byLabel("deduction")];
+    // ยอดจากรายการต้องเท่ายอดโอนในงวด — ไม่เท่า = มีรายการที่ไม่ได้อยู่ใน adjust (เช่นแก้มือ) ต้องตรวจ
+    const gross = round2(f.income.reduce((s, r) => s + num(r.amount), 0)), ded = round2(f.deduct.reduce((s, r) => s + num(r.amount), 0));
+    if (run.pay_date) f.payDate = run.pay_date;
+    const ids = new Set(it.map(r => r.worker_id));
+    f.end = String(it.length);
+    if (prevIds) Object.assign(f, { start:String(prevIds.size), joiner:String([...ids].filter(i => !prevIds.has(i)).length), leaver:String([...prevIds].filter(i => !ids.has(i)).length) });
+    else Object.assign(f, { start:"0", joiner:String(it.length), leaver:"0" });
+    ctSrc = { period, id:run.id, status:run.status, count:it.length, net, sumOk: Math.abs(round2(gross - ded) - net) < 0.005, calcNet: round2(gross - ded) };
+    if (!quiet) toast(`ดึงยอดงวดค่าจ้างเหมา ${period} แล้ว · ${it.length} คน · โอนสุทธิ ${fmt(net)}`, "success");
+  } catch (e) { ctSrc = { period, err: e.message || String(e) }; if (!quiet) toast("ดึงยอดไม่สำเร็จ: " + ctSrc.err, "error"); }
+  finally { ctBusy = ""; renderPayrollApproval(); }
+}
+function ctSrcNote() {
+  const s = ctSrc, f = forms.contract;
+  if (!s || s.period !== f.period) return `<div class="text-sm text-muted mt-1">กำลังดึงยอดจากงวดค่าจ้างเหมา…</div>`;
+  if (s.err) return `<div class="pa-warn mt-3">ดึงยอดจากงวดค่าจ้างเหมาไม่ได้: ${esc(s.err)}</div>`;
+  if (s.none) return `<div class="pa-warn mt-3">ยังไม่มีงวดค่าจ้างเหมาเดือนนี้ — สร้างงวดที่ <a href="/contract/#/runs" style="text-decoration:underline">ค่าจ้างเหมา</a> ก่อน หรือกรอกยอดเอง</div>`;
+  const notFinal = !["approved","locked"].includes(s.status);
+  return `<div class="${notFinal || !s.sumOk ? "pa-warn" : "text-sm text-muted"} mt-3">
+    ยอดดึงจาก <a href="/contract/#/run/${s.id}" style="text-decoration:underline">งวดค่าจ้างเหมา ${esc(s.period)}</a> · สถานะ <b>${esc(CT_ST[s.status] || s.status)}</b> · ${s.count} คน · โอนสุทธิ ${fmt(s.net)} บาท
+    ${notFinal ? "<br>งวดยังไม่อนุมัติ — ตัวเลขอาจเปลี่ยน กด “ดึงยอดใหม่” ก่อนพิมพ์" : ""}
+    ${s.sumOk ? "" : `<br>ยอดในใบ (${fmt(s.calcNet)}) ไม่เท่ายอดโอนในงวด (${fmt(s.net)}) — ตรวจรายการหักในงวด`}</div>`;
+}
+
 export function renderPayrollApproval() {
   const pg = document.getElementById("pagePayrollapproval");
   const canWrite = can("data.payroll.read");
@@ -189,13 +240,14 @@ export function renderPayrollApproval() {
       </button>
       <button class="pa-mode ${mode==="contract"?"on":""}" onclick="window._paMode('contract')">
         <span class="pa-mode-t">ลูกจ้างสัญญา (หัก ณ ที่จ่าย 3%)</span>
-        <span class="pa-mode-s">Temporary / Contract Staff · กรอกยอดเอง</span>
+        <span class="pa-mode-s">Temporary / Contract Staff · ดึงยอดจากงวดค่าจ้างเหมา</span>
       </button>
     </div>
     <div id="paBody" class="mt-4">${mode==="permanent" ? permanentUI() : contractUI()}</div>
   </div>`;
 
   wire();
+  if (mode === "contract" && ctSrc?.period !== forms.contract.period) pullContract(true);
 }
 
 // ---------- ส่วนหัวที่ใช้ร่วมกันสองใบ ----------
@@ -318,8 +370,11 @@ function contractUI() {
 
   return `${headUI()}
   <div class="card card-body mt-4">
-    <div class="card-title">รายการเงินได้ / เงินหัก</div>
-    <div class="text-sm text-muted mt-1">ภาษีหัก ณ ที่จ่ายของลูกจ้างสัญญาคือ <b>3%</b> ของค่าจ้าง — กรอกยอดที่หักจริงลงช่อง Withholding Tax</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div class="card-title" style="margin:0;">รายการเงินได้ / เงินหัก</div>
+      <button class="btn btn-secondary btn-sm" onclick="window._paPullCt()">↩ ดึงยอดใหม่จากงวดค่าจ้างเหมา</button></div>
+    ${ctSrcNote()}
+    <div class="text-sm text-muted mt-1">ยอด จำนวนคน และวันที่จ่าย ดึงจากงวดค่าจ้างเหมาเดือนเดียวกันให้อัตโนมัติ — แก้ทับได้ทุกช่อง</div>
     <div class="pa-two mt-3">
       <div>
         <div class="pa-sub">Income</div>
@@ -376,6 +431,7 @@ function sigUI() {
 function wire() {
   window._paMode = m => { mode = m; renderPayrollApproval(); };
   window._paSet  = (k, v) => { F()[k] = v; renderPayrollApproval(); };
+  window._paPullCt = () => pullContract(false);
   window._paLineAdd = which => { F()[which].push({ label:"", amount:"" }); renderPayrollApproval(); };
   window._paLineDel = (which, i) => { F()[which].splice(i, 1); renderPayrollApproval(); };
   window._paLine = (which, i, k, v) => { F()[which][i][k] = v; renderPayrollApproval(); };
