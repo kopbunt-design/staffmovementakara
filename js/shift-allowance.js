@@ -40,7 +40,8 @@ const SICK_RUN_WARN = 3;
 // NOR + F01 ใช้กติกาเดียวกับ NOR + N03 ทุกอย่าง (user 2026-10-20 — เดิมคู่นี้ไม่จ่ายเลย) · เฉพาะคู่นี้เท่านั้น
 //   rate = อัตราเดือนของคู่นี้ — F01 ไม่ได้อยู่ในตระกูลกะ นับตระกูลแล้วได้แค่ 1 จึงต้องกำหนดเอง
 const PAY_ON_SHIFT_ONLY = [{ codes: ["NOR","N03"], payCode: "N03" }, { payCode: "F08", withFamily: "DAY" },
-                           { codes: ["NOR","F01"], payCode: "F01", rate: 1200, since: "2026-10-20" }];
+                           { codes: ["NOR","F01"], payCode: "F01", rate: 1200, since: "2026-10-20", offByCode: true }];
+// offByCode = เกณฑ์ 15 วันไม่นับวันหยุด/ลาที่ติดรหัสอื่น (เช่น NOR) — ตอนนี้ใช้กับ F01 เท่านั้น (user 2026-10-20) · N03/F08 ยังนับวันหยุด/ลาทุกวันตามเดิม
 // ...แต่ถ้าเข้า N03 (รวมวันหยุด/วันลาที่จ่ายได้) เกินจำนวนนี้ = ถือว่าอยู่กะดึกทั้งเดือน จ่ายเต็มอัตราไปเลย
 const N03_FULL_THRESHOLD = 15;
 // เลิกแล้ว (user 2026-10-20): NOR+F01 ไม่จ่ายเลย → ย้ายไปจ่ายแบบ N03 ข้างบน
@@ -401,8 +402,11 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     // แต่ถ้าวันกะนั้น + วันหยุด/วันลาที่จ่ายได้ เกิน 15 วัน = อยู่กะดึกทั้งเดือน -> จ่ายเต็มอัตราไปเลย
     const shiftOnly = !!pso;
     // วันกะนั้น + วันหยุด/วันลาที่จ่ายได้ (วันที่ไม่ได้มาทำงาน นับหมดไม่ว่าจะมีรหัสอะไรติดมา)
+    // นับวันที่ติดรหัสกะนั้น (มาทำจริง + วันหยุด/วันลาในรอบกะนั้น) + วันหยุด/วันลาที่ไม่มีรหัสกะ
+    // วันหยุด/ลาที่ติดรหัสอื่น (เช่น NOR) ไม่นับ — user 2026-10-20: AKR25011260 ทำ F01 3 วัน + วันหยุดติด F01 5 วัน = 8
+    // แต่เดิมนับวันหยุด/ลาที่ติด Nor อีก 14 วันด้วย → 17 ได้เต็ม 1,200
     const n03AndOff = pso ? days.filter(d => PAYABLE.has(d.status)
-      && (d.code === pso.payCode || d.status !== "WORKED")).length : 0;
+      && (d.code === pso.payCode || (d.status !== "WORKED" && (!pso.offByCode || !d.code)))).length : 0;
     const shiftOnlyFull = shiftOnly && n03AndOff > N03_FULL_THRESHOLD;
     const payShiftDaysOnly = shiftOnly && !shiftOnlyFull;
 

@@ -510,6 +510,17 @@ const offWith = (rows, idx, code) => rows.map((r, i) => idx.includes(i) ? { ...r
   eq([rP.monthlyRate, rP.payDays, rP.total], [1800, 31, 1800], "Process เข้า N03 ได้ครบเหมือนทุกคน");
 }
 
+// ---------- เกิน 15 วัน: วันหยุด/ลาที่ติดรหัสอื่น (NOR) ไม่นับ (user 2026-10-20 · AKR25011260) ----------
+{
+  // F01 ทำจริง 3 · วันหยุดติด F01 5 · วันหยุด/ลาติด NOR 14 → นับได้ 8 ไม่ใช่ 22
+  const offWith2 = (rows, idx, code) => rows.map((r, i) => idx.includes(i) ? { ...r, Shift: code, Day_Type: "H", Check_In: "", Check_Out: "" } : r);
+  let rows = month("E1",2026,9, Array.from({length:30}, (_,i) => [17,20,21].includes(i) ? "F01" : "NOR"));
+  rows = offWith2(rows, [18,19,22,25,26], "F01");
+  rows = offWith2(rows, [1,2,4,5,10,11,12,13,23,24,27,28,29,3], "NOR");
+  const r = one(rows);
+  eq([r.shiftOnly, r.shiftOnlyFull, r.payDays, r.total], [true, false, 8, 320], "F01 3 + หยุดติด F01 5 = 8 วัน → 320 ไม่ใช่เต็ม");
+}
+
 // ---------- กติกาเก่า (opts.legacy) ใช้คิดยอดตกเบิก ย้อนถึง time ก.ค. ----------
 {
   const legacy = (rows, map = empMap) => M.computeShiftAllowance(rows, map, M.FAMILY_MAP, undefined, new Set(), { legacy:true }).summary[0];
