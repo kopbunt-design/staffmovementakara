@@ -13,7 +13,7 @@ const logic = SRC
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
            parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols,
-           isSuspendRow, isSickRow, isProcessEmp, isUnpaidNote };`)();
+           isSuspendRow, isSickRow, isUnpaidNote };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -467,57 +467,47 @@ const offWith = (rows, idx, code) => rows.map((r, i) => idx.includes(i) ? { ...r
   eq(one(month("E1",2026,7, s16)).shiftOnlyFull, true, "16 วัน -> เต็ม");
 }
 
-// ---------- NOR + F01 = ไม่คิดค่ากะเลย ----------
+// ---------- NOR + F01 = แบบ NOR + N03 (user 2026-10-20 · เดิมไม่จ่าย) ----------
 {
   const shifts = Array.from({length:31}, (_,i) => i < 8 ? "F01" : "NOR");
   const r = one(month("E1",2026,7, shifts));
-  eq([r.monthlyRate, r.total], [0, 0], "NOR + F01 -> ไม่คิดค่ากะ");
-  eq(r.noPayPair, "NOR + F01", "บอกเหตุผลไว้ในแถวให้เห็น");
+  eq([r.monthlyRate, r.shiftOnly, r.shiftPayCode], [1200, true, "F01"], "NOR + F01 -> เรต 1,200 จ่ายเฉพาะวัน F01");
+  eq([r.payDays, r.absentDays, r.total], [8, 0, 320], "F01 8 วัน x 40 = 320 · วัน NOR ไม่ใช่วันขาด");
+  eq(r.solo, false, "ไม่ใช่กฎกะเดี่ยว");
 }
 {
-  // ต้องได้ 0 ไม่ว่าจะจัด F01 เป็นตระกูลไหน — เช็คจากรหัสตรง ๆ ไม่ผ่านตระกูล
+  // ตั้ง F01 เป็นตระกูลไหนก็ได้ผลเท่าเดิม
   const shifts = Array.from({length:31}, (_,i) => i < 8 ? "F01" : "NOR");
   const asNight = M.computeShiftAllowance(month("E1",2026,7, shifts), empMap,
                                           { ...M.FAMILY_MAP, F01:"NIT" }).summary[0];
-  eq(asNight.monthlyRate, 0, "ต่อให้ตั้ง F01 เป็นกะดึก (2 ตระกูล) ก็ยังไม่คิดค่ากะ");
+  eq([asNight.monthlyRate, asNight.total], [1200, 320], "F01 เป็นกะดึกใน DB -> ยัง 320");
+}
+{
+  const s16 = Array.from({length:31}, (_,i) => i < 16 ? "F01" : "NOR");
+  const r = one(month("E1",2026,7, s16));
+  eq([r.shiftOnlyFull, r.total], [true, 1200], "F01 16 วัน -> เต็ม 1,200");
+  const s15 = Array.from({length:31}, (_,i) => i < 15 ? "F01" : "NOR");
+  eq(one(month("E1",2026,7, s15)).total, 600, "15 วันพอดี -> 40 x 15 = 600");
 }
 {
   // F01 ปนกับกะอื่นด้วย = ไม่ใช่คู่ NOR+F01 ล้วน -> กลับไปใช้กติกาปกติ
   const shifts = Array.from({length:31}, (_,i) => ["NOR","F01","A01"][i%3]);
   const r = M.computeShiftAllowance(month("E1",2026,7, shifts), empMap,
                                     { ...M.FAMILY_MAP, F01:"DAY" }).summary[0];
-  eq([r.noPayPair, r.monthlyRate], ["", 1200], "NOR+F01+บ่าย -> ใช้กติกาปกติ (เช้า+บ่าย = 1,200)");
+  eq([r.shiftOnly, r.monthlyRate, r.total], [false, 1200, 1200], "NOR+F01+บ่าย -> ใช้กติกาปกติ (เช้า+บ่าย = 1,200)");
 }
 {
   // F01 อย่างเดียวทั้งเดือน = ไม่ใช่คู่ -> กติกาปกติ (กะเดียว = 0 อยู่ดี)
-  eq(one(month("E1",2026,7, jul31(["F01"]))).noPayPair, "", "F01 ล้วน ไม่ใช่คู่ NOR+F01");
+  const r = one(month("E1",2026,7, jul31(["F01"])));
+  eq([r.shiftOnly, r.total], [false, 0], "F01 ล้วน ไม่ใช่คู่ NOR+F01");
 }
 
-// ---------- สาย Process: วัน N03 ไม่จ่าย ----------
+// ---------- สาย Process: ได้วัน N03 ตามปกติ (user 2026-10-20 · เลิกข้อยกเว้นเดิม) ----------
 {
-  const procMap = new Map([
-    ["P1", { emp_code:"P1", job_level:"O2", section:"Process Plant" }],
-    ["P2", { emp_code:"P2", job_level:"O2", department:"Mining" }],
-  ]);
-  eq(M.isProcessEmp({ section:"Process Plant" }), true,  "สังกัดมีคำว่า Process");
-  eq(M.isProcessEmp({ department:"PROCESS" }),    true,  "ไม่สนตัวพิมพ์");
-  eq(M.isProcessEmp({ department:"Mining" }),     false, "แผนกอื่น ไม่ใช่ Process");
-  eq(M.isProcessEmp(null),                        false, "ไม่พบพนักงาน -> ไม่ใช่ Process");
-
-  // P1 (Process): เข้า D01/A01/N03 -> 3 ตระกูล = 1,800 แต่วัน N03 ไม่จ่าย
+  const procMap = new Map([["P1", { emp_code:"P1", job_level:"O2", section:"Process Plant" }]]);
   const shifts = Array.from({length:31}, (_,i) => ["D01","A01","N03"][i%3]);
   const rP = M.computeShiftAllowance(month("P1",2026,7, shifts), procMap).summary[0];
-  eq([rP.isProcess, rP.monthlyRate], [true, 1800], "Process ยังนับตระกูลตามปกติ");
-  eq(rP.payDays, 21, "31 วัน หักวัน N03 10 วัน -> จ่าย 21 วัน");
-  eq(rP.total, 1260, "60 x 21 = 1,260");
-
-  // P2 (ไม่ใช่ Process): เข้าเหมือนกัน -> จ่ายครบ
-  const rN = M.computeShiftAllowance(month("P2",2026,7, shifts), procMap).summary[0];
-  eq([rN.isProcess, rN.payDays, rN.total], [false, 31, 1800], "คนไม่ใช่ Process -> จ่ายวัน N03 ด้วย");
-
-  // รายงานรายชื่อ Process ให้ตรวจ
-  const res = M.computeShiftAllowance(month("P1",2026,7, shifts), procMap);
-  eq(res.processEmps.map(p=>p.empId), ["P1"], "รายงานว่าใครถูกมองเป็น Process");
+  eq([rP.monthlyRate, rP.payDays, rP.total], [1800, 31, 1800], "Process เข้า N03 ได้ครบเหมือนทุกคน");
 }
 
 // ---------- ลาป่วยยาว: ต้องกดอนุมัติถึงจะจ่าย ----------
