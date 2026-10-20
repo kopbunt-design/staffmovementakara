@@ -510,6 +510,21 @@ const offWith = (rows, idx, code) => rows.map((r, i) => idx.includes(i) ? { ...r
   eq([rP.monthlyRate, rP.payDays, rP.total], [1800, 31, 1800], "Process เข้า N03 ได้ครบเหมือนทุกคน");
 }
 
+// ---------- กติกาเก่า (opts.legacy) ใช้คิดยอดตกเบิก ย้อนถึง time ก.ค. ----------
+{
+  const legacy = (rows, map = empMap) => M.computeShiftAllowance(rows, map, M.FAMILY_MAP, undefined, new Set(), { legacy:true }).summary[0];
+  const f01 = Array.from({length:31}, (_,i) => i < 8 ? "F01" : "NOR");
+  eq(legacy(month("E1",2026,7, f01)).total, 0, "กติกาเก่า NOR+F01 = 0");
+  eq(one(month("E1",2026,7, f01)).total - legacy(month("E1",2026,7, f01)).total, 320, "ตกเบิก NOR+F01 8 วัน = 320");
+  const procMap = new Map([["P1", { emp_code:"P1", job_level:"O2", section:"Process Plant" }]]);
+  const sh = Array.from({length:31}, (_,i) => ["D01","A01","N03"][i%3]);
+  eq(legacy(month("P1",2026,7, sh), procMap).total, 1260, "กติกาเก่า Process ไม่ได้วัน N03 (60 x 21)");
+  eq(M.computeShiftAllowance(month("P1",2026,7, sh), procMap).summary[0].total, 1800, "กติกาใหม่ได้ครบ → ตกเบิก 540");
+  const plain = Array.from({length:31}, (_,i) => ["D01","A01","N01"][i%3]);
+  eq(legacy(month("E1",2026,7, plain)).total, one(month("E1",2026,7, plain)).total, "คนทั่วไป กติกาเก่า = ใหม่ (ไม่มีตกเบิก)");
+  eq(one(month("E1",2026,7, f01)).codeDays.F01, 8, "นับวันต่อรหัสไว้บอกเหตุผล");
+}
+
 // ---------- ลาป่วยยาว: ต้องกดอนุมัติถึงจะจ่าย ----------
 {
   const sickAll = month("E1",2026,7, jul31(["D01","A01","N01"]))

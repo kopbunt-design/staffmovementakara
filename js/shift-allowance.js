@@ -40,11 +40,17 @@ const SICK_RUN_WARN = 3;
 // NOR + F01 ใช้กติกาเดียวกับ NOR + N03 ทุกอย่าง (user 2026-10-20 — เดิมคู่นี้ไม่จ่ายเลย) · เฉพาะคู่นี้เท่านั้น
 //   rate = อัตราเดือนของคู่นี้ — F01 ไม่ได้อยู่ในตระกูลกะ นับตระกูลแล้วได้แค่ 1 จึงต้องกำหนดเอง
 const PAY_ON_SHIFT_ONLY = [{ codes: ["NOR","N03"], payCode: "N03" }, { payCode: "F08", withFamily: "DAY" },
-                           { codes: ["NOR","F01"], payCode: "F01", rate: 1200 }];
+                           { codes: ["NOR","F01"], payCode: "F01", rate: 1200, since: "2026-10-20" }];
 // ...แต่ถ้าเข้า N03 (รวมวันหยุด/วันลาที่จ่ายได้) เกินจำนวนนี้ = ถือว่าอยู่กะดึกทั้งเดือน จ่ายเต็มอัตราไปเลย
 const N03_FULL_THRESHOLD = 15;
 // เลิกแล้ว (user 2026-10-20): NOR+F01 ไม่จ่ายเลย → ย้ายไปจ่ายแบบ N03 ข้างบน
 //                              สาย Process ไม่ได้วัน N03 → ได้ตามปกติเหมือนทุกคน
+// กติกาเก่าสองข้อนี้เก็บไว้ใช้คิด "ยอดตกเบิก" เท่านั้น (opts.legacy) — จ่ายย้อนหลังตั้งแต่ time ก.ค. 2026 (user 2026-10-20)
+//   ยอดตกเบิก = คิดไฟล์เดียวกันด้วยกติกาใหม่ − กติกาเก่า → ได้เฉพาะส่วนที่เพิ่มจากสองข้อนี้ ไม่ปนกับกติกาอื่นหรือยอดที่แก้มือ
+const LEGACY_NO_PAY_PAIR = ["NOR","F01"];
+const LEGACY_PROCESS_NO_PAY = "N03";
+const isProcessEmp = emp => !!emp && [emp.division, emp.department, emp.section, emp.team, emp.position]
+  .some(v => String(v ?? "").toLowerCase().includes("process"));
 
 // มีค่าจริงในเซลล์ไหม (ไม่ใช่ NaT/ว่าง) — 0 ถือว่ามีค่า (เช่น เวลาเที่ยงคืน = 0.0)
 const has = v => v !== "" && v !== null && v !== undefined;
@@ -250,7 +256,9 @@ function dayStatus(row, cols) {
 // ส่งไม่มา = ใช้ค่าเริ่มต้นในโค้ด (เผื่อยังไม่ได้สร้างตาราง)
 // approvedNoWork = เซ็ตของ "รหัส||เดือน" ที่ HR กดอนุมัติให้จ่ายทั้งที่ไม่มีวันทำงานจริง (ลาป่วยยาว)
 export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap = SOLO_RATE,
-                                      approvedNoWork = new Set()) {
+                                      approvedNoWork = new Set(), opts = {}) {
+  const legacy = !!opts.legacy;   // กติกาก่อน 2026-10-20 — ใช้คิดยอดตกเบิกเท่านั้น
+  const psoRules = legacy ? PAY_ON_SHIFT_ONLY.filter(p => !p.since) : PAY_ON_SHIFT_ONLY;
   const unknown = new Map(); // รหัสกะที่ไม่รู้จัก -> จำนวนวัน/คน (ทำให้นับตระกูลขาด ต้องเตือน)
   const clipped = [];        // คนที่มีวันนอกช่วงการจ้างถูกตัดออก (ต้องขึ้นเตือนให้ตรวจ)
   const sickRuns = [];       // คนที่ลาป่วยติดต่อกันหลายวัน (ให้ HR ตรวจก่อนจ่าย)
@@ -367,12 +375,13 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
     const soloCode = codesUsed.size === 1 ? [...codesUsed][0] : null;
     const soloRate = soloCode ? (soloMap[soloCode] || 0) : 0;
     // คู่กะที่จ่ายเฉพาะวันที่เข้ากะ (NOR+N03 / กะเช้า+F08 / NOR+F01) — ดูก่อน เพราะบางคู่กำหนดอัตราเอง
-    const pso = PAY_ON_SHIFT_ONLY.find(p => p.withFamily
+    const pso = psoRules.find(p => p.withFamily
       ? codesUsed.has(p.payCode) && codesUsed.size > 1 && [...codesUsed].every(c => c === p.payCode || famMap[c] === p.withFamily)
       : p.codes.length === codesUsed.size && p.codes.every(c => codesUsed.has(c)));
 
     const baseRate = famUsed.size >= 3 ? 1800 : famUsed.size === 2 ? 1200 : soloRate;
-    const shiftRate = pso?.rate || baseRate;
+    const legacyNoPay = legacy && LEGACY_NO_PAY_PAIR.length === codesUsed.size && LEGACY_NO_PAY_PAIR.every(c => codesUsed.has(c));
+    const shiftRate = legacyNoPay ? 0 : pso?.rate || baseRate;
     const solo = !pso?.rate && famUsed.size <= 1 && soloRate > 0;  // ได้เพราะกฎกะเดี่ยว ไม่ใช่เพราะหมุนกะ
 
     // ต้องมีวันทำงานจริงอย่างน้อย 1 วัน — ลา/หยุดทั้งเดือน (เช่น ลาป่วยยาว) ไม่ได้ค่ากะ
@@ -399,7 +408,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 
     const earns = d => PAYABLE.has(d.status)
       && (!d.unpaidSick || approved)                     // ลาป่วยยาว -> ไม่จ่าย เว้นแต่ HR อนุมัติ
-      && (!payShiftDaysOnly || d.code === pso.payCode);
+      && (!payShiftDaysOnly || d.code === pso.payCode)
+      && !(legacy && d.code === LEGACY_PROCESS_NO_PAY && isProcessEmp(emp));
 
     // Pass 2: pro-rate รายวัน + เก็บ row-level
     // อัตรารายวัน = อัตราเดือน ÷ 30 คงที่ (ไม่ใช่วันจริงในเดือน)
@@ -462,7 +472,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
       wholeMonth,
       clippedDays: outOfPeriod.length, sickDays, maxSickRun, unpaidSickDays,
       suspendDays, workedDays, noWorkedDay,
-      shiftOnly: payShiftDaysOnly, shiftOnlyFull, shiftPayCode: pso?.payCode || "", codeMix, approvedNoWork: approved,
+      shiftOnly: payShiftDaysOnly, shiftOnlyFull, shiftPayCode: pso?.payCode || "", codeMix, codeDays, isProcess: isProcessEmp(emp), approvedNoWork: approved,
       payDays, noPayDays, checkDays, absentDays,
       total: round2(total),
       manual: hasManualRow ? round2(manual) : null,
@@ -581,6 +591,7 @@ export function renderShiftAllowance() {
           <label for="saKeyFile" class="btn btn-secondary" id="saKeyBtn" style="cursor:pointer;display:none;">📋 เทียบกับไฟล์เฉลย</label>
           <button class="btn btn-secondary" id="saSaveBtn" onclick="window._saSave()" style="display:none;">💾 บันทึกเดือนนี้</button>
           <button class="btn btn-gold" id="saExportBtn" onclick="window._saExport()" style="display:none;">📤 Export</button>
+          <button class="btn btn-secondary" id="saBackBtn" onclick="window._saBackPay()" style="display:none;" title="ส่วนที่เพิ่มจากกติกา 20 ต.ค. 2026 (NOR+F01 / Process วัน N03) — ใช้จ่ายย้อนหลังตั้งแต่ time ก.ค.">💸 ยอดตกเบิก</button>
         </div>
       </div>
       <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-top:10px;">
@@ -793,6 +804,52 @@ export function renderShiftAllowance() {
     toast(`บันทึกแล้ว ${rows.length} รายการ (เดือน ${months})${edited.length?` · แก้มือ ${edited.length}`:""}`, "success");
   };
 
+  // ===== ยอดตกเบิก (user 2026-10-20): NOR+F01 จ่ายแบบ N03 + สาย Process ได้วัน N03 — ย้อนถึง time ก.ค. 2026 =====
+  // คิดไฟล์เดียวกันสองรอบ (กติกาใหม่ / กติกาเก่า) ส่วนต่าง = ยอดที่ต้องจ่ายเพิ่ม · ไม่บันทึกอะไรลง DB
+  window._saBackPay = async () => {
+    if (!lastRows) { toast("อัปโหลดไฟล์ลงเวลาก่อน","error"); return; }
+    const famMap = await ensureShiftCodes();
+    const empMap = new Map(allEmployees.map(e => [String(e.emp_code||"").trim(), e]));
+    const oldRes = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork, { legacy:true });
+    const oldBy = new Map(oldRes.summary.map(r => [r.Employee_ID + "||" + r.month, r]));
+    const months = [...new Set(lastResult.summary.map(r => r.month))];
+    const { data: saved } = await supabase.from("shift_allowance").select("emp_code,month,total,manual_total").in("month", months);
+    const savedBy = new Map((saved || []).map(r => [r.emp_code + "||" + r.month, r]));
+    const list = lastResult.summary.map(r => {
+      const o = oldBy.get(r.Employee_ID + "||" + r.month), d = round2(r.total - (o?.total || 0));
+      if (!(d > 0.005)) return null;
+      const sv = savedBy.get(r.Employee_ID + "||" + r.month);
+      const why = r.shiftPayCode === "F01" ? `NOR+F01 · F01 ${r.codeDays?.F01 || 0} วัน${r.shiftOnlyFull ? " (เต็มเดือน)" : ""}`
+        : r.isProcess ? `Process · N03 ${r.codeDays?.N03 || 0} วัน` : "อื่น ๆ";
+      return { r, old: o?.total || 0, d, why, saved: sv ? (sv.manual_total ?? sv.total) : null, manual: sv?.manual_total != null };
+    }).filter(Boolean).sort((a, b) => a.r.month.localeCompare(b.r.month) || a.r.Employee_ID.localeCompare(b.r.Employee_ID));
+    const sum = round2(list.reduce((s, x) => s + x.d, 0));
+    const box = document.getElementById("saBackBox") || document.getElementById("saResults").insertAdjacentElement("afterbegin", Object.assign(document.createElement("div"), { id:"saBackBox" }));
+    const B = n => Number(n||0).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
+    box.innerHTML = `<div class="card mb-4"><div class="card-body">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+        <div><b>💸 ยอดตกเบิกเดือน ${esc(months.join(", "))}</b> — ${list.length} คน · รวม <b>${B(sum)}</b> บาท
+          <div class="text-muted" style="font-size:12px;">ส่วนที่เพิ่มจากกติกาใหม่ 20 ต.ค. 2026 เท่านั้น (NOR+F01 จ่ายแบบ N03 · สาย Process ได้วัน N03) — คิดจากไฟล์นี้ด้วยกติกาใหม่ลบกติกาเก่า ไม่ปนกับกติกาอื่นหรือยอดที่แก้มือ</div></div>
+        <div style="display:flex;gap:6px;">${list.length ? `<button class="btn btn-sm btn-gold" onclick="window._saBackExport()">📤 Excel ยอดตกเบิก</button>` : ""}
+          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('saBackBox').remove()">ปิด</button></div></div>
+      ${list.some(x => x.manual) ? `<div style="margin-top:8px;font-size:12px;color:#b45309;">⚠️ มี ${list.filter(x=>x.manual).length} คนที่เดือนนั้นเคยแก้ยอดมือไว้ — ตรวจว่าไม่ได้จ่ายส่วนนี้ไปแล้ว</div>` : ""}
+      ${list.length ? `<div class="table-wrap" style="margin-top:10px;max-height:420px;overflow:auto;"><table class="table"><thead><tr>
+        <th>รหัส</th><th>ชื่อ</th><th>เดือน</th><th>เหตุผล</th><th class="text-right">กติกาเก่า</th><th class="text-right">กติกาใหม่</th><th class="text-right">ตกเบิก</th><th class="text-right">ยอดที่บันทึกไว้</th></tr></thead><tbody>
+        ${list.map(x => `<tr><td><b>${esc(x.r.Employee_ID)}</b></td><td>${esc(x.r.Employee_Name||"")}</td><td>${esc(x.r.month)}</td><td>${esc(x.why)}</td>
+          <td class="text-right">${B(x.old)}</td><td class="text-right">${B(x.r.total)}</td><td class="text-right"><b>${B(x.d)}</b></td>
+          <td class="text-right">${x.saved == null ? '<span class="text-muted">ยังไม่บันทึก</span>' : B(x.saved) + (x.manual ? ' <span class="badge badge-gold">แก้มือ</span>' : "")}</td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="text-muted" style="margin-top:8px;">เดือนนี้ไม่มีใครได้เพิ่มจากกติกาใหม่</div>`}
+    </div></div>`;
+    window._saBackExport = () => {
+      const ws = window.XLSX.utils.json_to_sheet(list.map(x => ({ Employee_ID:x.r.Employee_ID, Employee_Name:x.r.Employee_Name, Department:x.r.Department,
+        เดือน_time:x.r.month, เหตุผล:x.why, กติกาเก่า:x.old, กติกาใหม่:x.r.total, ยอดตกเบิก:x.d,
+        ยอดที่บันทึกไว้:x.saved, แก้มือ:x.manual ? "ใช่" : "" })));
+      const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "ยอดตกเบิกค่ากะ");
+      window.XLSX.writeFile(wb, `shift_backpay_${months.join("_")}.xlsx`);
+    };
+    box.scrollIntoView({ behavior:"smooth", block:"start" });
+  };
+
   window._saExport = () => {
     if (!lastResult || !window.XLSX) { toast("ยังไม่มีข้อมูลให้ export","error"); return; }
     const s = lastResult.summary.map(r => ({
@@ -828,6 +885,7 @@ function renderResults() {
   document.getElementById("saExportBtn").style.display = "inline-flex";
   document.getElementById("saSaveBtn").style.display = "inline-flex";
   document.getElementById("saKeyBtn").style.display = "inline-flex";
+  document.getElementById("saBackBtn").style.display = "inline-flex";
   const all = lastResult.summary;
   const cmp = lastResult.hasManual;                       // ไฟล์มีคอลัมน์เฉลยมาด้วยไหม
   const isBad = r => r.diff !== null && Math.abs(r.diff) > MATCH_TOL;
