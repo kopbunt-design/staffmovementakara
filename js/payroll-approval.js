@@ -156,7 +156,7 @@ const todayYM = () => new Date().toISOString().substring(0, 7);
 const blankForm = () => ({
   period: todayYM(), payDate: "", staffType: "",
   start:"", joiner:"", leaver:"", end:"",
-  ledDirectTx:"", ledDirectAmt:"",
+  ledDirectTx:"", ledDirectAmt:"", unpaidTx:"",
   note:"",
   sig1Name:"Mr. Suphachoke Phanthumitr", sig1Title:"Human Resources Manager",
   sig2Name:"Mr. Bob Kennedy",           sig2Title:"General Manager – Operations",
@@ -168,6 +168,8 @@ const forms = {
                deduct:[{ label:"Withholding Tax", amount:"" }, { label:"Legal Execution", amount:"" }] },
 };
 const F = () => forms[mode];
+// คนลาไม่รับค่าจ้าง = ยอดสุทธิ 0 อยู่ในรอบจ่ายแต่ไม่มีเงินโอน (user 2026-10-21) — ใบประจำตั้งต้นจากไฟล์ แก้ทับได้
+const unpaidOf = f => f.unpaidTx !== "" ? f.unpaidTx : (f === forms.permanent && src ? String(src.zeroNet || 0) : "");
 
 // ---------- ใบลูกจ้างสัญญา: ดึงยอดจากงวดค่าจ้างเหมา (/contract) ของเดือนเดียวกัน (user 2026-10-20) ----------
 // ยอดรวมเท่านั้น (ไม่เก็บรายคน) · HR ยังแก้ทับได้ทุกช่อง · ดึงใหม่อัตโนมัติเมื่อเปิดใบนี้/เปลี่ยนงวด
@@ -314,6 +316,8 @@ function permanentUI() {
         <input type="number" min="0" class="form-input" value="${esc(f.ledDirectTx)}" onchange="window._paSet('ledDirectTx',this.value)"></div>
       <div class="form-group"><label class="form-label">หักจ่ายตรงบังคับคดี — จำนวนเงิน</label>
         <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.ledDirectAmt)}" onchange="window._paSet('ledDirectAmt',this.value)"></div>
+      <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง (ยอดสุทธิ 0 ไม่ต้องโอน) — จำนวนคน</label>
+        <input type="number" min="0" class="form-input" value="${esc(unpaidOf(f))}" placeholder="0" onchange="window._paSet('unpaidTx',this.value)"></div>
     </div>
     <div class="form-group mt-2"><label class="form-label">หมายเหตุท้ายใบ</label>
       <textarea class="form-input" rows="2" onchange="window._paSet('note',this.value)"
@@ -399,6 +403,8 @@ function contractUI() {
         <input type="number" min="0" class="form-input" value="${esc(f.ledDirectTx)}" onchange="window._paSet('ledDirectTx',this.value)"></div>
       <div class="form-group"><label class="form-label">หักจ่ายตรงบังคับคดี — จำนวนเงิน</label>
         <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.ledDirectAmt)}" onchange="window._paSet('ledDirectAmt',this.value)"></div>
+      <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง (ยอดสุทธิ 0 ไม่ต้องโอน) — จำนวนคน</label>
+        <input type="number" min="0" class="form-input" value="${esc(unpaidOf(f))}" placeholder="0" onchange="window._paSet('unpaidTx',this.value)"></div>
     </div>
     <div class="form-group mt-2"><label class="form-label">หมายเหตุท้ายใบ</label>
       <textarea class="form-input" rows="2" onchange="window._paSet('note',this.value)">${esc(f.note)}</textarea></div>
@@ -538,7 +544,8 @@ function buildDoc() {
   // เหลือเป็นจำนวนรายการที่โอนผ่านธนาคาร (ส.ค. 2026: 489 - 1 = 488 · ลูกจ้างสัญญา: 9 - 1 = 8)
   const processTx  = payees;
   const processAmt = round2(net + ledAmt);
-  const transferTx = Math.max(0, payees - ledTx);
+  const unpaidTx = Number(unpaidOf(f)) || 0;
+  const transferTx = Math.max(0, payees - ledTx - unpaidTx);
 
   // สองฝั่งต้องสูงเท่ากัน เติมแถวว่างให้ฝั่งที่สั้นกว่า — ใบจริงก็เว้นบรรทัดว่างไว้แบบนี้
   // ขั้นต่ำ 9 แถวเพื่อให้ใบลูกจ้างสัญญา (มีแค่ 1-2 รายการ) เต็มหน้าเหมือนใบพนักงานประจำ
@@ -598,6 +605,7 @@ function buildDoc() {
     <tr><th>Description</th><th class="c">Transactions</th><th class="c">Amount (THB)</th></tr>
     <tr><td>Total Payroll Processing</td><td class="c">${fmtI(processTx)}</td><td class="n">${fmt(processAmt)}</td></tr>
     <tr><td>Less: Legal Execution Direct Pay</td><td class="c">${ledTx ? fmtI(ledTx) : "—"}</td><td class="n">${ledAmt ? fmt(ledAmt) : "—"}</td></tr>
+    <tr><td>Less: Unpaid Leave (Zero Net Pay)</td><td class="c">${unpaidTx ? fmtI(unpaidTx) : "—"}</td><td class="n">${unpaidTx ? fmt(0) : "—"}</td></tr>
     <tr class="tot"><td>Net Transfer via K-CASH Connect Plus</td><td class="c">${fmtI(transferTx)}</td><td class="n">${fmt(net)}</td></tr>
   </table>
 
