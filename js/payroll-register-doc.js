@@ -295,7 +295,8 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 .sig-role{font-size:6pt;font-weight:700;color:#101828;letter-spacing:.7pt;}
 .sig-dept{font-size:6.4pt;color:#B7791F;}
 .sig-space{height:8mm;position:relative;}
-.sig-space img{position:absolute;left:50%;transform:translateX(-50%);bottom:-1mm;height:9mm;max-width:60%;object-fit:contain;object-position:center bottom;mix-blend-mode:multiply;}   /* กึ่งกลางเส้น (user 2026-10-21) */
+/* ให้ดูเหมือนเซ็นมือจริงบนกระดาษ (ตัวอย่างที่ user ส่ง 2026-10-21): ใหญ่ เริ่มเยื้องจากซ้ายเล็กน้อย หมึกทับเส้นลงไปนิดหนึ่ง */
+.sig-space img{position:absolute;left:12%;bottom:-3mm;height:13mm;max-width:70%;object-fit:contain;object-position:left bottom;mix-blend-mode:multiply;z-index:1;}
 .sig-rule{height:.5pt;background:#101828;}
 .sig-name{font-size:7.4pt;font-weight:600;margin-top:1.4mm;}
 .sig-title{font-size:6.8pt;color:#667085;}
