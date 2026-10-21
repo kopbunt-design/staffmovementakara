@@ -475,4 +475,12 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(r.unassigned.some(u => u.code === "C002"), true, "คนที่แผนกไม่ตรง รอเลือกแผนก");
 }
 
+// ---------- เบี้ยขยัน: ได้ทั้งระดับ S (Senior) และ O (Staff) ----------
+{
+  const HD = ["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","เงินเดือน","เบี้ยขยัน"];
+  const r = M.buildReport({ payroll:[HD, ["E1","a","ปกติ",100000,600], ["E2","b","ปกติ",30000,300]], employees:EMPS, month:"2026-10", assign:{} });
+  eq([r.get("senior","Perfect Attendance Allowance","Processing"), r.get("staff","Perfect Attendance Allowance","Processing")], [600, 300], "S2 → Senior · O1 → Staff");
+  eq(r.get("senior","Other Income","Processing"), 0, "เบี้ยขยันของ S ไม่ไปปนใน Other Income");
+}
+
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

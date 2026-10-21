@@ -184,7 +184,7 @@ export const COL_ALIAS = {
 };
 
 // บรรทัดที่แสดงในตารางของแต่ละกลุ่มพนักงาน
-export const SENIOR_LINES = ["Basic Salary","Shift Allowance","ERT Training","Other Income"];
+export const SENIOR_LINES = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","ERT Training","Other Income"];   // เบี้ยขยันได้ทั้ง O (Staff) และ S (Senior)
 export const STAFF_LINES  = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","Transportation","Overtime","ERT Training","Other Income"];
 const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", diligence:"Perfect Attendance Allowance", transport:"Transportation",
                   overtime:"Overtime", ert:"ERT Training", otherIncome:"Other Income" };
@@ -341,15 +341,15 @@ export function buildReport(input) {
     addHc(type, dept);
     add(type, "Basic Salary",    dept, round2(sum(row, "basic") - sum(row, "basicMinus")));
     add(type, "Shift Allowance", dept, sum(row, "shift"));
+    add(type, "Perfect Attendance Allowance", dept, sum(row, "diligence"));
     add(type, "ERT Training",    dept, sum(row, "ert"));
     add(type, "Other Income",    dept, sum(row, "otherIncome"));
     if (type === "staff") {
-      add(type, "Perfect Attendance Allowance", dept, sum(row, "diligence"));
       add(type, "Transportation", dept, sum(row, "transport"));
       add(type, "Overtime",       dept, sum(row, "overtime"));
     } else {
       // ระดับ Senior ไม่มีบรรทัดค่าเดินทาง/โอทีในรายงาน ถ้ามียอดต้องบอก ไม่ใช่ทิ้งเงียบ ๆ
-      const spill = sum(row, "transport") + sum(row, "overtime") + sum(row, "diligence");
+      const spill = sum(row, "transport") + sum(row, "overtime");
       if (spill) add(type, "Other Income", dept, spill);
     }
     // ค่าตอบแทนกรรมการของพนักงานที่เป็นกรรมการด้วย — นับแต่ยอด ไม่นับหัว

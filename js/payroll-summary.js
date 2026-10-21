@@ -35,6 +35,7 @@ const ROWS = [
   [10, "hc",  "Headcount", S_SENIOR],
   [11, "amt", "Basic Salary", S_SENIOR],
   [12, "amt", "Shift Allowance", S_SENIOR],
+  [0,  "amt", "Perfect Attendance Allowance", S_SENIOR],   // เบี้ยขยันระดับ S (ไม่มีในไฟล์ Excel แบบเก่า)
   [13, "amt", "ERT Training", S_SENIOR],
   [14, "amt", "Other Income", S_SENIOR],
   [15, "tot", "Total — Senior Staff", S_SENIOR],
@@ -312,7 +313,7 @@ function expenseBreakdown() {
     ["ค่าล่วงเวลา (OT)",       val(S_STAFF,  "Overtime", G)],
     ["ค่าเดินทาง",             val(S_STAFF,  "Transportation", G)],
     ["ค่ากะ",                  val(S_SENIOR, "Shift Allowance", G) + val(S_STAFF, "Shift Allowance", G)],
-    ["เบี้ยขยัน",              val(S_STAFF,  "Perfect Attendance Allowance", G)],
+    ["เบี้ยขยัน",              val(S_SENIOR, "Perfect Attendance Allowance", G) + val(S_STAFF, "Perfect Attendance Allowance", G)],
     ["ที่ปรึกษา",              val("CONSULTANTS — TECHNICAL", "Amount", G)],
     ["ลาพักร้อนคงเหลือ",       val("ANNUAL LEAVE (RESIGNED) & COMPENSATE", "Amount", G)],
     ["ลูกจ้างชั่วคราว",        val("CASUAL LABOUR", "Amount", G)],
