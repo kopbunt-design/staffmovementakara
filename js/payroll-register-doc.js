@@ -89,6 +89,10 @@ export function registerDoc(rep, month, signers, opts = {}) {
   const cols = n => `<colgroup><col class="c-item"><col class="c-code">${
     Array.from({ length:n }, () => `<col class="c-dep" style="width:${(61 / n).toFixed(3)}%">`).join("")}<col class="c-tot"></colgroup>`;
 
+  // ลายเซ็นผู้อนุมัติ (ช่องสุดท้าย) แปะมุมขวาล่างทุกหน้าแยกสายงาน — แบบอักษรย่อมุมหน้า Offer Letter (user 2026-10-21)
+  //   หน้าสรุปมีช่องลงนามเต็มอยู่แล้ว · ขึ้นเฉพาะเมื่อผู้อนุมัติลงนามแล้ว
+  const apr = signers[signers.length - 1];
+  const corner = apr?.sig ? `<img class="foot-sig" src="${esc(apr.sig)}" alt="" title="${esc(apr.name || "")}">` : "";
   const page = (title, depts) => `
     <div class="sheet">
       ${head(title)}
@@ -118,7 +122,7 @@ export function registerDoc(rep, month, signers, opts = {}) {
         </tbody>
       </table>
       <div class="flex"></div>
-      <div class="foot">${esc(title)}  ·  ${esc(monthLabel(month))}</div>
+      <div class="foot"><span>${esc(title)}  ·  ${esc(monthLabel(month))}</span>${corner}</div>
     </div>`;
 
   // รายการหักแยกรายแผนก — ต้นฉบับแสดงแบบนี้ในทุกคอลัมน์แผนก
@@ -271,7 +275,8 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 .sig-title{font-size:6.8pt;color:#667085;}
 .sig-date{font-size:6.8pt;color:#667085;margin-top:1.2mm;}
 
-.foot{font-size:6.4pt;color:#98A2B3;text-align:right;padding-top:2mm;border-top:.4pt solid #E4E7EC;}
+.foot{font-size:6.4pt;color:#98A2B3;text-align:right;padding-top:2mm;border-top:.4pt solid #E4E7EC;display:flex;justify-content:flex-end;align-items:flex-end;gap:4mm;}
+.foot-sig{height:8mm;max-width:30mm;object-fit:contain;object-position:right bottom;mix-blend-mode:multiply;margin:-3mm 0 -1mm;}
 .noprint{margin:6mm 0;text-align:center;}
 .noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #0F1C4D;background:#0F1C4D;color:#fff;border-radius:6px;}
 .noprint .tip{font-size:8pt;color:#667085;margin-top:3mm;}
