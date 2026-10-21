@@ -57,11 +57,13 @@ table.ln{width:100%;border-collapse:collapse}
 .sig .r{font-size:10.5px;font-weight:600;color:#4B5565}
 .sig .l{height:11mm;border-bottom:1px dashed #CED5DF;margin:1mm 4mm 1.2mm;display:flex;align-items:flex-end;justify-content:center}
 .sig .l img{max-height:12mm;max-width:100%;object-fit:contain}
-.sig .n{font-size:10.5px}.sig .d{font-size:10px;color:#6B7585}
+.sig .n{font-size:10.5px}.sig .n .bl{display:inline-block;width:36mm}.sig .d{font-size:10px;color:#6B7585}
 .ft{display:flex;justify-content:space-between;border-top:1px solid #E4E8EE;padding-top:1.5mm;font-size:9.5px;color:#9AA4B2}
 .wm{position:absolute;top:44%;left:0;right:0;text-align:center;font-size:64px;font-weight:700;color:rgba(180,35,24,.08);transform:rotate(-20deg);pointer-events:none}
 `;
 
+// ช่องชื่อที่ยังไม่มีคนลงนาม = วงเล็บเว้นที่ให้เขียน (user 2026-10-21: เดิมเหลือแค่ "()")
+const BLANK = `<span class="bl"></span>`;
 // inv: แถว exp_invoices · lines: บรรทัด · art: { prepared, reviewed, approved } = data URL ลายเซ็น
 export function invoiceHTML(inv, lines, art = {}) {
   const v = inv.vendor || {};
@@ -72,7 +74,7 @@ export function invoiceHTML(inv, lines, art = {}) {
   const signed = (who, role, nameFallback) => {
     const s = inv[who];
     return `<div class="sig"><div class="r">${role}</div><div class="l">${okImg(art[who]) ? `<img src="${art[who]}" alt="">` : ""}</div>
-      <div class="n">(${esc(s?.name || nameFallback || " ".repeat(28))})</div><div class="d">Date ${s?.at ? shortDate(s.at) : "____________"}</div></div>`;
+      <div class="n">(${s?.name || nameFallback ? esc(s?.name || nameFallback) : BLANK})</div><div class="d">Date ${s?.at ? shortDate(s.at) : "____________"}</div></div>`;
   };
   const wm = inv.status === "cancelled" ? `<div class="wm">CANCELLED</div>` : !inv.inv_no ? `<div class="wm" style="color:rgba(43,93,168,.08)">DRAFT</div>` : "";
   const pages = paginate(lines), N = pages.length;
@@ -101,7 +103,7 @@ export function invoiceHTML(inv, lines, art = {}) {
   <div class="sigs">
     ${signed("preparer", "Prepared by")}${signed("reviewer", "Reviewed by")}${signed("approver", "Approved by")}
     <div class="sig"><div class="r">Received by (Finance)</div><div class="l"></div>
-      <div class="n">(${esc(inv.received_name || " ".repeat(28))})</div><div class="d">Date ${inv.received_at && !inv.imported ? shortDate(inv.received_at) : "____________"}</div></div>
+      <div class="n">(${inv.received_name ? esc(inv.received_name) : BLANK})</div><div class="d">Date ${inv.received_at && !inv.imported ? shortDate(inv.received_at) : "____________"}</div></div>
   </div></div>`;
   return pages.map((pl, i) => {
     const last = i === N - 1;

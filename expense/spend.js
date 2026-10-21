@@ -496,6 +496,7 @@ function syncList(inv) {
 
 function submitFlow() {
   if (!S.me?.signature_path) { toast("ท่านยังไม่มีลายเซ็น (ใช้ลงช่อง Prepared by) — ตั้งที่หน้า ตั้งค่า", "err"); location.hash = "#/settings"; return; }
+  if (!needEnName()) return;
   const rev = S.signers.filter(s => s.can_review), app = S.signers.filter(s => s.can_approve);
   if (!rev.length || !app.length) { toast("ยังไม่มีผู้ตรวจ/ผู้อนุมัติที่ตั้งลายเซ็นและมีสิทธิ์ — ให้ Admin ตั้งสิทธิ์ “ตรวจ/อนุมัติใบแจ้งหนี้ HR”", "err"); return; }
   const opts = (list, name, def) => list.map((s, i) => `<label class="opt"><input type="radio" name="${name}" value="${s.user_id}" ${(def ? s.user_id === def : i === 0) ? "checked" : ""}>
@@ -517,7 +518,13 @@ function submitFlow() {
     drawEditor();
   };
 }
+// ชื่อใต้ลายเซ็นในใบเป็นภาษาอังกฤษทั้งหมด (user 2026-10-21) — ต้องตั้ง Name (EN) ก่อนลงนาม
+function needEnName() {
+  if (S.me?.name_en) return true;
+  toast("ตั้งชื่อภาษาอังกฤษ (Name EN) ที่หน้า ตั้งค่า ก่อน — ชื่อใต้ลายเซ็นในใบเป็นภาษาอังกฤษ", "err"); location.hash = "#/settings"; return false;
+}
 async function decide(ok) {
+  if (ok && !needEnName()) return;
   let reason = null;
   if (!ok) { reason = prompt("ส่งกลับให้ผู้จัดทำแก้ไข เพราะอะไร?", ""); if (reason === null) return; }
   const warn = ok ? unviewedWarning(E.av ? E.av.unviewed() : []) : "";
