@@ -424,6 +424,28 @@ export function buildReport(input) {
            headcount: (section, dept) => hc.get(`${section}|${dept}`) || 0 };
 }
 
+// ---------- ค่าจ้างเหมา 3% จากระบบ (/contract) แทนไฟล์ Consultant (user 2026-10-21) ----------
+// แปลงรายการในงวดค่าจ้างเหมา (contract_pay_item + contract_pay_adjust) เป็นตารางหน้าตาเดียวกับไฟล์ Consultant
+// แล้วส่งเข้า buildReport ทางเดิม — ไม่ต้องแก้แกนกลาง
+//   ID = เลขบัตรประชาชน (tax_id) เหมือนไฟล์เดิม → การลงแผนกที่เคยเลือกไว้ (assign) ใช้ต่อได้ · ไม่มีเลขบัตรใช้รหัสคนแทน
+//   หมวด: consultant → ที่ปรึกษา · contractor → ผู้รับเหมา · casual → แรงงานรายวัน
+//   Income = ค่าจ้าง + รายการได้เพิ่ม (ก่อนหักภาษี) · WHT 3% = ภาษีที่หัก · LED = รายการหักที่ชื่อมีคำว่า บังคับคดี / legal
+export const CONTRACT_CAT = { consultant:"CONSULTANTS — TECHNICAL", contractor:"CONTRACTORS — OTHER", casual:"CASUAL LABOUR" };
+export function contractToConsultantAoa(items = [], adjusts = []) {
+  const led = new Map();
+  for (const a of adjusts) if (a.kind === "deduction" && /บังคับคดี|legal/i.test(a.label || ""))
+    led.set(a.worker_id, (led.get(a.worker_id) || 0) + num(a.amount));
+  const head = ["ID Card No.","Name","Surname","ชื่อ","นามสกุล","Department/Position","Payment Type.","Income","WHT 3%","LED","Ref.1","Ref.2"];
+  const split = s => { const p = norm(s).split(" "); return [p[0] || "", p.slice(1).join(" ")]; };
+  return [head, ...items.map(i => {
+    const [en1, en2] = split(i.name_en), [th1, th2] = split(i.name_th);
+    const dept = norm(i.department);
+    return [norm(i.tax_id) || norm(i.worker_code), en1, en2, th1, th2, dept, i.worker_type === "casual" ? "Service" : "Fee",
+            round2(num(i.base_amount) + num(i.extra_amount)), round2(num(i.wht_amount)), round2(led.get(i.worker_id) || 0),
+            CONTRACT_CAT[i.worker_type] || "", ALL_DEPTS.includes(DEPT_ALIAS[dept] || dept) ? (DEPT_ALIAS[dept] || dept) : ""];
+  })];
+}
+
 // ---------- ยอดรวมของกลุ่มและทั้งบริษัท ----------
 export const groupTotal = (rep, section, line, group) =>
   round2(group.depts.reduce((s, d) => s + rep.get(section, line, d), 0));

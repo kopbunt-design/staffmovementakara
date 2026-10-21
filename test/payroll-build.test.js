@@ -10,7 +10,7 @@ const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 
 const SRC = read(`${ROOT}/js/payroll-build.js`).replace(/^export /gm, "");
 const M = new Function(`${SRC}
-  return { buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
+  return { contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
            SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE,
@@ -454,6 +454,25 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   const man = M.buildReport({ payroll:pay, employees:emp, month:"2026-09",
                               assign:{ AKR24011081:{ dept:"Mining", section:"senior" } } }).people[0];
   eq(man.dept, "Mining", "ผู้ใช้เลือกเองบนหน้าจอยังชนะเสมอ");
+}
+
+// ---------- ค่าจ้างเหมา 3% ดึงจากงวดในระบบแทนไฟล์ Consultant ----------
+{
+  const items = [
+    { worker_id:1, worker_code:"C001", tax_id:"1100000000001", name_th:"สมชาย ทดสอบ", name_en:"Somchai Test", worker_type:"consultant",
+      department:"Supply", base_amount:30000, extra_amount:2000, wht_amount:960 },
+    { worker_id:2, worker_code:"C002", tax_id:"", name_th:"สมหญิง ทดสอบ", name_en:"", worker_type:"casual",
+      department:"Senior Surveyor", base_amount:9000, extra_amount:0, wht_amount:270 },
+  ];
+  const adj = [{ worker_id:1, kind:"deduction", label:"หักบังคับคดี", amount:1500 }, { worker_id:1, kind:"deduction", label:"หักค่าอุปกรณ์", amount:300 }];
+  const aoa = M.contractToConsultantAoa(items, adj);
+  eq(aoa[1].slice(0, 5), ["1100000000001","Somchai","Test","สมชาย","ทดสอบ"], "ID = เลขบัตร · ชื่อแยกสองภาษา");
+  eq(aoa[1].slice(7), [32000, 960, 1500, "CONSULTANTS — TECHNICAL", "Supply"], "Income = ค่าจ้าง+ได้เพิ่ม · LED เฉพาะบังคับคดี · แผนกตรงรายงาน");
+  eq([aoa[2][0], aoa[2][10], aoa[2][11]], ["C002", "CASUAL LABOUR", ""], "ไม่มีเลขบัตรใช้รหัส · แผนกไม่ตรงรายงาน = ต้องเลือกเอง");
+  const r = M.buildReport({ payroll, employees:EMPS, month:"2026-08", consultants: aoa,
+    assign:{ DAY01:{ dept:"CRD", type:"casual" }, DAY02:{ dept:"CRD", type:"casual" } } });
+  eq([r.get("consultants","Amount","Supply"), r.ded.pnd3, r.ded.led >= 1500], [32000, 1230, true], "เข้ารายงานทางเดิม");
+  eq(r.unassigned.some(u => u.code === "C002"), true, "คนที่แผนกไม่ตรง รอเลือกแผนก");
 }
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

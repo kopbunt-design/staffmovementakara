@@ -37,6 +37,36 @@ const saveSigners = () => { try { localStorage.setItem(SIGN_KEY, JSON.stringify(
 // ---------- เซ็นออนไลน์ (sql/schema_payroll_sign.sql · user 2026-10-21) ----------
 // ส่งได้เฉพาะเดือนที่บันทึกในระบบแล้ว · ผู้ตรวจ/ผู้อนุมัติกดเซ็นจากลิงก์อีเมล (/payroll/sign.html) ไม่ต้อง login
 // อัปโหลดเดือนนั้นใหม่แล้วบันทึกทับ = ลายเซ็นทั้งหมดถูกล้าง (trigger ใน DB) ต้องส่งเซ็นใหม่
+// ค่าจ้างเหมา 3% ดึงจากงวดค่าจ้างเหมา (/contract) ของเดือนเดียวกันเอง ไม่ต้องอัปโหลดไฟล์ Consultant (user 2026-10-21)
+// ถ้าอัปโหลดไฟล์ Consultant มาเอง ใช้ไฟล์นั้นแทน · ส่งเข้า buildReport เป็น "ไฟล์" ที่สร้างจากระบบ (fromContract)
+let ctInfo = null;        // { month, status, count } | { month, none:true } | { month, err }
+async function pullContract() {
+  files = files.filter(f => !f.fromContract);
+  if (!month || files.some(f => f.role === "consultant")) { ctInfo = null; return rebuild(); }
+  try {
+    const { data: run, error } = await supabase.from("contract_pay_run").select("id,status").eq("period", month).maybeSingle();
+    if (error) throw error;
+    if (!run) { ctInfo = { month, none:true }; return rebuild(); }
+    const [it, ad] = await Promise.all([
+      supabase.from("contract_pay_item").select("worker_id,worker_code,tax_id,name_th,name_en,worker_type,department,base_amount,extra_amount,wht_amount").eq("run_id", run.id),
+      supabase.from("contract_pay_adjust").select("worker_id,kind,label,amount").eq("run_id", run.id),
+    ]);
+    if (it.error) throw it.error;
+    files.push({ name: `งวดค่าจ้างเหมา ${month} (ดึงจากระบบ)`, role: "consultant", fromContract: true,
+                 aoa: PB.contractToConsultantAoa(it.data || [], ad.data || []) });
+    ctInfo = { month, status: run.status, count: (it.data || []).length };
+  } catch (e) { ctInfo = { month, err: e.message || String(e) }; }
+  rebuild();
+}
+const CT_ST = { draft:"ร่าง", calculated:"คำนวณแล้ว", pending:"รออนุมัติ", approved:"อนุมัติแล้ว", locked:"ล็อกแล้ว" };
+function ctNote() {
+  if (!ctInfo || ctInfo.month !== month) return files.some(f => f.role === "consultant" && !f.fromContract)
+    ? `<div class="text-sm text-muted mt-2">ค่าจ้างเหมา 3%: ใช้ไฟล์ Consultant ที่อัปโหลด (ไม่ได้ดึงจากงวดค่าจ้างเหมา)</div>` : "";
+  if (ctInfo.err) return `<div class="pa-warn mt-2">ดึงงวดค่าจ้างเหมาไม่ได้: ${esc(ctInfo.err)} — อัปโหลดไฟล์ Consultant แทนได้</div>`;
+  if (ctInfo.none) return `<div class="pa-warn mt-2">ยังไม่มีงวดค่าจ้างเหมาเดือน ${esc(month)} — รายงานจะไม่มีที่ปรึกษา/จ้างเหมา (สร้างงวดที่ <a href="/contract/#/runs" style="text-decoration:underline">ค่าจ้างเหมา</a> หรืออัปโหลดไฟล์ Consultant)</div>`;
+  const final = ["approved","locked"].includes(ctInfo.status);
+  return `<div class="${final ? "text-sm text-muted" : "pa-warn"} mt-2">ค่าจ้างเหมา 3%: ดึงจากงวดค่าจ้างเหมา ${esc(month)} · ${ctInfo.count} คน · สถานะ <b>${esc(CT_ST[ctInfo.status] || ctInfo.status)}</b>${final ? "" : " — งวดยังไม่อนุมัติ ตัวเลขอาจเปลี่ยน เลือกงวดเงินเดือนใหม่อีกครั้งเพื่อดึงล่าสุด"}</div>`;
+}
 let savedNow = "";        // เดือนที่เพิ่งกดบันทึกในรอบนี้ (rep บนจอ = ข้อมูลที่อยู่ในระบบ)
 let sign = { month:"", row:null, img:{}, loading:false };   // payroll_sign ของเดือนที่เปิดอยู่ + รูปลายเซ็น (data URL)
 let prSignerList = null;  // [{user_id,name,title,email}] คนที่มีลายเซ็นในระบบ
@@ -148,9 +178,10 @@ function uploadCard() {
         <label class="form-label">งวดเงินเดือน</label>
         <input type="month" class="form-input" style="max-width:190px;" value="${esc(month)}"
                onchange="window._pbMonth(this.value)">
-      </div>`
+      </div>${ctNote()}`
     : `<div class="pb-empty mt-3">ยังไม่ได้เลือกไฟล์<br>
-        <span class="text-sm">ไฟล์ที่ต้องใช้: <b>BeforeProcessYDP</b> (เงินเดือนดิบ) และ <b>Consultant</b> (ที่ปรึกษา/จ้างเหมา)</span></div>`}
+        <span class="text-sm">ไฟล์ที่ต้องใช้: <b>BeforeProcessYDP</b> (เงินเดือนดิบ) — ค่าจ้างเหมา 3% ดึงจากงวดค่าจ้างเหมาเดือนเดียวกันให้เอง
+          (มีไฟล์ <b>Consultant</b> ก็อัปโหลดแทนได้)</span></div>`}
   </div>`;
 }
 
@@ -371,8 +402,8 @@ function summaryCard() {
 
 // ---------- event ----------
 function wire() {
-  window._pbMonth = v => { month = v; renderPayrollBuild(); };
-  window._pbClear = () => { files = []; rep = null; loadedFrom = ""; renderPayrollBuild(); };
+  window._pbMonth = v => { month = v; if (files.some(f => f.role === "payroll")) pullContract(); else renderPayrollBuild(); };
+  window._pbClear = () => { files = []; rep = null; loadedFrom = ""; ctInfo = null; renderPayrollBuild(); };
   window._pbAssign = (code, k, v) => {
     if (k === "dept" && !v) return window._pbUnassign(code);   // เลือกกลับเป็น "— เลือก —" = ล้าง
     assign[code] = { ...(assign[code] || {}), [k]: v };
@@ -404,8 +435,8 @@ function wire() {
       }
     }
     loadedFrom = "";
-    if (!month) month = guessMonth();
-    rebuild();
+    if (!month) month = guessMonth() || new Date().toISOString().slice(0, 7);
+    await pullContract();
   };
 
   window._pbSave = async () => {
