@@ -642,7 +642,7 @@ async function exportExcel() {
     const m = /^data:image\/(png|jpe?g);base64,(.+)$/.exec(sg.sig || "");
     if (!m) return;
     const id = wb.addImage({ base64: m[2], extension: m[1] === "png" ? "png" : "jpeg" });
-    s1.addImage(id, { tl: { col: i + 0.1, row: sl.number - 2.6 }, ext: { width: 120, height: 44 } });
+    s1.addImage(id, { tl: { col: i + 0.3, row: sl.number - 2.6 }, ext: { width: 120, height: 44 } });   // ประมาณกึ่งกลางช่อง
   });
   sl.eachCell(c => c.border = { bottom:{ style:"thin", color:{ argb:"FF101828" } } });
   const sn = s1.addRow(sgs.map(sg => sg.name || ""));
