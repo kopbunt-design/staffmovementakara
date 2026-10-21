@@ -23,6 +23,7 @@ const INCOME_LINES = [
   { key:"ot",        en:"Overtime Pay",                    cols:["โอที 1","โอที 1.5","โอที 2","โอที 2.5","โอที 3","โอทีเหมาชม.","ตกเบิกโอที"] },
   { key:"shift",     en:"Shift Allowance",                 cols:["ค่ากะปกติ","ค่ากะ","ค่ากะโอที","ค่ากะเกินโอที"] },
   { key:"food",      en:"Food Allowance",                  cols:["ค่าอาหารปกติ","ค่าอาหารโอที","ค่าอาหารเกินโอที"] },
+  { key:"diligence", en:"Perfect Attendance Allowance",    cols:["เบี้ยขยัน"] },   // เบี้ยขยัน (ระเบียบ 1 ก.ย. 2026 · user 2026-10-21)
   { key:"transport", en:"Transportation Allowance",        cols:["เงินทดแทนการจัดรถรับส่ง"] },
   { key:"leavepay",  en:"Unused AL / CL Payout",           cols:["เงินจ่ายคืนวันลา"] },
   { key:"bonus",     en:"Bonus",                           cols:["โบนัส"] },
