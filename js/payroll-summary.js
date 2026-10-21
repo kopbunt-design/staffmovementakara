@@ -42,6 +42,8 @@ const ROWS = [
   [17, "hc",  "Headcount", S_STAFF],
   [18, "amt", "Basic Salary", S_STAFF],
   [19, "amt", "Shift Allowance", S_STAFF],
+  // เบี้ยขยัน — ไม่มีในไฟล์ Excel แบบเก่า (แถว 0 = ไม่อ่านตอนนำเข้า) · มาจากหน้าสร้าง Payroll Register (user 2026-10-21)
+  [0,  "amt", "Perfect Attendance Allowance", S_STAFF],
   [20, "amt", "Transportation", S_STAFF],
   [21, "amt", "Overtime", S_STAFF],
   [22, "amt", "ERT Training", S_STAFF],
@@ -310,6 +312,7 @@ function expenseBreakdown() {
     ["ค่าล่วงเวลา (OT)",       val(S_STAFF,  "Overtime", G)],
     ["ค่าเดินทาง",             val(S_STAFF,  "Transportation", G)],
     ["ค่ากะ",                  val(S_SENIOR, "Shift Allowance", G) + val(S_STAFF, "Shift Allowance", G)],
+    ["เบี้ยขยัน",              val(S_STAFF,  "Perfect Attendance Allowance", G)],
     ["ที่ปรึกษา",              val("CONSULTANTS — TECHNICAL", "Amount", G)],
     ["ลาพักร้อนคงเหลือ",       val("ANNUAL LEAVE (RESIGNED) & COMPENSATE", "Amount", G)],
     ["ลูกจ้างชั่วคราว",        val("CASUAL LABOUR", "Amount", G)],

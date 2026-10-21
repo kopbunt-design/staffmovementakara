@@ -161,6 +161,7 @@ export const COL_ALIAS = {
   basicMinus:   ["ขาด","ลา","มาสาย","ออกก่อน","พักงาน"],   // หักออกจากเงินเดือน
   overtime:     ["โอที 1","โอที 1.5","โอที 2","โอที 2.5","โอที 3","โอทีเหมาชม.","ตกเบิกโอที"],
   shift:        ["ค่ากะ","ค่ากะปกติ","ค่ากะโอที","ค่ากะเกินโอที"],
+  diligence:    ["เบี้ยขยัน"],          // Perfect Attendance Allowance (ระเบียบ 1 ก.ย. 2026 · user 2026-10-21)
   transport:    ["ค่าเดินทาง","เงินทดแทนการจัดรถรับส่ง"],
   ert:          ["ค่าฝึกอบรม ERT"],
   director:     ["ค่าตอบแทนกรรมการ"],
@@ -184,8 +185,8 @@ export const COL_ALIAS = {
 
 // บรรทัดที่แสดงในตารางของแต่ละกลุ่มพนักงาน
 export const SENIOR_LINES = ["Basic Salary","Shift Allowance","ERT Training","Other Income"];
-export const STAFF_LINES  = ["Basic Salary","Shift Allowance","Transportation","Overtime","ERT Training","Other Income"];
-const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", transport:"Transportation",
+export const STAFF_LINES  = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","Transportation","Overtime","ERT Training","Other Income"];
+const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", diligence:"Perfect Attendance Allowance", transport:"Transportation",
                   overtime:"Overtime", ert:"ERT Training", otherIncome:"Other Income" };
 
 // ---------- ตัวช่วย ----------
@@ -343,11 +344,12 @@ export function buildReport(input) {
     add(type, "ERT Training",    dept, sum(row, "ert"));
     add(type, "Other Income",    dept, sum(row, "otherIncome"));
     if (type === "staff") {
+      add(type, "Perfect Attendance Allowance", dept, sum(row, "diligence"));
       add(type, "Transportation", dept, sum(row, "transport"));
       add(type, "Overtime",       dept, sum(row, "overtime"));
     } else {
       // ระดับ Senior ไม่มีบรรทัดค่าเดินทาง/โอทีในรายงาน ถ้ามียอดต้องบอก ไม่ใช่ทิ้งเงียบ ๆ
-      const spill = sum(row, "transport") + sum(row, "overtime");
+      const spill = sum(row, "transport") + sum(row, "overtime") + sum(row, "diligence");
       if (spill) add(type, "Other Income", dept, spill);
     }
     // ค่าตอบแทนกรรมการของพนักงานที่เป็นกรรมการด้วย — นับแต่ยอด ไม่นับหัว
