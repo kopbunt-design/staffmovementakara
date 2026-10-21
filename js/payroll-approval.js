@@ -156,7 +156,7 @@ const todayYM = () => new Date().toISOString().substring(0, 7);
 const blankForm = () => ({
   period: todayYM(), payDate: "", staffType: "",
   start:"", joiner:"", leaver:"", end:"",
-  ledDirectTx:"", ledDirectAmt:"", unpaidTx:"",
+  ledDirectTx:"", ledDirectAmt:"", unpaidTx:"", unpaidAmt:"",
   note:"",
   sig1Name:"Mr. Suphachoke Phanthumitr", sig1Title:"Human Resources Manager",
   sig2Name:"Mr. Bob Kennedy",           sig2Title:"General Manager – Operations",
@@ -318,6 +318,8 @@ function permanentUI() {
         <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.ledDirectAmt)}" onchange="window._paSet('ledDirectAmt',this.value)"></div>
       <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง (ยอดสุทธิ 0 ไม่ต้องโอน) — จำนวนคน</label>
         <input type="number" min="0" class="form-input" value="${esc(unpaidOf(f))}" placeholder="0" onchange="window._paSet('unpaidTx',this.value)"></div>
+      <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง — จำนวนเงินที่หัก</label>
+        <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.unpaidAmt)}" placeholder="0.00" onchange="window._paSet('unpaidAmt',this.value)"></div>
     </div>
     <div class="form-group mt-2"><label class="form-label">หมายเหตุท้ายใบ</label>
       <textarea class="form-input" rows="2" onchange="window._paSet('note',this.value)"
@@ -405,6 +407,8 @@ function contractUI() {
         <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.ledDirectAmt)}" onchange="window._paSet('ledDirectAmt',this.value)"></div>
       <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง (ยอดสุทธิ 0 ไม่ต้องโอน) — จำนวนคน</label>
         <input type="number" min="0" class="form-input" value="${esc(unpaidOf(f))}" placeholder="0" onchange="window._paSet('unpaidTx',this.value)"></div>
+      <div class="form-group"><label class="form-label">ลาไม่รับค่าจ้าง — จำนวนเงินที่หัก</label>
+        <input type="number" step="0.01" min="0" class="form-input" value="${esc(f.unpaidAmt)}" placeholder="0.00" onchange="window._paSet('unpaidAmt',this.value)"></div>
     </div>
     <div class="form-group mt-2"><label class="form-label">หมายเหตุท้ายใบ</label>
       <textarea class="form-input" rows="2" onchange="window._paSet('note',this.value)">${esc(f.note)}</textarea></div>
@@ -543,7 +547,9 @@ function buildDoc() {
   // ใบจริงนับแบบนี้: ตั้งต้นที่จำนวนรายการจ่ายทั้งหมด แล้ว "หัก" รายการที่จ่ายตรงบังคับคดีออก
   // เหลือเป็นจำนวนรายการที่โอนผ่านธนาคาร (ส.ค. 2026: 489 - 1 = 488 · ลูกจ้างสัญญา: 9 - 1 = 8)
   const processTx  = payees;
-  const processAmt = round2(net + ledAmt);
+  const unpaidAmt = round2(num(f.unpaidAmt));
+  // แบบเดียวกับบังคับคดี: ยอดประมวลผลรวม = โอนจริง + ยอดที่หักออกแต่ละรายการ → หักแล้วเหลือยอดโอนพอดี
+  const processAmt = round2(net + ledAmt + unpaidAmt);
   const unpaidTx = Number(unpaidOf(f)) || 0;
   const transferTx = Math.max(0, payees - ledTx - unpaidTx);
 
@@ -605,7 +611,7 @@ function buildDoc() {
     <tr><th>Description</th><th class="c">Transactions</th><th class="c">Amount (THB)</th></tr>
     <tr><td>Total Payroll Processing</td><td class="c">${fmtI(processTx)}</td><td class="n">${fmt(processAmt)}</td></tr>
     <tr><td>Less: Legal Execution Direct Pay</td><td class="c">${ledTx ? fmtI(ledTx) : "—"}</td><td class="n">${ledAmt ? fmt(ledAmt) : "—"}</td></tr>
-    <tr><td>Less: Zero Net Pay – Excess Leave</td><td class="c">${unpaidTx ? fmtI(unpaidTx) : "—"}</td><td class="n">${unpaidTx ? fmt(0) : "—"}</td></tr>
+    <tr><td>Less: Zero Net Pay – Excess Leave</td><td class="c">${unpaidTx ? fmtI(unpaidTx) : "—"}</td><td class="n">${unpaidAmt ? fmt(unpaidAmt) : unpaidTx ? fmt(0) : "—"}</td></tr>
     <tr class="tot"><td>Net Transfer via K-CASH Connect Plus</td><td class="c">${fmtI(transferTx)}</td><td class="n">${fmt(net)}</td></tr>
   </table>
 
