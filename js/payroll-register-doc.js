@@ -9,6 +9,32 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&
 export const fmt  = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
 export const fmtI = n => Number(n || 0).toLocaleString("en-US");
 // ประกันสังคมฝั่งนายจ้างรายแผนก — เดือนที่บันทึกไว้ก่อนเพิ่มบรรทัดนี้ มียอดรวมทั้งบริษัทแต่ไม่มียอดรายแผนก
+// ตัดขอบใส/ขาวรอบหมึกของรูปลายเซ็น — ไฟล์ลายเซ็นมีขอบใต้หมึกไม่เท่ากัน ถ้าไม่ตัด ลายเซ็นจะลอยเหนือเส้น (ใช้ในเบราว์เซอร์)
+export function cropInk(url) {
+  if (!url) return Promise.resolve(url);
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const W = im.naturalWidth, H = im.naturalHeight, c = document.createElement("canvas"); c.width = W; c.height = H;
+        const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+        const px = g.getImageData(0, 0, W, H).data;
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (px[i + 3] > 40 && px[i] + px[i + 1] + px[i + 2] < 600) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return res(url);
+        const m = Math.round((y1 - y0) * 0.04), cx = Math.max(0, x0 - m), cy = Math.max(0, y0 - m);
+        const cw = Math.min(W, x1 + m + 1) - cx, ch = Math.min(H, y1 + m + 1) - cy;
+        const o = document.createElement("canvas"); o.width = cw; o.height = ch;
+        o.getContext("2d").drawImage(c, cx, cy, cw, ch, 0, 0, cw, ch);
+        res(o.toDataURL("image/png"));
+      } catch { res(url); }
+    };
+    im.onerror = () => res(url); im.src = url;
+  });
+}
 export const ssoKnown = rep => !(rep.ded?.ssoEmployer) || [...rep.cells.keys()].some(k => k.startsWith("ded|ssoEmployer|"));
 
 // ============================================================================
@@ -269,7 +295,7 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 .sig-role{font-size:6pt;font-weight:700;color:#101828;letter-spacing:.7pt;}
 .sig-dept{font-size:6.4pt;color:#B7791F;}
 .sig-space{height:8mm;position:relative;}
-.sig-space img{position:absolute;left:0;bottom:-1mm;height:10mm;max-width:100%;object-fit:contain;object-position:left bottom;mix-blend-mode:multiply;}
+.sig-space img{position:absolute;left:2mm;bottom:-1mm;height:9mm;max-width:60%;object-fit:contain;object-position:left bottom;mix-blend-mode:multiply;}
 .sig-rule{height:.5pt;background:#101828;}
 .sig-name{font-size:7.4pt;font-weight:600;margin-top:1.4mm;}
 .sig-title{font-size:6.8pt;color:#667085;}
@@ -281,4 +307,9 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 .noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #0F1C4D;background:#0F1C4D;color:#fff;border-radius:6px;}
 .noprint .tip{font-size:8pt;color:#667085;margin-top:3mm;}
 @media print{.noprint{display:none;}}
+/* บนจอ (หน้าลิงก์ลงนาม / หน้าพรีวิว) — แสดงเป็นแผ่นกระดาษแยกกัน ไม่ให้หัวหน้าถัดไปชนช่องลงนาม */
+@media screen{
+  body{background:#E9ECF1;padding:6mm 0;}
+  .sheet{background:#fff;width:297mm;min-height:210mm;padding:10mm 11mm;margin:0 auto 6mm;box-shadow:0 1px 4px rgba(16,24,40,.12);}
+}
 `;

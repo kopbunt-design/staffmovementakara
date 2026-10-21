@@ -10,7 +10,7 @@ import { esc, toast, can, allEmployees, currentUser } from "./app.js";
 import { comboHTML, bindCombo } from "./combobox.js";
 import { supabase } from "./supabase-config.js";
 import * as PB from "./payroll-build.js";
-import { LINES, SECTION_LINES, valueOf as valueAt, costCodeOf, monthLabel, registerDoc, fmt, fmtI, ssoKnown } from "./payroll-register-doc.js";
+import { LINES, SECTION_LINES, valueOf as valueAt, costCodeOf, monthLabel, registerDoc, fmt, fmtI, ssoKnown, cropInk } from "./payroll-register-doc.js";
 
 const ASSIGN_KEY = "payroll_build_assign";
 
@@ -88,7 +88,7 @@ async function loadSign(force = false) {
       await Promise.all(Object.entries(x?.sig || {}).map(async ([k, u]) => {
         if (!u) return;
         const b = await fetch(u).then(r => r.ok ? r.blob() : null).catch(() => null);
-        if (b) sign.img[k] = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+        if (b) sign.img[k] = await cropInk(await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }));
       }));
     } catch {}
   }

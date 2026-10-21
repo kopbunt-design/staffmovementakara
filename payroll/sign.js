@@ -7,7 +7,7 @@
 // ============================================================================
 import { supabase } from "../js/supabase-config.js";
 import { repFromRows, grandExpense, netSalary, grandHeadcount } from "../js/payroll-build.js";
-import { registerDoc, monthLabel, fmt, fmtI } from "../js/payroll-register-doc.js";
+import { registerDoc, monthLabel, fmt, fmtI, cropInk } from "../js/payroll-register-doc.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const app = document.getElementById("app");
@@ -37,7 +37,7 @@ async function load() {
     await Promise.all(Object.entries(x?.sig || {}).map(async ([k, u]) => {
       if (!u) return;
       const b = await fetch(u).then(r => r.ok ? r.blob() : null).catch(() => null);
-      if (b) out[k] = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+      if (b) out[k] = await cropInk(await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }));
     }));
     SIG = out; drawDoc();
   } catch (_) { /* ไม่มีรูปก็ยังอ่านรายงานได้ */ }
