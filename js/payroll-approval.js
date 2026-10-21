@@ -605,7 +605,7 @@ function buildDoc() {
     <tr><th>Description</th><th class="c">Transactions</th><th class="c">Amount (THB)</th></tr>
     <tr><td>Total Payroll Processing</td><td class="c">${fmtI(processTx)}</td><td class="n">${fmt(processAmt)}</td></tr>
     <tr><td>Less: Legal Execution Direct Pay</td><td class="c">${ledTx ? fmtI(ledTx) : "—"}</td><td class="n">${ledAmt ? fmt(ledAmt) : "—"}</td></tr>
-    <tr><td>Less: Unpaid Leave (Zero Net Pay)</td><td class="c">${unpaidTx ? fmtI(unpaidTx) : "—"}</td><td class="n">${unpaidTx ? fmt(0) : "—"}</td></tr>
+    <tr><td>Less: Zero Net Pay – Excess Leave</td><td class="c">${unpaidTx ? fmtI(unpaidTx) : "—"}</td><td class="n">${unpaidTx ? fmt(0) : "—"}</td></tr>
     <tr class="tot"><td>Net Transfer via K-CASH Connect Plus</td><td class="c">${fmtI(transferTx)}</td><td class="n">${fmt(net)}</td></tr>
   </table>
 
