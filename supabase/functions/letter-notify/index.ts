@@ -16,6 +16,9 @@
 //   ec_token (ไม่ต้อง login) → หลังผู้แทนกดจากลิงก์: แจ้ง HR ผู้ส่ง (ลงนามครบ/ส่งกลับ) หรือแจ้งพยานที่ยังไม่ลงนาม
 //   ec_id + action = "ec_sign" + role = "signer" | "witness" → ผู้แทนได้ลิงก์ลงนามไม่ต้อง login · พยานได้ลิงก์เข้าระบบ (ส่งแยกกัน)
 //   exp_token + action = "exp_files" → ลิงก์ชั่วคราว (1 ชม.) ของไฟล์แนบ + รูปลายเซ็น ให้หน้า approve.html แสดงใบ A4 / เปิดไฟล์แนบ
+//   pr_month + action = "pr_request" (login) → คนของขั้นที่รออยู่ ได้ลิงก์ /payroll/sign.html?t=… — Payroll Register เซ็นออนไลน์
+//   pr_token (ไม่ต้อง login) → หลังกดเซ็นจากลิงก์: ขอขั้นถัดไป หรือแจ้งผู้จัดทำ (ลงนามครบ/ส่งกลับ) · แบบอีเมลอยู่ในโค้ดนี้ (ไม่ใช้ mail_templates)
+//   pr_token / pr_month + action = "pr_files" → ลิงก์ชั่วคราวของรูปลายเซ็นแต่ละขั้น (schema_payroll_sign.sql)
 //   ⚠️ หน้า approve.html เรียกโดยไม่ได้ login → ต้องปิด "Enforce JWT verification" ของฟังก์ชันนี้
 //      (ฟังก์ชันตรวจ session เองทุกทางอยู่แล้ว ยกเว้นทาง exp_token ที่ตรวจด้วย token แทน)
 //
@@ -47,12 +50,20 @@ const list = (s: string | null | undefined) =>
 const fill = (tpl: string, v: Record<string, string>, html: boolean) =>
   tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => html ? esc(v[k] ?? "") : (v[k] ?? ""));
 
+// รูปลายเซ็นของแต่ละขั้น (ลิงก์ชั่วคราว 1 ชม.) — คีย์ = เลขขั้น
+const prSigs = async (admin: any, steps: any[] | null) => {
+  const out: Record<string, string | null> = {};
+  for (const s of steps || []) out[String(s.step)] = s.signature_path
+    ? (await admin.storage.from("letter-assets").createSignedUrl(s.signature_path, 3600)).data?.signedUrl || null : null;
+  return out;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-    const { letter_id, fund_id, exp_id, exp_token, ec_id, ec_token, paf_id, paf_token, role, action: action_ } = await req.json();
+    const { letter_id, fund_id, exp_id, exp_token, ec_id, ec_token, paf_id, paf_token, pr_month, pr_token, role, action: action_ } = await req.json();
     let action = action_;
     // ผู้อนุมัติกดจากลิงก์ในเมล (ไม่ได้ login) — ยืนยันด้วย token ที่เพิ่งใช้ แทน session
     let caller: any = null, user: any = null;
@@ -75,7 +86,14 @@ Deno.serve(async (req) => {
       const sign = async (path?: string | null) => path ? (await admin.storage.from("letter-assets").createSignedUrl(path, 3600)).data?.signedUrl || null : null;
       return json({ sig: { signer: await sign(c?.signer?.signature_path), witness: await sign(c?.witness?.signature_path) } });
     }
-    if (!exp_token && !ec_token && !paf_token) {
+    // Payroll Register: รูปลายเซ็นของขั้นที่ลงนามแล้ว — ด้วย token (หน้า /payroll/sign.html) หรือ session ที่อ่านเดือนนั้นได้ (RLS)
+    if (pr_token && action === "pr_files") {
+      const { data: t } = await admin.from("payroll_sign_tokens").select("month,expires_at").eq("token", String(pr_token)).maybeSingle();
+      if (!t || new Date(t.expires_at) <= new Date()) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" }, 403);
+      const { data: r } = await admin.from("payroll_sign").select("steps").eq("month", t.month).single();
+      return json({ sig: await prSigs(admin, r?.steps) });
+    }
+    if (!exp_token && !ec_token && !paf_token && !pr_token) {
       const auth = req.headers.get("Authorization");
       if (!auth) return json({ error: "Missing authorization header" }, 401);
       // อ่านด้วยสิทธิ์ของผู้เรียก — ถ้าเขาอ่านหนังสือฉบับนี้ไม่ได้ (RLS) ก็ส่งเมลเรื่องนี้ไม่ได้
@@ -83,6 +101,11 @@ Deno.serve(async (req) => {
       const { data: { user: u }, error: uerr } = await caller.auth.getUser();
       if (uerr || !u) return json({ error: "Invalid session" }, 401);
       user = u;
+    }
+    if (pr_month && action === "pr_files") {
+      const { data: r, error } = await caller.from("payroll_sign").select("steps").eq("month", String(pr_month)).maybeSingle();
+      if (error || !r) return json({ error: "ไม่พบ หรือไม่มีสิทธิ์" }, 403);
+      return json({ sig: await prSigs(admin, r.steps) });
     }
     const { data: ms } = await admin.from("mail_settings").select("*").eq("id", 1).maybeSingle();
     const { data: sec } = await admin.from("mail_secret").select("client_secret").eq("id", 1).maybeSingle();
@@ -179,6 +202,45 @@ Deno.serve(async (req) => {
         requester: rq.name, approver: action === "ec_sign" ? (who === "signer" ? sg.name : wt.name) : me.name });
       if (!ok) return json({ sent: false, reason: "no_template" });
       if (link.includes("/econtract/sign.html")) { extraTo = []; cc = []; }   // ลิงก์ลงนามแทนบริษัทไปถึงผู้แทนคนเดียว
+    } else if (pr_month || pr_token) {
+      // Payroll Register — อ่านด้วยสิทธิ์ผู้เรียก (RLS: data.payroll.read) · หรือ token ที่เพิ่งใช้ (ภายใน 30 นาที)
+      let r: any = null;
+      if (pr_token) {
+        const { data: t } = await admin.from("payroll_sign_tokens").select("month,used_at").eq("token", String(pr_token)).maybeSingle();
+        if (!t?.used_at || Date.now() - new Date(t.used_at).getTime() > 30 * 60e3) return json({ error: "ลิงก์ไม่ถูกต้องหรือหมดเวลาแจ้งผล" }, 403);
+        r = (await admin.from("payroll_sign").select("*").eq("month", t.month).single()).data;
+        action = r?.status === "approved" ? "pr_approved" : r?.status === "rejected" ? "pr_rejected" : r?.status === "pending" ? "pr_request" : "";
+        if (!action) return json({ error: "รายงานไม่ได้อยู่ในสถานะที่ต้องแจ้ง" }, 400);
+      } else {
+        const { data, error } = await caller.from("payroll_sign").select("*").eq("month", String(pr_month)).single();
+        if (error || !data) return json({ error: "ไม่พบการส่งเซ็นเดือนนี้ หรือไม่มีสิทธิ์" }, 403);
+        r = data;
+      }
+      const steps: any[] = r.steps || [], cur = steps.find(x => x.step === r.cur_step) || {}, first = steps[0] || {};
+      const [y, m] = String(r.month).split("-").map(Number);
+      const period = `${["January","February","March","April","May","June","July","August","September","October","November","December"][m - 1]} ${y}`;
+      const box = (body: string) => `<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.6;color:#101828">${body}
+        <p style="color:#667085;font-size:12px;margin-top:18px">ส่งอัตโนมัติจากระบบ HR (Staff Movement) · อีเมลนี้ไม่มีตัวเลขเงินเดือน</p></div>`;
+      if (action === "pr_request") {
+        if (r.status !== "pending") return json({ error: "รายงานนี้ไม่ได้รอลงนาม" }, 400);
+        const { data: t } = await admin.from("payroll_sign_tokens").select("token,used_at,expires_at").eq("month", r.month).eq("step", r.cur_step).maybeSingle();
+        if (!t || t.used_at || new Date(t.expires_at) <= new Date()) return json({ error: "ลิงก์ของขั้นนี้หมดอายุ — กดออกลิงก์ใหม่ในระบบ" }, 400);
+        const link = `${appUrl}/payroll/sign.html?t=${t.token}`;
+        to = cur.email || "";
+        subject = `[Payroll Register] ${period} — ขอให้ลงนาม (${cur.role || "Step " + r.cur_step})`;
+        html = box(`<p>เรียน ${esc(cur.name)}</p>
+          <p>Payroll Register งวด <b>${esc(period)}</b> รอท่านลงนามในช่อง <b>${esc(cur.role || "")}</b><br>
+          Payroll Register for <b>${esc(period)}</b> is awaiting your signature as <b>${esc(cur.role || "")}</b>.</p>
+          <p><a href="${esc(link)}" style="display:inline-block;background:#1A3E9A;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">เปิดรายงานและลงนาม · Review &amp; sign</a></p>
+          <p style="font-size:12px;color:#667085">ลิงก์นี้สำหรับท่านคนเดียว ใช้ได้ครั้งเดียว ภายใน 14 วัน · ส่งโดย ${esc(first.name || "")}</p>`);
+      } else if (action === "pr_approved" || action === "pr_rejected") {
+        to = first.email || "";
+        const ok = action === "pr_approved";
+        subject = `[Payroll Register] ${period} — ${ok ? "ลงนามครบแล้ว" : "ถูกส่งกลับ"}`;
+        html = box(`<p>Payroll Register งวด <b>${esc(period)}</b> ${ok ? "ลงนามครบทุกช่องแล้ว — พิมพ์/ดาวน์โหลดฉบับที่มีลายเซ็นได้ในระบบ"
+          : `ถูกส่งกลับ เหตุผล: <b>${esc(r.reject_reason || "-")}</b>`}</p>
+          <p><a href="${esc(appUrl + "/")}">เข้าสู่ระบบ</a> → Payroll → สร้าง Payroll Register → เปิดเดือน ${esc(r.month)}</p>`);
+      } else return json({ error: "action ไม่ถูกต้อง" }, 400);
     } else if (paf_id || paf_token) {
       // Personnel Action Form — อ่านด้วยสิทธิ์ผู้เรียก (RLS: data.paf.write) · หรือ token ที่ผู้อนุมัติเพิ่งใช้ (ภายใน 30 นาที)
       let f: any = null;

@@ -10,6 +10,7 @@ import { esc, toast, can, allEmployees, currentUser } from "./app.js";
 import { comboHTML, bindCombo } from "./combobox.js";
 import { supabase } from "./supabase-config.js";
 import * as PB from "./payroll-build.js";
+import { LINES, SECTION_LINES, valueOf as valueAt, costCodeOf, monthLabel, registerDoc, fmt, fmtI, ssoKnown } from "./payroll-register-doc.js";
 
 const ASSIGN_KEY = "payroll_build_assign";
 
@@ -33,10 +34,45 @@ let signers = (() => {
 })();
 const saveSigners = () => { try { localStorage.setItem(SIGN_KEY, JSON.stringify(signers)); } catch {} };
 
+// ---------- เซ็นออนไลน์ (sql/schema_payroll_sign.sql · user 2026-10-21) ----------
+// ส่งได้เฉพาะเดือนที่บันทึกในระบบแล้ว · ผู้ตรวจ/ผู้อนุมัติกดเซ็นจากลิงก์อีเมล (/payroll/sign.html) ไม่ต้อง login
+// อัปโหลดเดือนนั้นใหม่แล้วบันทึกทับ = ลายเซ็นทั้งหมดถูกล้าง (trigger ใน DB) ต้องส่งเซ็นใหม่
+let savedNow = "";        // เดือนที่เพิ่งกดบันทึกในรอบนี้ (rep บนจอ = ข้อมูลที่อยู่ในระบบ)
+let sign = { month:"", row:null, img:{}, loading:false };   // payroll_sign ของเดือนที่เปิดอยู่ + รูปลายเซ็น (data URL)
+let prSignerList = null;  // [{user_id,name,title,email}] คนที่มีลายเซ็นในระบบ
+const enDate = iso => iso ? new Date(iso).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Bangkok" }) : "";
+const inSystem = () => month && (loadedFrom === month || savedNow === month);
+async function loadSign(force = false) {
+  if (!inSystem()) { sign = { month:"", row:null, img:{}, loading:false }; return; }
+  if (!force && (sign.month === month || sign.loading)) return;
+  sign = { month, row:null, img:{}, loading:true };
+  const [r, list] = await Promise.all([
+    supabase.from("payroll_sign").select("*").eq("month", month).maybeSingle(),
+    prSignerList ? { data: prSignerList } : supabase.rpc("pr_signers"),
+  ]);
+  prSignerList = list.data || [];
+  sign = { month, row: r.data || null, img:{}, loading:false };
+  if (sign.row?.steps?.some(x => x.signed_at)) {
+    try {
+      const { data: x } = await supabase.functions.invoke("letter-notify", { body: { pr_month: month, action: "pr_files" } });
+      await Promise.all(Object.entries(x?.sig || {}).map(async ([k, u]) => {
+        if (!u) return;
+        const b = await fetch(u).then(r => r.ok ? r.blob() : null).catch(() => null);
+        if (b) sign.img[k] = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+      }));
+    } catch {}
+  }
+  renderPayrollBuild();
+}
+// ผู้ลงนามที่ใช้ในเอกสาร: ส่งเซ็นออนไลน์แล้ว → ตามที่ส่ง (+รูปลายเซ็น/วันที่ของช่องที่เซ็นแล้ว) · ยังไม่ส่ง → ตามที่กรอกในหน้าจอ
+function docSigners() {
+  const r = sign.month === month ? sign.row : null;
+  if (!r || r.status === "rejected") return signers;
+  return r.steps.map(x => ({ role:x.role, dept:x.dept, name:x.name, title:x.title,
+    sig: x.signed_at ? sign.img[String(x.step)] || "" : "", date: x.signed_at ? enDate(x.signed_at) : "" }));
+}
 
-// ประกันสังคมฝั่งนายจ้างรายแผนก — เดือนที่บันทึกไว้ก่อนเพิ่มบรรทัดนี้ มียอดรวมทั้งบริษัทแต่ไม่มียอดรายแผนก
-// ถ้าแสดงเป็น 0 จะดูเหมือนไม่มีเงินสมทบ จึงขึ้น "—" แทน (เหมือนรายการหักของเดือนเก่า)
-const ssoKnown = rep => !(rep.ded?.ssoEmployer) || [...rep.cells.keys()].some(k => k.startsWith("ded|ssoEmployer|"));
+
 function load() {
   try { return JSON.parse(localStorage.getItem(ASSIGN_KEY)) || {}; } catch { return {}; }
 }
@@ -44,8 +80,6 @@ function save() {
   try { localStorage.setItem(ASSIGN_KEY, JSON.stringify(assign)); } catch {}
 }
 
-const fmt  = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
-const fmtI = n => Number(n || 0).toLocaleString("en-US");
 
 // ---------- หน้าเว็บ ----------
 async function loadSavedMonths() {
@@ -89,6 +123,7 @@ export function renderPayrollBuild() {
   </div>`;
   wire();
   bindFind();
+  if (rep && inSystem() && sign.month !== month && !sign.loading) loadSign();
 }
 
 function uploadCard() {
@@ -238,7 +273,42 @@ function signCard() {
              onchange="window._pbSigner(${i},'name',this.value)">
       <input class="form-input mt-2" value="${esc(sg.title || "")}" placeholder="ตำแหน่ง"
              onchange="window._pbSigner(${i},'title',this.value)">
+      ${pickable() ? (i === 0
+        ? `<div class="text-sm text-muted mt-2">เซ็นออนไลน์: ช่องนี้ = คุณ (ลงนามทันทีตอนกดส่ง)</div>`
+        : `<select class="form-input mt-2" onchange="window._pbSignUser(${i},this.value)">
+            <option value="">— เลือกผู้ลงนามในระบบ (เซ็นออนไลน์) —</option>
+            ${(prSignerList || []).map(u => `<option value="${esc(u.user_id)}" ${u.user_id === sg.user_id ? "selected" : ""}>${esc(u.name)}${u.title ? " · " + esc(u.title) : ""}</option>`).join("")}
+          </select>`) : ""}
     </div>`).join("")}</div>
+    ${onlineSignHTML()}
+  </div>`;
+}
+const pickable = () => inSystem() && sign.month === month && !sign.loading && (!sign.row || sign.row.status === "rejected");
+
+function onlineSignHTML() {
+  if (!month) return "";
+  if (!inSystem()) return `<div class="pa-warn mt-3">เซ็นออนไลน์: กด 💾 บันทึกเข้าระบบ ก่อน แล้วจึงส่งเซ็นได้ (ผู้ลงนามเห็นรายงานตามที่บันทึกไว้ในระบบ)</div>`;
+  if (sign.month !== month || sign.loading) return `<div class="text-sm text-muted mt-3">กำลังโหลดสถานะการเซ็นออนไลน์…</div>`;
+  const r = sign.row, w = can("data.payroll.write");
+  if (!r || r.status === "rejected") {
+    const me = (prSignerList || []).find(u => u.user_id === currentUser?.id);
+    return `<div class="pb-online mt-3">
+      ${r?.status === "rejected" ? `<div class="pa-bad" style="margin-bottom:10px;">↩ ถูกส่งกลับ: ${esc(r.reject_reason || "-")} — แก้แล้วบันทึกใหม่ หรือส่งเซ็นใหม่</div>` : ""}
+      <div class="text-sm">✍️ <b>เซ็นออนไลน์</b> — เลือกผู้ลงนามในระบบของแต่ละช่องด้านบน แล้วกดส่ง ระบบส่งลิงก์ให้ทีละคนตามลำดับ (กดเซ็นได้โดยไม่ต้อง login)</div>
+      ${me ? "" : `<div class="pa-warn mt-2">คุณยังไม่มีลายเซ็นในระบบ — ตั้งได้ที่ ออกหนังสือ HR → ตั้งค่า → ลายเซ็น (ใช้ชื่อภาษาอังกฤษในรายงาน)</div>`}
+      ${w ? `<button class="btn btn-primary btn-sm mt-2" onclick="window._pbSignSend()" ${me ? "" : "disabled"}>✍️ ส่งเซ็นออนไลน์</button>` : ""}
+    </div>`;
+  }
+  const row = x => `<div class="pb-step"><i>${x.signed_at ? "✓" : x.step === r.cur_step ? "●" : "○"}</i>
+    <b>${esc(x.role || "")}</b> ${esc(x.name || "")} <span class="text-muted">· ${x.signed_at ? esc(enDate(x.signed_at)) + (x.via === "email_link" ? " (ลิงก์อีเมล)" : "") : x.step === r.cur_step ? "รอลงนาม" : "—"}</span></div>`;
+  return `<div class="pb-online mt-3">
+    <div class="text-sm"><b>${r.status === "approved" ? "✅ ลงนามครบแล้ว — PDF/Excel มีลายเซ็นและวันที่" : "⏳ รอลงนาม"}</b></div>
+    ${r.steps.map(row).join("")}
+    ${w ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+      ${r.status === "pending" ? `<button class="btn btn-secondary btn-sm" onclick="window._pbSignMail()">✉️ ส่งอีเมลขอลงนาม</button>
+        <button class="btn btn-secondary btn-sm" onclick="window._pbSignCopy()">📋 คัดลอกลิงก์ขั้นที่รอ</button>
+        <button class="btn btn-secondary btn-sm" onclick="window._pbSignRenew()">🔄 ออกลิงก์ใหม่</button>` : ""}
+      <button class="btn btn-secondary btn-sm" onclick="window._pbSignCancel()">${r.status === "approved" ? "ล้างลายเซ็น" : "ยกเลิกการส่งเซ็น"}</button></div>` : ""}
   </div>`;
 }
 
@@ -359,6 +429,7 @@ function wire() {
       if (error) { toast("บันทึกรายละเอียดไม่สำเร็จ: " + error.message, "error"); return; }
     }
     toast(`บันทึกรายงานเดือน ${month} แล้ว (${rows.length} แถว)`, "success");
+    savedNow = month; sign.month = "";      // ลายเซ็นเดิมของเดือนนี้ถูกล้างแล้ว (ตัวเลขเปลี่ยน) — โหลดสถานะใหม่
     await loadSavedMonths();
     renderPayrollBuild();
   };
@@ -374,6 +445,47 @@ function wire() {
   };
 
   window._pbSigner = (i, k, v) => { signers[i] = { ...signers[i], [k]: v }; saveSigners(); };
+  window._pbSignUser = (i, uid) => {
+    const u = (prSignerList || []).find(x => x.user_id === uid);
+    signers[i] = { ...signers[i], user_id: uid || "", ...(u ? { name: u.name, title: u.title || signers[i].title } : {}) };
+    saveSigners(); renderPayrollBuild();
+  };
+  const signLink = t => `${location.origin}/payroll/sign.html?t=${t}`;
+  const mailNext = async () => {
+    const { data, error } = await supabase.functions.invoke("letter-notify", { body: { pr_month: month, action: "pr_request" } });
+    if (error || data?.error) return "ส่งอีเมลไม่สำเร็จ — กดคัดลอกลิงก์ส่งเองได้";
+    if (data?.sent) return `ส่งอีเมลถึง ${data.to} แล้ว`;
+    return data?.reason === "outlook_mode" ? "โหมด Outlook — กด 📋 คัดลอกลิงก์ แล้วส่งอีเมลเอง" : "ยังไม่ได้ตั้งค่าการส่งอีเมล — กด 📋 คัดลอกลิงก์ แล้วส่งเอง";
+  };
+  window._pbSignSend = async () => {
+    const steps = signers.map((sg, i) => ({ role: sg.role || "", dept: sg.dept || "", user_id: i === 0 ? currentUser?.id : sg.user_id }));
+    const miss = steps.findIndex(x => !x.user_id);
+    if (miss >= 0) { toast(`ช่องที่ ${miss + 1} ยังไม่ได้เลือกผู้ลงนามในระบบ`, "error"); return; }
+    if (!confirm(`ส่ง Payroll Register ${month} ให้ลงนามออนไลน์ ${steps.length} ช่อง?\nช่องแรก (คุณ) ลงนามทันที แล้วระบบส่งลิงก์ให้ช่องที่ 2`)) return;
+    const { error } = await supabase.rpc("pr_submit", { p_month: month, p_steps: steps });
+    if (error) { toast("ส่งเซ็นไม่สำเร็จ: " + error.message, "error"); return; }
+    toast(`ส่งเซ็นแล้ว · ${await mailNext()}`, "success");
+    await loadSign(true);
+  };
+  window._pbSignMail = async () => toast(await mailNext(), "info");
+  window._pbSignCopy = async () => {
+    const { data, error } = await supabase.rpc("pr_pending_link", { p_month: month });
+    if (error || !data) { toast("ไม่มีลิงก์ที่ใช้ได้ — กด 🔄 ออกลิงก์ใหม่", "error"); return; }
+    try { await navigator.clipboard.writeText(signLink(data)); toast("คัดลอกลิงก์แล้ว — ส่งให้ผู้ลงนามคนเดียว (ใช้ได้ครั้งเดียว 14 วัน)", "success"); }
+    catch { prompt("คัดลอกลิงก์นี้:", signLink(data)); }
+  };
+  window._pbSignRenew = async () => {
+    if (!confirm("ออกลิงก์ใหม่ให้ขั้นที่รออยู่? ลิงก์เดิมจะใช้ไม่ได้")) return;
+    const { error } = await supabase.rpc("pr_renew_link", { p_month: month });
+    if (error) { toast("ไม่สำเร็จ: " + error.message, "error"); return; }
+    toast("ออกลิงก์ใหม่แล้ว · " + await mailNext(), "success");
+  };
+  window._pbSignCancel = async () => {
+    if (!confirm(sign.row?.status === "approved" ? "ล้างลายเซ็นทั้งหมดของเดือนนี้?" : "ยกเลิกการส่งเซ็น? ลายเซ็นที่มีแล้วจะหายและลิงก์ใช้ไม่ได้")) return;
+    const { error } = await supabase.rpc("pr_cancel", { p_month: month });
+    if (error) { toast("ไม่สำเร็จ: " + error.message, "error"); return; }
+    await loadSign(true);
+  };
   window._pbSignAdd = () => { signers = [...signers, { role:"", dept:"", name:"", title:"" }]; saveSigners(); renderPayrollBuild(); };
   window._pbSignDel = i => { signers = signers.filter((_, j) => j !== i); saveSigners(); renderPayrollBuild(); };
   window._pbExcel = () => exportExcel();
@@ -408,55 +520,6 @@ function rebuild() {
   }
   renderPayrollBuild();
 }
-
-// ============================================================================
-// ไฟล์ออก
-// ============================================================================
-// โครงใหม่ตามที่ตกลง: ชีตสรุป 1 ชีต แล้วแยกชีตตามสายงาน
-// ของเดิมเป็นตารางเดียวกว้าง 27 คอลัมน์ ซึ่งพิมพ์ออกมาแล้วอ่านยาก
-const LINES = [
-  ["sec",  "SENIOR STAFF",   "senior"],
-  ["hc",   "Headcount",      "senior"],
-  ...PB.SENIOR_LINES.map(l => ["amt", l, "senior"]),
-  ["tot",  "Total — Senior Staff", "senior"],
-  ["sec",  "STAFF",          "staff"],
-  ["hc",   "Headcount",      "staff"],
-  ...PB.STAFF_LINES.map(l => ["amt", l, "staff"]),
-  ["tot",  "Total — Staff",  "staff"],
-  ["sec",  "ANNUAL LEAVE (RESIGNED) & COMPENSATE", "annualLeave"],
-  ["amt",  "Amount",         "annualLeave"],
-  ["sec",  "EMPLOYEES BONUS", "bonus"],
-  ["amt",  "Amount",         "bonus"],
-  ["sec",  "PROVISION FOR SEVERANCE PAYMENTS", "severance"],
-  ["amt",  "Amount",         "severance"],
-  ["sec",  "CONSULTANTS — TECHNICAL", "consultants"],
-  ["hc",   "Headcount",      "consultants"],
-  ["amt",  "Amount",         "consultants"],
-  ["sec",  "CONTRACTORS — OTHER", "contractors"],
-  ["hc",   "Headcount",      "contractors"],
-  ["amt",  "Amount",         "contractors"],
-  ["sec",  "CASUAL LABOUR",  "casual"],
-  ["hc",   "Headcount",      "casual"],
-  ["amt",  "Amount",         "casual"],
-  // กรรมการบริษัท — ไม่ใช่ทั้งที่ปรึกษาและจ้างเหมา จึงแยกเป็นหมวดของตัวเองต่อจากแรงงานรายวัน
-  ["sec",  "DIRECTOR'S FEE", "director"],
-  ["hc",   "Headcount",      "director"],
-  ["amt",  "Amount",         "director"],
-];
-const SECTION_LINES = { senior:PB.SENIOR_LINES, staff:PB.STAFF_LINES };
-
-// ค่าของช่องหนึ่งในตาราง (คืน null เมื่อบรรทัดนั้นไม่มีค่า เช่นแถวหัวข้อ)
-function valueOf(kind, line, section, dept) {
-  if (kind === "hc")  return rep.headcount(section, dept);
-  if (kind === "amt") return rep.get(section, line, dept);
-  if (kind === "tot") return (SECTION_LINES[section] || []).reduce((s, l) => s + rep.get(section, l, dept), 0);
-  return null;
-}
-const costCodeOf = (section, dept) => {
-  const i = PB.SECTION_KEYS.indexOf(section);
-  const c = PB.COST_CODES[dept]?.[i];
-  return c && c !== "n/a" ? c : "";
-};
 
 async function exportExcel() {
   if (!window.ExcelJS) { toast("กรุณารอโหลด library", "error"); return; }
@@ -536,18 +599,26 @@ async function exportExcel() {
 
   // ลายเซ็นท้ายชีตสรุป
   s1.addRow([]); s1.addRow([]);
-  const sr = s1.addRow(signers.map(sg => (sg.role || "").toUpperCase()));
+  const sgs = docSigners();
+  const sr = s1.addRow(sgs.map(sg => (sg.role || "").toUpperCase()));
   sr.eachCell(c => c.font = { bold:true, size:9 });
-  const sd = s1.addRow(signers.map(sg => sg.dept || ""));
+  const sd = s1.addRow(sgs.map(sg => sg.dept || ""));
   sd.eachCell(c => c.font = { size:9, color:{ argb:"FFB7791F" } });
   s1.addRow([]); s1.addRow([]);
-  const sl = s1.addRow(signers.map(() => ""));
+  const sl = s1.addRow(sgs.map(() => ""));
+  // ลายเซ็นออนไลน์ (ช่องที่เซ็นแล้ว) — วางรูปเหนือเส้นเซ็น
+  sgs.forEach((sg, i) => {
+    const m = /^data:image\/(png|jpe?g);base64,(.+)$/.exec(sg.sig || "");
+    if (!m) return;
+    const id = wb.addImage({ base64: m[2], extension: m[1] === "png" ? "png" : "jpeg" });
+    s1.addImage(id, { tl: { col: i + 0.1, row: sl.number - 2.6 }, ext: { width: 120, height: 44 } });
+  });
   sl.eachCell(c => c.border = { bottom:{ style:"thin", color:{ argb:"FF101828" } } });
-  const sn = s1.addRow(signers.map(sg => sg.name || ""));
+  const sn = s1.addRow(sgs.map(sg => sg.name || ""));
   sn.eachCell(c => c.font = { bold:true, size:10 });
-  const st = s1.addRow(signers.map(sg => sg.title || ""));
+  const st = s1.addRow(sgs.map(sg => sg.title || ""));
   st.eachCell(c => c.font = { size:9, color:{ argb:"FF667085" } });
-  const sdt = s1.addRow(signers.map(() => "Date  ______________________"));
+  const sdt = s1.addRow(sgs.map(sg => "Date  " + (sg.date || "______________________")));
   sdt.eachCell(c => c.font = { size:9, color:{ argb:"FF667085" } });
   setup(s1, 3);
 
@@ -576,7 +647,7 @@ async function exportExcel() {
         });
         continue;
       }
-      const vals = sh.depts.map(d => valueOf(kind, line, section, d));
+      const vals = sh.depts.map(d => valueAt(rep, kind, line, section, d));
       const sum = vals.reduce((a, b) => a + b, 0);
       const r = ws.addRow([line, kind === "hc" ? "persons" : "", ...vals, sum]);
       r.eachCell((c, i) => {
@@ -650,217 +721,6 @@ async function exportExcel() {
 function printReport() {
   const w = window.open("", "_blank");
   if (!w) { toast("เบราว์เซอร์บล็อกป็อปอัป — อนุญาตแล้วลองใหม่", "error"); return; }
-  const logo = new URL("assets/logo.png", location.href).href;
-
-  const sigBlock = `<div class="sigs">${signers.map(sg => `
-    <div class="sig">
-      <div class="sig-role">${esc((sg.role || "").toUpperCase())}</div>
-      ${sg.dept ? `<div class="sig-dept">${esc(sg.dept)}</div>` : ""}
-      <div class="sig-space"></div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${esc(sg.name || "")}</div>
-      <div class="sig-title">${esc(sg.title || "")}</div>
-      <div class="sig-date">Date&nbsp;&nbsp;______________________</div>
-    </div>`).join("")}</div>`;
-
-  const head = sub => `
-    <div class="top">
-      <div class="brand"><img class="logo" src="${logo}" alt="Akara Resources">
-        <div class="bw2">Chatree Gold Mine</div></div>
-      <div class="meta"><div class="m1">PAYROLL REGISTER</div>
-        <div class="m2">${esc(sub)}${month ? `  ·  ${esc(monthLabel(month))}` : ""}</div></div>
-    </div>
-    <div class="rule"></div>`;
-
-  // คอลัมน์แผนกกว้างเท่ากันทุกช่องเสมอ ไม่ว่าสายงานนั้นจะมีกี่แผนก
-  const cols = n => `<colgroup><col class="c-item"><col class="c-code">${
-    Array.from({ length:n }, () => `<col class="c-dep" style="width:${(61 / n).toFixed(3)}%">`).join("")}<col class="c-tot"></colgroup>`;
-
-  const page = (title, depts) => `
-    <div class="sheet">
-      ${head(title)}
-      <table class="grid">
-        ${cols(depts.length)}
-        <thead><tr><th class="l">ITEM</th><th class="c">COST CODE</th>
-          ${depts.map(d => `<th class="n">${esc(d)}</th>`).join("")}<th class="n">TOTAL</th></tr></thead>
-        <tbody>
-        ${LINES.map(([kind, line, section]) => {
-          if (kind === "sec") return `<tr class="sec"><td class="l">${esc(line)}</td><td></td>${
-            depts.map(d => `<td class="cc">${esc(costCodeOf(section, d))}</td>`).join("")}<td></td></tr>`;
-          const vals = depts.map(d => valueOf(kind, line, section, d));
-          const sum = vals.reduce((a, b) => a + b, 0);
-          const f = v => kind === "hc" ? fmtI(v) : fmt(v);
-          return `<tr class="${kind === "tot" ? "tot" : ""}"><td class="l">${esc(line)}</td>
-            <td class="c u">${kind === "hc" ? "persons" : ""}</td>
-            ${vals.map(v => `<td class="n">${f(v)}</td>`).join("")}
-            <td class="n b">${f(sum)}</td></tr>`;
-        }).join("")}
-        <tr class="hcrow"><td class="l">TOTAL HEADCOUNT</td><td class="c u">persons</td>
-          ${depts.map(d => `<td class="n">${fmtI(PB.deptHeadcount(rep, d))}</td>`).join("")}
-          <td class="n b">${fmtI(depts.reduce((t, d) => t + PB.deptHeadcount(rep, d), 0))}</td></tr>
-        <tr class="gt"><td class="l">GRAND TOTAL — PAYROLL EXPENSE</td><td></td>
-          ${depts.map(d => `<td class="n">${fmt(PB.deptTotal(rep, d))}</td>`).join("")}
-          <td class="n">${fmt(depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>
-        ${dedRows(depts)}
-        </tbody>
-      </table>
-      <div class="flex"></div>
-      <div class="foot">${esc(title)}  ·  ${esc(monthLabel(month))}</div>
-    </div>`;
-
-  // รายการหักแยกรายแผนก — ต้นฉบับแสดงแบบนี้ในทุกคอลัมน์แผนก
-  const dedRows = depts => {
-    const known = rep.dedByDept !== false;
-    const row = (label, code, fn, cls = "", knownIf = true) => {
-      const ok = known && knownIf;
-      const vals = depts.map(fn);
-      return `<tr class="${cls}"><td class="l">${esc(label)}</td><td class="cc c">${esc(code || "")}</td>
-        ${vals.map(v => `<td class="n">${ok ? fmt(v) : "—"}</td>`).join("")}
-        <td class="n b">${ok ? fmt(vals.reduce((a, b) => a + b, 0)) : "—"}</td></tr>`;
-    };
-    return `<tr class="sec"><td class="l" colspan="2">DEDUCTION — STAFF EXPENSES</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
-      ${PB.DED_LINES.map(([k, l]) => row(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k))).join("")}
-      ${row("GRAND TOTAL — DEDUCTION", "", d => PB.deptDeduction(rep, d), "tot")}
-      ${row("NET SALARY", "", d => PB.deptNet(rep, d), "gt")}
-      <tr class="sec"><td class="l" colspan="2">PROVIDENT FUND : K MASTER POOL FUND</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
-      ${row("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"))}
-      <tr class="sec"><td class="l" colspan="2">SOCIAL SECURITY</td>${depts.map(() => "<td></td>").join("")}<td></td></tr>
-      ${row("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), "", ssoKnown(rep))}`;
-  };
-
-  const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + PB.groupHc(rep, s, g), 0);
-  const summary = `
-    <div class="sheet">
-      ${head("Summary")}
-      <div class="kpis">
-        ${[["Total Payroll Expense", fmt(PB.grandExpense(rep))],
-           ["Total Deduction", fmt(PB.totalDeduction(rep))],
-           ["Net Salary", fmt(PB.netSalary(rep))],
-           ["Total Headcount (persons)", fmtI(PB.grandHeadcount(rep))]]
-          .map(([l, v], i) => `<div class="kpi ${i === 2 ? "kpi-net" : ""}"><div class="kl">${esc(l)}</div><div class="kv">${v}</div></div>`).join("")}
-      </div>
-      <div class="two">
-        <table class="grid">
-          <colgroup><col style="width:46%"><col style="width:22%"><col style="width:32%"></colgroup>
-          <thead><tr><th class="l">DIVISION</th><th class="n">HEADCOUNT (persons)</th><th class="n">PAYROLL EXPENSE (THB)</th></tr></thead>
-          <tbody>
-          ${PB.GROUPS.map(g => `<tr><td class="l">${esc(g.name)}</td><td class="n">${fmtI(hcOf(g))}</td>
-            <td class="n">${fmt(g.depts.reduce((t, d) => t + PB.deptTotal(rep, d), 0))}</td></tr>`).join("")}
-          ${PB.STANDALONE.map(d => `<tr><td class="l">${esc(d)}</td>
-            <td class="n">${fmtI(["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + rep.headcount(s, d), 0))}</td>
-            <td class="n">${fmt(PB.deptTotal(rep, d))}</td></tr>`).join("")}
-          <tr class="gt"><td class="l">GRAND TOTAL</td><td class="n">${fmtI(PB.grandHeadcount(rep))}</td>
-            <td class="n">${fmt(PB.grandExpense(rep))}</td></tr>
-          </tbody>
-        </table>
-        <table class="grid">
-          <colgroup><col style="width:52%"><col style="width:22%"><col style="width:26%"></colgroup>
-          <thead><tr><th class="l">DEDUCTION — STAFF EXPENSES</th><th class="c">COST CODE</th><th class="n">THB</th></tr></thead>
-          <tbody>
-          ${[["Provident Fund", PB.DED_CODES.pvd, rep.ded.pvd],
-             ["Social Security", PB.DED_CODES.sso, rep.ded.sso],
-             ["Student Loan (general)", PB.DED_CODES.studentLoan, rep.ded.studentLoan],
-             ["Legal Execution Department", PB.DED_CODES.led, rep.ded.led],
-             ["Clearing Account — Employee W/Tax (PND 1)", PB.DED_CODES.pnd1, rep.ded.pnd1],
-             ["CL ACC EXP — Clearing Account W/Tax (PND 3)", PB.DED_CODES.pnd3, rep.ded.pnd3]]
-            .map(([l, c, v]) => `<tr><td class="l">${esc(l)}</td><td class="cc">${esc(c)}</td><td class="n">${fmt(v)}</td></tr>`).join("")}
-          <tr class="tot"><td class="l">GRAND TOTAL — DEDUCTION</td><td></td><td class="n b">${fmt(PB.totalDeduction(rep))}</td></tr>
-          <tr class="gt"><td class="l">NET SALARY</td><td></td><td class="n">${fmt(PB.netSalary(rep))}</td></tr>
-          <tr><td class="l pf">Provident Fund Employer Contribution</td><td class="cc">${esc(PB.DED_CODES.pvdEmployer)}</td>
-            <td class="n">${fmt(rep.ded.pvdEmployer)}</td></tr>
-          <tr><td class="l pf">Social Security Employer Contribution</td><td class="cc"></td>
-            <td class="n">${fmt(rep.ded.ssoEmployer || 0)}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="flex"></div>
-      ${sigBlock}
-    </div>`;
-
-  const pages = [summary, ...PB.GROUPS.map(g => page(g.name, g.depts)), page("BKK Office & Legal", PB.STANDALONE)];
-
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8">
-    <title>Payroll Register ${esc(month)}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>${PRINT_CSS}</style></head><body>${pages.join("")}
-    <div class="noprint"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button>
-      <div class="tip">ตั้ง Paper size = A4 · Layout = Landscape · ปิด Headers and footers</div></div>
-    </body></html>`);
+  w.document.write(registerDoc(rep, month, docSigners(), { toolbar: true }));
   w.document.close();
 }
-
-const monthLabel = ym => {
-  if (!ym) return "";
-  const [y, m] = ym.split("-").map(Number);
-  return `${["January","February","March","April","May","June","July","August","September","October","November","December"][m-1]} ${y}`;
-};
-
-const PRINT_CSS = `
-/* ดีไซน์ตามที่วางไว้ใน Figma — เรียบ ทางการ ไม่มีเส้นตารางทึบทั้งผืน
-   ใช้หัวตารางสีกรมท่า เส้นคั่นบาง ๆ และตัวเลขแบบความกว้างเท่ากันทุกหลัก */
-@page { size: A4 landscape; margin: 10mm 11mm; }
-*{box-sizing:border-box;}
-body{font-family:'Sarabun',system-ui,sans-serif;font-size:6.7pt;color:#101828;background:#fff;margin:0;
-  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.sheet{page-break-after:always;display:flex;flex-direction:column;min-height:178mm;}
-.sheet:last-of-type{page-break-after:auto;}
-.flex{flex:1;}
-
-/* หัวกระดาษ */
-.top{display:flex;align-items:center;justify-content:space-between;}
-.brand{display:flex;align-items:center;gap:4mm;}
-.logo{height:8.5mm;}
-.bw2{font-size:7.4pt;font-weight:600;color:#1A3E9A;letter-spacing:.2pt;}
-.meta{text-align:right;}
-.m1{font-size:10pt;font-weight:700;letter-spacing:.3pt;}
-.m2{font-size:7.4pt;color:#667085;}
-.rule{height:1.4pt;background:#0F1C4D;margin:1.1mm 0 2mm;}
-
-/* ตาราง */
-table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
-/* ความกว้างคอลัมน์ต้องกำหนดเอง ไม่งั้น ITEM แคบจนหัวข้อยาว ๆ ขึ้นสองบรรทัดแล้วกินที่ทั้งหน้า */
-.c-item{width:21%;} .c-code{width:7%;} .c-tot{width:11%;}
-.grid th,.grid td{padding:.16mm 1.3mm;overflow:hidden;line-height:1.16;white-space:nowrap;text-overflow:ellipsis;}
-.grid thead th{white-space:normal;}
-.grid thead th{background:#0F1C4D;color:#fff;font-weight:600;font-size:6.8pt;
-  text-align:right;vertical-align:bottom;line-height:1.2;}
-.grid thead th.l{text-align:left;} .grid thead th.c{text-align:center;}
-.grid tbody tr{border-bottom:.4pt solid #E4E7EC;}
-.l{text-align:left;} .c{text-align:center;} .n{text-align:right;font-variant-numeric:tabular-nums;}
-.b{font-weight:600;} .u{color:#667085;font-size:6.6pt;}
-.cc{text-align:right;font-size:5.8pt;color:#98A2B3;letter-spacing:.1pt;}
-tr.sec td{background:#EEF1F8;font-weight:700;font-size:6.7pt;}
-tr.sec td.cc{font-weight:400;}
-tr.tot td{background:#F7FAFC;font-weight:600;}
-tr.hcrow td{background:#F7FAFC;font-weight:600;border-top:.8pt solid #CBD5E1;}
-tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0F1C4D;font-size:7.5pt;
-  padding-top:.9mm;padding-bottom:.9mm;}
-.pf{color:#475467;}
-
-/* หน้าสรุป */
-.kpis{display:flex;gap:3mm;margin-bottom:3mm;}
-.kpi{flex:1;background:#F7FAFC;border:.4pt solid #E4E7EC;border-radius:2mm;padding:2.4mm 3mm;}
-.kl{font-size:6.6pt;color:#667085;}
-.kv{font-size:12pt;font-weight:700;color:#0F1C4D;font-variant-numeric:tabular-nums;}
-.kpi-net .kv{color:#0D7C4B;}
-.two{display:flex;gap:6mm;align-items:flex-start;}
-.two>table{flex:1;}
-
-/* ลายเซ็น */
-.sigs{display:flex;gap:14mm;padding-top:4mm;page-break-inside:avoid;}
-.sig{flex:1;}
-.sig-role{font-size:6pt;font-weight:700;color:#101828;letter-spacing:.7pt;}
-.sig-dept{font-size:6.4pt;color:#B7791F;}
-.sig-space{height:8mm;}
-.sig-rule{height:.5pt;background:#101828;}
-.sig-name{font-size:7.4pt;font-weight:600;margin-top:1.4mm;}
-.sig-title{font-size:6.8pt;color:#667085;}
-.sig-date{font-size:6.8pt;color:#667085;margin-top:1.2mm;}
-
-.foot{font-size:6.4pt;color:#98A2B3;text-align:right;padding-top:2mm;border-top:.4pt solid #E4E7EC;}
-.noprint{margin:6mm 0;text-align:center;}
-.noprint button{font:inherit;padding:8px 18px;cursor:pointer;border:1px solid #0F1C4D;background:#0F1C4D;color:#fff;border-radius:6px;}
-.noprint .tip{font-size:8pt;color:#667085;margin-top:3mm;}
-@media print{.noprint{display:none;}}
-`;
