@@ -77,16 +77,35 @@ function syncGen() {
   if (oiGen.month !== month) {
     // เดือนที่เคยบันทึกไว้ → ดึงแจกแจงเดิมมาตั้งต้น · เดือนใหม่ → ว่าง
     oiGen = { month, rows: rep.fromHistory ? (rep.oiGeneral || []).map(x => ({ ...x })) : [], loading: !rep.fromHistory && savedMonths.includes(month) };
-    if (oiGen.loading) supabase.from("payroll_summary").select("line_item,value,row_order").eq("month", month).eq("section", PB.OI_GEN_LABEL)
-      .then(({ data }) => { if (oiGen.month !== month) return;
-        oiGen = { month, rows: (data || []).sort((a, b) => a.row_order - b.row_order).map(r => ({ label: r.line_item, amount: Number(r.value) || 0 })), loading:false };
-        renderPayrollBuild(); });
+    if (oiGen.loading) loadGen(month);
   }
   rep.oiGeneral = oiGen.rows;
 }
 // บรรทัดเทียบยอด — อัปเดตเฉพาะบรรทัดนี้ตอนพิมพ์ (ถ้าวาดทั้งหน้าใหม่ ปุ่มที่กำลังกดจะหายก่อนคลิกถึง)
 const genStatus = (total, diff) => `<div id="pbGenSum" class="${Math.abs(diff) < 0.01 ? "pa-ok" : "pa-warn"} mt-3">กรอกแล้ว ${fmt(genSum())} / ${fmt(total)} บาท
       ${Math.abs(diff) < 0.01 ? "— ตรงกับไฟล์ ✓" : `— ยังขาด ${fmt(diff)} บาท (จะขึ้นเป็น Not itemised)`}</div>`;
+// ดึงแจกแจงที่บันทึกไว้ของเดือนนี้ — ล้ม/ช้าเกิน 8 วิ ก็ปล่อยให้กรอกต่อได้ ไม่ค้างที่ "กำลังโหลด"
+async function loadGen(m) {
+  const done = rows => { if (oiGen.month !== m || !oiGen.loading) return; oiGen = { month: m, rows, loading:false }; redrawGenCard(); };
+  const timer = setTimeout(() => done([]), 8000);
+  try {
+    const { data, error } = await supabase.from("payroll_summary").select("line_item,value,row_order").eq("month", m).eq("section", PB.OI_GEN_LABEL);
+    if (error) throw error;
+    done((data || []).sort((a, b) => a.row_order - b.row_order).map(r => ({ label: r.line_item, amount: Number(r.value) || 0 })));
+  } catch (e) { console.error("[payroll] load breakdown", e); done([]); }
+  finally { clearTimeout(timer); }
+}
+function redrawGenCard() {
+  if (rep) rep.oiGeneral = oiGen.rows;
+  const el = document.getElementById("pbGenCard");
+  if (el) el.outerHTML = oiGenCardSafe(); else renderPayrollBuild();
+}
+// ถ้ากล่องนี้พังเพราะอะไรก็ตาม ให้ขึ้นข้อความในกล่อง แทนที่ทั้งหน้าจะค้าง
+function oiGenCardSafe() {
+  try { return oiGenCard(); }
+  catch (e) { console.error("[payroll] breakdown card", e);
+    return `<div class="card card-body mt-4" id="pbGenCard"><div class="pa-bad">กล่องแจกแจง Other Income มีข้อผิดพลาด: ${esc(e.message || String(e))} — แคปข้อความนี้ส่งให้ผู้ดูแลระบบ</div></div>`; }
+}
 function oiGenCard() {
   const total = genTotal();
   if (!total && !oiGen.rows.length) return "";
@@ -190,7 +209,7 @@ export function renderPayrollBuild() {
       · ถ้าจะสร้างใหม่ให้เลือกไฟล์ด้านล่าง
     </div>` : ""}
     ${uploadCard()}
-    ${rep ? assignCard() + warnCard() + summaryCard() + oiGenCard() + signCard() : ""}
+    ${rep ? assignCard() + warnCard() + summaryCard() + oiGenCardSafe() + signCardSafe() : ""}
   </div>`;
   wire();
   bindFind();
@@ -325,6 +344,11 @@ function warnCard() {
 }
 
 // ---------- ผู้ลงนาม ----------
+function signCardSafe() {
+  try { return signCard(); }
+  catch (e) { console.error("[payroll] sign card", e);
+    return `<div class="card card-body mt-4"><div class="pa-bad">กล่องผู้ลงนาม/เซ็นออนไลน์มีข้อผิดพลาด: ${esc(e.message || String(e))} — แคปข้อความนี้ส่งให้ผู้ดูแลระบบ</div></div>`; }
+}
 function signCard() {
   return `<div class="card card-body mt-4">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -527,9 +551,7 @@ function wire() {
   };
   // เพิ่ม/ลบ วาดใหม่เฉพาะกล่องนี้ (ไม่วาดทั้งหน้า) แล้วให้เคอร์เซอร์ไปที่ช่องชื่อของบรรทัดใหม่
   const redrawGen = focusLast => {
-    if (rep) rep.oiGeneral = oiGen.rows;
-    const el = document.getElementById("pbGenCard"); if (!el) return renderPayrollBuild();
-    el.outerHTML = oiGenCard();
+    redrawGenCard();
     if (focusLast) { const ins = document.querySelectorAll("#pbGenCard .pb-gen-row input"); ins[ins.length - 2]?.focus(); }
   };
   window._pbGenAdd = () => { oiGen.rows = [...oiGen.rows, { label:"", amount:"" }]; redrawGen(true); };
