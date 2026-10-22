@@ -493,7 +493,8 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(M.oiTotals(r).reduce((t, x) => t + x[1], 0), 9700, "สรุปรวมทั้งบริษัท (500+8000+200+1000)");
   const sumOi = items.reduce((t, l) => t + r.get("oi", l, "Processing"), 0);
   eq(sumOi, r.get("senior","Other Income","Processing") + r.get("staff","Other Income","Processing"), "ผลรวม appendix = Other Income ของ Senior + Staff");
-  eq(r.get("oi", "Company Secretary Remuneration (ค่าตอบแทนเลขานุการบริษัท)", "Processing"), 8000, "ชื่อรายการอังกฤษ (ไทย)");
+  eq(r.get("oi", "Company Secretary Remuneration", "Processing"), 8000, "ชื่อรายการภาษาอังกฤษอย่างเดียว");
+  eq(M.oiTotals(r).map(x => x[0]).sort(), ["Company Secretary Remuneration","Other Income (General)","Special Income 1"], "รายการได้พิเศษ 1 → Special Income 1");
   const back = M.repFromRows(M.toSummaryRows(r, "2026-10"), "2026-10");
   eq(M.oiItems(back), items, "บันทึกแล้วดึงกลับ appendix ยังอยู่");
 }

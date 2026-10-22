@@ -90,7 +90,7 @@ The 3% contract staff (consultants / contractors / casual) are pulled from the C
 
 ## Payroll Register — Other Income detail
 
-User, 2026-10-22. The Summary page (PDF) and the Summary sheet (Excel) list what "Other Income" is made of, company-wide, not by department — for Accounting: each raw-file column folded into it (รายได้อื่นๆ, ค่าตอบแทนเลขานุการบริษัท, เงินช่วยเหลือค่าเช่าที่พักอาศัย, รายการได้พิเศษ…, labelled "English (ไทย)") plus Senior Staff overtime (Senior has no Overtime line). Senior Staff has its own **Transportation** line since the same day (it used to be folded into Other Income). Per-department amounts are kept as cells section `oi` and saved to `payroll_summary` under `APPENDIX — OTHER INCOME` so saved months keep the detail (`oiItems` / `oiTotals`); months saved earlier show it only after re-saving. The detail always adds up to Other Income of Senior + Staff.
+User, 2026-10-22. The Summary page (PDF) and the Summary sheet (Excel) list what "Other Income" is made of, company-wide, not by department — for Accounting: each raw-file column folded into it (รายได้อื่นๆ, ค่าตอบแทนเลขานุการบริษัท, เงินช่วยเหลือค่าเช่าที่พักอาศัย, รายการได้พิเศษ…, English labels only — user 2026-10-22) plus Senior Staff overtime (Senior has no Overtime line). Senior Staff has its own **Transportation** line since the same day (it used to be folded into Other Income). Per-department amounts are kept as cells section `oi` and saved to `payroll_summary` under `APPENDIX — OTHER INCOME` so saved months keep the detail (`oiItems` / `oiTotals`); months saved earlier show it only after re-saving. The detail always adds up to Other Income of Senior + Staff.
 
 ## Payroll Register online signing (`js/payroll-build-ui.js`, page `payrollbuild`)
 

@@ -195,8 +195,11 @@ const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", diligence:"Perf
 export const OI_LABEL = "APPENDIX — OTHER INCOME";
 const OI_EN = { "รายได้อื่นๆ":"Other Income (General)", "ค่าตอบแทนเลขานุการบริษัท":"Company Secretary Remuneration",
                 "เงินช่วยเหลือค่าเช่าที่พักอาศัย":"Temporary Accommodation Support" };
-export const oiLabel = col => OI_EN[col] ? `${OI_EN[col]} (${col})` : /^รายการได้/.test(col) ? `Special Income (${col})` : col;
-export const OI_SPILL = { overtime:"Overtime — Senior Staff (โอที)" };
+// ชื่อภาษาอังกฤษอย่างเดียว (user 2026-10-22: ไม่ต้องมีภาษาไทยในวงเล็บ)
+export const oiLabel = col => OI_EN[col]
+  || (/^รายการได้พิเศษ\s*(\d*)$/.test(col) ? `Special Income${col.match(/(\d+)$/) ? " " + col.match(/(\d+)$/)[1] : ""}`
+  : /^รายการได้\s*(\d+)$/.test(col) ? `Other Earnings ${col.match(/(\d+)$/)[1]}` : col);
+export const OI_SPILL = { overtime:"Overtime — Senior Staff" };
 // รายการ (บรรทัด) ที่มียอดใน appendix เรียงตามยอดรวมมาก → น้อย
 export const oiItems = rep => {
   const tot = new Map();
@@ -204,7 +207,9 @@ export const oiItems = rep => {
   return [...tot.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
 };
 // ยอดรวมทั้งบริษัทของแต่ละรายการ — แจกแจงให้บัญชีเห็นในหน้าสรุป (ไม่แยกแผนก · user 2026-10-22)
-export const oiTotals = rep => oiItems(rep).map(l => [l, round2(ALL_DEPTS.reduce((t, d) => t + rep.get("oi", l, d), 0))]);
+// เดือนที่บันทึกก่อนเปลี่ยนชื่อ มีภาษาไทยในวงเล็บต่อท้าย — ตัดออกตอนแสดง
+const oiEn = l => l.replace(/\s*\([^)]*[\u0E00-\u0E7F][^)]*\)\s*$/, "");
+export const oiTotals = rep => oiItems(rep).map(l => [oiEn(l), round2(ALL_DEPTS.reduce((t, d) => t + rep.get("oi", l, d), 0))]);
 
 // ---------- ตัวช่วย ----------
 export const norm = s => String(s ?? "").replace(/\s+/g, " ").trim();
