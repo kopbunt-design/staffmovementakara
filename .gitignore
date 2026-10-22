@@ -2,3 +2,4 @@
 **/.DS_Store
 azure-app/dist/
 azure-app/dist.zip
+__pycache__/
