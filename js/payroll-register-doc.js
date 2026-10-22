@@ -283,7 +283,7 @@ body{font-family:'Sarabun',system-ui,sans-serif;font-size:6.7pt;color:#101828;ba
 table.grid{border-collapse:collapse;width:100%;table-layout:fixed;}
 /* ความกว้างคอลัมน์ต้องกำหนดเอง ไม่งั้น ITEM แคบจนหัวข้อยาว ๆ ขึ้นสองบรรทัดแล้วกินที่ทั้งหน้า */
 .c-item{width:21%;} .c-code{width:7%;} .c-tot{width:11%;}
-.grid th,.grid td{padding:.16mm 1.3mm;overflow:hidden;line-height:1.16;white-space:nowrap;text-overflow:ellipsis;}
+.grid th,.grid td{padding:.12mm 1.3mm;overflow:hidden;line-height:1.08;white-space:nowrap;text-overflow:ellipsis;}   /* แน่นขึ้นนิดหน่อย — หน้าแยกสายงานต้องจบในหน้าเดียว (user 2026-10-22: บรรทัดท้ายตกไปอีกหน้า) */
 .grid thead th{white-space:normal;}
 .grid thead th{background:#0F1C4D;color:#fff;font-weight:600;font-size:6.8pt;
   text-align:right;vertical-align:bottom;line-height:1.2;}
