@@ -1,2 +1,4 @@
 .DS_Store
 **/.DS_Store
+azure-app/dist/
+azure-app/dist.zip
