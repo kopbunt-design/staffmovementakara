@@ -171,6 +171,17 @@ export function registerDoc(rep, month, signers, opts = {}) {
       ${row("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), "", ssoKnown(rep))}`;
   };
 
+  // แจกแจง Other Income ให้บัญชีเห็นว่ามีรายการอะไรบ้าง — รวมทั้งบริษัท ไม่แยกแผนก (user 2026-10-22)
+  const oi = PB.oiTotals(rep);
+  const oiTable = !oi.length ? "" : `
+        <table class="grid" style="margin-top:4mm">
+          <colgroup><col style="width:68%"><col style="width:32%"></colgroup>
+          <thead><tr><th class="l">OTHER INCOME — DETAIL</th><th class="n">THB</th></tr></thead>
+          <tbody>
+          ${oi.map(([l, v]) => `<tr><td class="l">${esc(l)}</td><td class="n">${fmt(v)}</td></tr>`).join("")}
+          <tr class="tot"><td class="l">TOTAL — OTHER INCOME (Senior + Staff)</td><td class="n b">${fmt(oi.reduce((t, x) => t + x[1], 0))}</td></tr>
+          </tbody>
+        </table>`;
   const hcOf = g => ["senior","staff","consultants","contractors","casual"].reduce((t, s) => t + PB.groupHc(rep, s, g), 0);
   const summary = `
     <div class="sheet">
@@ -182,7 +193,7 @@ export function registerDoc(rep, month, signers, opts = {}) {
            ["Total Headcount (persons)", fmtI(PB.grandHeadcount(rep))]]
           .map(([l, v], i) => `<div class="kpi ${i === 2 ? "kpi-net" : ""}"><div class="kl">${esc(l)}</div><div class="kv">${v}</div></div>`).join("")}
       </div>
-      <div class="two">
+      <div class="two"><div class="col">
         <table class="grid">
           <colgroup><col style="width:46%"><col style="width:22%"><col style="width:32%"></colgroup>
           <thead><tr><th class="l">DIVISION</th><th class="n">HEADCOUNT (persons)</th><th class="n">PAYROLL EXPENSE (THB)</th></tr></thead>
@@ -196,6 +207,8 @@ export function registerDoc(rep, month, signers, opts = {}) {
             <td class="n">${fmt(PB.grandExpense(rep))}</td></tr>
           </tbody>
         </table>
+        ${oiTable}
+        </div>
         <table class="grid">
           <colgroup><col style="width:52%"><col style="width:22%"><col style="width:26%"></colgroup>
           <thead><tr><th class="l">DEDUCTION — STAFF EXPENSES</th><th class="c">COST CODE</th><th class="n">THB</th></tr></thead>
@@ -220,30 +233,7 @@ export function registerDoc(rep, month, signers, opts = {}) {
       ${sigBlock}
     </div>`;
 
-  // Appendix — Other Income แยกตามที่มา (user 2026-10-22) · แสดงเฉพาะแผนกที่มียอด · ผลรวม = Other Income ของ Senior + Staff
-  const oiRows = PB.oiItems(rep);
-  const oiDepts = PB.ALL_DEPTS.filter(d => oiRows.some(l => rep.get("oi", l, d)));
-  const oiInReg = d => rep.get("senior", "Other Income", d) + rep.get("staff", "Other Income", d);
-  const appendix = !oiRows.length ? "" : `
-    <div class="sheet">
-      ${head("Appendix — Other Income")}
-      <table class="grid">
-        <colgroup><col style="width:30%">${oiDepts.map(() => `<col style="width:${(58 / oiDepts.length).toFixed(3)}%">`).join("")}<col style="width:12%"></colgroup>
-        <thead><tr><th class="l">OTHER INCOME — BY SOURCE</th>${oiDepts.map(d => `<th class="n">${esc(d)}</th>`).join("")}<th class="n">TOTAL</th></tr></thead>
-        <tbody>
-        ${oiRows.map(l => { const v = oiDepts.map(d => rep.get("oi", l, d));
-          return `<tr><td class="l">${esc(l)}</td>${v.map(x => `<td class="n">${fmt(x)}</td>`).join("")}<td class="n b">${fmt(v.reduce((a, b) => a + b, 0))}</td></tr>`; }).join("")}
-        <tr class="tot"><td class="l">TOTAL — OTHER INCOME</td>${oiDepts.map(d => `<td class="n">${fmt(oiRows.reduce((t, l) => t + rep.get("oi", l, d), 0))}</td>`).join("")}
-          <td class="n b">${fmt(oiDepts.reduce((t, d) => t + oiRows.reduce((u, l) => u + rep.get("oi", l, d), 0), 0))}</td></tr>
-        <tr><td class="l pf">Other Income in register (Senior + Staff)</td>${oiDepts.map(d => `<td class="n pf">${fmt(oiInReg(d))}</td>`).join("")}
-          <td class="n pf">${fmt(oiDepts.reduce((t, d) => t + oiInReg(d), 0))}</td></tr>
-        </tbody>
-      </table>
-      <div class="flex"></div>
-      <div class="foot"><span>Appendix — Other Income  ·  ${esc(monthLabel(month))}</span>${corner}</div>
-    </div>`;
-
-  const pages = [summary, ...PB.GROUPS.map(g => page(g.name, g.depts)), page("BKK Office & Legal", PB.STANDALONE), appendix];
+  const pages = [summary, ...PB.GROUPS.map(g => page(g.name, g.depts)), page("BKK Office & Legal", PB.STANDALONE)];
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8">
     <title>Payroll Register ${esc(month)}</title>
@@ -310,7 +300,7 @@ tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0
 .kv{font-size:12pt;font-weight:700;color:#0F1C4D;font-variant-numeric:tabular-nums;}
 .kpi-net .kv{color:#0D7C4B;}
 .two{display:flex;gap:6mm;align-items:flex-start;}
-.two>table{flex:1;}
+.two>table,.two>.col{flex:1;}
 
 /* ลายเซ็น */
 .sigs{display:flex;gap:14mm;padding-top:4mm;page-break-inside:avoid;}

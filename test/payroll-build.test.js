@@ -10,7 +10,7 @@ const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 
 const SRC = read(`${ROOT}/js/payroll-build.js`).replace(/^export /gm, "");
 const M = new Function(`${SRC}
-  return { oiItems, OI_LABEL, contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
+  return { oiItems, oiTotals, OI_LABEL, contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
            SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE,
@@ -77,10 +77,10 @@ eq(rep.get("staff","Basic Salary","Supply"), 20000 - 1000 - 500 - 250, "เง�
 eq(rep.get("staff","Transportation","Processing"), 900,  "ค่าเดินทางอยู่ฝั่ง Staff");
 eq(rep.get("staff","Overtime","Processing"),      2000,  "โอทีอยู่ฝั่ง Staff");
 eq(rep.get("staff","Shift Allowance","Processing"), 1800, "ค่ากะ");
-// Senior ไม่มีบรรทัดค่าเดินทาง/โอที ถ้ามียอดต้องไปโผล่ที่ Other Income ไม่ใช่หายไป
+// Senior: ค่าเดินทางมีบรรทัดของตัวเอง (2026-10-22) · โอทีไม่มีบรรทัด ถ้ามียอดต้องไปโผล่ที่ Other Income ไม่ใช่หายไป
 {
   const r2 = M.buildReport({ payroll:[H, R("E1","หนึ่ง",100000,700,0,300)], employees:EMPS });
-  eq(r2.get("senior","Other Income","Processing"), 1000, "โอที+ค่าเดินทางของ Senior ไปรวมที่ Other Income");
+  eq([r2.get("senior","Other Income","Processing"), r2.get("senior","Transportation","Processing")], [700, 300], "โอที Senior → Other Income · ค่าเดินทาง → Transportation");
 }
 
 // ---------- คีย์สังกัดที่ต่อท้ายด้วยชื่อ ต้องมาก่อนคีย์แผนก ----------
@@ -488,7 +488,9 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   const HD = ["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","เงินเดือน","รายได้อื่นๆ","ค่าตอบแทนเลขานุการบริษัท","รายการได้พิเศษ 1","ค่าเดินทาง","โอที 1"];
   const r = M.buildReport({ payroll:[HD, ["E1","a","ปกติ",100000,500,8000,0,700,0], ["E2","b","ปกติ",30000,200,0,1000,900,2000]], employees:EMPS, month:"2026-10", assign:{} });
   const items = M.oiItems(r);
-  eq(items.length, 4, "4 รายการที่มียอด (ทั่วไป · เลขานุการ · พิเศษ 1 · ค่าเดินทาง Senior)");
+  eq(items.length, 3, "3 รายการที่มียอด (ทั่วไป · เลขานุการ · พิเศษ 1)");
+  eq(r.get("senior","Transportation","Processing"), 700, "ค่าเดินทาง Senior มีบรรทัดของตัวเอง ไม่ปนใน Other Income");
+  eq(M.oiTotals(r).reduce((t, x) => t + x[1], 0), 9700, "สรุปรวมทั้งบริษัท (500+8000+200+1000)");
   const sumOi = items.reduce((t, l) => t + r.get("oi", l, "Processing"), 0);
   eq(sumOi, r.get("senior","Other Income","Processing") + r.get("staff","Other Income","Processing"), "ผลรวม appendix = Other Income ของ Senior + Staff");
   eq(r.get("oi", "Company Secretary Remuneration (ค่าตอบแทนเลขานุการบริษัท)", "Processing"), 8000, "ชื่อรายการอังกฤษ (ไทย)");

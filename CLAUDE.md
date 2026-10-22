@@ -88,9 +88,9 @@ Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tes
 
 The 3% contract staff (consultants / contractors / casual) are pulled from the Contract Pay run of the same month (user, 2026-10-21) instead of the Consultant Excel file: `contractToConsultantAoa` in `js/payroll-build.js` turns `contract_pay_item` + `contract_pay_adjust` into the Consultant-file shape and feeds `buildReport` unchanged (ID = tax_id so earlier manual department assignments still apply; Income = base + extra; LED = deductions labelled บังคับคดี/legal; category from `worker_type`). An uploaded Consultant file still takes precedence. The page warns when the run isn't approved yet.
 
-## Payroll Register — Appendix: Other Income
+## Payroll Register — Other Income detail
 
-User, 2026-10-22. The last page of the PDF and an extra Excel sheet break the "Other Income" line down by source: each raw-file column folded into it (รายได้อื่นๆ, ค่าตอบแทนเลขานุการบริษัท, เงินช่วยเหลือค่าเช่าที่พักอาศัย, รายการได้พิเศษ…, labelled "English (ไทย)") plus Senior Staff transport/overtime that spill into Other Income. Stored as cells section `oi` and saved to `payroll_summary` under section `APPENDIX — OTHER INCOME` (dept columns only), so saved months keep it; months saved earlier have no appendix until re-saved. The appendix total always equals Other Income of Senior + Staff, and a check line shows it.
+User, 2026-10-22. The Summary page (PDF) and the Summary sheet (Excel) list what "Other Income" is made of, company-wide, not by department — for Accounting: each raw-file column folded into it (รายได้อื่นๆ, ค่าตอบแทนเลขานุการบริษัท, เงินช่วยเหลือค่าเช่าที่พักอาศัย, รายการได้พิเศษ…, labelled "English (ไทย)") plus Senior Staff overtime (Senior has no Overtime line). Senior Staff has its own **Transportation** line since the same day (it used to be folded into Other Income). Per-department amounts are kept as cells section `oi` and saved to `payroll_summary` under `APPENDIX — OTHER INCOME` so saved months keep the detail (`oiItems` / `oiTotals`); months saved earlier show it only after re-saving. The detail always adds up to Other Income of Senior + Staff.
 
 ## Payroll Register online signing (`js/payroll-build-ui.js`, page `payrollbuild`)
 

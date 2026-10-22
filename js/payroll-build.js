@@ -184,7 +184,7 @@ export const COL_ALIAS = {
 };
 
 // บรรทัดที่แสดงในตารางของแต่ละกลุ่มพนักงาน
-export const SENIOR_LINES = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","ERT Training","Other Income"];   // เบี้ยขยันได้ทั้ง O (Staff) และ S (Senior)
+export const SENIOR_LINES = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","Transportation","ERT Training","Other Income"];   // เบี้ยขยันได้ทั้ง O (Staff) และ S (Senior) · ค่าเดินทาง Senior มีบรรทัดของตัวเอง (user 2026-10-22)
 export const STAFF_LINES  = ["Basic Salary","Shift Allowance","Perfect Attendance Allowance","Transportation","Overtime","ERT Training","Other Income"];
 const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", diligence:"Perfect Attendance Allowance", transport:"Transportation",
                   overtime:"Overtime", ert:"ERT Training", otherIncome:"Other Income" };
@@ -196,13 +196,15 @@ export const OI_LABEL = "APPENDIX — OTHER INCOME";
 const OI_EN = { "รายได้อื่นๆ":"Other Income (General)", "ค่าตอบแทนเลขานุการบริษัท":"Company Secretary Remuneration",
                 "เงินช่วยเหลือค่าเช่าที่พักอาศัย":"Temporary Accommodation Support" };
 export const oiLabel = col => OI_EN[col] ? `${OI_EN[col]} (${col})` : /^รายการได้/.test(col) ? `Special Income (${col})` : col;
-export const OI_SPILL = { transport:"Transportation — Senior Staff (ค่าเดินทาง)", overtime:"Overtime — Senior Staff (โอที)" };
+export const OI_SPILL = { overtime:"Overtime — Senior Staff (โอที)" };
 // รายการ (บรรทัด) ที่มียอดใน appendix เรียงตามยอดรวมมาก → น้อย
 export const oiItems = rep => {
   const tot = new Map();
   for (const [k, v] of rep.cells) if (k.startsWith("oi|") && v) { const l = k.split("|")[1]; tot.set(l, (tot.get(l) || 0) + v); }
   return [...tot.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
 };
+// ยอดรวมทั้งบริษัทของแต่ละรายการ — แจกแจงให้บัญชีเห็นในหน้าสรุป (ไม่แยกแผนก · user 2026-10-22)
+export const oiTotals = rep => oiItems(rep).map(l => [l, round2(ALL_DEPTS.reduce((t, d) => t + rep.get("oi", l, d), 0))]);
 
 // ---------- ตัวช่วย ----------
 export const norm = s => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -364,11 +366,11 @@ export function buildReport(input) {
       add(type, "Transportation", dept, sum(row, "transport"));
       add(type, "Overtime",       dept, sum(row, "overtime"));
     } else {
-      // ระดับ Senior ไม่มีบรรทัดค่าเดินทาง/โอทีในรายงาน ถ้ามียอดต้องบอก ไม่ใช่ทิ้งเงียบ ๆ
-      const spill = sum(row, "transport") + sum(row, "overtime");
+      add(type, "Transportation", dept, sum(row, "transport"));
+      // ระดับ Senior ไม่มีบรรทัดโอทีในรายงาน ถ้ามียอดต้องบอก ไม่ใช่ทิ้งเงียบ ๆ — รวมเข้า Other Income และแจกแจงไว้ในสรุป
+      const spill = sum(row, "overtime");
       if (spill) add(type, "Other Income", dept, spill);
-      add("oi", OI_SPILL.transport, dept, sum(row, "transport"));
-      add("oi", OI_SPILL.overtime,  dept, sum(row, "overtime"));
+      add("oi", OI_SPILL.overtime, dept, spill);
     }
     // ค่าตอบแทนกรรมการของพนักงานที่เป็นกรรมการด้วย — นับแต่ยอด ไม่นับหัว
     // เพราะคนคนนั้นถูกนับไปแล้วในแถว Senior/Staff จะนับซ้ำไม่ได้

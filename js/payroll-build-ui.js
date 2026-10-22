@@ -600,6 +600,16 @@ async function exportExcel() {
                PB.deptTotal(rep, d)]);
   const gt = s1.addRow(["GRAND TOTAL", PB.grandHeadcount(rep), PB.grandExpense(rep)]);
   gt.eachCell(c => { c.font = { bold:true, color:{ argb:NAVY } }; c.border = { top:{ style:"medium", color:{ argb:NAVY } } }; });
+  // แจกแจง Other Income (รวมทั้งบริษัท) ให้บัญชีเห็น
+  const oiT = PB.oiTotals(rep);
+  if (oiT.length) {
+    s1.addRow([]);
+    const oh = s1.addRow(["OTHER INCOME — DETAIL", "", "THB"]);
+    oh.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:10 }; c.fill = fill(NAVY); });
+    for (const [l, v] of oiT) s1.addRow([l, "", v]);
+    const ot = s1.addRow(["TOTAL — OTHER INCOME (Senior + Staff)", "", PB.round2(oiT.reduce((t, x) => t + x[1], 0))]);
+    ot.eachCell(c => { c.font = { bold:true }; c.fill = fill(TINT); });
+  }
 
   s1.addRow([]);
   const dh = s1.addRow(["DEDUCTION — STAFF EXPENSES", "COST CODE", "THB"]);
@@ -737,33 +747,6 @@ async function exportExcel() {
     secRow("SOCIAL SECURITY");
     dedRow("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), undefined, ssoKnown(rep));
     setup(ws, sh.depts.length + 3);
-  }
-
-  // ---------- Appendix — Other Income แยกตามที่มา (user 2026-10-22) ----------
-  const oiRows = PB.oiItems(rep);
-  if (oiRows.length) {
-    const oiDepts = PB.ALL_DEPTS.filter(d => oiRows.some(l => rep.get("oi", l, d)));
-    const ws = wb.addWorksheet("Appendix - Other Income");
-    ws.columns = [{ width:52 }, ...oiDepts.map(() => ({ width:15 })), { width:16 }];
-    titleBlock(ws, "Appendix — Other Income", oiDepts.length + 2);
-    const hr = ws.addRow(["OTHER INCOME — BY SOURCE", ...oiDepts, "TOTAL"]);
-    hr.height = 28;
-    hr.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:9 }; c.fill = fill(NAVY);
-                       c.alignment = { horizontal:"right", vertical:"bottom", wrapText:true }; });
-    hr.getCell(1).alignment = { horizontal:"left", vertical:"bottom" };
-    const line = (label, vals, opt = {}) => {
-      const r = ws.addRow([label, ...vals, vals.reduce((a, b) => a + b, 0)]);
-      r.eachCell((c, i) => { c.border = { bottom:thin }; if (i > 1) c.numFmt = MONEY;
-        if (opt.tot) { c.font = { bold:true }; c.fill = fill(TINT); }
-        if (opt.muted) c.font = { size:9, color:{ argb:MUTED } }; });
-      r.getCell(oiDepts.length + 2).font = { bold:true, ...(opt.muted ? { color:{ argb:MUTED } } : {}) };
-    };
-    for (const l of oiRows) line(l, oiDepts.map(d => rep.get("oi", l, d)));
-    line("TOTAL — OTHER INCOME", oiDepts.map(d => oiRows.reduce((t, l) => t + rep.get("oi", l, d), 0)), { tot:true });
-    line("Other Income in register (Senior + Staff)",
-         oiDepts.map(d => rep.get("senior", "Other Income", d) + rep.get("staff", "Other Income", d)), { muted:true });
-    setup(ws, oiDepts.length + 2);
-    ws.views = [{ state:"frozen", xSplit:1, ySplit:5 }];
   }
 
   const buf = await wb.xlsx.writeBuffer();
