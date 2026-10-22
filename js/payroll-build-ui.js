@@ -465,6 +465,19 @@ function summaryCard() {
   </div>`;
 }
 
+// payroll_summary ของเดือนหนึ่งมีเกิน 1,000 แถวแล้ว (Supabase ส่งให้ครั้งละไม่เกิน 1,000) — ดึงทีละหน้าจนครบ
+// เคยตัดแถวท้าย (ตาราง Other Income) หายตอนเปิดเดือนที่บันทึกไว้ (user 2026-10-22)
+async function summaryRowsOf(month) {
+  const all = [], N = 1000;
+  for (let from = 0; ; from += N) {
+    const { data, error } = await supabase.from("payroll_summary").select("*").eq("month", month)
+      .order("row_order").order("col_order").order("id").range(from, from + N - 1);
+    if (error) return { data: null, error };
+    all.push(...(data || []));
+    if (!data || data.length < N) return { data: all, error: null };
+  }
+}
+
 // ---------- event ----------
 function wire() {
   window._pbMonth = v => { month = v; if (files.some(f => f.role === "payroll")) pullContract(); else renderPayrollBuild(); };
@@ -535,7 +548,7 @@ function wire() {
 
   window._pbOpen = async m => {
     if (!m) return;
-    const { data, error } = await supabase.from("payroll_summary").select("*").eq("month", m);
+    const { data, error } = await summaryRowsOf(m);
     if (error) { toast("ดึงข้อมูลไม่สำเร็จ: " + error.message, "error"); return; }
     if (!data?.length) { toast("ไม่พบข้อมูลของเดือนนี้", "error"); return; }
     rep = PB.repFromRows(data, m);
