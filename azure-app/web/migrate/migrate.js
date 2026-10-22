@@ -45,7 +45,7 @@ async function render() {
   let status = null, statusErr = "";
   if (me.admin) status = await api("/api/admin/status").catch(e => { statusErr = e.message; return null; });
   app.innerHTML = `
-    <h1>ย้ายข้อมูลไป Azure · ขั้น 2</h1>
+    <h1>ย้ายข้อมูลไป Azure · ขั้น 2 <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 3</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
       <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> — <a href="/" style="text-decoration:underline">เข้าสู่ระบบ HR ในเว็บนี้</a> ก่อน แล้วกลับมาหน้านี้`}</div>
@@ -65,12 +65,13 @@ async function render() {
       <pre id="mgLog">${esc(LOG)}</pre>
     </div>` : ""}`;
   if (!me.admin) return;
-  document.getElementById("b1").onclick = () => run(async () => { const r = await api("/api/admin/setup", { method: "POST" }); log(`สร้าง/ตรวจตารางแล้ว (${r.statements} คำสั่ง)`); });
-  document.getElementById("b2").onclick = () => run(copyAll);
-  document.getElementById("b3").onclick = () => run(compare);
+  document.getElementById("b1").onclick = () => run(async () => { const r = await api("/api/admin/setup", { method: "POST" }); log(`สร้าง/ตรวจตารางแล้ว (${r.statements} คำสั่ง)`); }, "สร้างตาราง");
+  document.getElementById("b2").onclick = () => run(copyAll, "คัดลอกจาก Supabase");
+  document.getElementById("b3").onclick = () => run(compare, "ตรวจเทียบ");
 }
 
-async function run(fn) {
+async function run(fn, label) {
+  log(`▶ ${label} …`);
   document.querySelectorAll(".acts .btn").forEach(b => b.disabled = true);
   try { await fn(); log("✓ เสร็จ"); } catch (e) { log("✗ " + e.message); }
   setTimeout(render, 600);
