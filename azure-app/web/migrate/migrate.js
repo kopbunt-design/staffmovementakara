@@ -45,7 +45,7 @@ async function render() {
   let status = null, statusErr = "";
   if (me.admin) status = await api("/api/admin/status").catch(e => { statusErr = e.message; return null; });
   app.innerHTML = `
-    <h1>ย้ายข้อมูลไป Azure · ขั้น 2 <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 4</small></h1>
+    <h1>ย้ายข้อมูลไป Azure · ขั้น 2 <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 5</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
       <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> — <a href="/" style="text-decoration:underline">เข้าสู่ระบบ HR ในเว็บนี้</a> ก่อน แล้วกลับมาหน้านี้`}</div>
@@ -104,10 +104,11 @@ const norm = v => {
 async function compare() {
   for (const [name, key, url] of [["employees", "emp_code", "/api/employees"], ["movements", "id", "/api/movements"]]) {
     const [a, b] = await Promise.all([fetchAll(name, key), api(url)]);
-    const B = new Map(b.map(r => [String(r[key]), r]));
+    const K = v => String(v).toLowerCase();   // uuid: SQL Server ตัวใหญ่ · Postgres ตัวเล็ก
+    const B = new Map(b.map(r => [K(r[key]), r]));
     let diff = 0, missing = 0; const samples = [];
     for (const r of a) {
-      const o = B.get(String(r[key]));
+      const o = B.get(K(r[key]));
       if (!o) { missing++; if (samples.length < 5) samples.push(`ไม่มีใน Azure: ${r[key]}`); continue; }
       for (const k of Object.keys(r)) {
         if (!(k in o)) continue;   // คอลัมน์ที่ Azure ซ่อน (เช่น salary ถ้าไม่มีสิทธิ์) ไม่นับ

@@ -72,6 +72,8 @@ def _dto(raw: bytes):
 def sql_connect():
     import pyodbc  # imported lazily so the site still serves if the driver is missing
 
+    pyodbc.native_uuid = True  # UNIQUEIDENTIFIER as uuid.UUID → lower-case text like Supabase (default is upper-case)
+
     server = os.environ["AZURE_SQL_SERVER"]
     if not server.endswith(".database.windows.net"):
         server += ".database.windows.net"
