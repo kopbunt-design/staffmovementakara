@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import struct
 from contextlib import closing
 from pathlib import Path
 
@@ -61,19 +62,28 @@ def me(request: Request):
     return u
 
 
+def _dto(raw: bytes):
+    # pyodbc can't read DATETIMEOFFSET (ODBC type -155) by itself — unpack the driver's struct
+    from datetime import datetime, timedelta, timezone
+    y, mo, d, h, mi, s, ns, tzh, tzm = struct.unpack("<6hI2h", raw)
+    return datetime(y, mo, d, h, mi, s, ns // 1000, tzinfo=timezone(timedelta(hours=tzh, minutes=tzm)))
+
+
 def sql_connect():
     import pyodbc  # imported lazily so the site still serves if the driver is missing
 
     server = os.environ["AZURE_SQL_SERVER"]
     if not server.endswith(".database.windows.net"):
         server += ".database.windows.net"
-    return pyodbc.connect(
+    cn = pyodbc.connect(
         "Driver={ODBC Driver 18 for SQL Server};"
         f"Server=tcp:{server},1433;Database={os.environ['AZURE_SQL_DB']};"
         f"Uid={os.environ['AZURE_SQL_USER']};Pwd={os.environ['AZURE_SQL_PWD']};"
         "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=15;",
         timeout=15,
     )
+    cn.add_output_converter(-155, _dto)
+    return cn
 
 
 @api.get("/api/health")
