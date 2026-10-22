@@ -84,6 +84,9 @@ function syncGen() {
   }
   rep.oiGeneral = oiGen.rows;
 }
+// บรรทัดเทียบยอด — อัปเดตเฉพาะบรรทัดนี้ตอนพิมพ์ (ถ้าวาดทั้งหน้าใหม่ ปุ่มที่กำลังกดจะหายก่อนคลิกถึง)
+const genStatus = (total, diff) => `<div id="pbGenSum" class="${Math.abs(diff) < 0.01 ? "pa-ok" : "pa-warn"} mt-3">กรอกแล้ว ${fmt(genSum())} / ${fmt(total)} บาท
+      ${Math.abs(diff) < 0.01 ? "— ตรงกับไฟล์ ✓" : `— ยังขาด ${fmt(diff)} บาท (จะขึ้นเป็น Not itemised)`}</div>`;
 function oiGenCard() {
   const total = genTotal();
   if (!total && !oiGen.rows.length) return "";
@@ -94,12 +97,11 @@ function oiGenCard() {
       ส่วนที่ยังไม่ได้กรอกขึ้นเป็น “Not itemised”</div>
     ${oiGen.loading ? `<div class="text-sm text-muted mt-2">กำลังโหลดรายการที่บันทึกไว้…</div>` : `
     <div class="pb-gen mt-3">${oiGen.rows.map((x, i) => `<div class="pb-gen-row">
-      <input class="form-input" value="${esc(x.label || "")}" placeholder="เช่น Telephone Allowance" ${lock ? "disabled" : ""} onchange="window._pbGen(${i},'label',this.value)">
-      <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" ? "" : esc(x.amount)}" placeholder="0.00" ${lock ? "disabled" : ""} onchange="window._pbGen(${i},'amount',this.value)">
+      <input class="form-input" value="${esc(x.label || "")}" placeholder="เช่น Telephone Allowance" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'label',this.value)">
+      <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" ? "" : esc(x.amount)}" placeholder="0.00" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'amount',this.value)">
       ${lock ? "" : `<button class="pb-x" title="ลบ" onclick="window._pbGenDel(${i})">×</button>`}</div>`).join("")}</div>
     ${lock ? "" : `<button class="btn btn-secondary btn-sm mt-2" onclick="window._pbGenAdd()">+ เพิ่มรายการ</button>`}
-    <div class="${Math.abs(diff) < 0.01 ? "pa-ok" : "pa-warn"} mt-3">กรอกแล้ว ${fmt(genSum())} / ${fmt(total)} บาท
-      ${Math.abs(diff) < 0.01 ? "— ตรงกับไฟล์ ✓" : `— ยังขาด ${fmt(diff)} บาท (จะขึ้นเป็น Not itemised)`}</div>
+    ${genStatus(total, diff)}
     ${lock ? `<div class="text-sm text-muted mt-2">ล็อกอยู่ เพราะส่งเซ็นออนไลน์แล้ว — ยกเลิกการส่งเซ็นก่อนถ้าจะแก้</div>`
       : inSystem() ? `<button class="btn btn-primary btn-sm mt-2" onclick="window._pbGenSave()">💾 บันทึกแจกแจง</button>`
       : `<div class="text-sm text-muted mt-2">บันทึกไปพร้อมรายงานตอนกด 💾 บันทึกเข้าระบบ</div>`}`}
@@ -518,7 +520,11 @@ function wire() {
   };
 
   window._pbSigner = (i, k, v) => { signers[i] = { ...signers[i], [k]: v }; saveSigners(); };
-  window._pbGen = (i, k, v) => { oiGen.rows[i] = { ...oiGen.rows[i], [k]: k === "amount" ? (v === "" ? "" : Number(v)) : v }; renderPayrollBuild(); };
+  window._pbGen = (i, k, v) => {
+    oiGen.rows[i] = { ...oiGen.rows[i], [k]: k === "amount" ? (v === "" ? "" : Number(v)) : v };
+    const el = document.getElementById("pbGenSum"), total = genTotal();
+    if (el) el.outerHTML = genStatus(total, Math.round((total - genSum()) * 100) / 100);
+  };
   window._pbGenAdd = () => { oiGen.rows = [...oiGen.rows, { label:"", amount:"" }]; renderPayrollBuild(); };
   window._pbGenDel = i => { oiGen.rows = oiGen.rows.filter((_, j) => j !== i); renderPayrollBuild(); };
   // เดือนที่อยู่ในระบบแล้ว: บันทึกเฉพาะแจกแจง ไม่แตะตัวเลขรายงาน (ลายเซ็นไม่ถูกล้าง)
