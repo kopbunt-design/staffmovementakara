@@ -739,6 +739,33 @@ async function exportExcel() {
     setup(ws, sh.depts.length + 3);
   }
 
+  // ---------- Appendix — Other Income แยกตามที่มา (user 2026-10-22) ----------
+  const oiRows = PB.oiItems(rep);
+  if (oiRows.length) {
+    const oiDepts = PB.ALL_DEPTS.filter(d => oiRows.some(l => rep.get("oi", l, d)));
+    const ws = wb.addWorksheet("Appendix - Other Income");
+    ws.columns = [{ width:52 }, ...oiDepts.map(() => ({ width:15 })), { width:16 }];
+    titleBlock(ws, "Appendix — Other Income", oiDepts.length + 2);
+    const hr = ws.addRow(["OTHER INCOME — BY SOURCE", ...oiDepts, "TOTAL"]);
+    hr.height = 28;
+    hr.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:9 }; c.fill = fill(NAVY);
+                       c.alignment = { horizontal:"right", vertical:"bottom", wrapText:true }; });
+    hr.getCell(1).alignment = { horizontal:"left", vertical:"bottom" };
+    const line = (label, vals, opt = {}) => {
+      const r = ws.addRow([label, ...vals, vals.reduce((a, b) => a + b, 0)]);
+      r.eachCell((c, i) => { c.border = { bottom:thin }; if (i > 1) c.numFmt = MONEY;
+        if (opt.tot) { c.font = { bold:true }; c.fill = fill(TINT); }
+        if (opt.muted) c.font = { size:9, color:{ argb:MUTED } }; });
+      r.getCell(oiDepts.length + 2).font = { bold:true, ...(opt.muted ? { color:{ argb:MUTED } } : {}) };
+    };
+    for (const l of oiRows) line(l, oiDepts.map(d => rep.get("oi", l, d)));
+    line("TOTAL — OTHER INCOME", oiDepts.map(d => oiRows.reduce((t, l) => t + rep.get("oi", l, d), 0)), { tot:true });
+    line("Other Income in register (Senior + Staff)",
+         oiDepts.map(d => rep.get("senior", "Other Income", d) + rep.get("staff", "Other Income", d)), { muted:true });
+    setup(ws, oiDepts.length + 2);
+    ws.views = [{ state:"frozen", xSplit:1, ySplit:5 }];
+  }
+
   const buf = await wb.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   const a = document.createElement("a");

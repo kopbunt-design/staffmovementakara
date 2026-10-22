@@ -10,7 +10,7 @@ const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 
 const SRC = read(`${ROOT}/js/payroll-build.js`).replace(/^export /gm, "");
 const M = new Function(`${SRC}
-  return { contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
+  return { oiItems, OI_LABEL, contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
            SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE,
@@ -481,6 +481,19 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   const r = M.buildReport({ payroll:[HD, ["E1","a","ปกติ",100000,600], ["E2","b","ปกติ",30000,300]], employees:EMPS, month:"2026-10", assign:{} });
   eq([r.get("senior","Perfect Attendance Allowance","Processing"), r.get("staff","Perfect Attendance Allowance","Processing")], [600, 300], "S2 → Senior · O1 → Staff");
   eq(r.get("senior","Other Income","Processing"), 0, "เบี้ยขยันของ S ไม่ไปปนใน Other Income");
+}
+
+// ---------- Appendix: Other Income แยกตามที่มา ----------
+{
+  const HD = ["รหัสพนักงาน","ชื่อ-นามสกุล","สถานะคนลาออก","เงินเดือน","รายได้อื่นๆ","ค่าตอบแทนเลขานุการบริษัท","รายการได้พิเศษ 1","ค่าเดินทาง","โอที 1"];
+  const r = M.buildReport({ payroll:[HD, ["E1","a","ปกติ",100000,500,8000,0,700,0], ["E2","b","ปกติ",30000,200,0,1000,900,2000]], employees:EMPS, month:"2026-10", assign:{} });
+  const items = M.oiItems(r);
+  eq(items.length, 4, "4 รายการที่มียอด (ทั่วไป · เลขานุการ · พิเศษ 1 · ค่าเดินทาง Senior)");
+  const sumOi = items.reduce((t, l) => t + r.get("oi", l, "Processing"), 0);
+  eq(sumOi, r.get("senior","Other Income","Processing") + r.get("staff","Other Income","Processing"), "ผลรวม appendix = Other Income ของ Senior + Staff");
+  eq(r.get("oi", "Company Secretary Remuneration (ค่าตอบแทนเลขานุการบริษัท)", "Processing"), 8000, "ชื่อรายการอังกฤษ (ไทย)");
+  const back = M.repFromRows(M.toSummaryRows(r, "2026-10"), "2026-10");
+  eq(M.oiItems(back), items, "บันทึกแล้วดึงกลับ appendix ยังอยู่");
 }
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

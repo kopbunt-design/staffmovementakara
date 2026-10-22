@@ -189,6 +189,21 @@ export const STAFF_LINES  = ["Basic Salary","Shift Allowance","Perfect Attendanc
 const LINE_OF = { basic:"Basic Salary", shift:"Shift Allowance", diligence:"Perfect Attendance Allowance", transport:"Transportation",
                   overtime:"Overtime", ert:"ERT Training", otherIncome:"Other Income" };
 
+// ---------- Appendix: Other Income แยกตามที่มา (user 2026-10-22) ----------
+// เก็บใน cells หมวด "oi" (บรรทัด = ชื่อรายการ) — ไม่นับเข้ายอดไหนเพิ่ม เป็นรายละเอียดของบรรทัด Other Income เท่านั้น
+// ผลรวมทุกรายการ = Other Income ของ Senior + Staff เสมอ
+export const OI_LABEL = "APPENDIX — OTHER INCOME";
+const OI_EN = { "รายได้อื่นๆ":"Other Income (General)", "ค่าตอบแทนเลขานุการบริษัท":"Company Secretary Remuneration",
+                "เงินช่วยเหลือค่าเช่าที่พักอาศัย":"Temporary Accommodation Support" };
+export const oiLabel = col => OI_EN[col] ? `${OI_EN[col]} (${col})` : /^รายการได้/.test(col) ? `Special Income (${col})` : col;
+export const OI_SPILL = { transport:"Transportation — Senior Staff (ค่าเดินทาง)", overtime:"Overtime — Senior Staff (โอที)" };
+// รายการ (บรรทัด) ที่มียอดใน appendix เรียงตามยอดรวมมาก → น้อย
+export const oiItems = rep => {
+  const tot = new Map();
+  for (const [k, v] of rep.cells) if (k.startsWith("oi|") && v) { const l = k.split("|")[1]; tot.set(l, (tot.get(l) || 0) + v); }
+  return [...tot.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+};
+
 // ---------- ตัวช่วย ----------
 export const norm = s => String(s ?? "").replace(/\s+/g, " ").trim();
 export const num = v => {
@@ -344,6 +359,7 @@ export function buildReport(input) {
     add(type, "Perfect Attendance Allowance", dept, sum(row, "diligence"));
     add(type, "ERT Training",    dept, sum(row, "ert"));
     add(type, "Other Income",    dept, sum(row, "otherIncome"));
+    for (const i of colIdx.otherIncome) add("oi", oiLabel(head[i]), dept, num(row[i]));
     if (type === "staff") {
       add(type, "Transportation", dept, sum(row, "transport"));
       add(type, "Overtime",       dept, sum(row, "overtime"));
@@ -351,6 +367,8 @@ export function buildReport(input) {
       // ระดับ Senior ไม่มีบรรทัดค่าเดินทาง/โอทีในรายงาน ถ้ามียอดต้องบอก ไม่ใช่ทิ้งเงียบ ๆ
       const spill = sum(row, "transport") + sum(row, "overtime");
       if (spill) add(type, "Other Income", dept, spill);
+      add("oi", OI_SPILL.transport, dept, sum(row, "transport"));
+      add("oi", OI_SPILL.overtime,  dept, sum(row, "overtime"));
     }
     // ค่าตอบแทนกรรมการของพนักงานที่เป็นกรรมการด้วย — นับแต่ยอด ไม่นับหัว
     // เพราะคนคนนั้นถูกนับไปแล้วในแถว Senior/Staff จะนับซ้ำไม่ได้
@@ -568,6 +586,11 @@ export function toSummaryRows(rep, month) {
   for (const c of cols) push(c, "SUMMARY", "GRAND TOTAL — DEDUCTION", valueAt(c, d => deptDeduction(rep, d)), "amount");
   rowOrder++;
   for (const c of cols) push(c, "SUMMARY", "NET SALARY", valueAt(c, d => deptNet(rep, d)), "amount");
+  // Appendix Other Income — เก็บเฉพาะคอลัมน์แผนกที่มียอด (คอลัมน์รวมคิดใหม่ตอนแสดง)
+  for (const line of oiItems(rep)) {
+    rowOrder++;
+    for (const c of cols) if (c.kind === "dept" && rep.get("oi", line, c.dept)) push(c, OI_LABEL, line, rep.get("oi", line, c.dept), "amount");
+  }
   return rows;
 }
 
@@ -587,6 +610,7 @@ export function repFromRows(rows, month) {
       else if (r.col_kind === "dept") cells.set(`ded|${dk}|${r.department}`, Number(r.value) || 0);
       continue;
     }
+    if (r.section === OI_LABEL) { if (r.col_kind === "dept") cells.set(`oi|${r.line_item}|${r.department}`, Number(r.value) || 0); continue; }
     const key = BY_LABEL[r.section];
     if (!key || r.col_kind !== "dept") continue;     // คอลัมน์รวมคิดใหม่ได้ ไม่ต้องอ่านกลับ
     if (r.value_kind === "headcount") hc.set(`${key}|${r.department}`, Number(r.value) || 0);
