@@ -263,6 +263,13 @@ async def admin_import(table: str, request: Request):
     return {"ok": True, "inserted": len(rows), "total": total}
 
 
+@api.exception_handler(Exception)
+async def sql_errors(request: Request, exc: Exception):
+    # Show the database's message (e.g. missing CREATE TABLE permission) instead of a bare 500.
+    # pyodbc messages never contain the password; the connection string is not echoed.
+    return JSONResponse({"detail": f"{type(exc).__name__}: {str(exc)[:400]}"}, 500)
+
+
 # ---------- static site (same files as the Vercel deploy) ----------
 api.mount("/", StaticFiles(directory=SITE_DIR, html=True), name="site")
 

@@ -7,7 +7,9 @@ import { supabase } from "/js/supabase-config.js";
 
 const app = document.getElementById("app");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const log = m => { const el = document.getElementById("mgLog"); if (el) { el.textContent += m + "\n"; el.scrollTop = el.scrollHeight; } };
+// ข้อความผลเก็บไว้ในตัวแปร — หน้าวาดใหม่หลังกดปุ่มแล้วผลยังอยู่ (เดิมหายไปพร้อมข้อความผิดพลาด)
+let LOG = "";
+const log = m => { LOG += m + "\n"; const el = document.getElementById("mgLog"); if (el) { el.textContent = LOG; el.scrollTop = el.scrollHeight; } };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { detail: t }; }
@@ -40,7 +42,8 @@ async function render() {
   let me, sb;
   try { me = await api("/api/me/access"); } catch (e) { app.innerHTML = `<div class="note r">อ่านตัวตน Microsoft ไม่ได้: ${esc(e.message)}</div>`; return; }
   sb = (await supabase.auth.getSession()).data.session;
-  const status = me.admin ? await api("/api/admin/status").catch(() => null) : null;
+  let status = null, statusErr = "";
+  if (me.admin) status = await api("/api/admin/status").catch(e => { statusErr = e.message; return null; });
   app.innerHTML = `
     <h1>ย้ายข้อมูลไป Azure · ขั้น 2</h1>
     <div class="card card-b">
@@ -49,6 +52,7 @@ async function render() {
     </div>
     ${me.admin ? `<div class="card card-b">
       <div class="card-t">ใน Azure ตอนนี้</div>
+      ${statusErr ? `<div class="note r">อ่านสถานะไม่ได้: ${esc(statusErr)}</div>` : ""}
       <table><tr><th>ตาราง</th><th style="text-align:right">แถว</th></tr>
         ${TABLES.map(t => `<tr><td>${t.name}</td><td class="n">${status?.tables?.[t.name] ?? "— ยังไม่มีตาราง"}</td></tr>`).join("")}</table>
     </div>
@@ -58,7 +62,7 @@ async function render() {
         <button class="btn btn-p" id="b2" ${sb ? "" : "disabled"}>2) คัดลอกจาก Supabase (แทนที่ของเดิมใน Azure)</button>
         <button class="btn btn-s" id="b3" ${sb ? "" : "disabled"}>3) ตรวจเทียบทีละแถว</button>
       </div>
-      <pre id="mgLog"></pre>
+      <pre id="mgLog">${esc(LOG)}</pre>
     </div>` : ""}`;
   if (!me.admin) return;
   document.getElementById("b1").onclick = () => run(async () => { const r = await api("/api/admin/setup", { method: "POST" }); log(`สร้าง/ตรวจตารางแล้ว (${r.statements} คำสั่ง)`); });
