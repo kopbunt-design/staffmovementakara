@@ -10,7 +10,7 @@ const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 
 const SRC = read(`${ROOT}/js/payroll-build.js`).replace(/^export /gm, "");
 const M = new Function(`${SRC}
-  return { oiItems, oiTotals, OI_LABEL, contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
+  return { oiGenMerge, oiGenRows, OI_GEN_LABEL, oiItems, oiTotals, OI_LABEL, contractToConsultantAoa, buildReport, groupTotal, grandTotal, grandExpense, grandHeadcount, totalDeduction,
            netSalary, deptTotal, sheetRole, findHeaderRow, GROUPS, ALL_DEPTS, DEPT_KEY, LEVEL_TYPE,
            COST_CODES, COST_CODE_DOUBTS, toSummaryRows, repFromRows, columnList,
            SECTION_LABEL, groupHc, deptHeadcount, HC_SECTIONS, LEVEL_TYPE,
@@ -497,6 +497,17 @@ eq(M.ALL_DEPTS.reduce((t, d) => t + M.deptDeduction(rep, d), 0), M.totalDeductio
   eq(M.oiTotals(r).map(x => x[0]).sort(), ["Company Secretary Remuneration","Other Income (General)","Special Income 1"], "รายการได้พิเศษ 1 → Special Income 1");
   const back = M.repFromRows(M.toSummaryRows(r, "2026-10"), "2026-10");
   eq(M.oiItems(back), items, "บันทึกแล้วดึงกลับ appendix ยังอยู่");
+}
+
+// ---------- แจกแจง Other Income (General) ที่ HR กรอก ----------
+{
+  eq(M.oiGenMerge([{ label:" Telephone ", amount:300 }, { label:"Telephone", amount:200 }, { label:"", amount:50 }, { label:"Gift", amount:0 }]),
+     [{ label:"Telephone", amount:500 }], "ชื่อซ้ำรวมกัน · ตัดบรรทัดว่าง/ยอด 0");
+  const r = M.buildReport({ payroll, employees:EMPS, month:"2026-08", assign:{ DAY01:{ dept:"CRD", type:"casual" }, DAY02:{ dept:"CRD", type:"casual" } } });
+  r.oiGeneral = [{ label:"Telephone Allowance", amount:300 }, { label:"Uniform Refund", amount:200 }];
+  const back = M.repFromRows(M.toSummaryRows(r, "2026-08"), "2026-08");
+  eq(back.oiGeneral, [{ label:"Telephone Allowance", amount:300 }, { label:"Uniform Refund", amount:200 }], "บันทึกแล้วดึงกลับ ลำดับเดิม");
+  eq(M.grandExpense(back), M.grandExpense(r), "แถวแจกแจงไม่กระทบยอดรายงาน");
 }
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

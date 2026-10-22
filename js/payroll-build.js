@@ -200,6 +200,22 @@ export const oiLabel = col => OI_EN[col]
   || (/^รายการได้พิเศษ\s*(\d*)$/.test(col) ? `Special Income${col.match(/(\d+)$/) ? " " + col.match(/(\d+)$/)[1] : ""}`
   : /^รายการได้\s*(\d+)$/.test(col) ? `Other Earnings ${col.match(/(\d+)$/)[1]}` : col);
 export const OI_SPILL = { overtime:"Overtime — Senior Staff" };
+// แจกแจง "Other Income (General)" (รายได้อื่นๆ) ที่ HR กรอกเองจากข้อมูลหลังบ้าน (user 2026-10-22)
+//   rep.oiGeneral = [{ label, amount }] · ยอดรวมควรเท่ากับ General ในไฟล์ (หน้าเว็บเตือนถ้าไม่เท่า)
+//   บันทึกเป็นแถวของคอลัมน์รวมใหญ่ section OI_GEN_LABEL (ไม่แยกแผนก) เรียงตาม row_order
+export const OI_GENERAL = "Other Income (General)";
+export const OI_GEN_LABEL = "OTHER INCOME (GENERAL) — DETAIL";
+//   ชื่อซ้ำ = รวมยอดเป็นบรรทัดเดียว (ตารางบังคับ month+department+section+line_item ไม่ซ้ำ)
+export const oiGenMerge = list => {
+  const m = new Map();
+  for (const x of list || []) { const l = String(x.label || "").trim(), v = Number(x.amount) || 0;
+    if (l && v) m.set(l, round2((m.get(l) || 0) + v)); }
+  return [...m].map(([label, amount]) => ({ label, amount }));
+};
+export const oiGenRows = (rep, month, startOrder = 0) => oiGenMerge(rep.oiGeneral)
+  .map((x, i) => ({ month, business_group:"GRAND TOTAL", department:"GRAND TOTAL", col_kind:"grand_total",
+                    section: OI_GEN_LABEL, line_item: x.label, cost_code: null,
+                    value: x.amount, value_kind:"amount", row_order: startOrder + i, col_order: 999 }));
 // รายการ (บรรทัด) ที่มียอดใน appendix เรียงตามยอดรวมมาก → น้อย
 export const oiItems = rep => {
   const tot = new Map();
@@ -598,6 +614,7 @@ export function toSummaryRows(rep, month) {
     rowOrder++;
     for (const c of cols) if (c.kind === "dept" && rep.get("oi", line, c.dept)) push(c, OI_LABEL, line, rep.get("oi", line, c.dept), "amount");
   }
+  rows.push(...oiGenRows(rep, month, rowOrder + 1));
   return rows;
 }
 
@@ -608,6 +625,7 @@ export function repFromRows(rows, month) {
   const ded = { pnd1:0, sso:0, pvd:0, studentLoan:0, led:0, pnd3:0, pvdEmployer:0, ssoEmployer:0 };
   const BY_LABEL = Object.fromEntries(Object.entries(SECTION_LABEL).map(([k, v]) => [v, k]));
   const DED_BY_LABEL = Object.fromEntries(DED_LABEL.map(([k, v]) => [v, k]));
+  const gen = [];
   for (const r of rows) {
     const dk = r.section === "DEDUCTION — STAFF EXPENSES" ? DED_BY_LABEL[r.line_item]
              : r.section === "PROVIDENT FUND" ? "pvdEmployer"
@@ -617,6 +635,7 @@ export function repFromRows(rows, month) {
       else if (r.col_kind === "dept") cells.set(`ded|${dk}|${r.department}`, Number(r.value) || 0);
       continue;
     }
+    if (r.section === OI_GEN_LABEL) { gen.push(r); continue; }
     if (r.section === OI_LABEL) { if (r.col_kind === "dept") cells.set(`oi|${r.line_item}|${r.department}`, Number(r.value) || 0); continue; }
     const key = BY_LABEL[r.section];
     if (!key || r.col_kind !== "dept") continue;     // คอลัมน์รวมคิดใหม่ได้ ไม่ต้องอ่านกลับ
@@ -627,6 +646,7 @@ export function repFromRows(rows, month) {
   const dedByDept = [...cells.keys()].some(k => k.startsWith("ded|"));
   return { month, cells, hc, ded, unassigned:[], assigned:[], people:[], unknownCols:[], consRows:[],
            fromHistory:true, dedByDept,
+           oiGeneral: gen.sort((a, b) => a.row_order - b.row_order).map(r => ({ label: r.line_item, amount: Number(r.value) || 0 })),
            get:(s, l, d) => cells.get(`${s}|${l}|${d}`) || 0,
            headcount:(s, d) => hc.get(`${s}|${d}`) || 0 };
 }

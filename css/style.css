@@ -1050,6 +1050,8 @@ thead .cp-sticky{z-index:3}
   font-weight:600;margin-bottom:6px;}
 .pb-x{border:none;background:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:0 4px;}
 /* เซ็นออนไลน์ Payroll Register */
+.pb-gen{display:flex;flex-direction:column;gap:6px;max-width:620px;}
+.pb-gen-row{display:grid;grid-template-columns:1fr 160px 24px;gap:6px;align-items:center;}
 .pb-online{border-top:1px dashed var(--border);padding-top:12px;}
 .pb-step{font-size:13px;padding:3px 0;}.pb-step i{font-style:normal;display:inline-block;width:18px;color:var(--green);}
 .pb-find{max-width:460px;}

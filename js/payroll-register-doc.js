@@ -173,12 +173,19 @@ export function registerDoc(rep, month, signers, opts = {}) {
 
   // แจกแจง Other Income ให้บัญชีเห็นว่ามีรายการอะไรบ้าง — รวมทั้งบริษัท ไม่แยกแผนก (user 2026-10-22)
   const oi = PB.oiTotals(rep);
+  // แจกแจง General ที่ HR กรอก — ส่วนที่ยังไม่ได้แจกแจงขึ้นเป็นบรรทัด "Not itemised" ให้ยอดรวมยังตรง
+  const genSub = total => {
+    const g = PB.oiGenMerge(rep.oiGeneral); if (!g.length) return "";
+    const rest = Math.round((total - g.reduce((t, x) => t + x.amount, 0)) * 100) / 100;
+    return [...g, ...(Math.abs(rest) >= 0.01 ? [{ label:"Not itemised", amount: rest }] : [])]
+      .map(x => `<tr><td class="l oi-sub">– ${esc(x.label)}</td><td class="n oi-sub">${fmt(x.amount)}</td></tr>`).join("");
+  };
   const oiTable = !oi.length ? "" : `
         <table class="grid" style="margin-top:4mm">
           <colgroup><col style="width:68%"><col style="width:32%"></colgroup>
           <thead><tr><th class="l">OTHER INCOME — DETAIL</th><th class="n">THB</th></tr></thead>
           <tbody>
-          ${oi.map(([l, v]) => `<tr><td class="l">${esc(l)}</td><td class="n">${fmt(v)}</td></tr>`).join("")}
+          ${oi.map(([l, v]) => `<tr><td class="l">${esc(l)}</td><td class="n">${fmt(v)}</td></tr>${l === PB.OI_GENERAL ? genSub(v) : ""}`).join("")}
           <tr class="tot"><td class="l">TOTAL — OTHER INCOME (Senior + Staff)</td><td class="n b">${fmt(oi.reduce((t, x) => t + x[1], 0))}</td></tr>
           </tbody>
         </table>`;
@@ -292,6 +299,7 @@ tr.hcrow td{background:#F7FAFC;font-weight:600;border-top:.8pt solid #CBD5E1;}
 tr.gt td{border-top:1.4pt solid #0F1C4D;border-bottom:0;font-weight:700;color:#0F1C4D;font-size:7.5pt;
   padding-top:.9mm;padding-bottom:.9mm;}
 .pf{color:#475467;}
+.oi-sub{color:#475467;font-size:6.4pt;} td.l.oi-sub{padding-left:5mm;}
 
 /* หน้าสรุป */
 .kpis{display:flex;gap:3mm;margin-bottom:3mm;}

@@ -67,6 +67,44 @@ function ctNote() {
   const final = ["approved","locked"].includes(ctInfo.status);
   return `<div class="${final ? "text-sm text-muted" : "pa-warn"} mt-2">ค่าจ้างเหมา 3%: ดึงจากงวดค่าจ้างเหมา ${esc(month)} · ${ctInfo.count} คน · สถานะ <b>${esc(CT_ST[ctInfo.status] || ctInfo.status)}</b>${final ? "" : " — งวดยังไม่อนุมัติ ตัวเลขอาจเปลี่ยน เลือกงวดเงินเดือนใหม่อีกครั้งเพื่อดึงล่าสุด"}</div>`;
 }
+// แจกแจง Other Income (General) ที่ HR กรอกเอง (user 2026-10-22) — เก็บในหน่วยความจำ ไม่ลง localStorage (เป็นตัวเงิน)
+let oiGen = { month:"", rows:[], loading:false };
+const genTotal = () => rep ? (PB.oiTotals(rep).find(x => x[0] === PB.OI_GENERAL)?.[1] || 0) : 0;
+const genSum = () => PB.oiGenMerge(oiGen.rows).reduce((t, x) => t + x.amount, 0);
+const genLocked = () => inSystem() && sign.month === month && ["pending","approved"].includes(sign.row?.status);
+function syncGen() {
+  if (!rep) return;
+  if (oiGen.month !== month) {
+    // เดือนที่เคยบันทึกไว้ → ดึงแจกแจงเดิมมาตั้งต้น · เดือนใหม่ → ว่าง
+    oiGen = { month, rows: rep.fromHistory ? (rep.oiGeneral || []).map(x => ({ ...x })) : [], loading: !rep.fromHistory && savedMonths.includes(month) };
+    if (oiGen.loading) supabase.from("payroll_summary").select("line_item,value,row_order").eq("month", month).eq("section", PB.OI_GEN_LABEL)
+      .then(({ data }) => { if (oiGen.month !== month) return;
+        oiGen = { month, rows: (data || []).sort((a, b) => a.row_order - b.row_order).map(r => ({ label: r.line_item, amount: Number(r.value) || 0 })), loading:false };
+        renderPayrollBuild(); });
+  }
+  rep.oiGeneral = oiGen.rows;
+}
+function oiGenCard() {
+  const total = genTotal();
+  if (!total && !oiGen.rows.length) return "";
+  const lock = genLocked(), diff = Math.round((total - genSum()) * 100) / 100;
+  return `<div class="card card-body mt-4">
+    <div class="card-title" style="margin:0;">แจกแจง Other Income (General) · รายได้อื่นๆ</div>
+    <div class="text-sm text-muted">ในไฟล์เป็นก้อนเดียว ${fmt(total)} บาท — กรอกรายการจากข้อมูลหลังบ้าน (ชื่อภาษาอังกฤษ) ขึ้นใต้บรรทัด Other Income (General) ในหน้า Summary ของ PDF/Excel ·
+      ส่วนที่ยังไม่ได้กรอกขึ้นเป็น “Not itemised”</div>
+    ${oiGen.loading ? `<div class="text-sm text-muted mt-2">กำลังโหลดรายการที่บันทึกไว้…</div>` : `
+    <div class="pb-gen mt-3">${oiGen.rows.map((x, i) => `<div class="pb-gen-row">
+      <input class="form-input" value="${esc(x.label || "")}" placeholder="เช่น Telephone Allowance" ${lock ? "disabled" : ""} onchange="window._pbGen(${i},'label',this.value)">
+      <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" ? "" : esc(x.amount)}" placeholder="0.00" ${lock ? "disabled" : ""} onchange="window._pbGen(${i},'amount',this.value)">
+      ${lock ? "" : `<button class="pb-x" title="ลบ" onclick="window._pbGenDel(${i})">×</button>`}</div>`).join("")}</div>
+    ${lock ? "" : `<button class="btn btn-secondary btn-sm mt-2" onclick="window._pbGenAdd()">+ เพิ่มรายการ</button>`}
+    <div class="${Math.abs(diff) < 0.01 ? "pa-ok" : "pa-warn"} mt-3">กรอกแล้ว ${fmt(genSum())} / ${fmt(total)} บาท
+      ${Math.abs(diff) < 0.01 ? "— ตรงกับไฟล์ ✓" : `— ยังขาด ${fmt(diff)} บาท (จะขึ้นเป็น Not itemised)`}</div>
+    ${lock ? `<div class="text-sm text-muted mt-2">ล็อกอยู่ เพราะส่งเซ็นออนไลน์แล้ว — ยกเลิกการส่งเซ็นก่อนถ้าจะแก้</div>`
+      : inSystem() ? `<button class="btn btn-primary btn-sm mt-2" onclick="window._pbGenSave()">💾 บันทึกแจกแจง</button>`
+      : `<div class="text-sm text-muted mt-2">บันทึกไปพร้อมรายงานตอนกด 💾 บันทึกเข้าระบบ</div>`}`}
+  </div>`;
+}
 let savedNow = "";        // เดือนที่เพิ่งกดบันทึกในรอบนี้ (rep บนจอ = ข้อมูลที่อยู่ในระบบ)
 let sign = { month:"", row:null, img:{}, loading:false };   // payroll_sign ของเดือนที่เปิดอยู่ + รูปลายเซ็น (data URL)
 let prSignerList = null;  // [{user_id,name,title,email}] คนที่มีลายเซ็นในระบบ
@@ -120,6 +158,7 @@ async function loadSavedMonths() {
 export function renderPayrollBuild() {
   const pg = document.getElementById("pagePayrollbuild");
   if (!can("data.payroll.read")) { pg.innerHTML = ""; return; }
+  syncGen();
   // โหลดรายชื่อเดือนครั้งเดียวตอนเปิดหน้า แล้ววาดซ้ำเมื่อได้ผล
   if (!savedMonths.length && !loadedFrom) loadSavedMonths().then(() => { if (savedMonths.length) renderPayrollBuild(); });
 
@@ -149,7 +188,7 @@ export function renderPayrollBuild() {
       · ถ้าจะสร้างใหม่ให้เลือกไฟล์ด้านล่าง
     </div>` : ""}
     ${uploadCard()}
-    ${rep ? assignCard() + warnCard() + summaryCard() + signCard() : ""}
+    ${rep ? assignCard() + warnCard() + summaryCard() + oiGenCard() + signCard() : ""}
   </div>`;
   wire();
   bindFind();
@@ -443,6 +482,9 @@ function wire() {
     if (!rep || rep.fromHistory) return;
     if (!month) { toast("เลือกงวดเงินเดือนก่อน", "error"); return; }
     if (rep.unassigned.length) { toast("ยังมีคนที่ยังไม่ได้ลงแผนก", "error"); return; }
+    syncGen();
+    { const diff = Math.round((genTotal() - genSum()) * 100) / 100;
+      if (genTotal() && Math.abs(diff) >= 0.01 && !confirm(`แจกแจง Other Income (General) ยังไม่ครบ (ขาด ${fmt(diff)} บาท) — บันทึกต่อไหม? ส่วนที่ขาดจะขึ้นเป็น Not itemised`)) return; }
     const per = {
       month, report_date: new Date().toISOString().slice(0, 10),
       total_expense: PB.grandExpense(rep), total_deduction: PB.totalDeduction(rep),
@@ -476,6 +518,22 @@ function wire() {
   };
 
   window._pbSigner = (i, k, v) => { signers[i] = { ...signers[i], [k]: v }; saveSigners(); };
+  window._pbGen = (i, k, v) => { oiGen.rows[i] = { ...oiGen.rows[i], [k]: k === "amount" ? (v === "" ? "" : Number(v)) : v }; renderPayrollBuild(); };
+  window._pbGenAdd = () => { oiGen.rows = [...oiGen.rows, { label:"", amount:"" }]; renderPayrollBuild(); };
+  window._pbGenDel = i => { oiGen.rows = oiGen.rows.filter((_, j) => j !== i); renderPayrollBuild(); };
+  // เดือนที่อยู่ในระบบแล้ว: บันทึกเฉพาะแจกแจง ไม่แตะตัวเลขรายงาน (ลายเซ็นไม่ถูกล้าง)
+  window._pbGenSave = async () => {
+    if (genLocked()) return;
+    const diff = Math.round((genTotal() - genSum()) * 100) / 100;
+    if (Math.abs(diff) >= 0.01 && !confirm(`ยอดที่กรอกยังไม่เท่ายอดในไฟล์ (ขาด ${fmt(diff)} บาท) — บันทึกไปก่อน ส่วนที่ขาดขึ้นเป็น Not itemised?`)) return;
+    rep.oiGeneral = oiGen.rows;
+    const del = await supabase.from("payroll_summary").delete().eq("month", month).eq("section", PB.OI_GEN_LABEL);
+    if (del.error) { toast("บันทึกไม่สำเร็จ: " + del.error.message, "error"); return; }
+    const rows = PB.oiGenRows(rep, month, 900);
+    if (rows.length) { const { error } = await supabase.from("payroll_summary").insert(rows);
+      if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; } }
+    toast(`บันทึกแจกแจงแล้ว (${rows.length} รายการ)`, "success");
+  };
   window._pbSignUser = (i, uid) => {
     const u = (prSignerList || []).find(x => x.user_id === uid);
     signers[i] = { ...signers[i], user_id: uid || "", ...(u ? { name: u.name, title: u.title || signers[i].title } : {}) };
@@ -554,6 +612,7 @@ function rebuild() {
 
 async function exportExcel() {
   if (!window.ExcelJS) { toast("กรุณารอโหลด library", "error"); return; }
+  syncGen();
   const wb = new window.ExcelJS.Workbook();
   wb.creator = "Akara Resources HR System";
   wb.created = new Date();
@@ -606,7 +665,15 @@ async function exportExcel() {
     s1.addRow([]);
     const oh = s1.addRow(["OTHER INCOME — DETAIL", "", "THB"]);
     oh.eachCell(c => { c.font = { bold:true, color:{ argb:"FFFFFFFF" }, size:10 }; c.fill = fill(NAVY); });
-    for (const [l, v] of oiT) s1.addRow([l, "", v]);
+    for (const [l, v] of oiT) {
+      s1.addRow([l, "", v]);
+      if (l !== PB.OI_GENERAL) continue;
+      const g = PB.oiGenMerge(rep.oiGeneral), rest = PB.round2(v - g.reduce((t, x) => t + x.amount, 0));
+      if (g.length) for (const x of [...g, ...(Math.abs(rest) >= 0.01 ? [{ label:"Not itemised", amount: rest }] : [])]) {
+        const r = s1.addRow(["    – " + x.label, "", x.amount]);
+        r.eachCell(c => c.font = { size:9, color:{ argb:MUTED } });
+      }
+    }
     const ot = s1.addRow(["TOTAL — OTHER INCOME (Senior + Staff)", "", PB.round2(oiT.reduce((t, x) => t + x[1], 0))]);
     ot.eachCell(c => { c.font = { bold:true }; c.fill = fill(TINT); });
   }
@@ -762,6 +829,7 @@ async function exportExcel() {
 function printReport() {
   const w = window.open("", "_blank");
   if (!w) { toast("เบราว์เซอร์บล็อกป็อปอัป — อนุญาตแล้วลองใหม่", "error"); return; }
+  syncGen();
   w.document.write(registerDoc(rep, month, docSigners(), { toolbar: true }));
   w.document.close();
 }
