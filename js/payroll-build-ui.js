@@ -195,6 +195,7 @@ export function renderPayrollBuild() {
       ${rep && !rep.fromHistory && !rep.unassigned.length
         ? `<button class="btn btn-secondary" onclick="window._pbSave()">💾 บันทึกเข้าระบบ</button>` : ""}
       ${rep ? `<button class="btn btn-secondary" onclick="window._pbExcel()">📥 ดาวน์โหลด Excel</button>
+               <button class="btn btn-secondary" onclick="window._pbExcelAll()" title="ทุกแผนกในชีตเดียว (แบบไฟล์เดิม) สำหรับบัญชี">📥 Excel รวมหน้าเดียว</button>
                <button class="btn btn-gold" onclick="window._pbPrint()">🖨 พิมพ์ PDF</button>` : ""}
     </div>
   </div>
@@ -626,6 +627,7 @@ function wire() {
   window._pbSignAdd = () => { signers = [...signers, { role:"", dept:"", name:"", title:"" }]; saveSigners(); renderPayrollBuild(); };
   window._pbSignDel = i => { signers = signers.filter((_, j) => j !== i); saveSigners(); renderPayrollBuild(); };
   window._pbExcel = () => exportExcel();
+  window._pbExcelAll = () => exportConsolidated();
   window._pbPrint = () => printReport();
 }
 
@@ -871,6 +873,87 @@ async function exportExcel() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast("ดาวน์โหลด Excel แล้ว", "success");
+}
+
+// ---------- Excel รวมหน้าเดียว (ทุกแผนกในชีตเดียว แบบไฟล์ rev2 เดิม · บัญชีขอ user 2026-10-22) ----------
+// แบบใน Figma หน้า "Payroll Register — Consolidated (Excel)" · มี Headcount + Cost code · ไม่มีลายเซ็น
+async function exportConsolidated() {
+  if (!window.ExcelJS) { toast("กรุณารอโหลด library", "error"); return; }
+  syncGen();
+  const NAVY = "FF0F1C4D", GROUP = "FF1A3E9A", SUBTOT = "FF24346B", BAND = "FFEEF1F8", TINT = "FFF7FAFC", GTFILL = "FFDCE6F6",
+        LINE = "FFE4E7EC", MUTED = "FF98A2B3", WHITE = "FFFFFFFF";
+  const MONEY = '#,##0.00', COUNT = '#,##0';
+  const fill = argb => ({ type:"pattern", pattern:"solid", fgColor:{ argb } });
+  const thin = { style:"thin", color:{ argb:LINE } };
+  const cols = PB.columnList();                                   // แผนก + ยอดรวมสายงาน + BKK/Legal + GRAND TOTAL
+  const deptsOf = c => c.kind === "dept" ? [c.dept] : c.kind === "grand_total" ? PB.ALL_DEPTS : (PB.GROUPS.find(g => g.name === c.group)?.depts || []);
+  const at = (c, fn) => deptsOf(c).reduce((t, d) => t + (Number(fn(d)) || 0), 0);
+  const nC = cols.length + 2;
+
+  const wb = new window.ExcelJS.Workbook(); wb.creator = "Akara Resources HR System";
+  const ws = wb.addWorksheet("Consolidated", { properties:{ tabColor:{ argb:NAVY } } });
+  ws.columns = [{ width:44 }, { width:9 }, ...cols.map(c => ({ width: c.kind === "dept" ? 15 : 17 }))];
+  // แถว 1–3 หัวรายงาน
+  ws.addRow(["AKARA RESOURCES PCL · Chatree Gold Mine"]).getCell(1).font = { bold:true, size:10, color:{ argb:GROUP } };
+  ws.addRow([`PAYROLL REGISTER — CONSOLIDATED · ${monthLabel(month)}`]).getCell(1).font = { bold:true, size:15, color:{ argb:NAVY } };
+  ws.addRow(["All departments in one sheet · amounts in THB"]).getCell(1).font = { size:9, color:{ argb:"FF667085" } };
+  // แถว 4: สายงาน (merge) · แถว 5: แผนก
+  const r4 = ws.addRow(["", "", ...cols.map(c => c.kind === "dept" && PB.STANDALONE.includes(c.dept) ? c.dept : c.group)]);
+  const r5 = ws.addRow(["ITEM", "", ...cols.map(c => c.dept)]);
+  let start = 3;
+  for (let i = 1; i <= cols.length; i++) {
+    if (i === cols.length || cols[i].group !== cols[start - 3].group) { if (i + 2 > start) ws.mergeCells(4, start, 4, i + 2); start = i + 3; }
+  }
+  r4.eachCell({ includeEmpty:true }, (c, i) => { if (i > 2) { c.fill = fill(GROUP); c.font = { bold:true, color:{ argb:WHITE }, size:9 };
+    c.alignment = { horizontal:"center", vertical:"middle" }; c.border = { left:{ style:"thin", color:{ argb:WHITE } } }; } });
+  r5.height = 30;
+  r5.eachCell({ includeEmpty:true }, (c, i) => { const col = cols[i - 3];
+    c.fill = fill(col?.kind === "grand_total" ? NAVY : col && col.kind !== "dept" ? SUBTOT : NAVY);
+    c.font = { bold:true, color:{ argb:WHITE }, size:9 }; c.alignment = { horizontal: i <= 2 ? "left" : "right", vertical:"bottom", wrapText:true }; });
+
+  const put = (label, unit, vals, o = {}) => {
+    const r = ws.addRow([label, unit, ...vals]);
+    r.eachCell({ includeEmpty:true }, (c, i) => {
+      c.border = { bottom:thin };
+      if (o.band) c.fill = fill(BAND); else if (o.gt) c.fill = fill(GTFILL); else if (o.tot) c.fill = fill(TINT);
+      else if (i > 2 && cols[i - 3]?.kind !== "dept") c.fill = fill("FFFAFBFD");
+      if (i > 2 && !o.codes) c.numFmt = o.hc ? COUNT : MONEY;
+      if (i > 2 && cols[i - 3]?.kind !== "dept" && !o.codes) c.font = { bold:true };
+      if (o.tot || o.gt || o.band) c.font = { ...(c.font || {}), bold: !o.codes || i <= 2 };
+    });
+    if (o.codes) for (let i = 3; i <= nC; i++) { const c = r.getCell(i); c.font = { size:7.5, color:{ argb:MUTED } }; c.alignment = { horizontal:"right" }; }
+    r.getCell(2).font = { size:8, color:{ argb:MUTED } }; r.getCell(2).alignment = { horizontal:"center" };
+    return r;
+  };
+  for (const [kind, line, section] of LINES) {
+    if (kind === "sec") { put(line, "", cols.map(c => c.kind === "dept" ? costCodeOf(section, c.dept) : ""), { band:true, codes:true }); continue; }
+    put(line, kind === "hc" ? "persons" : "", cols.map(c => at(c, d => valueAt(rep, kind, line, section, d))), { hc: kind === "hc", tot: kind === "tot" });
+  }
+  put("TOTAL HEADCOUNT", "persons", cols.map(c => at(c, d => PB.deptHeadcount(rep, d))), { hc:true, tot:true });
+  put("GRAND TOTAL — PAYROLL EXPENSE", "", cols.map(c => at(c, d => PB.deptTotal(rep, d))), { gt:true });
+  const known = rep.dedByDept !== false;
+  const ded = (label, code, fn, o = {}) => put(label, "", cols.map(c => (known && (o.ok ?? true)) ? at(c, fn) : "—"), o);
+  put("DEDUCTION — STAFF EXPENSES", "", cols.map(() => ""), { band:true, codes:true });
+  for (const [k, l] of PB.DED_LINES) ded(l, PB.DED_CODES[k], d => PB.deptDed(rep, d, k));
+  ded("GRAND TOTAL — DEDUCTION", "", d => PB.deptDeduction(rep, d), { tot:true });
+  ded("NET SALARY", "", d => PB.deptNet(rep, d), { gt:true });
+  put("PROVIDENT FUND : K MASTER POOL FUND", "", cols.map(() => ""), { band:true, codes:true });
+  ded("Provident Fund Employer Contribution", PB.DED_CODES.pvdEmployer, d => PB.deptDed(rep, d, "pvdEmployer"));
+  put("SOCIAL SECURITY", "", cols.map(() => ""), { band:true, codes:true });
+  ded("Social Security Employer Contribution", "", d => PB.deptDed(rep, d, "ssoEmployer"), { ok: ssoKnown(rep) });
+
+  ws.views = [{ state:"frozen", xSplit:2, ySplit:5 }];
+  ws.pageSetup = { orientation:"landscape", paperSize:8, fitToPage:true, fitToWidth:1, fitToHeight:0,
+                   printTitlesRow:"4:5", margins:{ left:0.3, right:0.3, top:0.4, bottom:0.4, header:0.2, footer:0.2 } };
+  ws.headerFooter = { oddFooter:"&L&8Akara Resources — Payroll Register (Consolidated)&R&8Page &P of &N" };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `Payroll Register Consolidated_${month || "draft"}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("ดาวน์โหลด Excel รวมหน้าเดียวแล้ว", "success");
 }
 
 // ---------- PDF ----------
