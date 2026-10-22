@@ -91,7 +91,7 @@ function oiGenCard() {
   const total = genTotal();
   if (!total && !oiGen.rows.length) return "";
   const lock = genLocked(), diff = Math.round((total - genSum()) * 100) / 100;
-  return `<div class="card card-body mt-4">
+  return `<div class="card card-body mt-4" id="pbGenCard">
     <div class="card-title" style="margin:0;">แจกแจง Other Income (General) · รายได้อื่นๆ</div>
     <div class="text-sm text-muted">ในไฟล์เป็นก้อนเดียว ${fmt(total)} บาท — กรอกรายการจากข้อมูลหลังบ้าน (ชื่อภาษาอังกฤษ) ขึ้นใต้บรรทัด Other Income (General) ในหน้า Summary ของ PDF/Excel ·
       ส่วนที่ยังไม่ได้กรอกขึ้นเป็น “Not itemised”</div>
@@ -100,7 +100,7 @@ function oiGenCard() {
       <input class="form-input" value="${esc(x.label || "")}" placeholder="เช่น Telephone Allowance" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'label',this.value)">
       <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" ? "" : esc(x.amount)}" placeholder="0.00" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'amount',this.value)">
       ${lock ? "" : `<button class="pb-x" title="ลบ" onclick="window._pbGenDel(${i})">×</button>`}</div>`).join("")}</div>
-    ${lock ? "" : `<button class="btn btn-secondary btn-sm mt-2" onclick="window._pbGenAdd()">+ เพิ่มรายการ</button>`}
+    ${lock ? "" : `<button type="button" class="btn btn-secondary btn-sm mt-2" onclick="window._pbGenAdd()">+ เพิ่มรายการ</button>`}
     ${genStatus(total, diff)}
     ${lock ? `<div class="text-sm text-muted mt-2">ล็อกอยู่ เพราะส่งเซ็นออนไลน์แล้ว — ยกเลิกการส่งเซ็นก่อนถ้าจะแก้</div>`
       : inSystem() ? `<button class="btn btn-primary btn-sm mt-2" onclick="window._pbGenSave()">💾 บันทึกแจกแจง</button>`
@@ -525,8 +525,15 @@ function wire() {
     const el = document.getElementById("pbGenSum"), total = genTotal();
     if (el) el.outerHTML = genStatus(total, Math.round((total - genSum()) * 100) / 100);
   };
-  window._pbGenAdd = () => { oiGen.rows = [...oiGen.rows, { label:"", amount:"" }]; renderPayrollBuild(); };
-  window._pbGenDel = i => { oiGen.rows = oiGen.rows.filter((_, j) => j !== i); renderPayrollBuild(); };
+  // เพิ่ม/ลบ วาดใหม่เฉพาะกล่องนี้ (ไม่วาดทั้งหน้า) แล้วให้เคอร์เซอร์ไปที่ช่องชื่อของบรรทัดใหม่
+  const redrawGen = focusLast => {
+    if (rep) rep.oiGeneral = oiGen.rows;
+    const el = document.getElementById("pbGenCard"); if (!el) return renderPayrollBuild();
+    el.outerHTML = oiGenCard();
+    if (focusLast) { const ins = document.querySelectorAll("#pbGenCard .pb-gen-row input"); ins[ins.length - 2]?.focus(); }
+  };
+  window._pbGenAdd = () => { oiGen.rows = [...oiGen.rows, { label:"", amount:"" }]; redrawGen(true); };
+  window._pbGenDel = i => { oiGen.rows = oiGen.rows.filter((_, j) => j !== i); redrawGen(false); };
   // เดือนที่อยู่ในระบบแล้ว: บันทึกเฉพาะแจกแจง ไม่แตะตัวเลขรายงาน (ลายเซ็นไม่ถูกล้าง)
   window._pbGenSave = async () => {
     if (genLocked()) return;
