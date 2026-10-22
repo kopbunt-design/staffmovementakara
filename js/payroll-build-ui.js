@@ -117,7 +117,7 @@ function oiGenCard() {
     ${oiGen.loading ? `<div class="text-sm text-muted mt-2">กำลังโหลดรายการที่บันทึกไว้…</div>` : `
     <div class="pb-gen mt-3">${oiGen.rows.map((x, i) => `<div class="pb-gen-row">
       <input class="form-input" value="${esc(x.label || "")}" placeholder="เช่น Telephone Allowance" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'label',this.value)">
-      <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" ? "" : esc(x.amount)}" placeholder="0.00" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'amount',this.value)">
+      <input class="form-input text-right" type="number" step="0.01" value="${x.amount === "" || x.amount == null ? "" : esc(String(x.amount))}" placeholder="0.00" ${lock ? "disabled" : ""} oninput="window._pbGen(${i},'amount',this.value)">
       ${lock ? "" : `<button class="pb-x" title="ลบ" onclick="window._pbGenDel(${i})">×</button>`}</div>`).join("")}</div>
     ${lock ? "" : `<button type="button" class="btn btn-secondary btn-sm mt-2" onclick="window._pbGenAdd()">+ เพิ่มรายการ</button>`}
     ${genStatus(total, diff)}
