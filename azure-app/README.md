@@ -14,17 +14,19 @@ reach Azure SQL `akarahr2`. The site itself still talks to Supabase until the da
 
 **Never put a password, connection string or secret in this folder or in git.**
 
-## Startup command (App Service → Configuration → General settings)
-```
-gunicorn -w 2 -k uvicorn.workers.UvicornWorker app:app
-```
+## Startup command
+Leave it **empty**. App Service runs `gunicorn app:app` on its own when `app.py` is at the root;
+`app` is the FastAPI app wrapped as WSGI (a2wsgi).
+
+## Deploy target
+Azure Repos `AKARA-HR2` (dev.azure.com/akararesources/AKARA-HR2), branch `main` — every push builds
+(App Service Build Service, Python 3.13, installs `requirements.txt`) and deploys to App Service akarahr2.
 
 ## Build + deploy
 ```
 ./azure-app/build.sh        # → azure-app/dist.zip (app + site, no secrets)
 ```
-Upload `dist.zip` through the channel IT set up (Deployment Center), with build during deployment on
-so `requirements.txt` is installed.
+Copy the contents of `azure-app/dist/` into a clone of AKARA-HR2 (keep its README.md), commit, push to `main`.
 
 ## Check after deploy (signed in)
 - `/api/me` → your Microsoft account

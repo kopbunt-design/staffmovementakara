@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>ย้ายข้อมูลไป Azure · Akara HR</title>
+<link rel="icon" href="/assets/logo.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/expense/spend.css?v=1">
+<style>
+  .mg{max-width:880px;margin:0 auto;padding:28px 16px 60px;display:flex;flex-direction:column;gap:16px}
+  .mg h1{font-size:22px;font-weight:600}
+  .mg table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .mg th,.mg td{padding:8px 10px;border-top:1px solid var(--line);text-align:left}
+  .mg td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .mg .ok{color:var(--green);font-weight:600}.mg .bad{color:var(--red);font-weight:600}
+  .mg pre{white-space:pre-wrap;font-size:12px;background:#F7F8FA;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:320px;overflow:auto}
+  .mg .acts{display:flex;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<!--
+  ขั้น 2 ย้ายระบบไป Azure: คัดลอก ผู้ใช้/สิทธิ์ + ทะเบียนพนักงาน + Movement จาก Supabase → Azure SQL (akarahr2)
+  อ่าน Supabase ด้วย session ของผู้ใช้เอง (RLS เดิม) · เขียน Azure ผ่าน /api/admin/* (ล็อกอิน Microsoft + เป็น admin)
+  ไม่มีรหัสหรือ key ใด ๆ ผ่านหน้านี้
+-->
+<main class="mg" id="app"><div class="sp-loading">กำลังโหลด…</div></main>
+<div class="sp-toasts" id="spToasts"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module" src="/migrate/migrate.js?v=1"></script>
+</body>
+</html>

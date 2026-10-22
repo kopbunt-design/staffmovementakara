@@ -4,10 +4,11 @@
 set -e
 cd "$(dirname "$0")"
 rm -rf dist dist.zip && mkdir -p dist/site
-cp app.py requirements.txt dist/
+cp app.py requirements.txt schema.sql dist/
 for p in index.html fund.html vercel.json assets css js expense uniform contract sub docs econtract paf payroll; do
   [ -e "../$p" ] && cp -R "../$p" dist/site/
 done
+cp -R web/. dist/site/      # หน้าที่มีเฉพาะบน Azure (เช่น /migrate/)
 find dist -name .DS_Store -delete
 (cd dist && zip -qr ../dist.zip .)
 echo "dist.zip ready: $(du -h dist.zip | cut -f1)"
