@@ -1,0 +1,4459 @@
+{
+"app_roles": {
+"pk": [
+"key"
+],
+"identity": null,
+"cols": [
+{
+"name": "key",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "description",
+"udt": "text",
+"null": true
+},
+{
+"name": "is_system",
+"udt": "bool",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"contract_pay_adjust": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "run_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "kind",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "taxable",
+"udt": "bool",
+"null": false
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "code_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "source",
+"udt": "text",
+"null": false
+},
+{
+"name": "cuts_tax_base",
+"udt": "bool",
+"null": false
+},
+{
+"name": "worker_item_id",
+"udt": "int8",
+"null": true
+}
+]
+},
+"contract_pay_codes": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "kind",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "tax_effect",
+"udt": "bool",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"contract_pay_item": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "run_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "worker_type",
+"udt": "text",
+"null": false
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "cost_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "base_amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "extra_amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "deduct_amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht_percent",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht_amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "net_amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "bank_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "bank_account",
+"udt": "text",
+"null": true
+},
+{
+"name": "tax_base",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "tax_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "address",
+"udt": "text",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": true
+}
+]
+},
+"contract_pay_run": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "period",
+"udt": "text",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "calculated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "calculated_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "approved_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "locked_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "locked_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "pay_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "approver_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "submitted_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "submitted_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "signer",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "variance_ok",
+"udt": "jsonb",
+"null": false
+}
+]
+},
+"contract_settings": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "company_name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "company_tax_id",
+"udt": "text",
+"null": false
+},
+{
+"name": "company_address",
+"udt": "text",
+"null": false
+},
+{
+"name": "bank_account",
+"udt": "text",
+"null": false
+},
+{
+"name": "bank_company",
+"udt": "text",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"contract_worker_items": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "code_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "start_period",
+"udt": "text",
+"null": false
+},
+{
+"name": "end_period",
+"udt": "text",
+"null": true
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"contract_workers": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "worker_type",
+"udt": "text",
+"null": false
+},
+{
+"name": "tax_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "phone",
+"udt": "text",
+"null": true
+},
+{
+"name": "division",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "cost_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "monthly_rate",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht_percent",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht_apply",
+"udt": "bool",
+"null": false
+},
+{
+"name": "bank_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "bank_account",
+"udt": "text",
+"null": true
+},
+{
+"name": "start_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "end_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": true
+},
+{
+"name": "address",
+"udt": "text",
+"null": true
+}
+]
+},
+"diligence_results": {
+"pk": [
+"ym",
+"emp_code"
+],
+"identity": null,
+"cols": [
+{
+"name": "ym",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "qualified",
+"udt": "bool",
+"null": false
+},
+{
+"name": "streak",
+"udt": "int4",
+"null": false
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "edit_days",
+"udt": "int4",
+"null": false
+},
+{
+"name": "reasons",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "flags",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "manual",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "auto_qualified",
+"udt": "bool",
+"null": true
+},
+{
+"name": "auto_amount",
+"udt": "numeric",
+"null": true
+}
+]
+},
+"diligence_runs": {
+"pk": [
+"ym"
+],
+"identity": null,
+"cols": [
+{
+"name": "ym",
+"udt": "text",
+"null": false
+},
+{
+"name": "pay_ym",
+"udt": "text",
+"null": false
+},
+{
+"name": "files",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "in_scope",
+"udt": "int4",
+"null": true
+},
+{
+"name": "qualified",
+"udt": "int4",
+"null": true
+},
+{
+"name": "total",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "saved_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "saved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "edit_groups",
+"udt": "jsonb",
+"null": true
+}
+]
+},
+"doc_access_log": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "doc_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "file_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "file_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "action",
+"udt": "text",
+"null": false
+},
+{
+"name": "user_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "user_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"doc_files": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "doc_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "path",
+"udt": "text",
+"null": false
+},
+{
+"name": "size",
+"udt": "int8",
+"null": true
+},
+{
+"name": "mime",
+"udt": "text",
+"null": true
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "uploaded_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "uploaded_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "uploaded_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"doc_register": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "series_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "year",
+"udt": "int4",
+"null": false
+},
+{
+"name": "seq",
+"udt": "int4",
+"null": false
+},
+{
+"name": "doc_no",
+"udt": "text",
+"null": false
+},
+{
+"name": "type_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "type_label",
+"udt": "text",
+"null": true
+},
+{
+"name": "subject",
+"udt": "text",
+"null": true
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "person_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "issued_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "ref_doc_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "batch_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "void_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "voided_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "voided_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "imported",
+"udt": "bool",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "confidential",
+"udt": "bool",
+"null": false
+},
+{
+"name": "form_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "sender",
+"udt": "text",
+"null": true
+},
+{
+"name": "received_date",
+"udt": "date",
+"null": true
+}
+]
+},
+"doc_series": {
+"pk": [
+"code"
+],
+"identity": null,
+"cols": [
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "prefix",
+"udt": "text",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "direction",
+"udt": "text",
+"null": false
+}
+]
+},
+"doc_types": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "series_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "template_key",
+"udt": "text",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "confidential",
+"udt": "bool",
+"null": false
+},
+{
+"name": "form_code",
+"udt": "text",
+"null": true
+}
+]
+},
+"ec_sign_tokens": {
+"pk": [
+"contract_id"
+],
+"identity": null,
+"cols": [
+{
+"name": "contract_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "token",
+"udt": "text",
+"null": false
+},
+{
+"name": "expires_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "used_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"emp_contracts": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "location",
+"udt": "text",
+"null": false
+},
+{
+"name": "contract_date",
+"udt": "date",
+"null": false
+},
+{
+"name": "title_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "id_last5",
+"udt": "text",
+"null": true
+},
+{
+"name": "birth_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "address",
+"udt": "text",
+"null": true
+},
+{
+"name": "start_date",
+"udt": "date",
+"null": false
+},
+{
+"name": "position_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "position_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "salary",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "work_days",
+"udt": "text",
+"null": true
+},
+{
+"name": "work_hours",
+"udt": "text",
+"null": true
+},
+{
+"name": "break_time",
+"udt": "text",
+"null": true
+},
+{
+"name": "workplace",
+"udt": "text",
+"null": true
+},
+{
+"name": "probation_end",
+"udt": "date",
+"null": true
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "signer_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "witness_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "signer",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "witness",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "signed_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "witnessed_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "requested_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "requested_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "submitted_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "no_probation",
+"udt": "bool",
+"null": false
+},
+{
+"name": "id_card",
+"udt": "text",
+"null": true
+}
+]
+},
+"employees": {
+"pk": [
+"emp_code"
+],
+"identity": null,
+"cols": [
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": true
+},
+{
+"name": "firstname_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "lastname_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "firstname_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "lastname_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "gender",
+"udt": "text",
+"null": true
+},
+{
+"name": "nationality",
+"udt": "text",
+"null": true
+},
+{
+"name": "dob",
+"udt": "date",
+"null": true
+},
+{
+"name": "phone",
+"udt": "text",
+"null": true
+},
+{
+"name": "division",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "section",
+"udt": "text",
+"null": true
+},
+{
+"name": "team",
+"udt": "text",
+"null": true
+},
+{
+"name": "position",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "site",
+"udt": "text",
+"null": true
+},
+{
+"name": "contract_type",
+"udt": "text",
+"null": true
+},
+{
+"name": "join_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "effective_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "end_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "salary",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "province",
+"udt": "text",
+"null": true
+},
+{
+"name": "shift_allowance_override",
+"udt": "bool",
+"null": true
+},
+{
+"name": "manager_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "dotted_manager_code",
+"udt": "text",
+"null": true
+}
+]
+},
+"exp_approve_tokens": {
+"pk": [
+"invoice_id"
+],
+"identity": null,
+"cols": [
+{
+"name": "invoice_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "token",
+"udt": "text",
+"null": false
+},
+{
+"name": "expires_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "used_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"exp_budgets": {
+"pk": [
+"fy",
+"category"
+],
+"identity": null,
+"cols": [
+{
+"name": "fy",
+"udt": "int4",
+"null": false
+},
+{
+"name": "category",
+"udt": "text",
+"null": false
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"exp_categories": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "cost_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"exp_files": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "invoice_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "path",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "size",
+"udt": "int8",
+"null": true
+},
+{
+"name": "uploaded_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "uploaded_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"exp_invoice_lines": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "invoice_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "line_no",
+"udt": "int4",
+"null": false
+},
+{
+"name": "cost_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "detail",
+"udt": "text",
+"null": false
+},
+{
+"name": "detail2",
+"udt": "text",
+"null": true
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "vat_rate",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "vat",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "net",
+"udt": "numeric",
+"null": false
+}
+]
+},
+"exp_invoices": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "inv_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "inv_year",
+"udt": "int4",
+"null": true
+},
+{
+"name": "inv_seq",
+"udt": "int4",
+"null": true
+},
+{
+"name": "inv_date",
+"udt": "date",
+"null": false
+},
+{
+"name": "vendor_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "vendor",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "category",
+"udt": "text",
+"null": true
+},
+{
+"name": "ref_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "ref_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "po_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "wht_rate",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "amount",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "vat",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "wht",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "net",
+"udt": "numeric",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "reviewer_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approver_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "preparer",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "reviewer",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "approver",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "prepared_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "submitted_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "reviewed_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "reviewed_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "approved_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "received_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "received_at",
+"udt": "date",
+"null": true
+},
+{
+"name": "imported",
+"udt": "bool",
+"null": false
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"exp_vendors": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "address",
+"udt": "text",
+"null": true
+},
+{
+"name": "bank",
+"udt": "text",
+"null": true
+},
+{
+"name": "tax_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"fund_committee": {
+"pk": [
+"user_id"
+],
+"identity": null,
+"cols": [
+{
+"name": "user_id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "added_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "added_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"fund_form_invite": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "token",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "title",
+"udt": "text",
+"null": true
+},
+{
+"name": "emp_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "id_last5",
+"udt": "text",
+"null": false
+},
+{
+"name": "forms",
+"udt": "_text",
+"null": false
+},
+{
+"name": "expires_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "cancelled",
+"udt": "bool",
+"null": false
+},
+{
+"name": "opened_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"fund_form_submission": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "form_type",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "payload",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "hr_note",
+"udt": "text",
+"null": true
+},
+{
+"name": "submitted_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "updated_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "invite_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "approver_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approval_requested_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "approval_requested_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approval_prev_status",
+"udt": "text",
+"null": true
+},
+{
+"name": "approval_note",
+"udt": "text",
+"null": true
+},
+{
+"name": "approved_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "committee",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "approval_requested_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "witness",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "witnessed_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"fund_invite_attempt": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "invite_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"hr_letters": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "kind",
+"udt": "text",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "person_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "data",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "doc_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "doc_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "requested_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "requested_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "approver_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approved_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "signer",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "requested_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "cancel_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "cancelled_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "cancelled_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"letter_income_items": {
+"pk": [
+"key"
+],
+"identity": null,
+"cols": [
+{
+"name": "key",
+"udt": "text",
+"null": false
+},
+{
+"name": "label_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "label_en",
+"udt": "text",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+}
+]
+},
+"letter_settings": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "seal_path",
+"udt": "text",
+"null": true
+},
+{
+"name": "hr_contact_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"letter_signers": {
+"pk": [
+"user_id"
+],
+"identity": null,
+"cols": [
+{
+"name": "user_id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "title_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "title_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": true
+},
+{
+"name": "signature_path",
+"udt": "text",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "set_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"mail_secret": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "client_secret",
+"udt": "text",
+"null": true
+}
+]
+},
+"mail_settings": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "mode",
+"udt": "text",
+"null": false
+},
+{
+"name": "tenant_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "client_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "sender",
+"udt": "text",
+"null": true
+},
+{
+"name": "has_secret",
+"udt": "bool",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"mail_templates": {
+"pk": [
+"key"
+],
+"identity": null,
+"cols": [
+{
+"name": "key",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "subject",
+"udt": "text",
+"null": false
+},
+{
+"name": "html",
+"udt": "text",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "to_extra",
+"udt": "text",
+"null": true
+},
+{
+"name": "cc",
+"udt": "text",
+"null": true
+}
+]
+},
+"master_departments": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "division_id",
+"udt": "int4",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"master_divisions": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"master_job_levels": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "rank",
+"udt": "int4",
+"null": true
+}
+]
+},
+"master_positions": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"master_sections": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "department_id",
+"udt": "int4",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"master_shift_codes": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "family",
+"udt": "text",
+"null": false
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "solo_rate",
+"udt": "int4",
+"null": false
+}
+]
+},
+"master_teams": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int4",
+"null": false
+},
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "section_id",
+"udt": "int4",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"movements": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "type",
+"udt": "text",
+"null": false
+},
+{
+"name": "date",
+"udt": "date",
+"null": true
+},
+{
+"name": "from_dept",
+"udt": "text",
+"null": true
+},
+{
+"name": "to_dept",
+"udt": "text",
+"null": true
+},
+{
+"name": "reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "salary",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "cost_center",
+"udt": "text",
+"null": true
+},
+{
+"name": "recorded_by",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "attachment_path",
+"udt": "text",
+"null": true
+},
+{
+"name": "attachment_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "org_from",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "org_to",
+"udt": "jsonb",
+"null": true
+},
+{
+"name": "sep_confirmed_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "sep_confirmed_by",
+"udt": "text",
+"null": true
+}
+]
+},
+"notifications": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "title",
+"udt": "text",
+"null": false
+},
+{
+"name": "detail",
+"udt": "text",
+"null": true
+},
+{
+"name": "category",
+"udt": "text",
+"null": true
+},
+{
+"name": "dedup_key",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "link",
+"udt": "text",
+"null": true
+}
+]
+},
+"ot_audit_marks": {
+"pk": [
+"ym",
+"key"
+],
+"identity": null,
+"cols": [
+{
+"name": "ym",
+"udt": "text",
+"null": false
+},
+{
+"name": "key",
+"udt": "text",
+"null": false
+},
+{
+"name": "done",
+"udt": "bool",
+"null": false
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "by_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"ot_shift_times": {
+"pk": [
+"code"
+],
+"identity": null,
+"cols": [
+{
+"name": "code",
+"udt": "text",
+"null": false
+},
+{
+"name": "start_min",
+"udt": "int4",
+"null": false
+},
+{
+"name": "end_min",
+"udt": "int4",
+"null": false
+},
+{
+"name": "break_start",
+"udt": "int4",
+"null": true
+},
+{
+"name": "break_end",
+"udt": "int4",
+"null": true
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "updated_by",
+"udt": "text",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "by_hours",
+"udt": "bool",
+"null": false
+},
+{
+"name": "hours_span",
+"udt": "int4",
+"null": true
+}
+]
+},
+"paf_approvers": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "step",
+"udt": "int4",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "title_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "title_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": false
+},
+{
+"name": "is_default",
+"udt": "bool",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"paf_forms": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "doc_id",
+"udt": "int8",
+"null": true
+},
+{
+"name": "doc_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "name_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "name_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "division",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "section",
+"udt": "text",
+"null": true
+},
+{
+"name": "team",
+"udt": "text",
+"null": true
+},
+{
+"name": "position",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "salary_from",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "salary_to",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "position_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "job_level_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "division_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "department_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "section_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "team_to",
+"udt": "text",
+"null": true
+},
+{
+"name": "subject_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "subject_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "note_th",
+"udt": "text",
+"null": true
+},
+{
+"name": "note_en",
+"udt": "text",
+"null": true
+},
+{
+"name": "effective_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "mov_type",
+"udt": "text",
+"null": true
+},
+{
+"name": "steps",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "cur_step",
+"udt": "int4",
+"null": true
+},
+{
+"name": "requested_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "requested_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "requested_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "requested_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "ack_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "movement_id",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "cancel_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"paf_log": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "paf_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "action",
+"udt": "text",
+"null": false
+},
+{
+"name": "step",
+"udt": "int4",
+"null": true
+},
+{
+"name": "actor_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "actor_detail",
+"udt": "text",
+"null": true
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "via",
+"udt": "text",
+"null": true
+}
+]
+},
+"paf_tokens": {
+"pk": [
+"paf_id",
+"step"
+],
+"identity": null,
+"cols": [
+{
+"name": "paf_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "step",
+"udt": "int4",
+"null": false
+},
+{
+"name": "token",
+"udt": "text",
+"null": false
+},
+{
+"name": "expires_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "used_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"payroll_period": {
+"pk": [
+"month"
+],
+"identity": null,
+"cols": [
+{
+"name": "month",
+"udt": "text",
+"null": false
+},
+{
+"name": "report_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "total_expense",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "total_deduction",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "net_salary",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "total_headcount",
+"udt": "int4",
+"null": true
+},
+{
+"name": "prepared_by",
+"udt": "text",
+"null": true
+},
+{
+"name": "prepared_position",
+"udt": "text",
+"null": true
+},
+{
+"name": "reviewed_by",
+"udt": "text",
+"null": true
+},
+{
+"name": "reviewed_position",
+"udt": "text",
+"null": true
+},
+{
+"name": "approved_by",
+"udt": "text",
+"null": true
+},
+{
+"name": "approved_position",
+"udt": "text",
+"null": true
+},
+{
+"name": "source_file",
+"udt": "text",
+"null": true
+},
+{
+"name": "uploaded_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "uploaded_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"payroll_sign": {
+"pk": [
+"month"
+],
+"identity": null,
+"cols": [
+{
+"name": "month",
+"udt": "text",
+"null": false
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "steps",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "cur_step",
+"udt": "int4",
+"null": true
+},
+{
+"name": "reject_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "submitted_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "submitted_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "approved_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"payroll_sign_tokens": {
+"pk": [
+"month",
+"step"
+],
+"identity": null,
+"cols": [
+{
+"name": "month",
+"udt": "text",
+"null": false
+},
+{
+"name": "step",
+"udt": "int4",
+"null": false
+},
+{
+"name": "token",
+"udt": "text",
+"null": false
+},
+{
+"name": "expires_at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "used_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": false
+}
+]
+},
+"payroll_summary": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "month",
+"udt": "text",
+"null": false
+},
+{
+"name": "business_group",
+"udt": "text",
+"null": false
+},
+{
+"name": "department",
+"udt": "text",
+"null": false
+},
+{
+"name": "col_kind",
+"udt": "text",
+"null": false
+},
+{
+"name": "section",
+"udt": "text",
+"null": false
+},
+{
+"name": "line_item",
+"udt": "text",
+"null": false
+},
+{
+"name": "cost_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "value",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "value_kind",
+"udt": "text",
+"null": false
+},
+{
+"name": "row_order",
+"udt": "int4",
+"null": true
+},
+{
+"name": "col_order",
+"udt": "int4",
+"null": true
+}
+]
+},
+"pending_roles": {
+"pk": [
+"email_key"
+],
+"identity": null,
+"cols": [
+{
+"name": "email_key",
+"udt": "text",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": true
+},
+{
+"name": "role",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"permissions": {
+"pk": [
+"key"
+],
+"identity": null,
+"cols": [
+{
+"name": "key",
+"udt": "text",
+"null": false
+},
+{
+"name": "category",
+"udt": "text",
+"null": false
+},
+{
+"name": "label",
+"udt": "text",
+"null": false
+},
+{
+"name": "description",
+"udt": "text",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+}
+]
+},
+"position_quota": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "division",
+"udt": "text",
+"null": false
+},
+{
+"name": "department",
+"udt": "text",
+"null": false
+},
+{
+"name": "position",
+"udt": "text",
+"null": false
+},
+{
+"name": "quota",
+"udt": "int4",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "fiscal_year",
+"udt": "int4",
+"null": true
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+}
+]
+},
+"role_permissions": {
+"pk": [
+"role_key",
+"perm_key"
+],
+"identity": null,
+"cols": [
+{
+"name": "role_key",
+"udt": "text",
+"null": false
+},
+{
+"name": "perm_key",
+"udt": "text",
+"null": false
+}
+]
+},
+"shift_allowance": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": false
+},
+{
+"name": "employee_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "department",
+"udt": "text",
+"null": true
+},
+{
+"name": "month",
+"udt": "text",
+"null": false
+},
+{
+"name": "job_level",
+"udt": "text",
+"null": true
+},
+{
+"name": "eligible",
+"udt": "bool",
+"null": true
+},
+{
+"name": "family_count",
+"udt": "int4",
+"null": true
+},
+{
+"name": "monthly_rate",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "pay_days",
+"udt": "int4",
+"null": true
+},
+{
+"name": "no_pay_days",
+"udt": "int4",
+"null": true
+},
+{
+"name": "check_days",
+"udt": "int4",
+"null": true
+},
+{
+"name": "total",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "absent_days",
+"udt": "int4",
+"null": true
+},
+{
+"name": "manual_total",
+"udt": "numeric",
+"null": true
+},
+{
+"name": "manual_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "manual_by",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "manual_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "final_total",
+"udt": "numeric",
+"null": true
+}
+]
+},
+"sub_companies": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": false
+},
+{
+"name": "legal_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "tax_id",
+"udt": "text",
+"null": true
+},
+{
+"name": "contact_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "contact_phone",
+"udt": "text",
+"null": true
+},
+{
+"name": "contact_email",
+"udt": "text",
+"null": true
+},
+{
+"name": "contract_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "contract_start",
+"udt": "date",
+"null": true
+},
+{
+"name": "contract_end",
+"udt": "date",
+"null": true
+},
+{
+"name": "scope",
+"udt": "text",
+"null": true
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"sub_worker_log": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "worker_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "at",
+"udt": "timestamptz",
+"null": false
+},
+{
+"name": "by_user",
+"udt": "uuid",
+"null": true
+},
+{
+"name": "action",
+"udt": "text",
+"null": false
+},
+{
+"name": "changes",
+"udt": "jsonb",
+"null": true
+}
+]
+},
+"sub_workers": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "company_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "sub_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "ac_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "card_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "title",
+"udt": "text",
+"null": true
+},
+{
+"name": "first_name",
+"udt": "text",
+"null": false
+},
+{
+"name": "last_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "nationality",
+"udt": "text",
+"null": false
+},
+{
+"name": "id_last5",
+"udt": "text",
+"null": true
+},
+{
+"name": "passport_last5",
+"udt": "text",
+"null": true
+},
+{
+"name": "birth_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "phone",
+"udt": "text",
+"null": true
+},
+{
+"name": "emergency_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "emergency_phone",
+"udt": "text",
+"null": true
+},
+{
+"name": "position",
+"udt": "text",
+"null": true
+},
+{
+"name": "team",
+"udt": "text",
+"null": true
+},
+{
+"name": "area",
+"udt": "text",
+"null": true
+},
+{
+"name": "village",
+"udt": "text",
+"null": true
+},
+{
+"name": "subdistrict",
+"udt": "text",
+"null": true
+},
+{
+"name": "district",
+"udt": "text",
+"null": true
+},
+{
+"name": "province",
+"udt": "text",
+"null": true
+},
+{
+"name": "status",
+"udt": "text",
+"null": false
+},
+{
+"name": "start_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "left_on",
+"udt": "date",
+"null": true
+},
+{
+"name": "left_reason",
+"udt": "text",
+"null": true
+},
+{
+"name": "card_issued",
+"udt": "date",
+"null": true
+},
+{
+"name": "card_expiry",
+"udt": "date",
+"null": true
+},
+{
+"name": "card_returned",
+"udt": "date",
+"null": true
+},
+{
+"name": "induction_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "induction_expiry",
+"udt": "date",
+"null": true
+},
+{
+"name": "medical_date",
+"udt": "date",
+"null": true
+},
+{
+"name": "medical_expiry",
+"udt": "date",
+"null": true
+},
+{
+"name": "work_permit_no",
+"udt": "text",
+"null": true
+},
+{
+"name": "work_permit_expiry",
+"udt": "date",
+"null": true
+},
+{
+"name": "visa_expiry",
+"udt": "date",
+"null": true
+},
+{
+"name": "licenses",
+"udt": "jsonb",
+"null": false
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "source_file",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"uniform_item": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "item_type",
+"udt": "text",
+"null": false
+},
+{
+"name": "size",
+"udt": "text",
+"null": false
+},
+{
+"name": "min_qty",
+"udt": "int4",
+"null": false
+},
+{
+"name": "is_active",
+"udt": "bool",
+"null": false
+},
+{
+"name": "remark",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "sort_order",
+"udt": "int4",
+"null": false
+}
+]
+},
+"uniform_move": {
+"pk": [
+"id"
+],
+"identity": "id",
+"cols": [
+{
+"name": "id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "item_id",
+"udt": "int8",
+"null": false
+},
+{
+"name": "move_type",
+"udt": "text",
+"null": false
+},
+{
+"name": "qty",
+"udt": "int4",
+"null": false
+},
+{
+"name": "moved_on",
+"udt": "date",
+"null": false
+},
+{
+"name": "emp_code",
+"udt": "text",
+"null": true
+},
+{
+"name": "emp_name",
+"udt": "text",
+"null": true
+},
+{
+"name": "note",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "created_by",
+"udt": "uuid",
+"null": true
+}
+]
+},
+"user_roles": {
+"pk": [
+"user_id"
+],
+"identity": null,
+"cols": [
+{
+"name": "user_id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "name",
+"udt": "text",
+"null": true
+},
+{
+"name": "email",
+"udt": "text",
+"null": true
+},
+{
+"name": "role",
+"udt": "text",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+},
+"vacancy_config": {
+"pk": [
+"id"
+],
+"identity": null,
+"cols": [
+{
+"name": "id",
+"udt": "uuid",
+"null": false
+},
+{
+"name": "year_month",
+"udt": "text",
+"null": false
+},
+{
+"name": "division",
+"udt": "text",
+"null": false
+},
+{
+"name": "approved_positions",
+"udt": "int4",
+"null": true
+},
+{
+"name": "created_at",
+"udt": "timestamptz",
+"null": true
+},
+{
+"name": "updated_at",
+"udt": "timestamptz",
+"null": true
+}
+]
+}
+}

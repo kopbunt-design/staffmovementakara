@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 rm -rf dist dist.zip && mkdir -p dist/site
-cp app.py requirements.txt schema.sql dist/
+cp app.py db.py tables.json schema_full.sql requirements.txt dist/
 for p in index.html fund.html vercel.json assets css js expense uniform contract sub docs econtract paf payroll; do
   [ -e "../$p" ] && cp -R "../$p" dist/site/
 done
