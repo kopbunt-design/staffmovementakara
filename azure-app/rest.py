@@ -22,7 +22,6 @@ import db
 import hooks
 from db import TABLES
 
-SEC_PARAMS: dict = json.loads((db.HERE / "security_params.json").read_text(encoding="utf-8"))
 
 # the one view the site reads (uniform stock balance) — read-only
 VIEWS = {"uniform_balance": {"cols": [{"name": n, "udt": u} for n, u in (
