@@ -111,10 +111,11 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
         return {"sig": {str(s["step"]): sign("letter-assets", s.get("signature_path")) for s in r.get("steps") or []}}
 
     ms = one(A, "mail_settings", "id = 1") or {}
-    cfg = {"tenant": os.environ.get("GRAPH_TENANT_ID") or ms.get("tenant_id"),
-           "client": os.environ.get("GRAPH_CLIENT_ID") or ms.get("client_id"),
-           "secret": os.environ.get("GRAPH_CLIENT_SECRET"),
-           "sender": os.environ.get("MAIL_SENDER") or ms.get("sender")}
+    env = lambda k: (os.environ.get(k) or "").strip().strip('"').strip("'").strip() or None   # pasted values often carry spaces/quotes
+    cfg = {"tenant": env("GRAPH_TENANT_ID") or ms.get("tenant_id"),
+           "client": env("GRAPH_CLIENT_ID") or ms.get("client_id"),
+           "secret": env("GRAPH_CLIENT_SECRET"),
+           "sender": env("MAIL_SENDER") or ms.get("sender")}
     if action != "test" and ms.get("mode") != "auto":
         return {"sent": False, "reason": "outlook_mode"}
     if not all(cfg.values()):
@@ -364,7 +365,7 @@ def send(cfg, to, cc, subject, html):
             body = json.loads(body).get("error_description") or body
         except ValueError:
             pass
-        return {"sent": False, "reason": "auth_error", "detail": body[:300]}
+        return {"sent": False, "reason": "auth_error", "detail": f"tenant {cfg['tenant']} · client {cfg['client']} — {body[:240]}"}
     except Exception as e:
         return {"sent": False, "reason": "auth_error", "detail": str(e)[:300]}
     msg = {"message": {"subject": subject, "body": {"contentType": "HTML", "content": html},
