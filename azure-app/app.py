@@ -453,6 +453,8 @@ async def fn_call(name: str, request: Request):
                 return {"data": mail.handle(acn, ucn, uid, email, body, app_url), "error": None}
             except mail.Fail as e:
                 return {"data": {"error": str(e)}, "error": {"message": str(e), "status": e.status}}
+            except Exception as e:   # show the reason on the page instead of a generic "can't call the function"
+                return {"data": {"sent": False, "reason": "server_error", "detail": f"{type(e).__name__}: {str(e)[:250]}"}, "error": None}
             finally:
                 if ucn:
                     ucn.close()

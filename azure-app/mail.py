@@ -15,6 +15,7 @@ import html as H
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -117,7 +118,8 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
     if action != "test" and ms.get("mode") != "auto":
         return {"sent": False, "reason": "outlook_mode"}
     if not all(cfg.values()):
-        return {"sent": False, "reason": "not_configured"}
+        return {"sent": False, "reason": "not_configured",
+                "detail": "ขาด " + ", ".join(k for k, v in cfg.items() if not v) + " (ตั้งใน App Service → Environment variables)"}
 
     def name_of(u):
         if not u:
@@ -341,19 +343,30 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
     if os.environ.get("MAIL_LIVE") != "1" and action != "test":
         return {"sent": False, "reason": "test_mode", "would_send_to": ", ".join(to_all)}
     cc = [x for x in out["cc"] if x not in to_all]
-    send(cfg, to_all, cc, out["subject"], out["html"])
+    failed = send(cfg, to_all, cc, out["subject"], out["html"])
+    if failed:
+        return failed
     return {"sent": True, "to": ", ".join(to_all) + (f" (cc {', '.join(cc)})" if cc else "")}
 
 
 def send(cfg, to, cc, subject, html):
+    """None when sent; otherwise {sent: False, reason, detail} — same answers the Supabase function gave,
+    so the settings page shows "Tenant/Client ID/Secret ไม่ถูกต้อง" / "แอปไม่มีสิทธิ์ Mail.Send" etc."""
     tok_req = urllib.request.Request(
         f"https://login.microsoftonline.com/{cfg['tenant']}/oauth2/v2.0/token",
         data=urllib.parse.urlencode({"client_id": cfg["client"], "client_secret": cfg["secret"], "grant_type": "client_credentials",
                                      "scope": "https://graph.microsoft.com/.default"}).encode())
     try:
         tok = json.loads(urllib.request.urlopen(tok_req, timeout=20).read())["access_token"]
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        try:
+            body = json.loads(body).get("error_description") or body
+        except ValueError:
+            pass
+        return {"sent": False, "reason": "auth_error", "detail": body[:300]}
     except Exception as e:
-        raise Fail(f"auth_error: {str(e)[:200]}", 502)
+        return {"sent": False, "reason": "auth_error", "detail": str(e)[:300]}
     msg = {"message": {"subject": subject, "body": {"contentType": "HTML", "content": html},
                        "toRecipients": [{"emailAddress": {"address": a}} for a in to],
                        "ccRecipients": [{"emailAddress": {"address": a}} for a in cc]}, "saveToSentItems": True}
@@ -363,4 +376,7 @@ def send(cfg, to, cc, subject, html):
     try:
         urllib.request.urlopen(req, timeout=30)
     except urllib.error.HTTPError as e:
-        raise Fail(f"graph_error: {e.read().decode()[:300]}", 502)
+        return {"sent": False, "reason": "graph_error", "detail": e.read().decode(errors="replace")[:300]}
+    except Exception as e:
+        return {"sent": False, "reason": "graph_error", "detail": str(e)[:300]}
+    return None
