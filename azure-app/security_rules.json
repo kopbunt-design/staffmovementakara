@@ -1,0 +1,471 @@
+{
+"app_roles": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.roles.manage') = 1))",
+"ins": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_before": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_after": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"del": "((dbo.has_perm(N'data.roles.manage') = 1))"
+},
+"contract_pay_adjust": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_pay_codes": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_pay_item": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_pay_run": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_settings": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_worker_items": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"contract_workers": {
+"read": "(((dbo.has_perm(N'data.payroll.read') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1))) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"diligence_results": {
+"read": "((dbo.has_perm(N'page.diligence') = 1)) OR ((dbo.has_perm(N'data.diligence.write') = 1))",
+"ins": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"del": "((dbo.has_perm(N'data.diligence.write') = 1))"
+},
+"diligence_runs": {
+"read": "((dbo.has_perm(N'page.diligence') = 1)) OR ((dbo.has_perm(N'data.diligence.write') = 1))",
+"ins": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.diligence.write') = 1))",
+"del": "((dbo.has_perm(N'data.diligence.write') = 1))"
+},
+"doc_access_log": {
+"read": "((EXISTS ( SELECT 1 FROM dbo.doc_register r WHERE ((r.id = @doc_id) AND (dbo.doc_visible(r.confidential) = 1)))))",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"doc_files": {
+"read": "((EXISTS ( SELECT 1 FROM dbo.doc_register r WHERE ((r.id = @doc_id) AND (dbo.doc_visible(r.confidential) = 1)))))",
+"ins": "(((dbo.has_perm(N'data.docregister.write') = 1) AND (EXISTS ( SELECT 1 FROM dbo.doc_register r WHERE ((r.id = @doc_id) AND (dbo.doc_visible(r.confidential) = 1))))))",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "(((dbo.has_perm(N'data.docregister.write') = 1) AND (EXISTS ( SELECT 1 FROM dbo.doc_register r WHERE ((r.id = @doc_id) AND (dbo.doc_visible(r.confidential) = 1))))))"
+},
+"doc_register": {
+"read": "((dbo.doc_visible(@confidential) = 1))",
+"ins": "1 = 0",
+"upd_before": "(((dbo.has_perm(N'data.docregister.write') = 1) AND (dbo.doc_visible(@confidential) = 1)))",
+"upd_after": "(((dbo.has_perm(N'data.docregister.write') = 1) AND (dbo.doc_visible(@confidential) = 1)))",
+"del": "1 = 0"
+},
+"doc_series": {
+"read": "((dbo.has_perm(N'page.docregister') = 1))",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"doc_types": {
+"read": "((dbo.has_perm(N'page.docregister') = 1)) OR ((dbo.has_perm(N'data.docregister.write') = 1))",
+"ins": "((dbo.has_perm(N'data.docregister.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.docregister.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.docregister.write') = 1))",
+"del": "((dbo.has_perm(N'data.docregister.write') = 1))"
+},
+"ec_sign_tokens": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"emp_contracts": {
+"read": "(((dbo.has_perm(N'data.empcontract.write') = 1) OR ((dbo.auth_uid() = @signer_id) OR (dbo.auth_uid() = @witness_id))))",
+"ins": "((dbo.has_perm(N'data.empcontract.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.empcontract.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.empcontract.write') = 1))",
+"del": "1 = 0"
+},
+"employees": {
+"read": "((dbo.has_perm(N'data.employee.read') = 1)) OR ((dbo.has_perm(N'data.employee.write') = 1))",
+"ins": "((dbo.has_perm(N'data.employee.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.employee.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.employee.write') = 1))",
+"del": "((dbo.has_perm(N'data.employee.write') = 1))"
+},
+"exp_approve_tokens": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"exp_budgets": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"exp_categories": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"exp_files": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"exp_invoice_lines": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"exp_invoices": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"exp_vendors": {
+"read": "((dbo.has_perm(N'page.expense') = 1)) OR ((dbo.has_perm(N'data.expense.write') = 1))",
+"ins": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.expense.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.expense.write') = 1))",
+"del": "((dbo.has_perm(N'data.expense.write') = 1))"
+},
+"fund_committee": {
+"read": "((dbo.has_perm(N'page.fundforms') = 1)) OR ((dbo.has_perm(N'data.fundforms.write') = 1))",
+"ins": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"del": "((dbo.has_perm(N'data.fundforms.write') = 1))"
+},
+"fund_form_invite": {
+"read": "((dbo.has_perm(N'page.fundforms') = 1)) OR ((dbo.has_perm(N'data.fundforms.write') = 1))",
+"ins": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"del": "((dbo.has_perm(N'data.fundforms.write') = 1))"
+},
+"fund_form_submission": {
+"read": "((dbo.has_perm(N'page.fundforms') = 1))",
+"ins": "1 = 0",
+"upd_before": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.fundforms.write') = 1))",
+"del": "((dbo.has_perm(N'data.fundforms.write') = 1))"
+},
+"fund_invite_attempt": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"hr_letters": {
+"read": "(((dbo.has_perm(N'data.letters.write') = 1) OR (dbo.has_perm(N'data.letters.approve') = 1)))",
+"ins": "((dbo.has_perm(N'data.letters.write') = 1))",
+"upd_before": "(((dbo.has_perm(N'data.letters.write') = 1) OR (dbo.has_perm(N'data.letters.approve') = 1)))",
+"upd_after": "(((dbo.has_perm(N'data.letters.write') = 1) OR (dbo.has_perm(N'data.letters.approve') = 1)))",
+"del": "1 = 0"
+},
+"letter_income_items": {
+"read": "((dbo.has_perm(N'page.letters') = 1)) OR ((dbo.has_perm(N'data.letters.write') = 1))",
+"ins": "((dbo.has_perm(N'data.letters.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.letters.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.letters.write') = 1))",
+"del": "((dbo.has_perm(N'data.letters.write') = 1))"
+},
+"letter_settings": {
+"read": "((dbo.has_perm(N'page.letters') = 1))",
+"ins": "1 = 0",
+"upd_before": "((dbo.has_perm(N'data.letters.approve') = 1))",
+"upd_after": "((dbo.has_perm(N'data.letters.approve') = 1))",
+"del": "1 = 0"
+},
+"letter_signers": {
+"read": "(((dbo.has_perm(N'page.letters') = 1) OR (dbo.has_perm(N'page.fundforms') = 1) OR (dbo.has_perm(N'page.expense') = 1) OR (dbo.has_perm(N'page.contractpay') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'page.empcontract') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR ((((@user_id = dbo.auth_uid()) AND ((dbo.has_perm(N'data.letters.approve') = 1) OR (dbo.has_perm(N'data.fundforms.write') = 1) OR (dbo.has_perm(N'data.fundforms.approve') = 1) OR (dbo.has_perm(N'data.expense.write') = 1) OR (dbo.has_perm(N'data.expense.review') = 1) OR (dbo.has_perm(N'data.expense.approve') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR (dbo.my_role() = N'admin')))",
+"ins": "((((@user_id = dbo.auth_uid()) AND ((dbo.has_perm(N'data.letters.approve') = 1) OR (dbo.has_perm(N'data.fundforms.write') = 1) OR (dbo.has_perm(N'data.fundforms.approve') = 1) OR (dbo.has_perm(N'data.expense.write') = 1) OR (dbo.has_perm(N'data.expense.review') = 1) OR (dbo.has_perm(N'data.expense.approve') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR (dbo.my_role() = N'admin')))",
+"upd_before": "((((@user_id = dbo.auth_uid()) AND ((dbo.has_perm(N'data.letters.approve') = 1) OR (dbo.has_perm(N'data.fundforms.write') = 1) OR (dbo.has_perm(N'data.fundforms.approve') = 1) OR (dbo.has_perm(N'data.expense.write') = 1) OR (dbo.has_perm(N'data.expense.review') = 1) OR (dbo.has_perm(N'data.expense.approve') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR (dbo.my_role() = N'admin')))",
+"upd_after": "((((@user_id = dbo.auth_uid()) AND ((dbo.has_perm(N'data.letters.approve') = 1) OR (dbo.has_perm(N'data.fundforms.write') = 1) OR (dbo.has_perm(N'data.fundforms.approve') = 1) OR (dbo.has_perm(N'data.expense.write') = 1) OR (dbo.has_perm(N'data.expense.review') = 1) OR (dbo.has_perm(N'data.expense.approve') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR (dbo.my_role() = N'admin')))",
+"del": "((((@user_id = dbo.auth_uid()) AND ((dbo.has_perm(N'data.letters.approve') = 1) OR (dbo.has_perm(N'data.fundforms.write') = 1) OR (dbo.has_perm(N'data.fundforms.approve') = 1) OR (dbo.has_perm(N'data.expense.write') = 1) OR (dbo.has_perm(N'data.expense.review') = 1) OR (dbo.has_perm(N'data.expense.approve') = 1) OR (dbo.has_perm(N'data.contract.approve') = 1) OR (dbo.has_perm(N'data.empcontract.sign') = 1))) OR (dbo.my_role() = N'admin')))"
+},
+"mail_secret": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"mail_settings": {
+"read": "(((dbo.has_perm(N'page.letters') = 1) OR (dbo.has_perm(N'page.fundforms') = 1) OR (dbo.has_perm(N'page.expense') = 1)))",
+"ins": "1 = 0",
+"upd_before": "((dbo.has_perm(N'data.letters.approve') = 1))",
+"upd_after": "((dbo.has_perm(N'data.letters.approve') = 1))",
+"del": "1 = 0"
+},
+"mail_templates": {
+"read": "(((dbo.has_perm(N'page.letters') = 1) OR ((@key LIKE N'fund\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'page.fundforms') = 1)) OR ((@key LIKE N'exp\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'page.expense') = 1)) OR ((@key LIKE N'ec\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.empcontract.write') = 1)) OR ((@key LIKE N'paf\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.paf.write') = 1))))",
+"ins": "1 = 0",
+"upd_before": "(((dbo.has_perm(N'data.letters.approve') = 1) OR ((@key LIKE N'fund\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.fundforms.write') = 1)) OR ((@key LIKE N'exp\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.expense.write') = 1)) OR ((@key LIKE N'ec\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.empcontract.write') = 1)) OR ((@key LIKE N'paf\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.paf.write') = 1))))",
+"upd_after": "(((dbo.has_perm(N'data.letters.approve') = 1) OR ((@key LIKE N'fund\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.fundforms.write') = 1)) OR ((@key LIKE N'exp\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.expense.write') = 1)) OR ((@key LIKE N'ec\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.empcontract.write') = 1)) OR ((@key LIKE N'paf\\_%' ESCAPE N'\\') AND (dbo.has_perm(N'data.paf.write') = 1))))",
+"del": "1 = 0"
+},
+"master_departments": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_divisions": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_job_levels": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_positions": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_sections": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_shift_codes": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((1 = 1)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.my_role() IN (N'hr', N'admin'))) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.my_role() IN (N'hr', N'admin'))) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.my_role() IN (N'hr', N'admin'))) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.my_role() = N'admin')) OR ((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"master_teams": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.masterdata.write') = 1))",
+"ins": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.masterdata.write') = 1))",
+"del": "((dbo.has_perm(N'data.masterdata.write') = 1))"
+},
+"movements": {
+"read": "((dbo.has_perm(N'data.movement.read') = 1))",
+"ins": "((dbo.has_perm(N'data.movement.create') = 1))",
+"upd_before": "(((@created_by = dbo.auth_uid()) OR (dbo.has_perm(N'data.movement.manage_any') = 1)))",
+"upd_after": "(((@created_by = dbo.auth_uid()) OR (dbo.has_perm(N'data.movement.manage_any') = 1)))",
+"del": "(((@created_by = dbo.auth_uid()) OR (dbo.has_perm(N'data.movement.manage_any') = 1)))"
+},
+"notifications": {
+"read": "((dbo.auth_uid() IS NOT NULL))",
+"ins": "((dbo.auth_uid() IS NOT NULL))",
+"upd_before": "((dbo.auth_uid() IS NOT NULL))",
+"upd_after": "((dbo.auth_uid() IS NOT NULL))",
+"del": "1 = 0"
+},
+"ot_audit_marks": {
+"read": "((dbo.has_perm(N'page.shiftallow') = 1)) OR ((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"ins": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"del": "((dbo.has_perm(N'data.shiftallow.write') = 1))"
+},
+"ot_shift_times": {
+"read": "((dbo.has_perm(N'page.shiftallow') = 1)) OR ((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"ins": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"del": "((dbo.has_perm(N'data.shiftallow.write') = 1))"
+},
+"paf_approvers": {
+"read": "((dbo.has_perm(N'data.paf.write') = 1)) OR ((dbo.has_perm(N'data.paf.write') = 1))",
+"ins": "((dbo.has_perm(N'data.paf.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.paf.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.paf.write') = 1))",
+"del": "((dbo.has_perm(N'data.paf.write') = 1))"
+},
+"paf_forms": {
+"read": "((dbo.has_perm(N'data.paf.write') = 1))",
+"ins": "((dbo.has_perm(N'data.paf.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.paf.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.paf.write') = 1))",
+"del": "1 = 0"
+},
+"paf_log": {
+"read": "((dbo.has_perm(N'data.paf.write') = 1))",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"paf_tokens": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"payroll_period": {
+"read": "((dbo.has_perm(N'data.payroll.read') = 1)) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"payroll_sign": {
+"read": "((dbo.has_perm(N'data.payroll.read') = 1))",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"payroll_sign_tokens": {
+"read": "1 = 0",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"payroll_summary": {
+"read": "((dbo.has_perm(N'data.payroll.read') = 1)) OR ((dbo.has_perm(N'data.payroll.write') = 1))",
+"ins": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.payroll.write') = 1))",
+"del": "((dbo.has_perm(N'data.payroll.write') = 1))"
+},
+"pending_roles": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.roles.manage') = 1))",
+"ins": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_before": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_after": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"del": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.roles.manage') = 1))"
+},
+"permissions": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((1 = 0))",
+"ins": "((1 = 0))",
+"upd_before": "((1 = 0))",
+"upd_after": "((1 = 0))",
+"del": "((1 = 0))"
+},
+"position_quota": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.quota.write') = 1))",
+"ins": "((dbo.has_perm(N'data.quota.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.quota.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.quota.write') = 1))",
+"del": "((dbo.has_perm(N'data.quota.write') = 1))"
+},
+"role_permissions": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.roles.manage') = 1))",
+"ins": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_before": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_after": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"del": "((dbo.has_perm(N'data.roles.manage') = 1))"
+},
+"shift_allowance": {
+"read": "((dbo.auth_uid() IS NOT NULL)) OR ((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"ins": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.shiftallow.write') = 1))",
+"del": "((dbo.has_perm(N'data.shiftallow.write') = 1))"
+},
+"sub_companies": {
+"read": "((dbo.has_perm(N'page.sub') = 1)) OR ((dbo.has_perm(N'data.sub.write') = 1))",
+"ins": "((dbo.has_perm(N'data.sub.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.sub.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.sub.write') = 1))",
+"del": "((dbo.has_perm(N'data.sub.write') = 1))"
+},
+"sub_worker_log": {
+"read": "((dbo.has_perm(N'page.sub') = 1))",
+"ins": "1 = 0",
+"upd_before": "1 = 0",
+"upd_after": "1 = 0",
+"del": "1 = 0"
+},
+"sub_workers": {
+"read": "((dbo.has_perm(N'page.sub') = 1)) OR ((dbo.has_perm(N'data.sub.write') = 1))",
+"ins": "((dbo.has_perm(N'data.sub.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.sub.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.sub.write') = 1))",
+"del": "((dbo.has_perm(N'data.sub.write') = 1))"
+},
+"uniform_item": {
+"read": "((dbo.has_perm(N'page.uniform') = 1)) OR ((dbo.has_perm(N'data.uniform.write') = 1))",
+"ins": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"del": "((dbo.has_perm(N'data.uniform.write') = 1))"
+},
+"uniform_move": {
+"read": "((dbo.has_perm(N'page.uniform') = 1)) OR ((dbo.has_perm(N'data.uniform.write') = 1))",
+"ins": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"upd_before": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"upd_after": "((dbo.has_perm(N'data.uniform.write') = 1))",
+"del": "((dbo.has_perm(N'data.uniform.write') = 1))"
+},
+"user_roles": {
+"read": "((dbo.auth_uid() IS NOT NULL))",
+"ins": "((@user_id = dbo.auth_uid()))",
+"upd_before": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"upd_after": "((dbo.has_perm(N'data.roles.manage') = 1))",
+"del": "((dbo.has_perm(N'data.roles.manage') = 1))"
+},
+"vacancy_config": {
+"read": "((dbo.auth_uid() IS NOT NULL))",
+"ins": "((dbo.auth_uid() IS NOT NULL))",
+"upd_before": "((dbo.auth_uid() IS NOT NULL))",
+"upd_after": "((dbo.auth_uid() IS NOT NULL))",
+"del": "((dbo.auth_uid() IS NOT NULL))"
+}
+}

@@ -43,7 +43,7 @@ class R:
     def __init__(self, cn, uid):
         self.cn, self.uid = cn, uid
         self.cur = cn.cursor()
-        self.ctx = rest.Ctx(self.cur, uid)
+        self.ctx = rest.Ctx(self.cur, uid, bypass=True)
 
     def rows(self, table, sql, *a):
         return [db.decode_row(table, r) for r in db.rows(self.cur.execute(sql, *a))] if table else db.rows(self.cur.execute(sql, *a))
@@ -61,7 +61,10 @@ class R:
         return self.ctx.has_perm(p)
 
     def user_has_perm(self, uid, p):
-        return bool(uid) and bool(self.val("SELECT dbo.user_has_perm(?, ?)", uid, p))
+        if not uid:
+            return False
+        return bool(self.val("""SELECT COUNT(*) FROM dbo.user_roles ur WHERE ur.user_id = ? AND (ur.[role] = N'admin'
+                                OR EXISTS (SELECT 1 FROM dbo.role_permissions rp WHERE rp.role_key = ur.[role] AND rp.perm_key = ?))""", uid, p))
 
     def flag(self, name):
         self.ctx.flags.add(name)
@@ -119,7 +122,7 @@ def without(d, *keys):
 
 @fn
 def my_permissions(r):
-    if r.val("SELECT dbo.my_role()") == "admin":
+    if r.ctx.role == "admin":
         return [x["key"] for x in r.rows(None, "SELECT [key] FROM dbo.permissions")]
     return [x["perm_key"] for x in r.rows(None, """SELECT DISTINCT rp.perm_key FROM dbo.user_roles ur
               JOIN dbo.role_permissions rp ON rp.role_key = ur.[role] WHERE ur.user_id = ?""", r.uid)]

@@ -55,18 +55,22 @@ def check_col(table, col):
 
 
 class Ctx:
-    """Who is acting + flags that server functions switch on for their own writes."""
-    def __init__(self, cur, uid, flags=None):
-        self.cur, self.uid, self.flags = cur, uid, set(flags or ())
-        self._perm = {}
+    """Who is acting, their role and permissions (read once per request), and flags that server functions switch on
+    for their own writes. bypass=True = server functions that ran as SECURITY DEFINER in Supabase (no row rules)."""
+    def __init__(self, cur, uid, flags=None, bypass=False):
+        self.cur, self.uid, self.flags, self.bypass = cur, uid, set(flags or ()), bypass
+        self.role, self.perms = None, set()
+        if uid:
+            r = cur.execute("SELECT TOP 1 [role] FROM dbo.user_roles WHERE user_id = ?", uid).fetchone()
+            self.role = r[0] if r else None
+            if self.role:
+                self.perms = {x[0] for x in cur.execute("SELECT perm_key FROM dbo.role_permissions WHERE role_key = ?", self.role).fetchall()}
 
     def flag(self, name):
         return name in self.flags
 
     def has_perm(self, p):
-        if p not in self._perm:
-            self._perm[p] = bool(self.cur.execute("SELECT dbo.has_perm(?)", p).fetchone()[0])
-        return self._perm[p]
+        return bool(self.uid) and (self.role == "admin" or p in self.perms)
 
 
 # ------------------------------------------------------------------------------------------- select parsing
@@ -158,17 +162,17 @@ def parse_logic(table, s, params, joiner="OR"):
     return f" {joiner} ".join(parts) or "1 = 1"
 
 
-def where_clause(table, req, params, rules=("read",)):
+def where_clause(ctx, table, req, params, rules=("read",)):
     conds = [cond(table, f[0], f[1], f[2] if len(f) > 2 else None, params) for f in req.get("filters") or []]
     for o in req.get("or") or []:
         conds.append("(" + parse_logic(table, o, params) + ")")
-    conds += [rf for rf in (rule_filter(table, k) for k in rules) if rf]
+    conds += [rf for rf in (rule_filter(ctx, table, k) for k in rules) if rf]
     return (" WHERE " + " AND ".join(conds)) if conds else ""
 
 
-def check_rule(cur, table, row, kind):
+def check_rule(ctx, cur, table, row, kind):
     """After a write: the stored row must satisfy the INSERT / UPDATE check rule, else roll back (Postgres 42501)."""
-    rf = rule_filter(table, kind)
+    rf = rule_filter(ctx, table, kind)
     if not rf:
         return
     w, p = _pk_where(table, row)
@@ -176,15 +180,31 @@ def check_rule(cur, table, row, kind):
         raise ApiError(f'new row violates row-level security policy for table "{table}"', "42501")
 
 
-def rule_filter(table, kind, alias=""):
-    """The row-security rule (sec.<table>_<kind>, generated from the Supabase policies) as a filter.
-    The database user may not create SECURITY POLICY objects, so the app applies these predicate functions itself
-    on every read and write — all data access goes through this module, so nothing can skip them.
-    read = rows the caller may see; upd_before/del = rows they may change (others are skipped, as in Postgres)."""
-    if table not in SEC_PARAMS:
+RULES: dict = json.loads((db.HERE / "security_rules.json").read_text(encoding="utf-8"))
+UUID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
+
+
+def rule_filter(ctx, table, kind, alias=None):
+    """The row-security rule generated from the Supabase policies (security_rules.json), as a SQL condition with
+    the caller filled in: has_perm / role / user id / document visibility become constants computed here, so the
+    database needs no functions or policies of its own. All data access goes through this module.
+    read = rows the caller may see; upd_before / del = rows they may change (others are skipped, as in Postgres);
+    ins / upd_after = what a written row must satisfy."""
+    if ctx is None or ctx.bypass or table not in RULES:
         return ""
-    args = ", ".join(f"{alias}[{c}]" for c in SEC_PARAMS[table])
-    return f"EXISTS (SELECT 1 FROM sec.[{table}_{kind}]({args}))"
+    body = RULES[table][kind]
+    yes, no = "(1 = 1)", "(1 = 0)"
+    body = re.sub(r"\(dbo\.has_perm\(N'([^']+)'\) = 1\)", lambda m: yes if ctx.has_perm(m.group(1)) else no, body)
+    page, conf = ctx.has_perm("page.docregister"), ctx.has_perm("data.doc.confidential")
+    body = re.sub(r"\(dbo\.doc_visible\(([@\w.]+)\) = 1\)",
+                  lambda m: f"({yes if page else no} AND (ISNULL({m.group(1)}, 0) = 0 OR {yes if conf else no}))", body)
+    role = ("N'" + ctx.role.replace("'", "''") + "'") if ctx.role else "CAST(NULL AS NVARCHAR(200))"
+    body = body.replace("dbo.my_role()", role)
+    uid = f"CAST(N'{ctx.uid}' AS UNIQUEIDENTIFIER)" if ctx.uid and UUID_RE.match(str(ctx.uid)) else "CAST(NULL AS UNIQUEIDENTIFIER)"
+    body = body.replace("dbo.auth_uid()", uid)
+    q = alias if alias is not None else f"[{table}]."   # qualify outer columns — rules may contain sub-queries
+    body = re.sub(r"@(\w+)", lambda m: f"{q}[{m.group(1)}]", body)
+    return f"({body})"
 
 
 def order_clause(table, req):
@@ -207,7 +227,7 @@ def out_rows(table, rs):
     return [db.decode_row(table, r) for r in rs]
 
 
-def embed(cur, table, rows, rels):
+def embed(ctx, cur, table, rows, rels):
     for rel, sub in rels:
         fk = next((f for f in meta(table)["fks"] if f["table"] == rel), None)
         if not fk:
@@ -218,7 +238,7 @@ def embed(cur, table, rows, rels):
         for i in range(0, len(keys), 500):
             chunk = keys[i:i + 500]
             sel = "*" if "*" in subcols else ", ".join({f"[{c}]" for c in subcols + fk["ref"]})
-            rf = rule_filter(rel, "read")
+            rf = rule_filter(ctx, rel, "read")
             for r in db.rows(cur.execute(f"SELECT {sel} FROM dbo.[{rel}] WHERE [{fk['ref'][0]}] IN ({', '.join('?' for _ in chunk)})"
                                          + (f" AND {rf}" if rf else ""), *chunk)):
                 found[str(r[fk["ref"][0]])] = db.decode_row(rel, r)
@@ -228,10 +248,10 @@ def embed(cur, table, rows, rels):
     return rows
 
 
-def do_select(cur, table, req):
+def do_select(ctx, cur, table, req):
     cols, rels = parse_select(table, req.get("select"))
     params = []
-    where = where_clause(table, req, params)
+    where = where_clause(ctx, table, req, params)
     count = None
     if req.get("count"):
         count = cur.execute(f"SELECT COUNT(*) FROM dbo.[{table}]{where}", *params).fetchone()[0]
@@ -245,7 +265,7 @@ def do_select(cur, table, req):
         sql += f" OFFSET {int(offset)} ROWS" + (f" FETCH NEXT {int(limit)} ROWS ONLY" if limit is not None else "")
     rows = out_rows(table, db.rows(cur.execute(sql, *params)))
     if rels:
-        embed(cur, table, rows, rels)
+        embed(ctx, cur, table, rows, rels)
     if "*" not in cols:
         keep = set(cols) | {r for r, _ in rels}
         rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
@@ -285,7 +305,7 @@ def insert_row(cur, ctx, table, row):
     out = db.decode_row(table, db.rows(cur.execute(sql, *[db.in_value(table, c, row[c]) for c in cols]))[0])
     if ident and ident in cols:
         cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
-    check_rule(cur, table, out, "ins")
+    check_rule(ctx, cur, table, out, "ins")
     _run(hooks.AFTER_INSERT, table, cur, ctx, out)
     return out
 
@@ -300,7 +320,7 @@ def update_row(cur, ctx, table, old, values):
         cur.execute(f"UPDATE dbo.[{table}] SET {', '.join(f'[{k}] = ?' for k in changed)} WHERE {w}",
                     *[db.in_value(table, k, new[k]) for k in changed], *p)
     out = _fetch_by_pk(cur, table, {**old, **{k: new[k] for k in meta(table)['pk'] if k in new}}) or new
-    check_rule(cur, table, out, "upd_after")
+    check_rule(ctx, cur, table, out, "upd_after")
     _run(hooks.AFTER_UPDATE, table, cur, ctx, old, out)
     return out
 
@@ -322,7 +342,7 @@ def do_insert(cur, ctx, table, req):
                     if up.get("ignoreDuplicates"):
                         continue
                     old = db.decode_row(table, ex[0])
-                    rules = " AND ".join(x for x in (rule_filter(table, "read", "t."), rule_filter(table, "upd_before", "t.")) if x) or "1 = 1"
+                    rules = " AND ".join(x for x in (rule_filter(ctx, table, "read", "t."), rule_filter(ctx, table, "upd_before", "t.")) if x) or "1 = 1"
                     allowed = cur.execute(f"SELECT 1 FROM dbo.[{table}] t WHERE {rules} AND "
                                           + " AND ".join(f"t.[{k}] = ?" for k in meta(table)['pk']),
                                           *[db.in_value(table, k, old[k]) for k in meta(table)["pk"]]).fetchone()
@@ -336,7 +356,7 @@ def do_insert(cur, ctx, table, req):
 
 def do_update(cur, ctx, table, req):
     params = []
-    where = where_clause(table, req, params, rules=("read", "upd_before"))
+    where = where_clause(ctx, table, req, params, rules=("read", "upd_before"))
     olds = out_rows(table, db.rows(cur.execute(f"SELECT * FROM dbo.[{table}] WITH (UPDLOCK){where}", *params)))
     values = {k: v for k, v in (req.get("values") or {}).items()}
     for k in values:
@@ -346,7 +366,7 @@ def do_update(cur, ctx, table, req):
 
 def do_delete(cur, ctx, table, req):
     params = []
-    where = where_clause(table, req, params, rules=("read", "del"))
+    where = where_clause(ctx, table, req, params, rules=("read", "del"))
     olds = out_rows(table, db.rows(cur.execute(f"SELECT * FROM dbo.[{table}] WITH (UPDLOCK){where}", *params)))
     for o in olds:
         _run(hooks.BEFORE_DELETE, table, cur, ctx, o)
@@ -385,7 +405,7 @@ def handle(cn, uid, req) -> dict:
     ctx = Ctx(cur, uid)
     try:
         if method == "GET":
-            data, count = do_select(cur, table, req)
+            data, count = do_select(ctx, cur, table, req)
         else:
             if table in VIEWS:
                 raise ApiError(f"cannot write to view {table}", "42809")

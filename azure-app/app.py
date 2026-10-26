@@ -158,7 +158,8 @@ def admin_status(request: Request):
 def admin_setup(request: Request):
     """Run schema_full.sql statement by statement; report every failure instead of stopping at the first."""
     cn, _ = _admin(request)
-    stmts = db.statements((HERE / "schema_full.sql").read_text(encoding="utf-8")) + db.statements((HERE / "security.sql").read_text(encoding="utf-8"))
+    # row rules are applied by the app (rest.rule_filter) — the database user may neither create policies nor run functions
+    stmts = db.statements((HERE / "schema_full.sql").read_text(encoding="utf-8"))
     errors, skipped = [], 0
     with closing(cn):
         cur = cn.cursor()
@@ -422,17 +423,18 @@ async def changes(request: Request):
     out, ins = {}, {}
     with closing(db.connect(uid)) as cn:
         cur = cn.cursor()
+        ctx = rest.Ctx(cur, uid)
         for t in body.get("tables") or []:
             if t not in TABLES:
                 continue
             cols = {c["name"] for c in TABLES[t]["cols"]}
             stamp = "updated_at" if "updated_at" in cols else ("created_at" if "created_at" in cols else None)
-            rf = rest.rule_filter(t, "read")
+            rf = rest.rule_filter(ctx, t, "read")
             r = cur.execute(f"SELECT COUNT(*), {'MAX([' + stamp + '])' if stamp else 'NULL'} FROM dbo.[{t}]" + (f" WHERE {rf}" if rf else "")).fetchone()
             out[t] = f"{r[0]}|{db.out_value(r[1])}"
             if t == "notifications" and body.get("since"):
                 ins[t] = [db.decode_row(t, x) for x in db.rows(cur.execute(
-                    "SELECT * FROM dbo.notifications WHERE created_at > ? AND " + rest.rule_filter("notifications", "read") + " ORDER BY created_at", body["since"]))]
+                    "SELECT * FROM dbo.notifications WHERE created_at > ? AND " + (rest.rule_filter(ctx, "notifications", "read") or "1 = 1") + " ORDER BY created_at", body["since"]))]
         now_ = db.out_value(cur.execute("SELECT SYSDATETIMEOFFSET()").fetchone()[0])
     return {"data": {"sigs": out, "inserted": ins, "now": now_}, "error": None}
 
@@ -455,7 +457,7 @@ async def fn_call(name: str, request: Request):
     uid, email, _ = caller(request)
     with closing(db.connect(uid, bypass=True)) as cn:
         cur = cn.cursor()
-        if cur.execute("SELECT dbo.my_role()").fetchone()[0] != "admin":
+        if rest.Ctx(cur, uid).role != "admin":
             return {"data": {"error": "เฉพาะ admin"}, "error": {"message": "เฉพาะ admin"}}
         if name == "admin-create-user":
             em = (body.get("email") or "").strip().lower()

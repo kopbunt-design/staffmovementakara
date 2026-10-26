@@ -80,7 +80,7 @@ def allowed(ctx, cur, bucket, path, op):
     """op = read | write | delete"""
     if not ctx.uid:
         return False
-    role = cur.execute("SELECT dbo.my_role()").fetchone()[0]
+    role = ctx.role
     parts = path.split("/")
     if bucket == "movement-docs":
         return True if op == "read" else role in ("hr", "admin")
