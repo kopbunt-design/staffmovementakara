@@ -241,6 +241,10 @@ def pk_of(t):
 meta = {t: {"pk": pk_of(t),
             "identity": next((c["column"] for c in cs if (c["default"] or "").startswith("nextval(")
                               or (c["column"] == "id" and c["udt"] in ("int8", "int4") and c["default"] is None and pk_of(t) == ["id"])), None),
-            "cols": [{"name": c["column"], "udt": c["udt"], "null": c["nullable"] == "YES"} for c in sorted(cs, key=lambda c: c["pos"])]}
+            "cols": [{"name": c["column"], "udt": c["udt"], "null": c["nullable"] == "YES"} for c in sorted(cs, key=lambda c: c["pos"])],
+            # many-to-one links for embedded selects like select("*,master_departments(name)")
+            "fks": [dict(zip(("cols", "table", "ref"), (m.group(1).replace('"', "").replace(" ", "").split(","), m.group(2), m.group(3).replace(" ", "").split(","))))
+                    for c in cons_by_table.get(t, []) if c["type"] == "f" and "auth.users" not in c["def"]
+                    for m in [re.match(r"FOREIGN KEY \((.*?)\) REFERENCES (\w+)\((.*?)\)", c["def"])]]}
         for t, cs in sorted(cols_by_table.items())}
 json.dump(meta, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, indent=0) if len(sys.argv) > 2 else None

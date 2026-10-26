@@ -17,7 +17,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import urllib.parse
+import uuid
 from contextlib import closing
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -150,7 +154,7 @@ def admin_status(request: Request):
 def admin_setup(request: Request):
     """Run schema_full.sql statement by statement; report every failure instead of stopping at the first."""
     cn, _ = _admin(request)
-    stmts = db.statements((HERE / "schema_full.sql").read_text(encoding="utf-8"))
+    stmts = db.statements((HERE / "schema_full.sql").read_text(encoding="utf-8")) + db.statements((HERE / "security.sql").read_text(encoding="utf-8"))
     errors = []
     with closing(cn):
         cur = cn.cursor()
@@ -173,8 +177,15 @@ async def admin_reset(request: Request):
     cn, _ = _admin(request)
     with closing(cn):
         cur = cn.cursor()
-        for (name,) in cur.execute("SELECT name FROM sys.security_policies").fetchall():
-            cur.execute(f"DROP SECURITY POLICY [{name}]")
+        for (sch, name) in cur.execute("SELECT SCHEMA_NAME(schema_id), name FROM sys.security_policies").fetchall():
+            cur.execute(f"DROP SECURITY POLICY [{sch}].[{name}]")
+        # predicate + helper functions are schema-bound to the tables — drop them before the tables
+        for (sch, name) in cur.execute("""SELECT SCHEMA_NAME(schema_id), name FROM sys.objects
+                                          WHERE type IN ('IF', 'FN', 'TF') AND SCHEMA_NAME(schema_id) IN ('sec', 'dbo')
+                                          ORDER BY CASE SCHEMA_NAME(schema_id) WHEN 'sec' THEN 0 ELSE 1 END,
+                                                   CASE name WHEN 'doc_visible' THEN 0 WHEN 'has_perm' THEN 1 WHEN 'user_has_perm' THEN 1
+                                                             WHEN 'my_role' THEN 2 ELSE 3 END""").fetchall():
+            cur.execute(f"DROP FUNCTION [{sch}].[{name}]")
         for (t, fk) in cur.execute("SELECT OBJECT_NAME(parent_object_id), name FROM sys.foreign_keys").fetchall():
             cur.execute(f"ALTER TABLE dbo.[{t}] DROP CONSTRAINT [{fk}]")
         for (v,) in cur.execute("SELECT name FROM sys.views WHERE schema_id = SCHEMA_ID('dbo')").fetchall():
@@ -248,6 +259,214 @@ def admin_dump(table: str, request: Request):
 def admin_tables(request: Request):
     _email(request)
     return {t: {"pk": m["pk"], "identity": m["identity"]} for t, m in TABLES.items()}
+
+
+# ---------- the site's data access (replaces Supabase) ----------
+import rest
+import rpc
+import mail
+import storage
+from fastapi.responses import Response
+
+
+def caller(request: Request, need=True):
+    """(uid, email) of the signed-in Microsoft user, creating their user_roles row on first visit
+    (role from pending_roles, like the old first-login flow). need=False → (None, None) when not signed in."""
+    u = current_user(request)
+    if not u or not u.get("email"):
+        if need:
+            raise HTTPException(401, "not signed in")
+        return None, None, None
+    email = u["email"].strip().lower()
+    with closing(db.connect(None, bypass=True)) as cn:
+        cur = cn.cursor()
+        r = cur.execute("SELECT TOP 1 user_id FROM dbo.user_roles WHERE LOWER(LTRIM(RTRIM(email))) = ?", email).fetchone()
+        if r:
+            return str(r[0]), email, u
+        key = re.sub(r"[.#$\[\]]", "_", email)
+        p = cur.execute("SELECT [role] FROM dbo.pending_roles WHERE email_key = ?", key).fetchone()
+        uid = str(uuid.uuid4())
+        cur.execute("INSERT INTO dbo.user_roles (user_id, name, email, [role]) VALUES (?, ?, ?, ?)",
+                    uid, u.get("name") or email.split("@")[0], email, p[0] if p else "user")
+        if p:
+            cur.execute("DELETE FROM dbo.pending_roles WHERE email_key = ?", key)
+        cn.commit()
+        return uid, email, u
+
+
+@api.get("/api/auth/session")
+def auth_session(request: Request):
+    uid, email, u = caller(request)
+    return {"user": {"id": uid, "email": email, "aud": "authenticated",
+                     "user_metadata": {"full_name": u.get("name") or email.split("@")[0]},
+                     "app_metadata": {"provider": "azuread", "providers": ["azuread"]}}}
+
+
+@api.post("/api/rest")
+async def rest_call(request: Request):
+    uid, _, _ = caller(request)
+    body = await request.json()
+    with closing(db.connect(uid)) as cn:
+        return rest.handle(cn, uid, body)
+
+
+@api.post("/api/rpc/{name}")
+async def rpc_call(name: str, request: Request):
+    public = name in rpc.PUBLIC
+    uid, _, _ = caller(request, need=not public)
+    args = await request.json() if (await request.body()) else {}
+    with closing(db.connect(uid, bypass=True)) as cn:
+        try:
+            return {"data": rpc.call(cn, uid, name, args), "error": None}
+        except rpc.E as e:
+            cn.rollback(); return {"data": None, "error": {"message": str(e), "code": "P0001"}}
+        except rest.ApiError as e:
+            cn.rollback(); return {"data": None, "error": e.body}
+        except TypeError as e:
+            cn.rollback(); return {"data": None, "error": {"message": f"bad arguments for {name}: {e}", "code": "PGRST202"}}
+        except Exception as e:
+            cn.rollback(); return {"data": None, "error": rest.map_sql_error(e)}
+
+
+@api.post("/api/changes")
+async def changes(request: Request):
+    """Cheap stand-in for realtime: a signature per table (row count + latest change) and new notifications."""
+    uid, _, _ = caller(request)
+    body = await request.json()
+    out, ins = {}, {}
+    with closing(db.connect(uid)) as cn:
+        cur = cn.cursor()
+        for t in body.get("tables") or []:
+            if t not in TABLES:
+                continue
+            cols = {c["name"] for c in TABLES[t]["cols"]}
+            stamp = "updated_at" if "updated_at" in cols else ("created_at" if "created_at" in cols else None)
+            r = cur.execute(f"SELECT COUNT(*), {'MAX([' + stamp + '])' if stamp else 'NULL'} FROM dbo.[{t}]").fetchone()
+            out[t] = f"{r[0]}|{db.out_value(r[1])}"
+            if t == "notifications" and body.get("since"):
+                ins[t] = [db.decode_row(t, x) for x in db.rows(cur.execute(
+                    "SELECT * FROM dbo.notifications WHERE created_at > ? ORDER BY created_at", body["since"]))]
+        now_ = db.out_value(cur.execute("SELECT SYSDATETIMEOFFSET()").fetchone()[0])
+    return {"data": {"sigs": out, "inserted": ins, "now": now_}, "error": None}
+
+
+@api.post("/api/fn/{name}")
+async def fn_call(name: str, request: Request):
+    body = await request.json() if (await request.body()) else {}
+    app_url = str(request.base_url).rstrip("/").replace("http://", "https://")
+    if name == "letter-notify":
+        uid, email, _ = caller(request, need=False)
+        with closing(db.connect(None, bypass=True)) as acn:
+            ucn = db.connect(uid) if uid else None
+            try:
+                return {"data": mail.handle(acn, ucn, uid, email, body, app_url), "error": None}
+            except mail.Fail as e:
+                return {"data": {"error": str(e)}, "error": {"message": str(e), "status": e.status}}
+            finally:
+                if ucn:
+                    ucn.close()
+    uid, email, _ = caller(request)
+    with closing(db.connect(uid, bypass=True)) as cn:
+        cur = cn.cursor()
+        if cur.execute("SELECT dbo.my_role()").fetchone()[0] != "admin":
+            return {"data": {"error": "เฉพาะ admin"}, "error": {"message": "เฉพาะ admin"}}
+        if name == "admin-create-user":
+            em = (body.get("email") or "").strip().lower()
+            if not em or "@" not in em:
+                return {"data": {"error": "กรุณากรอกอีเมล"}, "error": {"message": "กรุณากรอกอีเมล"}}
+            if cur.execute("SELECT COUNT(*) FROM dbo.user_roles WHERE LOWER(email) = ?", em).fetchone()[0]:
+                return {"data": {"error": "อีเมลนี้มีในระบบแล้ว"}, "error": {"message": "อีเมลนี้มีในระบบแล้ว"}}
+            cur.execute("INSERT INTO dbo.user_roles (user_id, name, email, [role]) VALUES (?, ?, ?, ?)",
+                        str(uuid.uuid4()), body.get("name") or em.split("@")[0], em, body.get("role") or "user")
+            cn.commit()
+            return {"data": {"ok": True, "note": "เข้าด้วยบัญชี Microsoft ของบริษัท — ไม่ต้องใช้รหัสผ่าน"}, "error": None}
+        if name == "admin-reset-password":
+            msg = "รหัสผ่านจัดการที่บัญชี Microsoft ของบริษัท (ติดต่อ IT)"
+            return {"data": {"error": msg}, "error": {"message": msg}}
+    raise HTTPException(404, "unknown function")
+
+
+# ---------- files ----------
+
+def _file_ctx(uid):
+    cn = db.connect(uid, bypass=True)
+    return cn, rest.Ctx(cn.cursor(), uid)
+
+
+@api.put("/api/storage/{bucket}/{path:path}")
+async def file_put(bucket: str, path: str, request: Request):
+    uid, _, _ = caller(request)
+    cn, ctx = _file_ctx(uid)
+    with closing(cn):
+        if not storage.allowed(ctx, cn.cursor(), bucket, path, "write"):
+            raise HTTPException(403, "new row violates row-level security policy")
+        data = await request.body()
+        if len(data) > 25 * 1024 * 1024:
+            raise HTTPException(413, "ไฟล์ใหญ่เกิน 25 MB")
+        try:
+            storage.put(bucket, path, data, request.headers.get("content-type") or "application/octet-stream",
+                        overwrite=request.query_params.get("upsert") == "1")
+        except Exception as e:
+            if "BlobAlreadyExists" in str(e):
+                raise HTTPException(409, "The resource already exists")
+            raise
+    return {"path": path}
+
+
+@api.get("/api/storage/{bucket}/{path:path}")
+def file_get(bucket: str, path: str, request: Request):
+    uid, _, _ = caller(request)
+    cn, ctx = _file_ctx(uid)
+    with closing(cn):
+        if not storage.allowed(ctx, cn.cursor(), bucket, path, "read"):
+            raise HTTPException(403, "ไม่มีสิทธิ์")
+    data, ctype = storage.get(bucket, path)
+    return Response(data, media_type=ctype, headers={"Cache-Control": "private, no-store"})
+
+
+@api.post("/api/storage-sign/{bucket}")
+async def file_sign(bucket: str, request: Request):
+    uid, _, _ = caller(request)
+    body = await request.json()
+    cn, ctx = _file_ctx(uid)
+    with closing(cn):
+        if not storage.allowed(ctx, cn.cursor(), bucket, body.get("path") or "", "read"):
+            return {"data": None, "error": {"message": "ไม่มีสิทธิ์"}}
+        return {"data": {"url": storage.sign_url(cn.cursor(), bucket, body["path"], download=body.get("download"))}, "error": None}
+
+
+@api.post("/api/storage-remove/{bucket}")
+async def file_remove(bucket: str, request: Request):
+    uid, _, _ = caller(request)
+    body = await request.json()
+    cn, ctx = _file_ctx(uid)
+    out = []
+    with closing(cn):
+        for p in body.get("paths") or []:
+            if storage.allowed(ctx, cn.cursor(), bucket, p, "delete") and storage.remove(bucket, p):
+                out.append({"name": p})
+    return {"data": out, "error": None}
+
+
+@api.get("/api/file")
+def file_signed(request: Request, b: str, p: str, e: int, s: str, d: Optional[str] = None):
+    """Temporary link (no login) made by sign_url — used by the approval pages and <img> tags."""
+    with closing(db.connect(None, bypass=True)) as cn:
+        if not storage.check_signed(cn.cursor(), b, p, e, s):
+            raise HTTPException(403, "ลิงก์ไฟล์หมดอายุ")
+    data, ctype = storage.get(b, p)
+    headers = {"Cache-Control": "private, max-age=600"}
+    if d:
+        headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + urllib.parse.quote(d)
+    return Response(data, media_type=ctype, headers=headers)
+
+
+@api.put("/api/admin/blob/{bucket}/{path:path}")
+async def admin_blob(bucket: str, path: str, request: Request):
+    """Migration: copy one file from Supabase Storage (the page downloads it with the user's session)."""
+    _admin(request)[0].close()
+    storage.put(bucket, path, await request.body(), request.headers.get("content-type") or "application/octet-stream", overwrite=True)
+    return {"ok": True}
 
 
 @api.exception_handler(Exception)

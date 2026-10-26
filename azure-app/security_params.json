@@ -1,0 +1,204 @@
+{
+"app_roles": [
+"key"
+],
+"contract_pay_adjust": [
+"id"
+],
+"contract_pay_codes": [
+"id"
+],
+"contract_pay_item": [
+"id"
+],
+"contract_pay_run": [
+"id"
+],
+"contract_settings": [
+"id"
+],
+"contract_worker_items": [
+"id"
+],
+"contract_workers": [
+"id"
+],
+"diligence_results": [
+"ym"
+],
+"diligence_runs": [
+"ym"
+],
+"doc_access_log": [
+"doc_id"
+],
+"doc_files": [
+"doc_id"
+],
+"doc_register": [
+"confidential"
+],
+"doc_series": [
+"code"
+],
+"doc_types": [
+"id"
+],
+"ec_sign_tokens": [
+"contract_id"
+],
+"emp_contracts": [
+"signer_id",
+"witness_id"
+],
+"employees": [
+"emp_code"
+],
+"exp_approve_tokens": [
+"invoice_id"
+],
+"exp_budgets": [
+"fy"
+],
+"exp_categories": [
+"id"
+],
+"exp_files": [
+"id"
+],
+"exp_invoice_lines": [
+"id"
+],
+"exp_invoices": [
+"id"
+],
+"exp_vendors": [
+"id"
+],
+"fund_committee": [
+"user_id"
+],
+"fund_form_invite": [
+"id"
+],
+"fund_form_submission": [
+"id"
+],
+"fund_invite_attempt": [
+"id"
+],
+"hr_letters": [
+"id"
+],
+"letter_income_items": [
+"key"
+],
+"letter_settings": [
+"id"
+],
+"letter_signers": [
+"user_id"
+],
+"mail_secret": [
+"id"
+],
+"mail_settings": [
+"id"
+],
+"mail_templates": [
+"key"
+],
+"master_departments": [
+"id"
+],
+"master_divisions": [
+"id"
+],
+"master_job_levels": [
+"id"
+],
+"master_positions": [
+"id"
+],
+"master_sections": [
+"id"
+],
+"master_shift_codes": [
+"id"
+],
+"master_teams": [
+"id"
+],
+"movements": [
+"created_by"
+],
+"notifications": [
+"id"
+],
+"ot_audit_marks": [
+"ym"
+],
+"ot_shift_times": [
+"code"
+],
+"paf_approvers": [
+"id"
+],
+"paf_forms": [
+"id"
+],
+"paf_log": [
+"id"
+],
+"paf_tokens": [
+"paf_id"
+],
+"payroll_period": [
+"month"
+],
+"payroll_sign": [
+"month"
+],
+"payroll_sign_tokens": [
+"month"
+],
+"payroll_summary": [
+"id"
+],
+"pending_roles": [
+"email_key"
+],
+"permissions": [
+"key"
+],
+"position_quota": [
+"id"
+],
+"role_permissions": [
+"role_key"
+],
+"shift_allowance": [
+"id"
+],
+"sub_companies": [
+"id"
+],
+"sub_worker_log": [
+"id"
+],
+"sub_workers": [
+"id"
+],
+"uniform_item": [
+"id"
+],
+"uniform_move": [
+"id"
+],
+"user_roles": [
+"user_id"
+],
+"vacancy_config": [
+"id"
+]
+}

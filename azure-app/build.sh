@@ -4,11 +4,12 @@
 set -e
 cd "$(dirname "$0")"
 rm -rf dist dist.zip && mkdir -p dist/site
-cp app.py db.py tables.json schema_full.sql requirements.txt dist/
+cp app.py db.py rest.py rpc.py hooks.py mail.py storage.py tables.json schema_full.sql security.sql security_params.json requirements.txt dist/
 for p in index.html fund.html vercel.json assets css js expense uniform contract sub docs econtract paf payroll; do
   [ -e "../$p" ] && cp -R "../$p" dist/site/
 done
-cp -R web/. dist/site/      # หน้าที่มีเฉพาะบน Azure (เช่น /migrate/)
+cp ../js/supabase-config.js dist/site/js/supabase-direct.js   # ตัวต่อ Supabase เดิม — ใช้เฉพาะหน้าย้ายข้อมูล /migrate/
+cp -R web/. dist/site/      # หน้าที่มีเฉพาะบน Azure (/migrate/) + js/supabase-config.js รุ่น Azure ทับของเดิม
 find dist -name .DS_Store -delete
 (cd dist && zip -qr ../dist.zip .)
 echo "dist.zip ready: $(du -h dist.zip | cut -f1)"

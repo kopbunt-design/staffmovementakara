@@ -35,7 +35,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "contract_pay_adjust": {
 "pk": [
@@ -113,6 +114,35 @@
 "udt": "int8",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"code_id"
+],
+"table": "contract_pay_codes",
+"ref": [
+"id"
+]
+},
+{
+"cols": [
+"run_id"
+],
+"table": "contract_pay_run",
+"ref": [
+"id"
+]
+},
+{
+"cols": [
+"worker_id"
+],
+"table": "contract_workers",
+"ref": [
+"id"
+]
+}
 ]
 },
 "contract_pay_codes": {
@@ -176,7 +206,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "contract_pay_item": {
 "pk": [
@@ -294,6 +325,26 @@
 "udt": "text",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"run_id"
+],
+"table": "contract_pay_run",
+"ref": [
+"id"
+]
+},
+{
+"cols": [
+"worker_id"
+],
+"table": "contract_workers",
+"ref": [
+"id"
+]
+}
 ]
 },
 "contract_pay_run": {
@@ -397,7 +448,8 @@
 "udt": "jsonb",
 "null": false
 }
-]
+],
+"fks": []
 },
 "contract_settings": {
 "pk": [
@@ -440,7 +492,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "contract_worker_items": {
 "pk": [
@@ -497,6 +550,26 @@
 "name": "created_by",
 "udt": "uuid",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"code_id"
+],
+"table": "contract_pay_codes",
+"ref": [
+"id"
+]
+},
+{
+"cols": [
+"worker_id"
+],
+"table": "contract_workers",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -626,7 +699,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "diligence_results": {
 "pk": [
@@ -705,6 +779,17 @@
 "udt": "numeric",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"ym"
+],
+"table": "diligence_runs",
+"ref": [
+"ym"
+]
+}
 ]
 },
 "diligence_runs": {
@@ -758,7 +843,8 @@
 "udt": "jsonb",
 "null": true
 }
-]
+],
+"fks": []
 },
 "doc_access_log": {
 "pk": [
@@ -805,6 +891,17 @@
 "name": "at",
 "udt": "timestamptz",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"doc_id"
+],
+"table": "doc_register",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -863,6 +960,17 @@
 "name": "uploaded_at",
 "udt": "timestamptz",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"doc_id"
+],
+"table": "doc_register",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -1002,6 +1110,26 @@
 "udt": "date",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"series_code"
+],
+"table": "doc_series",
+"ref": [
+"code"
+]
+},
+{
+"cols": [
+"type_id"
+],
+"table": "doc_types",
+"ref": [
+"id"
+]
+}
 ]
 },
 "doc_series": {
@@ -1040,7 +1168,8 @@
 "udt": "text",
 "null": false
 }
-]
+],
+"fks": []
 },
 "doc_types": {
 "pk": [
@@ -1088,6 +1217,17 @@
 "udt": "text",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"series_code"
+],
+"table": "doc_series",
+"ref": [
+"code"
+]
+}
 ]
 },
 "ec_sign_tokens": {
@@ -1120,6 +1260,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"contract_id"
+],
+"table": "emp_contracts",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -1314,7 +1465,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "employees": {
 "pk": [
@@ -1467,7 +1619,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "exp_approve_tokens": {
 "pk": [
@@ -1500,6 +1653,17 @@
 "udt": "timestamptz",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"invoice_id"
+],
+"table": "exp_invoices",
+"ref": [
+"id"
+]
+}
 ]
 },
 "exp_budgets": {
@@ -1529,7 +1693,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "exp_categories": {
 "pk": [
@@ -1572,7 +1737,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "exp_files": {
 "pk": [
@@ -1614,6 +1780,17 @@
 "name": "uploaded_at",
 "udt": "timestamptz",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"invoice_id"
+],
+"table": "exp_invoices",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -1677,6 +1854,17 @@
 "name": "net",
 "udt": "numeric",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"invoice_id"
+],
+"table": "exp_invoices",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -1866,6 +2054,17 @@
 "udt": "timestamptz",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"vendor_id"
+],
+"table": "exp_vendors",
+"ref": [
+"id"
+]
+}
 ]
 },
 "exp_vendors": {
@@ -1914,7 +2113,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "fund_committee": {
 "pk": [
@@ -1942,7 +2142,8 @@
 "udt": "timestamptz",
 "null": false
 }
-]
+],
+"fks": []
 },
 "fund_form_invite": {
 "pk": [
@@ -2015,7 +2216,8 @@
 "udt": "uuid",
 "null": true
 }
-]
+],
+"fks": []
 },
 "fund_form_submission": {
 "pk": [
@@ -2138,6 +2340,17 @@
 "udt": "timestamptz",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"invite_id"
+],
+"table": "fund_form_invite",
+"ref": [
+"id"
+]
+}
 ]
 },
 "fund_invite_attempt": {
@@ -2160,6 +2373,17 @@
 "name": "at",
 "udt": "timestamptz",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"invite_id"
+],
+"table": "fund_form_invite",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -2279,6 +2503,17 @@
 "udt": "uuid",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"doc_id"
+],
+"table": "doc_register",
+"ref": [
+"id"
+]
+}
 ]
 },
 "letter_income_items": {
@@ -2312,7 +2547,8 @@
 "udt": "bool",
 "null": false
 }
-]
+],
+"fks": []
 },
 "letter_settings": {
 "pk": [
@@ -2340,7 +2576,8 @@
 "udt": "timestamptz",
 "null": false
 }
-]
+],
+"fks": []
 },
 "letter_signers": {
 "pk": [
@@ -2393,7 +2630,8 @@
 "udt": "uuid",
 "null": true
 }
-]
+],
+"fks": []
 },
 "mail_secret": {
 "pk": [
@@ -2411,7 +2649,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "mail_settings": {
 "pk": [
@@ -2454,7 +2693,8 @@
 "udt": "timestamptz",
 "null": false
 }
-]
+],
+"fks": []
 },
 "mail_templates": {
 "pk": [
@@ -2497,7 +2737,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "master_departments": {
 "pk": [
@@ -2545,6 +2786,17 @@
 "udt": "timestamptz",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"division_id"
+],
+"table": "master_divisions",
+"ref": [
+"id"
+]
+}
 ]
 },
 "master_divisions": {
@@ -2588,7 +2840,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "master_job_levels": {
 "pk": [
@@ -2631,7 +2884,8 @@
 "udt": "int4",
 "null": true
 }
-]
+],
+"fks": []
 },
 "master_positions": {
 "pk": [
@@ -2674,7 +2928,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "master_sections": {
 "pk": [
@@ -2721,6 +2976,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"department_id"
+],
+"table": "master_departments",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -2770,7 +3036,8 @@
 "udt": "int4",
 "null": false
 }
-]
+],
+"fks": []
 },
 "master_teams": {
 "pk": [
@@ -2817,6 +3084,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"section_id"
+],
+"table": "master_sections",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -2931,7 +3209,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "notifications": {
 "pk": [
@@ -2979,7 +3258,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "ot_audit_marks": {
 "pk": [
@@ -3018,7 +3298,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "ot_shift_times": {
 "pk": [
@@ -3076,7 +3357,8 @@
 "udt": "int4",
 "null": true
 }
-]
+],
+"fks": []
 },
 "paf_approvers": {
 "pk": [
@@ -3139,7 +3421,8 @@
 "udt": "timestamptz",
 "null": false
 }
-]
+],
+"fks": []
 },
 "paf_forms": {
 "pk": [
@@ -3352,6 +3635,17 @@
 "udt": "timestamptz",
 "null": false
 }
+],
+"fks": [
+{
+"cols": [
+"doc_id"
+],
+"table": "doc_register",
+"ref": [
+"id"
+]
+}
 ]
 },
 "paf_log": {
@@ -3405,6 +3699,17 @@
 "udt": "text",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"paf_id"
+],
+"table": "paf_forms",
+"ref": [
+"id"
+]
+}
 ]
 },
 "paf_tokens": {
@@ -3443,6 +3748,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"paf_id"
+],
+"table": "paf_forms",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -3527,7 +3843,8 @@
 "udt": "uuid",
 "null": true
 }
-]
+],
+"fks": []
 },
 "payroll_sign": {
 "pk": [
@@ -3580,6 +3897,17 @@
 "udt": "timestamptz",
 "null": false
 }
+],
+"fks": [
+{
+"cols": [
+"month"
+],
+"table": "payroll_period",
+"ref": [
+"month"
+]
+}
 ]
 },
 "payroll_sign_tokens": {
@@ -3618,6 +3946,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"month"
+],
+"table": "payroll_sign",
+"ref": [
+"month"
+]
 }
 ]
 },
@@ -3687,6 +4026,17 @@
 "udt": "int4",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"month"
+],
+"table": "payroll_period",
+"ref": [
+"month"
+]
+}
 ]
 },
 "pending_roles": {
@@ -3720,7 +4070,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "permissions": {
 "pk": [
@@ -3753,7 +4104,8 @@
 "udt": "int4",
 "null": false
 }
-]
+],
+"fks": []
 },
 "position_quota": {
 "pk": [
@@ -3806,7 +4158,8 @@
 "udt": "text",
 "null": true
 }
-]
+],
+"fks": []
 },
 "role_permissions": {
 "pk": [
@@ -3824,6 +4177,26 @@
 "name": "perm_key",
 "udt": "text",
 "null": false
+}
+],
+"fks": [
+{
+"cols": [
+"perm_key"
+],
+"table": "permissions",
+"ref": [
+"key"
+]
+},
+{
+"cols": [
+"role_key"
+],
+"table": "app_roles",
+"ref": [
+"key"
+]
 }
 ]
 },
@@ -3938,7 +4311,8 @@
 "udt": "numeric",
 "null": true
 }
-]
+],
+"fks": []
 },
 "sub_companies": {
 "pk": [
@@ -4021,7 +4395,8 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 },
 "sub_worker_log": {
 "pk": [
@@ -4058,6 +4433,17 @@
 "name": "changes",
 "udt": "jsonb",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"worker_id"
+],
+"table": "sub_workers",
+"ref": [
+"id"
+]
 }
 ]
 },
@@ -4272,6 +4658,17 @@
 "udt": "timestamptz",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"company_id"
+],
+"table": "sub_companies",
+"ref": [
+"id"
+]
+}
 ]
 },
 "uniform_item": {
@@ -4325,7 +4722,8 @@
 "udt": "int4",
 "null": false
 }
-]
+],
+"fks": []
 },
 "uniform_move": {
 "pk": [
@@ -4383,6 +4781,17 @@
 "udt": "uuid",
 "null": true
 }
+],
+"fks": [
+{
+"cols": [
+"item_id"
+],
+"table": "uniform_item",
+"ref": [
+"id"
+]
+}
 ]
 },
 "user_roles": {
@@ -4415,6 +4824,17 @@
 "name": "created_at",
 "udt": "timestamptz",
 "null": true
+}
+],
+"fks": [
+{
+"cols": [
+"role"
+],
+"table": "app_roles",
+"ref": [
+"key"
+]
 }
 ]
 },
@@ -4454,6 +4874,7 @@
 "udt": "timestamptz",
 "null": true
 }
-]
+],
+"fks": []
 }
 }

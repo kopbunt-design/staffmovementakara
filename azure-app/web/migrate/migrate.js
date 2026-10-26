@@ -4,7 +4,7 @@
 //   ตารางลิงก์ลงนามที่ค้าง (token) อ่านผ่านเว็บไม่ได้ — นำเข้าจากไฟล์ที่ export ใน SQL Editor (ปุ่ม 2b)
 //   ห้าม import js/app.js
 // ============================================================================
-import { supabase } from "/js/supabase-config.js";
+import { supabase } from "/js/supabase-direct.js";   // ต่อ Supabase ตรง (หน้าอื่นบน Azure ใช้ /api แทนแล้ว)
 
 const app = document.getElementById("app");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -47,10 +47,10 @@ async function render() {
   const T = status?.tables || {};
   const made = Object.values(T).filter(v => v !== null).length, total = Object.keys(T).length;
   app.innerHTML = `
-    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 7</small></h1>
+    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 8</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
-      <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> — <a href="/" style="text-decoration:underline">เข้าสู่ระบบ HR ในเว็บนี้</a> ก่อน แล้วกลับมาหน้านี้`}</div>
+      <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> <button class="btn btn-s btn-sm" id="sbLogin">เข้าสู่ Supabase ด้วย Google</button>`}</div>
     </div>
     ${me.admin ? `
     <div class="card card-b">
@@ -59,6 +59,7 @@ async function render() {
         <button class="btn btn-s" id="b1">1) สร้างตาราง</button>
         <button class="btn btn-p" id="b2" ${sb ? "" : "disabled"}>2) คัดลอกจาก Supabase</button>
         <label class="btn btn-s" style="cursor:pointer">2b) นำเข้าไฟล์ลิงก์ค้าง<input type="file" id="b2b" accept=".csv,.json" hidden></label>
+        <button class="btn btn-s" id="b2c" ${sb ? "" : "disabled"}>2c) คัดลอกไฟล์แนบ/ลายเซ็น</button>
         <button class="btn btn-s" id="b3" ${sb ? "" : "disabled"}>3) ตรวจเทียบทุกตาราง</button>
       </div>
       ${status?.needs_reset ? `<div class="note r" style="margin-top:10px">ตารางใน Azure ยังเป็นรุ่นขั้น 2 — กด 0) ล้าง ก่อน แล้วค่อย 1) สร้างตาราง</div>` : ""}
@@ -70,6 +71,8 @@ async function render() {
       <table><tr><th>ตาราง</th><th style="text-align:right">แถว</th></tr>
         ${Object.entries(T).map(([t, n]) => `<tr><td>${t}${FROM_FILE.includes(t) ? ` <span class="hint">(จากไฟล์)</span>` : SKIP.includes(t) ? ` <span class="hint">(ไม่ย้าย)</span>` : ""}</td><td class="n">${n ?? "— ยังไม่มี"}</td></tr>`).join("")}</table>
     </div>` : ""}`;
+  document.getElementById("sbLogin")?.addEventListener("click", () =>
+    supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + "/migrate/" } }));
   if (!me.admin) return;
   document.getElementById("b0").onclick = () => {
     if (prompt("ลบทุกตารางใน Azure (ข้อมูลจริงยังอยู่ใน Supabase) — พิมพ์ RESET เพื่อยืนยัน") !== "RESET") return;
@@ -83,6 +86,7 @@ async function render() {
   }, "สร้างตาราง");
   document.getElementById("b2").onclick = () => run(copyAll, "คัดลอกจาก Supabase");
   document.getElementById("b2b").onchange = e => { const f = e.target.files[0]; if (f) run(() => importFile(f), "นำเข้าไฟล์ลิงก์ค้าง"); };
+  document.getElementById("b2c").onclick = () => run(copyFiles, "คัดลอกไฟล์แนบ/ลายเซ็น");
   document.getElementById("b3").onclick = () => run(compare, "ตรวจเทียบ");
 }
 
@@ -125,6 +129,39 @@ async function copyAll() {
   if (bad) throw new Error(`${bad} ตารางมีปัญหา`);
 }
 
+// ไฟล์ใน Supabase Storage → Azure Blob (ชื่อ bucket = ชื่อ container เดิม, path เดิม)
+const BUCKETS = ["movement-docs", "letter-assets", "expense-files", "doc-files"];
+async function listAll(bucket, prefix = "") {
+  const out = [];
+  for (let off = 0; ; off += 1000) {
+    const { data, error } = await supabase.storage.from(bucket).list(prefix, { limit: 1000, offset: off });
+    if (error) throw new Error(`${bucket}/${prefix}: ${error.message}`);
+    for (const x of data || []) {
+      const p = prefix ? `${prefix}/${x.name}` : x.name;
+      if (x.id === null) out.push(...await listAll(bucket, p));   // โฟลเดอร์
+      else out.push(p);
+    }
+    if (!data || data.length < 1000) return out;
+  }
+}
+async function copyFiles() {
+  let bad = 0;
+  for (const b of BUCKETS) {
+    const paths = await listAll(b);
+    let n = 0;
+    for (const p of paths) {
+      const { data, error } = await supabase.storage.from(b).download(p);
+      if (error) { bad++; log(`   ✗ ${b}/${p}: ${error.message}`); continue; }
+      const r = await fetch(`/api/admin/blob/${b}/${p.split("/").map(encodeURIComponent).join("/")}`, {
+        method: "PUT", credentials: "same-origin", body: data, headers: { "Content-Type": data.type || "application/octet-stream" } });
+      if (!r.ok) { bad++; log(`   ✗ ${b}/${p}: ${r.status} ${(await r.text()).slice(0, 200)}`); continue; }
+      n++;
+    }
+    log(`${b}: Supabase ${paths.length} ไฟล์ → Azure ${n}`);
+  }
+  if (bad) throw new Error(`${bad} ไฟล์ไม่สำเร็จ`);
+}
+
 // ไฟล์จาก export_tokens.sql (CSV 1 ช่อง หรือ JSON) = {table: [rows]}
 async function importFile(f) {
   let txt = await f.text();
@@ -150,7 +187,8 @@ const norm = v => {
   if (typeof v === "boolean") return v ? "1" : "0";
   const s = String(v);
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return new Date(s).toISOString().slice(0, 19);
-  if (/^-?\d+(\.\d+)?$/.test(s)) return String(Number(s));
+  // ตัวเลข: Azure เก็บทศนิยม 4 ตำแหน่ง — เศษจากการบวกเลขทศนิยมใน JS (139333.33000000002) ถือว่าเท่ากัน
+  if (/^-?\d+(\.\d+)?(e-?\d+)?$/.test(s)) return String(Math.round(Number(s) * 1e4) / 1e4);
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s)) return s.toLowerCase();
   return s;
 };
