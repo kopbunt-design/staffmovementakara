@@ -351,6 +351,35 @@ async def admin_link(request: Request):
     return {"ok": True}
 
 
+@api.get("/api/selftest")
+def selftest(request: Request):
+    """Runs, as the signed-in user, the same calls the HR app makes when it opens — shows the first error of each."""
+    uid, email, _ = caller(request)
+    tests = [
+        ("user_roles", {"table": "user_roles", "select": "role", "filters": [["user_id", "eq", uid]], "single": "one"}),
+        ("app_roles", {"table": "app_roles", "select": "label", "filters": [["key", "eq", "admin"]], "single": "maybe"}),
+        ("employees", {"table": "employees", "select": "*", "limit": 3}),
+        ("movements", {"table": "movements", "select": "*", "limit": 3}),
+        ("master_sections+embed", {"table": "master_sections", "select": "*,master_departments(name)", "limit": 2}),
+        ("notifications", {"table": "notifications", "select": "*", "order": [["created_at", False, None]], "limit": 2}),
+        ("position_quota", {"table": "position_quota", "select": "*", "limit": 2}),
+        ("uniform_balance", {"table": "uniform_balance", "select": "*", "limit": 2}),
+    ]
+    out = {"uid": uid, "email": email}
+    for name, q in tests:
+        with closing(db.connect(uid)) as cn:
+            r = rest.handle(cn, uid, {"method": "GET", **q})
+        d = r["data"]
+        out[name] = {"error": r["error"]} if r["error"] else {"ok": True, "rows": (len(d) if isinstance(d, list) else (1 if d else 0)),
+                                                              "sample": (d if isinstance(d, dict) else None)}
+    with closing(db.connect(uid, bypass=True)) as cn:
+        try:
+            out["rpc my_permissions"] = {"ok": True, "count": len(rpc.call(cn, uid, "my_permissions", {}))}
+        except Exception as e:
+            out["rpc my_permissions"] = {"error": str(e)[:300]}
+    return out
+
+
 @api.get("/api/auth/session")
 def auth_session(request: Request):
     uid, email, u = caller(request)
