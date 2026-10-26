@@ -50,7 +50,19 @@ for t, cs in cons_by_table.items():
 for i in inv["indexes"]:
     m = re.search(r" ON public\.(\w+) USING \w+ \((.*?)\)(?: WHERE|$)", i["def"])
     if m:
-        mark(m.group(1), [re.sub(r"\s+(DESC|ASC)$", "", x.strip()).strip('"') for x in m.group(2).split(",") if "(" not in x])
+        mark(m.group(1), [re.sub(r"\s+(DESC|ASC)$", "", re.sub(r"upper\((\w+)\)", r"\1", x.strip())).strip('"') for x in m.group(2).split(",")])
+# both ends of a foreign key must have the same length — use the shorter one on both
+fk_pairs = []
+for t, cs in cons_by_table.items():
+    for c in cs:
+        m = re.match(r"FOREIGN KEY \((.*?)\) REFERENCES (\w+)\((.*?)\)", c["def"])
+        if m and "auth.users" not in c["def"]:
+            for a, b in zip(m.group(1).split(","), m.group(3).split(",")):
+                fk_pairs.append(((t, a.strip().strip('"')), (m.group(2), b.strip())))
+for _ in range(5):
+    for x, y in fk_pairs:
+        if x in key_len and y in key_len:
+            key_len[x] = key_len[y] = min(key_len[x], key_len[y])
 
 def q(name: str) -> str:
     return f"[{name}]"

@@ -47,7 +47,7 @@ async function render() {
   const T = status?.tables || {};
   const made = Object.values(T).filter(v => v !== null).length, total = Object.keys(T).length;
   app.innerHTML = `
-    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 6</small></h1>
+    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 7</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
       <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> — <a href="/" style="text-decoration:underline">เข้าสู่ระบบ HR ในเว็บนี้</a> ก่อน แล้วกลับมาหน้านี้`}</div>

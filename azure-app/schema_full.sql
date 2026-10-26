@@ -2,7 +2,7 @@
 
 IF OBJECT_ID('dbo.app_roles') IS NULL
 CREATE TABLE dbo.[app_roles] (
-  [key] NVARCHAR(450) NOT NULL,
+  [key] NVARCHAR(200) NOT NULL,
   [label] NVARCHAR(MAX) NOT NULL,
   [description] NVARCHAR(MAX) NULL,
   [is_system] BIT NOT NULL CONSTRAINT [df_app_roles_is_system] DEFAULT 0,
@@ -197,7 +197,7 @@ CREATE TABLE dbo.[diligence_results] (
 
 IF OBJECT_ID('dbo.diligence_runs') IS NULL
 CREATE TABLE dbo.[diligence_runs] (
-  [ym] NVARCHAR(450) NOT NULL,
+  [ym] NVARCHAR(200) NOT NULL,
   [pay_ym] NVARCHAR(MAX) NOT NULL,
   [files] NVARCHAR(MAX) NULL CONSTRAINT [ck_diligence_runs_files_json] CHECK ([files] IS NULL OR ISJSON([files]) = 1),
   [in_scope] INT NULL,
@@ -283,7 +283,7 @@ CREATE UNIQUE INDEX [uq_doc_register_series_code_year_seq_key] ON dbo.[doc_regis
 
 IF OBJECT_ID('dbo.doc_series') IS NULL
 CREATE TABLE dbo.[doc_series] (
-  [code] NVARCHAR(450) NOT NULL,
+  [code] NVARCHAR(200) NOT NULL,
   [label] NVARCHAR(MAX) NOT NULL,
   [prefix] NVARCHAR(MAX) NOT NULL,
   [sort_order] INT NOT NULL CONSTRAINT [df_doc_series_sort_order] DEFAULT 100,
@@ -784,7 +784,7 @@ CREATE UNIQUE INDEX [uq_master_sections_code_key] ON dbo.[master_sections] ([cod
 IF OBJECT_ID('dbo.master_shift_codes') IS NULL
 CREATE TABLE dbo.[master_shift_codes] (
   [id] BIGINT IDENTITY(1,1) NOT NULL,
-  [code] NVARCHAR(MAX) NOT NULL,
+  [code] NVARCHAR(450) NOT NULL,
   [family] NVARCHAR(MAX) NOT NULL,
   [note] NVARCHAR(MAX) NULL,
   [is_active] BIT NOT NULL CONSTRAINT [df_master_shift_codes_is_active] DEFAULT 1,
@@ -981,7 +981,7 @@ CREATE UNIQUE INDEX [uq_paf_tokens_token_key] ON dbo.[paf_tokens] ([token]);
 
 IF OBJECT_ID('dbo.payroll_period') IS NULL
 CREATE TABLE dbo.[payroll_period] (
-  [month] NVARCHAR(450) NOT NULL,
+  [month] NVARCHAR(200) NOT NULL,
   [report_date] DATE NULL,
   [total_expense] DECIMAL(19,4) NULL,
   [total_deduction] DECIMAL(19,4) NULL,
@@ -1001,7 +1001,7 @@ CREATE TABLE dbo.[payroll_period] (
 
 IF OBJECT_ID('dbo.payroll_sign') IS NULL
 CREATE TABLE dbo.[payroll_sign] (
-  [month] NVARCHAR(450) NOT NULL,
+  [month] NVARCHAR(200) NOT NULL,
   [status] NVARCHAR(MAX) NOT NULL,
   [steps] NVARCHAR(MAX) NOT NULL CONSTRAINT [ck_payroll_sign_steps_json] CHECK ([steps] IS NULL OR ISJSON([steps]) = 1),
   [cur_step] INT NULL,
@@ -1062,7 +1062,7 @@ CREATE TABLE dbo.[pending_roles] (
 
 IF OBJECT_ID('dbo.permissions') IS NULL
 CREATE TABLE dbo.[permissions] (
-  [key] NVARCHAR(450) NOT NULL,
+  [key] NVARCHAR(200) NOT NULL,
   [category] NVARCHAR(MAX) NOT NULL,
   [label] NVARCHAR(MAX) NOT NULL,
   [description] NVARCHAR(MAX) NULL,
@@ -1252,7 +1252,7 @@ CREATE TABLE dbo.[user_roles] (
   [user_id] UNIQUEIDENTIFIER NOT NULL,
   [name] NVARCHAR(MAX) NULL,
   [email] NVARCHAR(MAX) NULL,
-  [role] NVARCHAR(450) NULL CONSTRAINT [df_user_roles_role] DEFAULT N'user',
+  [role] NVARCHAR(200) NULL CONSTRAINT [df_user_roles_role] DEFAULT N'user',
   [created_at] DATETIMEOFFSET NULL CONSTRAINT [df_user_roles_created_at] DEFAULT SYSDATETIMEOFFSET(),
   CONSTRAINT [pk_user_roles] PRIMARY KEY ([user_id])
 );
