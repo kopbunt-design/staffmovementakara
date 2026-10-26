@@ -67,9 +67,22 @@ class Query {
 }
 
 // ---------------------------------------------------------------- auth (Microsoft login)
+const msLogin = () => { location.href = "/.auth/login/aad?post_login_redirect_uri=" + encodeURIComponent(location.pathname + location.search + location.hash); return new Promise(() => {}); };
+// Server restarting (e.g. right after a deploy) answers 502/503 for a minute — wait and retry instead of showing
+// the old e-mail/password form; not signed in (401) → straight to the Microsoft login.
+async function fetchSession() {
+  for (let i = 0; i < 20; i++) {
+    try {
+      const r = await fetch("/api/auth/session", { credentials: "same-origin" });
+      if (r.status === 401) return msLogin();
+      if (r.ok) { const j = await r.json(); return j?.user ? { user: j.user, access_token: "azure" } : null; }
+    } catch (_) { /* network blip — retry */ }
+    await new Promise(res => setTimeout(res, 3000));
+  }
+  return null;
+}
 let sessionP = null;
-const loadSession = () => sessionP ||= fetch("/api/auth/session", { credentials: "same-origin" })
-  .then(r => r.status === 401 ? null : r.json()).then(j => j?.user ? { user: j.user, access_token: "azure" } : null).catch(() => null);
+const loadSession = () => sessionP ||= fetchSession();
 
 const auth = {
   async getSession() { return { data: { session: await loadSession() }, error: null }; },
@@ -79,8 +92,8 @@ const auth = {
     return { data: { subscription: { unsubscribe() {} } } };
   },
   async signOut() { location.href = "/.auth/logout?post_logout_redirect_uri=/"; return { error: null }; },
-  async signInWithOAuth() { location.href = "/.auth/login/aad?post_login_redirect_uri=/"; return { data: null, error: null }; },
-  async signInWithPassword() { return { data: null, error: { message: "ระบบนี้เข้าด้วยบัญชี Microsoft ของบริษัท" } }; },
+  async signInWithOAuth() { return msLogin(); },
+  async signInWithPassword() { return msLogin(); },   // the old form's button now goes to the Microsoft login
   async signUp() { return { data: null, error: { message: "ระบบนี้เข้าด้วยบัญชี Microsoft ของบริษัท — ไม่ต้องสมัคร" } }; },
   async updateUser() { return { data: null, error: { message: "รหัสผ่านจัดการที่บัญชี Microsoft ของบริษัท" } }; },
 };
