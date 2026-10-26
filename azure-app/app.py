@@ -99,7 +99,11 @@ def user_access(cn, email: str) -> dict:
     uid = role = None
     if db.table_exists(cn, "user_roles") and "email" in {c["name"] for c in TABLES["user_roles"]["cols"]}:
         try:
-            r = cur.execute("SELECT TOP 1 user_id, role FROM dbo.user_roles WHERE LOWER(LTRIM(RTRIM(email))) = ?", email).fetchone()
+            r = None
+            if db.table_exists(cn, "ms_accounts"):
+                r = cur.execute("""SELECT ur.user_id, ur.role FROM dbo.ms_accounts m JOIN dbo.user_roles ur ON ur.user_id = m.user_id
+                                   WHERE m.ms_email = ?""", email).fetchone()
+            r = r or cur.execute("SELECT TOP 1 user_id, role FROM dbo.user_roles WHERE LOWER(LTRIM(RTRIM(email))) = ?", email).fetchone()
             if r:
                 uid, role = str(r[0]), r[1]
         except Exception:   # step-2 table shape (no user_id) — treat as not found until the reset
@@ -283,6 +287,13 @@ def caller(request: Request, need=True):
     email = u["email"].strip().lower()
     with closing(db.connect(None, bypass=True)) as cn:
         cur = cn.cursor()
+        _ms_table(cur)
+        # 1) Microsoft account linked by an admin to an existing user (their old login was e.g. Gmail)
+        r = cur.execute("""SELECT m.user_id FROM dbo.ms_accounts m JOIN dbo.user_roles ur ON ur.user_id = m.user_id
+                           WHERE m.ms_email = ?""", email).fetchone()
+        if r:
+            return str(r[0]), email, u
+        # 2) same e-mail as before
         r = cur.execute("SELECT TOP 1 user_id FROM dbo.user_roles WHERE LOWER(LTRIM(RTRIM(email))) = ?", email).fetchone()
         if r:
             return str(r[0]), email, u
@@ -295,6 +306,49 @@ def caller(request: Request, need=True):
             cur.execute("DELETE FROM dbo.pending_roles WHERE email_key = ?", key)
         cn.commit()
         return uid, email, u
+
+
+def _ms_table(cur):
+    # kept apart from user_roles so re-copying user_roles from Supabase doesn't lose the links
+    cur.execute("""IF OBJECT_ID('dbo.ms_accounts') IS NULL
+                   CREATE TABLE dbo.ms_accounts (ms_email NVARCHAR(320) NOT NULL PRIMARY KEY, user_id UNIQUEIDENTIFIER NOT NULL,
+                                                 linked_by NVARCHAR(320) NULL, linked_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET())""")
+    cur.connection.commit()
+
+
+@api.get("/api/admin/users")
+def admin_users(request: Request):
+    cn, _ = _admin(request)
+    with closing(cn):
+        cur = cn.cursor()
+        _ms_table(cur)
+        users = db.rows(cur.execute("SELECT user_id, name, email, [role], created_at FROM dbo.user_roles ORDER BY name"))
+        links = db.rows(cur.execute("SELECT ms_email, user_id FROM dbo.ms_accounts"))
+    for x in users:
+        x["ms_email"] = next((l["ms_email"] for l in links if l["user_id"] == x["user_id"]), None)
+    return users
+
+
+@api.post("/api/admin/link")
+async def admin_link(request: Request):
+    """Link a Microsoft e-mail to an existing user (keeps their id, so their role, signature and history follow).
+    Removes the empty account that was auto-created when that Microsoft e-mail first signed in."""
+    body = await request.json()
+    uid, ms = body.get("user_id"), (body.get("ms_email") or "").strip().lower()
+    cn, admin_email = _admin(request)
+    with closing(cn):
+        cur = cn.cursor()
+        _ms_table(cur)
+        cur.execute("DELETE FROM dbo.ms_accounts WHERE user_id = ? OR ms_email = ?", uid, ms)
+        if ms:
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", ms):
+                raise HTTPException(400, "อีเมลไม่ถูกต้อง")
+            cur.execute("INSERT INTO dbo.ms_accounts (ms_email, user_id, linked_by) VALUES (?, ?, ?)", ms, uid, admin_email)
+            # the auto-created placeholder for this Microsoft e-mail (not the linked user) has no history — remove it
+            cur.execute("""DELETE FROM dbo.user_roles WHERE LOWER(LTRIM(RTRIM(email))) = ? AND user_id <> ?
+                             AND user_id NOT IN (SELECT user_id FROM dbo.letter_signers)""", ms, uid)
+        cn.commit()
+    return {"ok": True}
 
 
 @api.get("/api/auth/session")

@@ -47,7 +47,7 @@ async function render() {
   const T = status?.tables || {};
   const made = Object.values(T).filter(v => v !== null).length, total = Object.keys(T).length;
   app.innerHTML = `
-    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 9</small></h1>
+    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 10</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
       <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> <button class="btn btn-s btn-sm" id="sbLogin">เข้าสู่ Supabase ด้วย Google</button>`}</div>
@@ -65,12 +65,14 @@ async function render() {
       ${status?.needs_reset ? `<div class="note r" style="margin-top:10px">ตารางใน Azure ยังเป็นรุ่นขั้น 2 — กด 0) ล้าง ก่อน แล้วค่อย 1) สร้างตาราง</div>` : ""}
       <pre id="mgLog">${esc(LOG)}</pre>
     </div>
+    <div class="card card-b" id="mgUsers"><div class="card-t">ผูกบัญชี Microsoft กับผู้ใช้เดิม</div><div class="hint">กำลังโหลด…</div></div>
     <div class="card card-b">
       <div class="card-t">ใน Azure ตอนนี้ · สร้างแล้ว ${made}/${total} ตาราง</div>
       ${statusErr ? `<div class="note r">อ่านสถานะไม่ได้: ${esc(statusErr)}</div>` : ""}
       <table><tr><th>ตาราง</th><th style="text-align:right">แถว</th></tr>
         ${Object.entries(T).map(([t, n]) => `<tr><td>${t}${FROM_FILE.includes(t) ? ` <span class="hint">(จากไฟล์)</span>` : SKIP.includes(t) ? ` <span class="hint">(ไม่ย้าย)</span>` : ""}</td><td class="n">${n ?? "— ยังไม่มี"}</td></tr>`).join("")}</table>
     </div>` : ""}`;
+  if (me.admin && made) drawUsers();
   document.getElementById("sbLogin")?.addEventListener("click", () =>
     supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + "/migrate/" } }));
   if (!me.admin) return;
@@ -127,6 +129,25 @@ async function copyAll() {
   log("เปิดกฎ (คีย์/เงื่อนไข/trigger) กลับ และตรวจข้อมูลทุกแถว …");
   await constraints(true);
   if (bad) throw new Error(`${bad} ตารางมีปัญหา`);
+}
+
+// ผู้ใช้เดิมเข้าด้วย Gmail/อีเมลอื่น → ผูกอีเมล Microsoft ของบริษัทให้ จะได้บทบาท ลายเซ็น และประวัติเดิม
+async function drawUsers() {
+  const box = document.getElementById("mgUsers");
+  let us;
+  try { us = await api("/api/admin/users"); } catch (e) { box.innerHTML = `<div class="card-t">ผูกบัญชี Microsoft</div><div class="note r">${esc(e.message)}</div>`; return; }
+  box.innerHTML = `<div class="card-t">ผูกบัญชี Microsoft กับผู้ใช้เดิม</div>
+    <div class="hint" style="margin-bottom:8px">ใส่อีเมล Microsoft ของบริษัทของแต่ละคน (คนที่ใช้ Gmail ในระบบเดิม) แล้วกดบันทึก — ไม่ต้องทำซ้ำหลังคัดลอกข้อมูลรอบใหม่</div>
+    <table><tr><th>ชื่อ</th><th>อีเมลในระบบเดิม</th><th>บทบาท</th><th>อีเมล Microsoft</th><th></th></tr>
+    ${us.map(u => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td>
+      <td><input class="in" style="width:100%" data-ms="${esc(u.user_id)}" value="${esc(u.ms_email || "")}" placeholder="name@akararesources.com"></td>
+      <td><button class="btn btn-s btn-sm" data-link="${esc(u.user_id)}">บันทึก</button></td></tr>`).join("")}</table>`;
+  box.querySelectorAll("[data-link]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.link, v = box.querySelector(`[data-ms="${id}"]`).value.trim();
+    b.disabled = true;
+    try { await api("/api/admin/link", { method: "POST", body: JSON.stringify({ user_id: id, ms_email: v }) }); log(`ผูก ${v || "(ยกเลิก)"} แล้ว`); drawUsers(); }
+    catch (e) { log("✗ " + e.message); b.disabled = false; }
+  });
 }
 
 // ไฟล์ใน Supabase Storage → Azure Blob (ชื่อ bucket = ชื่อ container เดิม, path เดิม)
