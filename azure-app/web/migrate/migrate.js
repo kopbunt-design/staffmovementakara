@@ -47,7 +47,7 @@ async function render() {
   const T = status?.tables || {};
   const made = Object.values(T).filter(v => v !== null).length, total = Object.keys(T).length;
   app.innerHTML = `
-    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 8</small></h1>
+    <h1>ย้ายทั้งระบบไป Azure <small class="hint" style="font-size:12px;font-weight:400">หน้ารุ่น 9</small></h1>
     <div class="card card-b">
       <div>Microsoft: <b>${esc(me.email)}</b> · ${me.admin ? `<span class="ok">admin</span>` : `<span class="bad">ไม่ใช่ admin — ทำขั้นนี้ไม่ได้</span>`}</div>
       <div style="margin-top:6px">Supabase: ${sb ? `<b>${esc(sb.user.email)}</b> <span class="ok">ล็อกอินแล้ว</span>` : `<span class="bad">ยังไม่ได้ล็อกอิน</span> <button class="btn btn-s btn-sm" id="sbLogin">เข้าสู่ Supabase ด้วย Google</button>`}</div>
@@ -80,7 +80,7 @@ async function render() {
   };
   document.getElementById("b1").onclick = () => run(async () => {
     const r = await api("/api/admin/setup", { method: "POST" });
-    log(`รัน ${r.statements} คำสั่ง · พลาด ${r.errors.length}`);
+    log(`รัน ${r.statements} คำสั่ง · พลาด ${r.errors.length}${r.app_enforced ? ` · กฎสิทธิ์ ${r.app_enforced} ตารางตรวจโดยแอป (ฐานข้อมูลไม่ให้สร้าง policy)` : ""}`);
     r.errors.forEach(e => log(`   ✗ ${e.sql}\n     ${e.error}`));
     if (r.errors.length) throw new Error("มีคำสั่งที่ไม่ผ่าน — แคปส่งให้ผู้พัฒนา");
   }, "สร้างตาราง");

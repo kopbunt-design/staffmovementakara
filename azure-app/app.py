@@ -155,7 +155,7 @@ def admin_setup(request: Request):
     """Run schema_full.sql statement by statement; report every failure instead of stopping at the first."""
     cn, _ = _admin(request)
     stmts = db.statements((HERE / "schema_full.sql").read_text(encoding="utf-8")) + db.statements((HERE / "security.sql").read_text(encoding="utf-8"))
-    errors = []
+    errors, skipped = [], 0
     with closing(cn):
         cur = cn.cursor()
         for s in stmts:
@@ -164,8 +164,11 @@ def admin_setup(request: Request):
                 cn.commit()
             except Exception as e:
                 cn.rollback()
+                if "SECURITY POLICY permission denied" in str(e):
+                    skipped += 1   # database user can't create policies — the app applies the same rules itself (rest.rule_filter)
+                    continue
                 errors.append({"sql": s.splitlines()[0][:160] + (" … " + s.splitlines()[1][:100] if len(s.splitlines()) > 1 else ""), "error": str(e)[:400]})
-    return {"ok": not errors, "statements": len(stmts), "errors": errors}
+    return {"ok": not errors, "statements": len(stmts), "errors": errors, "app_enforced": skipped}
 
 
 @api.post("/api/admin/reset")
@@ -341,11 +344,12 @@ async def changes(request: Request):
                 continue
             cols = {c["name"] for c in TABLES[t]["cols"]}
             stamp = "updated_at" if "updated_at" in cols else ("created_at" if "created_at" in cols else None)
-            r = cur.execute(f"SELECT COUNT(*), {'MAX([' + stamp + '])' if stamp else 'NULL'} FROM dbo.[{t}]").fetchone()
+            rf = rest.rule_filter(t, "read")
+            r = cur.execute(f"SELECT COUNT(*), {'MAX([' + stamp + '])' if stamp else 'NULL'} FROM dbo.[{t}]" + (f" WHERE {rf}" if rf else "")).fetchone()
             out[t] = f"{r[0]}|{db.out_value(r[1])}"
             if t == "notifications" and body.get("since"):
                 ins[t] = [db.decode_row(t, x) for x in db.rows(cur.execute(
-                    "SELECT * FROM dbo.notifications WHERE created_at > ? ORDER BY created_at", body["since"]))]
+                    "SELECT * FROM dbo.notifications WHERE created_at > ? AND " + rest.rule_filter("notifications", "read") + " ORDER BY created_at", body["since"]))]
         now_ = db.out_value(cur.execute("SELECT SYSDATETIMEOFFSET()").fetchone()[0])
     return {"data": {"sigs": out, "inserted": ins, "now": now_}, "error": None}
 

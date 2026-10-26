@@ -158,15 +158,29 @@ def parse_logic(table, s, params, joiner="OR"):
     return f" {joiner} ".join(parts) or "1 = 1"
 
 
-def where_clause(table, req, params):
+def where_clause(table, req, params, rules=("read",)):
     conds = [cond(table, f[0], f[1], f[2] if len(f) > 2 else None, params) for f in req.get("filters") or []]
     for o in req.get("or") or []:
         conds.append("(" + parse_logic(table, o, params) + ")")
+    conds += [rf for rf in (rule_filter(table, k) for k in rules) if rf]
     return (" WHERE " + " AND ".join(conds)) if conds else ""
 
 
+def check_rule(cur, table, row, kind):
+    """After a write: the stored row must satisfy the INSERT / UPDATE check rule, else roll back (Postgres 42501)."""
+    rf = rule_filter(table, kind)
+    if not rf:
+        return
+    w, p = _pk_where(table, row)
+    if not cur.execute(f"SELECT 1 FROM dbo.[{table}] WHERE {w} AND {rf}", *p).fetchone():
+        raise ApiError(f'new row violates row-level security policy for table "{table}"', "42501")
+
+
 def rule_filter(table, kind, alias=""):
-    """Rows the caller may update/delete — applied as a filter so others are skipped, not an error (Postgres behaviour)."""
+    """The row-security rule (sec.<table>_<kind>, generated from the Supabase policies) as a filter.
+    The database user may not create SECURITY POLICY objects, so the app applies these predicate functions itself
+    on every read and write — all data access goes through this module, so nothing can skip them.
+    read = rows the caller may see; upd_before/del = rows they may change (others are skipped, as in Postgres)."""
     if table not in SEC_PARAMS:
         return ""
     args = ", ".join(f"{alias}[{c}]" for c in SEC_PARAMS[table])
@@ -204,7 +218,9 @@ def embed(cur, table, rows, rels):
         for i in range(0, len(keys), 500):
             chunk = keys[i:i + 500]
             sel = "*" if "*" in subcols else ", ".join({f"[{c}]" for c in subcols + fk["ref"]})
-            for r in db.rows(cur.execute(f"SELECT {sel} FROM dbo.[{rel}] WHERE [{fk['ref'][0]}] IN ({', '.join('?' for _ in chunk)})", *chunk)):
+            rf = rule_filter(rel, "read")
+            for r in db.rows(cur.execute(f"SELECT {sel} FROM dbo.[{rel}] WHERE [{fk['ref'][0]}] IN ({', '.join('?' for _ in chunk)})"
+                                         + (f" AND {rf}" if rf else ""), *chunk)):
                 found[str(r[fk["ref"][0]])] = db.decode_row(rel, r)
         for r in rows:
             v = found.get(str(r.get(fk["cols"][0])))
@@ -269,6 +285,7 @@ def insert_row(cur, ctx, table, row):
     out = db.decode_row(table, db.rows(cur.execute(sql, *[db.in_value(table, c, row[c]) for c in cols]))[0])
     if ident and ident in cols:
         cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
+    check_rule(cur, table, out, "ins")
     _run(hooks.AFTER_INSERT, table, cur, ctx, out)
     return out
 
@@ -283,6 +300,7 @@ def update_row(cur, ctx, table, old, values):
         cur.execute(f"UPDATE dbo.[{table}] SET {', '.join(f'[{k}] = ?' for k in changed)} WHERE {w}",
                     *[db.in_value(table, k, new[k]) for k in changed], *p)
     out = _fetch_by_pk(cur, table, {**old, **{k: new[k] for k in meta(table)['pk'] if k in new}}) or new
+    check_rule(cur, table, out, "upd_after")
     _run(hooks.AFTER_UPDATE, table, cur, ctx, old, out)
     return out
 
@@ -304,7 +322,8 @@ def do_insert(cur, ctx, table, req):
                     if up.get("ignoreDuplicates"):
                         continue
                     old = db.decode_row(table, ex[0])
-                    allowed = cur.execute(f"SELECT 1 FROM dbo.[{table}] t WHERE {rule_filter(table, 'upd_before', 't.') or '1 = 1'} AND "
+                    rules = " AND ".join(x for x in (rule_filter(table, "read", "t."), rule_filter(table, "upd_before", "t.")) if x) or "1 = 1"
+                    allowed = cur.execute(f"SELECT 1 FROM dbo.[{table}] t WHERE {rules} AND "
                                           + " AND ".join(f"t.[{k}] = ?" for k in meta(table)['pk']),
                                           *[db.in_value(table, k, old[k]) for k in meta(table)["pk"]]).fetchone()
                     if not allowed:
@@ -317,9 +336,7 @@ def do_insert(cur, ctx, table, req):
 
 def do_update(cur, ctx, table, req):
     params = []
-    where = where_clause(table, req, params)
-    rf = rule_filter(table, "upd_before")
-    where = (where + " AND " + rf) if (where and rf) else (where or (" WHERE " + rf if rf else ""))
+    where = where_clause(table, req, params, rules=("read", "upd_before"))
     olds = out_rows(table, db.rows(cur.execute(f"SELECT * FROM dbo.[{table}] WITH (UPDLOCK){where}", *params)))
     values = {k: v for k, v in (req.get("values") or {}).items()}
     for k in values:
@@ -329,9 +346,7 @@ def do_update(cur, ctx, table, req):
 
 def do_delete(cur, ctx, table, req):
     params = []
-    where = where_clause(table, req, params)
-    rf = rule_filter(table, "del")
-    where = (where + " AND " + rf) if (where and rf) else (where or (" WHERE " + rf if rf else ""))
+    where = where_clause(table, req, params, rules=("read", "del"))
     olds = out_rows(table, db.rows(cur.execute(f"SELECT * FROM dbo.[{table}] WITH (UPDLOCK){where}", *params)))
     for o in olds:
         _run(hooks.BEFORE_DELETE, table, cur, ctx, o)

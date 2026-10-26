@@ -20,6 +20,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 import db
+import rest
 import storage
 
 KIND = {"cert_th": "หนังสือรับรองการทำงาน (ภาษาไทย)", "cert_en": "Certificate of Employment (EN)",
@@ -102,7 +103,7 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
     if not tokened and not uid:
         raise Fail("Invalid session", 401)
     if body.get("pr_month") and action == "pr_files":
-        r = one(U, "payroll_sign", "month = ?", str(body["pr_month"]))
+        r = one(U, "payroll_sign", "month = ? AND " + rest.rule_filter("payroll_sign", "read"), str(body["pr_month"])) if U else None
         if not r:
             raise Fail("ไม่พบ หรือไม่มีสิทธิ์", 403)
         return {"sig": {str(s["step"]): sign("letter-assets", s.get("signature_path")) for s in r.get("steps") or []}}
@@ -135,7 +136,8 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
         return True
 
     def read_as_caller(table, where, *a):
-        x = one(U, table, where, *a) if U else None
+        rf = rest.rule_filter(table, "read")   # same visibility as the site
+        x = one(U, table, where + (f" AND {rf}" if rf else ""), *a) if U else None
         if not x:
             raise Fail("ไม่พบ หรือไม่มีสิทธิ์", 403)
         return x
