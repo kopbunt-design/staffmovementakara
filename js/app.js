@@ -34,7 +34,13 @@ const LEGACY_PERMS = {
 const ALL_PERMS = [...new Set([...LEGACY_PERMS.hr, ...LEGACY_PERMS.user,
   "page.users","page.settings","data.roles.manage"])];
 
+// หน้าที่ถูกเปิดก่อนโหลดสิทธิ์เสร็จ (เน็ตช้า/เซิร์ฟเวอร์ช้า) ต้องรอสิทธิ์ก่อน ไม่งั้นขึ้น "ไม่มีสิทธิ์เข้าถึง" ทั้งที่มีสิทธิ์
+let permsLoaded;
+const permsReady = new Promise(r => permsLoaded = r);
 async function loadMyPermissions() {
+  try { await loadMyPermissions_(); } finally { permsLoaded(); }
+}
+async function loadMyPermissions_() {
   const { data, error } = await supabase.rpc("my_permissions");
   if (!error && Array.isArray(data) && data.length) {
     myPerms = new Set(data);
@@ -417,6 +423,7 @@ async function checkNewVersion() {
 async function renderPage(page) {
   checkNewVersion();
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
+  if (!OPEN_PAGES.has(page)) await permsReady;
   if (!canPage(page)) { denyPage(page); return; }
   if(page==="home") (await import("./launcher.js")).renderHome();
   else if(page==="dashboard") renderDashboard();

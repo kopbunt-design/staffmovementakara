@@ -297,13 +297,16 @@ def insert_row(cur, ctx, table, row):
     _run(hooks.BEFORE_INSERT, table, cur, ctx, row)
     cols = list(row)
     ident = meta(table)["identity"]
-    if ident and ident in cols:
+    explicit_id = bool(ident and ident in cols)
+    if explicit_id:
         cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] ON")
     sql = (f"INSERT INTO dbo.[{table}] ({', '.join(f'[{c}]' for c in cols)}) OUTPUT INSERTED.* VALUES ({', '.join('?' for _ in cols)})"
            if cols else f"INSERT INTO dbo.[{table}] OUTPUT INSERTED.* DEFAULT VALUES")
-    out = db.decode_row(table, db.rows(cur.execute(sql, *[db.in_value(table, c, row[c]) for c in cols]))[0])
-    if ident and ident in cols:
-        cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
+    try:
+        out = db.decode_row(table, db.rows(cur.execute(sql, *[db.in_value(table, c, row[c]) for c in cols]))[0])
+    finally:   # connections are pooled — never leave IDENTITY_INSERT on for the next request
+        if explicit_id:
+            cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
     check_rule(ctx, cur, table, out, "ins")
     _run(hooks.AFTER_INSERT, table, cur, ctx, out)
     return out

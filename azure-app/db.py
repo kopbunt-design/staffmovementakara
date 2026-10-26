@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import struct
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,7 +25,7 @@ def _dto(raw: bytes):
     return datetime(y, mo, d, h, mi, s, ns // 1000, tzinfo=timezone(timedelta(hours=tzh, minutes=tzm)))
 
 
-def connect(uid: str | None = None, bypass: bool = False):
+def _open():
     import pyodbc  # imported lazily so the site still serves if the driver is missing
 
     pyodbc.native_uuid = True  # UNIQUEIDENTIFIER as uuid.UUID → lower-case text like Supabase (default is upper-case)
@@ -38,10 +40,64 @@ def connect(uid: str | None = None, bypass: bool = False):
         timeout=30, autocommit=False,
     )
     cn.add_output_converter(-155, _dto)
-    cur = cn.cursor()
+    return cn
+
+
+# Opening an encrypted connection to Azure SQL costs ~0.5–1 s, and the Linux ODBC driver manager doesn't pool,
+# so finished connections are kept here and reused. Every checkout rolls back leftovers and sets the caller again.
+_pool: "queue.LifoQueue" = queue.LifoQueue()
+POOL_MAX = 16
+
+
+class Conn:
+    def __init__(self, raw):
+        self._raw = raw
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+    def close(self):
+        raw, self._raw = self._raw, None
+        if raw is None:
+            return
+        try:
+            raw.rollback()
+            if _pool.qsize() < POOL_MAX:
+                _pool.put((time.time(), raw))
+                return
+        except Exception:
+            pass
+        try:
+            raw.close()
+        except Exception:
+            pass
+
+
+def connect(uid: str | None = None, bypass: bool = False):
+    while True:
+        try:
+            ts, raw = _pool.get_nowait()
+        except queue.Empty:
+            raw = _open()
+            break
+        if time.time() - ts > 600:          # idle too long — Azure may have dropped it
+            try:
+                raw.close()
+            except Exception:
+                pass
+            continue
+        try:
+            raw.cursor().execute("SELECT 1").fetchone()
+            break
+        except Exception:
+            try:
+                raw.close()
+            except Exception:
+                pass
+    cur = raw.cursor()
     cur.execute("EXEC sp_set_session_context N'uid', ?", uid)
     cur.execute("EXEC sp_set_session_context N'bypass', ?", 1 if bypass else 0)
-    return cn
+    return Conn(raw)
 
 
 def rows(cur) -> list[dict]:

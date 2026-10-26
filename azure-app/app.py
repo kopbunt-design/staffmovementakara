@@ -246,9 +246,11 @@ async def admin_import(table: str, request: Request):
             if ident and ident in cols:
                 cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] ON")
             sql = f"INSERT INTO dbo.[{table}] ({', '.join(f'[{c}]' for c in cols)}) VALUES ({', '.join('?' for _ in cols)})"
-            cur.executemany(sql, [[db.in_value(table, c, r.get(c)) for c in cols] for r in data])
-            if ident and ident in cols:
-                cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
+            try:
+                cur.executemany(sql, [[db.in_value(table, c, r.get(c)) for c in cols] for r in data])
+            finally:   # pooled connection — don't leave IDENTITY_INSERT on
+                if ident and ident in cols:
+                    cur.execute(f"SET IDENTITY_INSERT dbo.[{table}] OFF")
         cn.commit()
         total = cur.execute(f"SELECT COUNT(*) FROM dbo.[{table}]").fetchone()[0]
     return {"ok": True, "inserted": len(data), "total": total}
