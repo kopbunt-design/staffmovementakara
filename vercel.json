@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://akarahr2-a0dqcaa5fxb0cbcd.southeastasia-01.azurewebsites.net/:path*",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/expense",
