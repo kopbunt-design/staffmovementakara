@@ -10,15 +10,24 @@
 // Returns {data, error, count} exactly like supabase-js, so existing `if (error)` checks keep working.
 // ============================================================================
 
-const post = async (url, body) => {
+// Email-link pages (approve/sign by token) need no login, so they send no login cookie either — a leftover or
+// foreign Microsoft session in the approver's browser must not get the request refused.
+const post = async (url, body, anon = false) => {
   let r;
   try {
-    r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+    r = await fetch(url, { method: "POST", credentials: anon ? "omit" : "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
   } catch (e) { return { data: null, error: { message: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจอินเทอร์เน็ตแล้วลองใหม่", code: "NETWORK" } }; }
-  if (r.status === 401) { location.href = "/.auth/login/aad?post_login_redirect_uri=" + encodeURIComponent(location.pathname + location.search + location.hash); return new Promise(() => {}); }
+  if (r.status === 401 && !anon) { location.href = "/.auth/login/aad?post_login_redirect_uri=" + encodeURIComponent(location.pathname + location.search + location.hash); return new Promise(() => {}); }
   const t = await r.text();
-  try { return JSON.parse(t); } catch { return { data: null, error: { message: `${r.status} ${t.slice(0, 300)}`, code: String(r.status) } }; }
+  try { return JSON.parse(t); } catch {
+    // not our app's JSON → refused before reaching it (login layer, proxy, firewall); say who answered so a screenshot is enough
+    const by = r.headers.get("server") === "gunicorn" ? "app" : (r.headers.get("server") || "ไม่ใช่เซิร์ฟเวอร์ระบบ");
+    const id = r.headers.get("x-ms-middleware-request-id") || r.headers.get("x-ms-request-id") || "";
+    return { data: null, error: { message: `${r.status} ${t.slice(0, 300)} [${by}${id ? " · " + id : ""} · ${new Date().toISOString()}]`, code: String(r.status) } };
+  }
 };
+const LINK_RPC = /_link_(get|decide)$/;
+const isLinkCall = b => Object.keys(b || {}).some(k => /_token$/.test(k) && b[k]);
 
 // ---------------------------------------------------------------- tables
 class Query {
@@ -157,10 +166,10 @@ function channel(name) {
 
 export const supabase = {
   from: t => new Query(t),
-  rpc: (name, args = {}) => ({ then: (ok, bad) => post(`/api/rpc/${name}`, args).then(ok, bad) }),
+  rpc: (name, args = {}) => ({ then: (ok, bad) => post(`/api/rpc/${name}`, args, LINK_RPC.test(name)).then(ok, bad) }),
   auth,
   storage,
-  functions: { invoke: (name, opts = {}) => post(`/api/fn/${name}`, opts.body || {}) },
+  functions: { invoke: (name, opts = {}) => post(`/api/fn/${name}`, opts.body || {}, isLinkCall(opts.body)) },
   channel,
   removeChannel: c => c?.unsubscribe?.(),
 };
