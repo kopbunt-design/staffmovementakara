@@ -13,6 +13,7 @@ let LOG = "";
 const log = m => { LOG += m + "\n"; const el = document.getElementById("mgLog"); if (el) { el.textContent = LOG; el.scrollTop = el.scrollHeight; } };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
+  if (r.status === 401) { location.href = "/.auth/login/aad?post_login_redirect_uri=/migrate/"; return new Promise(() => {}); }
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { detail: t }; }
   if (!r.ok) throw new Error(`${r.status} ${j.detail || t}`.slice(0, 400));
   return j;
