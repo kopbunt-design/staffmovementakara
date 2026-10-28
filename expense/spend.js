@@ -16,7 +16,7 @@ const thDate = iso => { if (!iso) return "-"; const d = new Date(String(iso).sli
 const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const $ = s => document.querySelector(s);
 
-const S = { user: null, perms: new Set(), cats: [], vendors: [], invoices: [], signers: [], me: null, mail: { mode: "outlook" }, tpl: [] };
+const S = { user: null, perms: new Set(), cats: [], vendors: [], invoices: [], signers: [], me: null, mail: { mode: "outlook" }, tpl: [], ext: [] };
 const can = k => S.perms.has(k);
 const canWrite = () => can("data.expense.write");
 
@@ -82,7 +82,7 @@ async function fetchAll(q) {   // Supabase คืนครั้งละไม�
   return out;
 }
 async function loadAll() {
-  const [cats, vendors, invoices, signers, me, mail, tpl] = await Promise.all([
+  const [cats, vendors, invoices, signers, me, mail, tpl, ext] = await Promise.all([
     supabase.from("exp_categories").select("*").order("sort_order").order("name"),
     fetchAll(() => supabase.from("exp_vendors").select("*").order("code")),
     fetchAll(() => supabase.from("exp_invoices").select("id,inv_no,inv_year,inv_seq,inv_date,vendor_id,vendor,category,ref_no,amount,vat,wht,net,status,reviewer_id,approver_id,prepared_by,imported,reject_reason,received_at,created_at")
@@ -91,11 +91,12 @@ async function loadAll() {
     supabase.from("letter_signers").select("*").eq("user_id", S.user.id).maybeSingle(),
     supabase.from("mail_settings").select("mode").eq("id", 1).maybeSingle(),
     supabase.from("mail_templates").select("*").like("key", "exp_%"),
+    supabase.rpc("exp_ext_list"),
   ]);
   if (cats.error) throw cats.error;
   S.cats = cats.data || []; S.vendors = vendors; S.invoices = invoices;
   S.signers = signers.data || []; S.me = me.data || null;
-  if (mail.data) S.mail = mail.data; S.tpl = tpl.data || [];
+  if (mail.data) S.mail = mail.data; S.tpl = tpl.data || []; S.ext = ext.data || [];
   updatePending();
 }
 const myTodo = () => S.invoices.filter(i => (i.status === "review" && i.reviewer_id === S.user.id) || (i.status === "approval" && i.approver_id === S.user.id));
@@ -497,10 +498,10 @@ function syncList(inv) {
 function submitFlow() {
   if (!S.me?.signature_path) { toast("ท่านยังไม่มีลายเซ็น (ใช้ลงช่อง Prepared by) — ตั้งที่หน้า ตั้งค่า", "err"); location.hash = "#/settings"; return; }
   if (!needEnName()) return;
-  const rev = S.signers.filter(s => s.can_review), app = S.signers.filter(s => s.can_approve);
+  const rev = S.signers.filter(s => s.can_review), app = S.signers.filter(s => s.can_approve && !s.inactive);
   if (!rev.length || !app.length) { toast("ยังไม่มีผู้ตรวจ/ผู้อนุมัติที่ตั้งลายเซ็นและมีสิทธิ์ — ให้ Admin ตั้งสิทธิ์ “ตรวจ/อนุมัติใบแจ้งหนี้ HR”", "err"); return; }
   const opts = (list, name, def) => list.map((s, i) => `<label class="opt"><input type="radio" name="${name}" value="${s.user_id}" ${(def ? s.user_id === def : i === 0) ? "checked" : ""}>
-    <span><b>${esc(s.name)}</b><span class="hint" style="display:block">${esc(s.title || "")}${s.email ? " · " + esc(s.email) : ""}</span></span></label>`).join("");
+    <span><b>${esc(s.name)}</b>${s.external ? ` <span class="hint">· ผู้บริหาร อนุมัติจากอีเมล</span>` : ""}<span class="hint" style="display:block">${esc(s.title || "")}${s.email ? " · " + esc(s.email) : ""}</span></span></label>`).join("");
   const el = modal(`ส่งตรวจ ${esc(E.inv.inv_no || "(ออกเลขใหม่)")}`, `
     <div class="fld"><span>ผู้ตรวจ (Reviewed by)</span>${opts(rev, "rv", E.inv.reviewer_id)}</div>
     <div class="fld"><span>ผู้อนุมัติ (Approved by)</span>${opts(app, "ap", E.inv.approver_id)}</div>
@@ -666,7 +667,7 @@ async function renderBudget() {
 // ---------------------------------------------------------------- ตั้งค่า
 function renderSettings() {
   $("#spMain").innerHTML = `
-  <div class="sp-head"><div class="t"><div class="sp-title">ตั้งค่า</div><div class="sp-sub">หมวดค่าใช้จ่าย · ลายเซ็นของฉัน · นำเข้าข้อมูลเดิม</div></div></div>
+  <div class="sp-head"><div class="t"><div class="sp-title">ตั้งค่า</div><div class="sp-sub">หมวดค่าใช้จ่าย · ลายเซ็นของฉัน · ผู้อนุมัติภายนอก · นำเข้าข้อมูลเดิม</div></div></div>
   <div class="ed" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)"><div class="ed-col">
     <div class="card card-b"><div class="card-t">หมวดค่าใช้จ่าย <span class="hint" style="font-weight:400">รหัสบัญชีของหมวด = ค่าตั้งต้นของบรรทัดในใบใหม่</span></div>
       <table class="tbl"><thead><tr><th>หมวด</th><th>ชื่อไทย</th><th>รหัสบัญชี (Cost Code)</th><th>ใช้งาน</th></tr></thead><tbody>
@@ -693,6 +694,7 @@ function renderSettings() {
       <label class="fld" style="margin-top:12px"><span>ไฟล์ลายเซ็น (PNG พื้นใส) ${S.me?.signature_path ? `<b style="color:var(--green)">✓ มีแล้ว</b>` : ""}</span><input class="in" type="file" id="sgFile" accept="image/png"></label>
       <button class="btn btn-p" id="sgSave" style="margin-top:12px">บันทึกลายเซ็น</button>
     </div>
+    ${canWrite() ? extCardHTML() : ""}
     ${canWrite() ? mailCardHTML() : ""}
     ${canWrite() ? `<div class="card card-b"><div class="card-t">นำเข้าข้อมูลเดิมจาก Excel</div>
       <p class="hint" style="margin-bottom:10px">ไฟล์ “HR Invoice Database” (.xlsm) — อ่านชีต Vendor + Data ในเบราว์เซอร์ · ใบที่มีเลขอยู่แล้วจะข้าม (นำเข้าซ้ำได้) · ใบเก่าบันทึกเป็น “นำเข้าจาก Excel” (ลงนามบนกระดาษแล้ว)</p>
@@ -774,8 +776,49 @@ async function importCostCodes(file) {
   } catch (e) { $("#ccOut").textContent = "อ่านไฟล์ไม่สำเร็จ: " + e.message; }
 }
 
+// ---------- ผู้อนุมัติภายนอก: ผู้บริหารที่ไม่มีบัญชีในระบบ กดอนุมัติจากลิงก์ในอีเมลอย่างเดียว (user 2026-10-28)
+// HR ใส่ชื่อ/อีเมล/รูปลายเซ็นให้ — รูปลงช่อง Approved by เหมือนผู้อนุมัติในระบบ
+function extCardHTML() {
+  return `<div class="card card-b"><div class="card-t">ผู้อนุมัติภายนอก <span class="hint" style="font-weight:400">ผู้บริหารที่ไม่มีบัญชีในระบบ — อนุมัติจากลิงก์ในอีเมล</span></div>
+    ${S.ext.length ? `<table class="tbl"><tbody>${S.ext.map(x => `<tr><td><b>${esc(x.name_en)}</b>${x.name_th ? ` · ${esc(x.name_th)}` : ""}
+        <span class="hint" style="display:block">${esc(x.title_en || "")}${x.title_en ? " · " : ""}${esc(x.email)}</span></td>
+      <td>${x.signature_path ? `<span style="color:var(--green)">✓ ลายเซ็น</span>` : `<span style="color:var(--red)">ยังไม่มีลายเซ็น</span>`}${x.is_active ? "" : " · ปิดใช้"}</td>
+      <td><button class="btn btn-s btn-sm" data-ext="${x.id}">แก้ไข</button></td></tr>`).join("")}</tbody></table>`
+      : `<p class="hint">ยังไม่มี — เพิ่มแล้วจะเลือกเป็นผู้อนุมัติตอนส่งตรวจได้ (ต้องมีรูปลายเซ็น)</p>`}
+    <button class="btn btn-s" id="extAdd" style="margin-top:10px">+ เพิ่มผู้อนุมัติภายนอก</button></div>`;
+}
+function editExt(x) {
+  const isNew = !x; x ||= { id: crypto.randomUUID(), is_active: true };
+  const el = modal(isNew ? "เพิ่มผู้อนุมัติภายนอก" : "แก้ไขผู้อนุมัติภายนอก", `
+    <div class="grid2"><label class="fld"><span>Name (EN) — พิมพ์ใต้ลายเซ็น</span><input class="in" id="exEn" value="${esc(x.name_en || "")}"></label>
+      <label class="fld"><span>ชื่อ (ไทย)</span><input class="in" id="exTh" value="${esc(x.name_th || "")}"></label></div>
+    <div class="grid2" style="margin-top:12px"><label class="fld"><span>Title</span><input class="in" id="exTitle" value="${esc(x.title_en || "")}"></label>
+      <label class="fld"><span>อีเมล (รับลิงก์อนุมัติ)</span><input class="in" id="exMail" value="${esc(x.email || "")}"></label></div>
+    <label class="fld" style="margin-top:12px"><span>ไฟล์ลายเซ็น (PNG พื้นใส) ${x.signature_path ? `<b style="color:var(--green)">✓ มีแล้ว — เลือกใหม่เพื่อเปลี่ยน</b>` : ""}</span><input class="in" type="file" id="exFile" accept="image/png"></label>
+    <label class="row" style="margin-top:12px;gap:8px"><input type="checkbox" id="exOn" ${x.is_active ? "checked" : ""}> ใช้งาน (ไม่ติ๊ก = ไม่แสดงตอนเลือกผู้อนุมัติ)</label>`,
+    `<button class="btn btn-s" data-x>ยกเลิก</button><button class="btn btn-p" data-ok>บันทึก</button>`);
+  el.querySelector("[data-ok]").onclick = async e => {
+    e.target.disabled = true;
+    const file = el.querySelector("#exFile").files[0];
+    let path = x.signature_path || null;
+    if (file) {
+      path = `signatures/ext/${x.id}.png`;
+      const up = await supabase.storage.from("letter-assets").upload(path, file, { upsert: true, contentType: "image/png" });
+      if (up.error) { toast("อัปโหลดลายเซ็นไม่สำเร็จ: " + up.error.message, "err"); e.target.disabled = false; return; }
+    }
+    const { data, error } = await supabase.rpc("exp_ext_save", { p_row: { id: x.id, name_en: el.querySelector("#exEn").value, name_th: el.querySelector("#exTh").value,
+      title_en: el.querySelector("#exTitle").value, email: el.querySelector("#exMail").value.trim(), signature_path: path, is_active: el.querySelector("#exOn").checked } });
+    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "err"); e.target.disabled = false; return; }
+    el.remove();
+    S.ext = [...S.ext.filter(y => y.id !== data.id), data];
+    S.signers = (await supabase.rpc("exp_signers")).data || S.signers;
+    toast(data.signature_path ? "บันทึกแล้ว — เลือกเป็นผู้อนุมัติตอนส่งตรวจได้" : "บันทึกแล้ว — ใส่ลายเซ็นก่อนจึงจะเลือกได้", "ok"); renderSettings();
+  };
+}
 function wireSettings() {
   wireMailCard();
+  $("#extAdd")?.addEventListener("click", () => editExt(null));
+  document.querySelectorAll("[data-ext]").forEach(b => b.onclick = () => editExt(S.ext.find(x => x.id === b.dataset.ext)));
   $("#ccGuess")?.addEventListener("click", guessCostCodes);
   $("#ccFile")?.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importCostCodes(f); });
   $("#ccTpl")?.addEventListener("click", () => {

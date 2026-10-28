@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import db
@@ -159,9 +160,14 @@ def ec_signers(r):
 def exp_signers(r):
     if not r.has_perm("page.expense"):
         return []
-    return _signers(r, lambda g: r.user_has_perm(g["user_id"], "data.expense.review") or r.user_has_perm(g["user_id"], "data.expense.approve"),
-                    lambda g: {"can_review": r.user_has_perm(g["user_id"], "data.expense.review"),
-                               "can_approve": r.user_has_perm(g["user_id"], "data.expense.approve")})
+    out = _signers(r, lambda g: r.user_has_perm(g["user_id"], "data.expense.review") or r.user_has_perm(g["user_id"], "data.expense.approve"),
+                   lambda g: {"can_review": r.user_has_perm(g["user_id"], "data.expense.review"),
+                              "can_approve": r.user_has_perm(g["user_id"], "data.expense.approve")})
+    _ext_table(r)
+    for g in r.rows(None, "SELECT * FROM dbo.exp_ext_approvers WHERE signature_path IS NOT NULL ORDER BY name_en"):
+        out.append({"user_id": g["id"], "name": sig_name(g), "title": sig_title(g), "email": g["email"],
+                    "can_review": False, "can_approve": True, "external": True, "inactive": not g["is_active"]})
+    return out
 
 
 @fn
@@ -385,8 +391,64 @@ def mail_set_secret(r, p_secret=None):
 
 # ================================================================================ Invoice Hub
 
+# Executives who approve only from the e-mail link, without a login (user 2026-10-28): HR keeps their name, e-mail and
+# signature image here; their id goes into exp_invoices.approver_id like a user id. Created on first use.
+def _ext_table(r):
+    r.cur.execute("""IF OBJECT_ID('dbo.exp_ext_approvers') IS NULL
+                     CREATE TABLE dbo.exp_ext_approvers (id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                       name_en NVARCHAR(200) NOT NULL, name_th NVARCHAR(200) NULL, title_en NVARCHAR(200) NULL, title_th NVARCHAR(200) NULL,
+                       email NVARCHAR(320) NOT NULL, signature_path NVARCHAR(500) NULL, is_active BIT NOT NULL DEFAULT 1,
+                       created_by UNIQUEIDENTIFIER NULL, created_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET())""")
+
+
+def exp_ext(r, uid):
+    """Active external approver with a signature, or None."""
+    if not uid:
+        return None
+    _ext_table(r)
+    x = r.rows(None, """SELECT TOP 1 * FROM dbo.exp_ext_approvers
+                        WHERE is_active = 1 AND signature_path IS NOT NULL AND id = TRY_CONVERT(UNIQUEIDENTIFIER, ?)""", str(uid))
+    return x[0] if x else None
+
+
+@fn
+def exp_ext_list(r):
+    if not r.has_perm("page.expense"):
+        return []
+    _ext_table(r)
+    return r.rows(None, "SELECT * FROM dbo.exp_ext_approvers ORDER BY is_active DESC, name_en")
+
+
+@fn
+def exp_ext_save(r, p_row):
+    if not r.has_perm("data.expense.write"):
+        raise E("ไม่มีสิทธิ์จัดการผู้อนุมัติ")
+    _ext_table(r)
+    x = p_row or {}
+    try:
+        xid = str(uuid.UUID(str(x.get("id"))))
+    except ValueError:
+        raise E("รหัสผู้อนุมัติไม่ถูกต้อง")
+    email, name_en = nz(x.get("email")), nz(x.get("name_en"))
+    if not email or "@" not in email:
+        raise E("กรุณาใส่อีเมลผู้อนุมัติ")
+    if not name_en:
+        raise E("กรุณาใส่ชื่อภาษาอังกฤษ (พิมพ์ใต้ลายเซ็นในใบ)")
+    sig = nz(x.get("signature_path"))
+    if sig and sig != f"signatures/ext/{xid}.png":      # never point at someone else's signature
+        raise E("ไฟล์ลายเซ็นไม่ถูกต้อง")
+    vals = (name_en, nz(x.get("name_th")), nz(x.get("title_en")), nz(x.get("title_th")), email.lower(), sig, 1 if x.get("is_active", True) else 0)
+    if r.val("SELECT COUNT(*) FROM dbo.exp_ext_approvers WHERE id = ?", xid):
+        r.cur.execute("""UPDATE dbo.exp_ext_approvers SET name_en = ?, name_th = ?, title_en = ?, title_th = ?, email = ?,
+                         signature_path = COALESCE(?, signature_path), is_active = ? WHERE id = ?""", *vals, xid)
+    else:
+        r.cur.execute("""INSERT INTO dbo.exp_ext_approvers (name_en, name_th, title_en, title_th, email, signature_path, is_active, id, created_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", *vals, xid, r.uid)
+    return r.rows(None, "SELECT * FROM dbo.exp_ext_approvers WHERE id = ?", xid)[0]
+
+
 def exp_sig(r, uid):
-    g = r.signer(uid)
+    g = r.signer(uid) or exp_ext(r, uid)
     if not g or not g.get("signature_path"):
         return None
     return {"name": (g.get("name_en") or None) or g.get("name_th"), "name_th": g.get("name_th"),
@@ -408,7 +470,7 @@ def exp_submit(r, p_id, p_reviewer, p_approver):
         raise E("ยังไม่มีรายการ")
     if not p_reviewer or not r.user_has_perm(p_reviewer, "data.expense.review"):
         raise E("ผู้ตรวจที่เลือกไม่มีสิทธิ์ตรวจ")
-    if not p_approver or not r.user_has_perm(p_approver, "data.expense.approve"):
+    if not p_approver or not (r.user_has_perm(p_approver, "data.expense.approve") or exp_ext(r, p_approver)):
         raise E("ผู้อนุมัติที่เลือกไม่มีสิทธิ์อนุมัติ")
     if exp_sig(r, p_reviewer) is None or exp_sig(r, p_approver) is None:
         raise E("ผู้ตรวจ/ผู้อนุมัติยังไม่ได้ตั้งลายเซ็น")
@@ -560,7 +622,7 @@ def exp_link_decide(r, p_token, p_ok, p_reason=None):
     v = r.row("exp_invoices", "id = ?", t["invoice_id"], lock=True)
     if v["status"] != "approval":
         raise E("ใบนี้ไม่ได้รออนุมัติแล้ว")
-    if not r.user_has_perm(v.get("approver_id"), "data.expense.approve"):
+    if not (r.user_has_perm(v.get("approver_id"), "data.expense.approve") or exp_ext(r, v.get("approver_id"))):
         raise E("ผู้อนุมัติของใบนี้ไม่มีสิทธิ์อนุมัติแล้ว — ติดต่อ HR")
     r.flag("exp.flow")
     if p_ok:

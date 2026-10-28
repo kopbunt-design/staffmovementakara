@@ -127,6 +127,11 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
             return {"name": "", "email": ""}
         s = one(A, "letter_signers", "user_id = ?", u) or {}
         ur = one(A, "user_roles", "user_id = ?", u) or {}
+        if not s and not ur:                       # external approver of the Invoice Hub (no login)
+            try:
+                s = one(A, "exp_ext_approvers", "id = ?", u) or {}
+            except Exception:                      # table not created yet — nothing to find
+                pass
         return {"name": s.get("name_th") or s.get("name_en") or ur.get("name") or ur.get("email") or "",
                 "email": s.get("email") or ur.get("email") or ""}
 

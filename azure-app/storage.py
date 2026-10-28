@@ -93,6 +93,8 @@ def allowed(ctx, cur, bucket, path, op):
             return any(ctx.has_perm(p) for p in LA_READ)
         if parts[0] == "seal":
             return ctx.has_perm("data.letters.approve")
+        if parts[:2] == ["signatures", "ext"]:          # external approvers' signatures, kept by Invoice Hub HR
+            return ctx.has_perm("data.expense.write")
         if parts[0] == "signatures":
             return role == "admin" or (len(parts) > 1 and parts[1] == str(ctx.uid) and any(ctx.has_perm(p) for p in SIG_WRITE))
     return False
