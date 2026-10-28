@@ -322,6 +322,8 @@ export function downloadEml(to, subject, html, name, cc = "") {
 // ---------------------------------------------------------------- state
 // sgFor = ลายเซ็นที่กำลังตั้งในหน้าตั้งค่า (ปกติคือของตัวเอง · Admin เลือกตั้งแทนผู้อนุมัติคนอื่นได้)
 let approvers = [], sgFor = null;
+// apprList = ผู้อนุมัติที่ให้เลือกตอนส่ง (มีสิทธิ์อนุมัติ + ลายเซ็น) · picked = ติ๊กให้แสดงในหน้าตั้งค่า (user 2026-10-28)
+let apprList = null;
 let letters = [], incomeItems = [], signers = [], settings = {}, mailCfg = { mode: "outlook" }, mailTpl = [], tab = "mine", search = "";
 
 export function renderLetters() { boot(); }
@@ -343,6 +345,8 @@ async function boot() {
     return;
   }
   letters = l.data || []; incomeItems = i.data || []; signers = s.data || []; settings = st.data || {};
+  const ap = await supabase.rpc("letter_approvers");
+  apprList = ap.error ? null : ap.data || [];
   sgFor = currentUser?.id;
   if (userRole === "admin") {   // คนที่อนุมัติได้ = role admin หรือ role ที่มีสิทธิ์ data.letters.approve
     const [ur, rp] = await Promise.all([supabase.from("user_roles").select("user_id,name,email,role"),
@@ -581,11 +585,11 @@ function openLetter(r) {
 
   const foot = () => {
     const st = r?.status || "draft";
-    const appr = signers.filter(s => s.signature_path);
+    const appr = apprList ? apprList.filter(s => s.picked) : signers.filter(s => s.signature_path);
     $("#ltFoot").innerHTML = editable ? `
       ${r ? `<button class="btn btn-danger" data-cancel style="margin-right:auto;">ยกเลิกหนังสือ</button>` : ""}
       <button class="btn btn-secondary" data-save>บันทึกร่าง</button>
-      <select class="form-control" id="ltAppr" style="max-width:240px;">${appr.length ? appr.map(s => `<option value="${s.user_id}">ผู้อนุมัติ: ${esc(s.name_th || s.name_en || s.email)}</option>`).join("")
+      <select class="form-control" id="ltAppr" style="max-width:240px;">${appr.length ? appr.map(s => `<option value="${s.user_id}">ผู้อนุมัติ: ${esc(s.name_th || s.name || s.name_en || s.email)}</option>`).join("")
         : `<option value="">ยังไม่มีผู้อนุมัติที่ตั้งลายเซ็น</option>`}</select>
       <button class="btn btn-primary" data-submit ${appr.length ? "" : "disabled"}>ส่งขออนุมัติ</button>`
     : st === "pending" && r.approver_id === currentUser?.id && canApprove() ? `
@@ -691,6 +695,12 @@ function settingsHTML() {
       <input type="file" class="form-control" id="slFile" accept="image/png" style="margin-bottom:8px;">
       <label class="lt-f"><span>อีเมล HR ใน Offer Letter</span><input class="form-control" id="slMail" value="${esc(settings.hr_contact_email || "")}"></label>
       <button class="btn btn-secondary" id="slSave">บันทึกตรา / อีเมล</button></div></div>` : ""}
+    ${canApprove() && apprList?.length ? `<div class="card"><div class="card-body">
+      <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">ผู้อนุมัติที่ให้เลือกตอนส่ง</div>
+      <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ติ๊กเฉพาะคนที่ให้ขึ้นในช่อง “ผู้อนุมัติ” ตอนส่งขออนุมัติหนังสือ · รายชื่อ = คนที่มีสิทธิ์อนุมัติหนังสือและตั้งลายเซ็นแล้ว</div>
+      ${apprList.map(s => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0;font-size:13.5px;"><input type="checkbox" data-lap="${s.user_id}" ${s.picked ? "checked" : ""}>
+        <span>${esc(s.name || s.email)}${s.title ? ` <span class="text-muted">· ${esc(s.title)}</span>` : ""}</span></label>`).join("")}
+      <button class="btn btn-primary" id="lapSave" style="margin-top:8px;">บันทึกรายชื่อ</button></div></div>` : ""}
     ${canWrite() ? `<div class="card"><div class="card-body">
       <div style="font-weight:700;color:var(--navy);margin-bottom:4px;">รายการเงินได้ที่แสดงในหนังสือ</div>
       <div class="text-muted" style="font-size:12.5px;margin-bottom:10px;">ติ๊กเลือกตอนออกหนังสือ · เพิ่มรายการใหม่ได้ เช่น ค่าตำแหน่ง ค่าครองชีพ</div>
@@ -778,7 +788,16 @@ function wireSettings() {
       name_en: $("#sgNameEn").value.trim(), title_en: $("#sgTitleEn").value.trim(), email: $("#sgEmail").value.trim(), signature_path: path || null };
     const { data, error } = await supabase.from("letter_signers").upsert(row).select().single();
     if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
-    signers = [...signers.filter(s => s.user_id !== uid), data]; toast("บันทึกลายเซ็นแล้ว", "success"); draw();
+    signers = [...signers.filter(s => s.user_id !== uid), data];
+    const ap = await supabase.rpc("letter_approvers"); if (!ap.error) apprList = ap.data || [];
+    toast("บันทึกลายเซ็นแล้ว", "success"); draw();
+  });
+  $("#lapSave")?.addEventListener("click", async () => {
+    const ids = [...pg.querySelectorAll("[data-lap]:checked")].map(x => x.dataset.lap);
+    if (!ids.length) { toast("เลือกผู้อนุมัติอย่างน้อย 1 คน", "error"); return; }
+    const { data, error } = await supabase.rpc("letter_approvers_set", { p_ids: ids });
+    if (error) { toast("บันทึกไม่สำเร็จ: " + error.message, "error"); return; }
+    apprList = data || apprList; toast("บันทึกรายชื่อผู้อนุมัติแล้ว", "success"); draw();
   });
   $("#slSave")?.addEventListener("click", async () => {
     const upd = { hr_contact_email: $("#slMail").value.trim() || null }, file = $("#slFile").files[0];

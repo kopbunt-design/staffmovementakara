@@ -296,6 +296,40 @@ def doc_log(r, p_doc_id, p_file_id=None, p_file_name=None, p_action=None):
 
 # ================================================================================ HR letters
 
+# Who the letter dropdown offers (user 2026-10-28: only some of the people with a signature should appear).
+# Empty table = everyone who may approve letters and has a signature.
+def _lap_table(r):
+    r.cur.execute("""IF OBJECT_ID('dbo.letter_approver_pick') IS NULL
+                     CREATE TABLE dbo.letter_approver_pick (user_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                       set_by UNIQUEIDENTIFIER NULL, set_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET())""")
+
+
+@fn
+def letter_approvers(r):
+    if not (r.has_perm("data.letters.write") or r.has_perm("data.letters.approve")):
+        return []
+    _lap_table(r)
+    picked = {x["user_id"] for x in r.rows(None, "SELECT user_id FROM dbo.letter_approver_pick")}
+    out = _signers(r, lambda g: r.user_has_perm(g["user_id"], "data.letters.approve"))
+    for o in out:
+        o["picked"] = not picked or o["user_id"] in picked
+    return out
+
+
+@fn
+def letter_approvers_set(r, p_ids):
+    if not r.has_perm("data.letters.approve"):
+        raise E("ไม่มีสิทธิ์ตั้งค่าผู้อนุมัติ")
+    ids = [str(uuid.UUID(str(x))) for x in (p_ids or [])]
+    if not ids:
+        raise E("เลือกผู้อนุมัติอย่างน้อย 1 คน")
+    _lap_table(r)
+    r.cur.execute("DELETE FROM dbo.letter_approver_pick")
+    for x in ids:
+        r.cur.execute("INSERT INTO dbo.letter_approver_pick (user_id, set_by) VALUES (?, ?)", x, r.uid)
+    return letter_approvers(r)
+
+
 @fn
 def letter_submit(r, p_id, p_approver, p_type_label=None):
     if not r.has_perm("data.letters.write"):
