@@ -1111,7 +1111,9 @@ const orgEmpFields = (from, to) => Object.fromEntries(MV_ORG_ROWS
 // โอนย้าย/เลื่อนตำแหน่งที่บันทึกล่วงหน้า (user 2026-10-30: ยังไม่ถึงวันที่มีผล ทะเบียนเปลี่ยนไปแล้ว)
 //   วันที่มีผลยังไม่ถึง → ไม่แตะทะเบียน · ธงอยู่ใน org_to._pending (ไม่ต้องเพิ่มคอลัมน์) → ขึ้น "รอปรับทะเบียน"
 //   ถึงวันที่มีผล HR กด "ปรับทะเบียน" → แก้ทะเบียน + org_to._applied_at / _applied_by
-const isOrgPending = m => ORG_MOV_TYPES.includes(m.type) && !!m.org_to?._pending;
+// PAF ที่ปรับแค่เงินเดือน (Salary Adjustment) ก็รอได้ · org_to._salary = ปรับเงินเดือนตาม movement.salary ตอนกดปรับทะเบียน
+const PEND_TYPES = [...ORG_MOV_TYPES, "Salary Adjustment"];
+const isOrgPending = m => PEND_TYPES.includes(m.type) && !!m.org_to?._pending;
 const pendingOrgs = () => allMovements.filter(isOrgPending).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
 // บันทึกก่อนมีขั้นนี้: วันที่มีผลยังไม่ถึง แต่ทะเบียนเปลี่ยนเป็นหน่วยงานใหม่ไปแล้ว → ให้ย้อนกลับไปรอได้
 const orgChanged = m => { const f = m.org_from||{}, t = m.org_to||{}; return [...ORG_KEYS,"job_level"].filter(k=>t[k] && (t[k]||"")!==(f[k]||"")); };
@@ -1189,14 +1191,15 @@ export function renderMovements() {
     const LBL = Object.fromEntries([...MV_ORG_ROWS.map(([k,l])=>[k,l.split(" · ")[0]])]);
     const diff = m => { const ch = orgChanged(m);
       return ch.length ? ch.map(k=>`<span class="op-chg"><i>${esc(LBL[k]||k)}</i><s>${esc(m.org_from?.[k]||"—")}</s><span class="op-arw">→</span><b>${esc(m.org_to[k])}</b></span>`).join("")
-        : `<span class="op-chg"><i>ใหม่</i><b>${esc(m.to_dept||"-")}</b>${m.job_level?` · <b>${esc(m.job_level)}</b>`:""}</span>`; };
+        : m.org_to?._salary ? "" : `<span class="op-chg"><i>ใหม่</i><b>${esc(m.to_dept||"-")}</b>${m.job_level?` · <b>${esc(m.job_level)}</b>`:""}</span>`; };
+    const sal = m => m.org_to?._salary ? `<span class="op-chg"><i>เงินเดือน</i><b>${can("field.salary.read") && m.salary!=null ? Number(m.salary).toLocaleString("en-US")+" บาท" : "ปรับตาม PAF"}</b></span>` : "";
     const tile = d => { const x = new Date(String(d).slice(0,10)+"T00:00:00");
       return `<div class="op-cal"><b>${x.getDate()}</b><span>${x.toLocaleDateString("th-TH",{month:"short",year:"2-digit"})}</span></div>`; };
     const row = (m, early) => { const ok = !early && m.date && m.date<=today;
       return `<div class="op-row${early?" op-early":""}">
         ${m.date?tile(m.date):`<div class="op-cal"><b>?</b><span>ไม่มีวันที่</span></div>`}
         <div class="op-who"><div><b>${esc(m.name||"-")}</b> ${movBadge(m.type)}</div><span>${esc(m.emp_code||"")} · บันทึกโดย ${esc(m.recorded_by||"-")}</span></div>
-        <div class="op-diff">${diff(m)}</div>
+        <div class="op-diff">${diff(m)}${sal(m)}</div>
         <div class="op-st">${early?`<span class="op-pill op-bad">ทะเบียนเปลี่ยนก่อนกำหนด</span>`:ok?`<span class="op-pill op-due">ถึงกำหนดแล้ว</span>`:`<span class="op-pill">อีก ${left(m.date)} วัน</span>`}</div>
         <div class="op-act">${!w?"":early
           ? `<button class="btn btn-primary btn-sm" onclick="window._deferOrg('${m.id}')" title="ทะเบียนกลับเป็นหน่วยงานเดิม แล้วรอวันที่มีผล">ย้อนทะเบียน · รอวันมีผล</button>`
@@ -1205,7 +1208,7 @@ export function renderMovements() {
              <button class="btn btn-secondary btn-sm" onclick="window._withdrawOrg('${m.id}')" title="ยกเลิกการ${esc(MOV_TH[m.type]||m.type)} — ทะเบียนไม่เปลี่ยน">ยกเลิก</button>`}</div>
       </div>`; };
     return `<div class="section" style="padding-top:12px;padding-bottom:0;"><div class="card org-pend"><div class="card-body">
-      <div class="sep-h"><div><b>รอปรับทะเบียน · โอนย้าย / เลื่อนตำแหน่ง (${pend.length+early.length})</b><span>บันทึกไว้ล่วงหน้า — ทะเบียนพนักงานยังเป็นหน่วยงานเดิมจนกว่า HR กด “ปรับทะเบียน” · กดได้ตั้งแต่วันที่มีผล</span></div>
+      <div class="sep-h"><div><b>รอปรับทะเบียน · โอนย้าย / เลื่อนตำแหน่ง / ปรับเงินเดือน (${pend.length+early.length})</b><span>บันทึกไว้ล่วงหน้า — ทะเบียนพนักงานยังเป็นหน่วยงานเดิมจนกว่า HR กด “ปรับทะเบียน” · กดได้ตั้งแต่วันที่มีผล</span></div>
         ${w&&due.length>1?`<button class="btn btn-primary btn-sm" onclick="window._applyOrgAll()">ปรับทะเบียนทั้งหมดที่ถึงกำหนด (${due.length})</button>`:""}</div>
       <div class="op-list">${early.map(m=>row(m,true)).join("")}${pend.map(m=>row(m,false)).join("")}</div>
     </div></div></div>`; })()}
@@ -1294,7 +1297,10 @@ export function renderMovements() {
     const who = currentUser?.user_metadata?.full_name||currentUser?.email||"";
     const e = allEmployees.find(x=>x.emp_code===m.emp_code);
     const to = m.org_to||{}, hasOrg = MV_ORG_ROWS.some(([k])=>k in to);
+    // PAF ที่ปรับเงินเดือน: เงินเดือนใหม่เข้าทะเบียนพร้อมกันตอนนี้ (ไม่ใช่ตอนอนุมัติ)
+    if(to._salary && (!can("field.salary.read") || m.salary==null)) return { message: "รายการนี้มีปรับเงินเดือน — ต้องให้ผู้ที่มีสิทธิ์ดูเงินเดือนเป็นคนกดปรับทะเบียน" };
     const upd = { ...(hasOrg ? orgEmpFields(m.org_from||orgSnapshot(e)||{}, to) : empUpdateFromMovement(m.type, m.to_dept, m.date, m.job_level)),
+      ...(to._salary ? { salary: Number(m.salary) } : {}),
       ...(m.date ? { effective_date: m.date } : {}), updated_at: new Date().toISOString() };
     const { error } = await supabase.from("employees").update(upd).eq("emp_code", m.emp_code);
     if(error) return error;

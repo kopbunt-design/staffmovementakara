@@ -177,7 +177,7 @@ async function openForm(r) {
       <div class="lt-sub">หลังอนุมัติครบ</div>
       <label class="lt-f"><span>บันทึก Movement เป็น <span class="text-muted" style="font-weight:400;">(ระบบแนะนำ: ${esc(MOV_LABEL[sug])})</span></span>
         <select class="form-control" data-k="mov_type" ${dis}>${Object.entries(MOV_LABEL).map(([k, v]) => `<option value="${k}" ${mt === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
-      <div class="lt-hint">อนุมัติครบแล้วระบบบันทึก Movement วันที่มีผล ${esc(thLong(d.effective_date) || "—")} และอัปเดตทะเบียนพนักงาน (${rev.length ? `${rev.length} รายการที่เปลี่ยน` : "ยังไม่ได้กรอกสิ่งที่เปลี่ยน"}) ให้อัตโนมัติ</div>
+      <div class="lt-hint">อนุมัติครบแล้วระบบบันทึก Movement วันที่มีผล ${esc(thLong(d.effective_date) || "—")} (${rev.length ? `${rev.length} รายการที่เปลี่ยน` : "ยังไม่ได้กรอกสิ่งที่เปลี่ยน"}) · ทะเบียนพนักงานเปลี่ยนเมื่อถึงวันที่มีผล — ถ้าอนุมัติก่อนวันนั้น ไปกด “ปรับทะเบียน” ที่หน้า Staff Movement</div>
       ${r?.movement_id ? `<div class="lt-hint" style="color:var(--green);">✓ บันทึก Movement แล้ว (${esc(MOV_LABEL[r.mov_type] || r.mov_type)})</div>` : ""}`;
     el.querySelectorAll("#pfForm [data-k]").forEach(i => i.oninput = i.onchange = () => { d[i.dataset.k] = i.value; if (["salary_from", "salary_to"].includes(i.dataset.k)) { d[i.dataset.k] = i.value === "" ? null : Number(i.value); } if (i.dataset.k === "effective_date") form(); preview(); });
     $("#pfSubj")?.addEventListener("change", e => { const s = SUBJECTS[+e.target.value]; if (!s) return; d.subject_th = s.th; d.subject_en = s.en; form(); preview(); });

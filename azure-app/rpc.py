@@ -1068,14 +1068,27 @@ def paf_apply(r, paf_id):
     j = lambda sep, *xs: sep.join(x for x in xs if x)
     frm = j(" / ", nz(f.get("department")), nz(f.get("position")))
     dst = j(" / ", nz(f.get("department_to")) or nz(f.get("department")), nz(f.get("position_to")) or nz(f.get("position")))
+    e = r.row("employees", "emp_code = ?", f["emp_code"], lock=True)
+    ch = {k: nz(f.get(k + "_to")) for k in ("position", "job_level", "division", "department", "section", "team")}
+    upd = {k: v for k, v in ch.items() if v}
+    # หน่วยงานก่อน/หลัง ครบทุกช่อง (ช่อง _to ว่าง = ไม่เปลี่ยน) — หน้า Staff Movement ใช้ปรับทะเบียนทีหลัง + รายงานย้อนหลัง
+    org_from = {k: (e or {}).get(k) for k in ("division", "department", "section", "team", "position", "job_level")} if e else None
+    org_to = {**(org_from or {}), **upd}
+    if f.get("salary_to") is not None:
+        org_to["_salary"] = True
+    # วันที่มีผลยังไม่ถึง (เวลาไทย) → ไม่แตะทะเบียน · รอ HR กด "ปรับทะเบียน" ที่หน้า Staff Movement (user 2026-10-30)
+    eff = str(f.get("effective_date") or "")[:10]
+    wait = bool(e) and eff > (datetime.now(timezone.utc) + timedelta(hours=7)).date().isoformat()
+    if wait:
+        org_to["_pending"] = True
+    elif e:
+        org_to["_applied_at"], org_to["_applied_by"] = now(), f"PAF {f.get('doc_no') or ''}"
     m = r.ins("movements", {"emp_code": f["emp_code"], "name": f.get("name_th") or f["emp_code"], "type": f["mov_type"],
                             "date": f.get("effective_date"), "from_dept": frm or None, "to_dept": dst or None,
                             "reason": j(" · ", f.get("doc_no"), nz(f.get("subject_th"))), "salary": f.get("salary_to"),
-                            "job_level": nz(f.get("job_level_to")), "recorded_by": f"PAF {f.get('doc_no') or ''}", "created_by": f.get("requested_by")})
-    e = r.row("employees", "emp_code = ?", f["emp_code"], lock=True)
-    if e:
-        ch = {k: nz(f.get(k + "_to")) for k in ("position", "job_level", "division", "department", "section", "team")}
-        upd = {k: v for k, v in ch.items() if v}
+                            "job_level": nz(f.get("job_level_to")), "recorded_by": f"PAF {f.get('doc_no') or ''}", "created_by": f.get("requested_by"),
+                            "org_from": org_from, "org_to": org_to if e else None})
+    if e and not wait:
         if f.get("salary_to") is not None:
             upd["salary"] = f["salary_to"]
         upd["effective_date"] = f.get("effective_date")
