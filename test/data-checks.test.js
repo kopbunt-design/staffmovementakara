@@ -46,6 +46,12 @@ eq(r[0].level, "error", "เรียงต้องแก้ขึ้นก่�
 // เฉพาะเดือน: บันทึกหลังสิ้นเดือน
 const r2 = M.runChecks({ employees: emps, movements: movs, today: "2026-11-05", ym: "2026-07" }, H);
 eq(keys(r2).find(x => x.startsWith("late_entry")), "late_entry:ZZ", "รายการเดือน ก.ค. ที่บันทึกหลังสิ้นเดือน");
+// โอนย้ายบันทึกล่วงหน้า (org_to._pending) — ยังไม่ถึงวันที่มีผล: ทะเบียนไม่ตรงก็ไม่จับ · ถึงแล้วยังไม่ปรับ = move_due
+const pend = { id: 9, emp_code: "A5", type: "Transfer", date: "2026-11-02", org_to: { department: "OHS", position: "ERO", _pending: true }, created_at: "2026-10-29T00:00:00Z" };
+const r3 = keys(M.runChecks({ employees: emps, movements: [...movs, pend], today: "2026-10-30" }, H));
+eq(r3.includes("move_not_applied:A5"), false, "รอวันที่มีผล → ไม่นับว่าทะเบียนไม่ตรง");
+eq(r3.includes("move_due:A5"), false, "ยังไม่ถึงวันที่มีผล → ไม่เตือน");
+eq(keys(M.runChecks({ employees: emps, movements: [...movs, pend], today: "2026-11-02" }, H)).includes("move_due:A5"), true, "ถึงวันที่มีผลแล้วยังไม่ปรับทะเบียน");
 // ไม่มีปัญหา → แผงสีเขียว
 eq(M.checksPanelHTML([]).includes("ไม่พบจุดที่ขัดกัน"), true, "ไม่มีปัญหา = ข้อความผ่าน");
 eq(M.checksPanelHTML(r).includes("ต้องแก้"), true, "มีปัญหา = แสดงสรุป");

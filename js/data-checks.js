@@ -54,9 +54,17 @@ export function runChecks(data, h) {
   add("sep_no_end", "error", "มีรายการพ้นสภาพ แต่ทะเบียนไม่มีวันพ้นสภาพ", "นับเป็นคนออกแล้ว แต่ยังอยู่ในกำลังคน → ยอดไม่ balance", sepNoEnd);
 
   // ---------- โอนย้าย / เลื่อนตำแหน่ง ----------
+  // บันทึกล่วงหน้า (org_to._pending) = ยังไม่แก้ทะเบียนโดยตั้งใจ → ไม่เทียบกับทะเบียน · ถึงวันที่มีผลแล้วยังไม่กดปรับ = แจ้ง
+  const isPend = m => !!(m.org_to && typeof m.org_to === "object" && m.org_to._pending);
+  const orgDue = movements.filter(m => ORG_TYPES.includes(m.type) && isPend(m) && m.date && today && d10(m.date) <= d10(today))
+    .map(m => it(byCode.get(m.emp_code), `${m.type} มีผล ${d10(m.date)} — ยังไม่ได้กด “ปรับทะเบียน” ที่หน้า Staff Movement`, m));
+  add("move_due", "error", "ถึงวันที่มีผลแล้ว แต่ยังไม่ได้ปรับทะเบียน (โอนย้าย / เลื่อนตำแหน่ง)",
+    "ทะเบียนยังเป็นหน่วยงานเดิม → รายงานแยกหน่วยงานนับคนนี้ผิดที่", orgDue);
   const notApplied = [];
   for (const [code] of movOf) {
-    const m = latest(code, ORG_TYPES), e = byCode.get(code); if (!m || !e || !isActive(e)) continue;
+    const m = (movOf.get(code) || []).filter(x => ORG_TYPES.includes(x.type) && !isPend(x))
+      .sort((a, b) => d10(b.date).localeCompare(d10(a.date)) || String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    const e = byCode.get(code); if (!m || !e || !isActive(e)) continue;
     const to = m.org_to && typeof m.org_to === "object" ? m.org_to : null;
     let bad = [];
     if (to) bad = ["division", "department", "section", "team", "position"].filter(k => to[k] && !same(to[k], e[k])).map(k => `${k}: รายการ “${to[k]}” · ทะเบียน “${e[k] || "-"}”`);

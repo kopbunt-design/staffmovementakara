@@ -1105,6 +1105,23 @@ const pendingSeps = () => allMovements.some(m=>"sep_confirmed_at" in m)
 const MV_ORG_ROWS = [["division","Division · ฝ่าย"],["department","Department"],["section","Section · แผนก"],["team","Team · ทีม"],["position","ตำแหน่ง"],["job_level","Job Level"]];
 const MV_ORG_FORM_TYPES = [...ORG_MOV_TYPES, "New Hire"];
 const MV_ORG_LEVELS = ["division","department","section","team"];
+// ช่องที่ต้องแก้ในทะเบียนจากตารางเดิม/ใหม่ — ฝ่าย/แผนก/แผนกย่อย/ทีม: ว่าง = ล้าง (ย้ายแล้วไม่มีแผนกย่อย) · ตำแหน่ง/ระดับ: ว่าง = ไม่เปลี่ยน
+const orgEmpFields = (from, to) => Object.fromEntries(MV_ORG_ROWS
+  .filter(([k])=>MV_ORG_LEVELS.includes(k) ? (to[k]||"")!==(from[k]||"") : to[k] && to[k]!==(from[k]||"")).map(([k])=>[k, to[k]||null]));
+// โอนย้าย/เลื่อนตำแหน่งที่บันทึกล่วงหน้า (user 2026-10-30: ยังไม่ถึงวันที่มีผล ทะเบียนเปลี่ยนไปแล้ว)
+//   วันที่มีผลยังไม่ถึง → ไม่แตะทะเบียน · ธงอยู่ใน org_to._pending (ไม่ต้องเพิ่มคอลัมน์) → ขึ้น "รอปรับทะเบียน"
+//   ถึงวันที่มีผล HR กด "ปรับทะเบียน" → แก้ทะเบียน + org_to._applied_at / _applied_by
+const isOrgPending = m => ORG_MOV_TYPES.includes(m.type) && !!m.org_to?._pending;
+const pendingOrgs = () => allMovements.filter(isOrgPending).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+// บันทึกก่อนมีขั้นนี้: วันที่มีผลยังไม่ถึง แต่ทะเบียนเปลี่ยนเป็นหน่วยงานใหม่ไปแล้ว → ให้ย้อนกลับไปรอได้
+const orgChanged = m => { const f = m.org_from||{}, t = m.org_to||{}; return [...ORG_KEYS,"job_level"].filter(k=>t[k] && (t[k]||"")!==(f[k]||"")); };
+const earlyOrgs = () => { const today = todayLocal(); return allMovements.filter(m => {
+  if(!ORG_MOV_TYPES.includes(m.type) || !m.date || String(m.date).slice(0,10) <= today || m.org_to?._pending || m.org_to?._applied_at || !m.org_from) return false;
+  const e = allEmployees.find(x=>x.emp_code===m.emp_code), ch = orgChanged(m);
+  return e && ch.length && ch.every(k => String(e[k]||"").trim()===String(m.org_to[k]||"").trim());
+}); };
+// ทะเบียนกลับเป็นหน่วยงานเดิม — เฉพาะช่องที่ยังเป็นค่าใหม่ของรายการนี้ (ช่องที่มีคนแก้ไปแล้วไม่ทับ)
+const orgRevertFields = (e, m) => Object.fromEntries(orgChanged(m).filter(k=>String(e?.[k]||"").trim()===String(m.org_to[k]||"").trim()).map(k=>[k, m.org_from[k]??null]));
 
 // object อัปเดตพนักงานตามประเภท movement (ใช้ร่วมทั้งฟอร์มและ import bulk)
 // jobLevel: ระดับใหม่ (optional) — ถ้ามีจะอัปเดต job_level ให้สำหรับประเภทที่ยังทำงานอยู่
@@ -1165,6 +1182,33 @@ export function renderMovements() {
           <td style="white-space:nowrap;">${w?`<button class="btn btn-sm ${ok?"btn-primary":"btn-secondary"}" ${ok?"":"disabled"} title="${ok?"เปลี่ยนสถานะพนักงานเป็น "+esc(SEP_STATUS[m.type]):"ยังไม่ถึงวันที่มีผล"}" onclick="window._confirmSep('${m.id}')">ยืนยัน</button>
             <button class="btn btn-secondary btn-sm" onclick="window._withdrawSep('${m.id}')" title="พนักงานเปลี่ยนใจ / บันทึกผิด">ยกเลิกการ${esc(MOV_TH[m.type]||"พ้นสภาพ")}</button>`:""}</td></tr>`; }).join("")}
       </tbody></table></div></div></div>`; })()}
+  ${(()=>{ const pend = pendingOrgs(), early = earlyOrgs(), today = todayLocal(), w = can("data.movement.create");
+    if(!pend.length && !early.length) return "";
+    const due = pend.filter(m=>m.date && m.date<=today);
+    const left = d => Math.round((Date.parse(d)-Date.parse(today))/864e5);
+    const LBL = Object.fromEntries([...MV_ORG_ROWS.map(([k,l])=>[k,l.split(" · ")[0]])]);
+    const diff = m => { const ch = orgChanged(m);
+      return ch.length ? ch.map(k=>`<span class="op-chg"><i>${esc(LBL[k]||k)}</i><s>${esc(m.org_from?.[k]||"—")}</s><span class="op-arw">→</span><b>${esc(m.org_to[k])}</b></span>`).join("")
+        : `<span class="op-chg"><i>ใหม่</i><b>${esc(m.to_dept||"-")}</b>${m.job_level?` · <b>${esc(m.job_level)}</b>`:""}</span>`; };
+    const tile = d => { const x = new Date(String(d).slice(0,10)+"T00:00:00");
+      return `<div class="op-cal"><b>${x.getDate()}</b><span>${x.toLocaleDateString("th-TH",{month:"short",year:"2-digit"})}</span></div>`; };
+    const row = (m, early) => { const ok = !early && m.date && m.date<=today;
+      return `<div class="op-row${early?" op-early":""}">
+        ${m.date?tile(m.date):`<div class="op-cal"><b>?</b><span>ไม่มีวันที่</span></div>`}
+        <div class="op-who"><div><b>${esc(m.name||"-")}</b> ${movBadge(m.type)}</div><span>${esc(m.emp_code||"")} · บันทึกโดย ${esc(m.recorded_by||"-")}</span></div>
+        <div class="op-diff">${diff(m)}</div>
+        <div class="op-st">${early?`<span class="op-pill op-bad">ทะเบียนเปลี่ยนก่อนกำหนด</span>`:ok?`<span class="op-pill op-due">ถึงกำหนดแล้ว</span>`:`<span class="op-pill">อีก ${left(m.date)} วัน</span>`}</div>
+        <div class="op-act">${!w?"":early
+          ? `<button class="btn btn-primary btn-sm" onclick="window._deferOrg('${m.id}')" title="ทะเบียนกลับเป็นหน่วยงานเดิม แล้วรอวันที่มีผล">ย้อนทะเบียน · รอวันมีผล</button>`
+          : `<button class="btn btn-sm ${ok?"btn-primary":"btn-secondary"}" ${ok?"":"disabled"} title="${ok?"แก้ทะเบียนพนักงานเป็นหน่วยงานใหม่":"กดได้ตั้งแต่ "+esc(fmtDate(m.date))}" onclick="window._applyOrg('${m.id}')">ปรับทะเบียน</button>
+             <button class="btn btn-secondary btn-sm" onclick="window._editMov('${m.id}')">แก้ไข</button>
+             <button class="btn btn-secondary btn-sm" onclick="window._withdrawOrg('${m.id}')" title="ยกเลิกการ${esc(MOV_TH[m.type]||m.type)} — ทะเบียนไม่เปลี่ยน">ยกเลิก</button>`}</div>
+      </div>`; };
+    return `<div class="section" style="padding-top:12px;padding-bottom:0;"><div class="card org-pend"><div class="card-body">
+      <div class="sep-h"><div><b>รอปรับทะเบียน · โอนย้าย / เลื่อนตำแหน่ง (${pend.length+early.length})</b><span>บันทึกไว้ล่วงหน้า — ทะเบียนพนักงานยังเป็นหน่วยงานเดิมจนกว่า HR กด “ปรับทะเบียน” · กดได้ตั้งแต่วันที่มีผล</span></div>
+        ${w&&due.length>1?`<button class="btn btn-primary btn-sm" onclick="window._applyOrgAll()">ปรับทะเบียนทั้งหมดที่ถึงกำหนด (${due.length})</button>`:""}</div>
+      <div class="op-list">${early.map(m=>row(m,true)).join("")}${pend.map(m=>row(m,false)).join("")}</div>
+    </div></div></div>`; })()}
   <div class="section" style="padding-top:12px;padding-bottom:0;">${dataChecksHTML(null, { scope:"ทะเบียนพนักงาน + รายการ Movement ทั้งหมด", open:false })}</div>
   <div class="search-bar">
     <div class="search-input-wrap">
@@ -1244,6 +1288,60 @@ export function renderMovements() {
       await supabase.from("employees").update(upd).eq("emp_code", m.emp_code); Object.assign(e, upd);
     }
     toast(`ยกเลิกแล้ว — ${m.name} ยังเป็นพนักงาน Active`,"success");
+  };
+  // ปรับทะเบียนตามรายการโอนย้าย/เลื่อนตำแหน่งที่รอวันที่มีผล
+  const applyOrgOne = async m => {
+    const who = currentUser?.user_metadata?.full_name||currentUser?.email||"";
+    const e = allEmployees.find(x=>x.emp_code===m.emp_code);
+    const to = m.org_to||{}, hasOrg = MV_ORG_ROWS.some(([k])=>k in to);
+    const upd = { ...(hasOrg ? orgEmpFields(m.org_from||orgSnapshot(e)||{}, to) : empUpdateFromMovement(m.type, m.to_dept, m.date, m.job_level)),
+      ...(m.date ? { effective_date: m.date } : {}), updated_at: new Date().toISOString() };
+    const { error } = await supabase.from("employees").update(upd).eq("emp_code", m.emp_code);
+    if(error) return error;
+    const { _pending, ...rest } = to;
+    const org_to = { ...rest, _applied_at: new Date().toISOString(), _applied_by: who };
+    const { error: e2 } = await supabase.from("movements").update({ org_to }).eq("id", m.id);
+    if(e2) return e2;
+    if(e) Object.assign(e, upd);
+    m.org_to = org_to;
+    return null;
+  };
+  window._applyOrg = async id => {
+    const m = allMovements.find(x=>String(x.id)===String(id)); if(!m) return;
+    if(m.date && m.date > todayLocal()) return toast("ยังไม่ถึงวันที่มีผล","error");
+    if(!confirm(`ปรับทะเบียนของ ${m.name} เป็นหน่วยงานใหม่ (${MOV_TH[m.type]||m.type} มีผล ${fmtDate(m.date)})?`)) return;
+    const err = await applyOrgOne(m); if(err) return toast("ปรับทะเบียนไม่สำเร็จ: "+err.message,"error");
+    toast(`ปรับทะเบียนแล้ว — ${m.name}`,"success"); renderMovements();
+  };
+  window._applyOrgAll = async () => {
+    const due = pendingOrgs().filter(m=>m.date && m.date<=todayLocal());
+    if(!due.length || !confirm(`ปรับทะเบียน ${due.length} รายการที่ถึงวันที่มีผลแล้ว?\n${due.map(m=>`· ${m.name} (${MOV_TH[m.type]||m.type} ${fmtDate(m.date)})`).join("\n")}`)) return;
+    let n = 0; for(const m of due){ const err = await applyOrgOne(m); if(err){ toast(`${m.name}: ${err.message}`,"error"); break; } n++; }
+    toast(`ปรับทะเบียนแล้ว ${n} รายการ`,"success"); renderMovements();
+  };
+  // บันทึกก่อนมีขั้นรอ: ทะเบียนเปลี่ยนไปแล้ว → ย้อนกลับเป็นหน่วยงานเดิม แล้วรอวันที่มีผล
+  window._deferOrg = async id => {
+    const m = allMovements.find(x=>String(x.id)===String(id)); if(!m) return;
+    const e = allEmployees.find(x=>x.emp_code===m.emp_code), back = orgRevertFields(e, m);
+    if(!confirm(`ย้อนทะเบียนของ ${m.name} กลับเป็นหน่วยงานเดิม แล้วรอปรับวันที่ ${fmtDate(m.date)}?\n${Object.keys(back).map(k=>`· ${k}: ${m.org_to[k]} → ${back[k]||"(ว่าง)"}`).join("\n")}`)) return;
+    if(Object.keys(back).length){
+      const upd = { ...back, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from("employees").update(upd).eq("emp_code", m.emp_code);
+      if(error) return toast("ไม่สำเร็จ: "+error.message,"error");
+      Object.assign(e, upd);
+    }
+    const org_to = { ...m.org_to, _pending: true };
+    const { error } = await supabase.from("movements").update({ org_to }).eq("id", m.id);
+    if(error) return toast("ไม่สำเร็จ: "+error.message,"error");
+    m.org_to = org_to;
+    toast(`ย้อนแล้ว — ${m.name} อยู่หน่วยงานเดิมจนถึงวันที่มีผล`,"success"); renderMovements();
+  };
+  window._withdrawOrg = async id => {
+    const m = allMovements.find(x=>String(x.id)===String(id)); if(!m) return;
+    if(!confirm(`ยกเลิกการ${MOV_TH[m.type]||m.type}ของ ${m.name} (มีผล ${fmtDate(m.date)})?\nรายการนี้จะถูกลบ — ทะเบียนพนักงานไม่เปลี่ยน`)) return;
+    const { error } = await supabase.from("movements").delete().eq("id", m.id);
+    if(error) return toast("ไม่สำเร็จ: "+error.message,"error");
+    toast(`ยกเลิกแล้ว — ${m.name}`,"success");
   };
   window._editMov = id => openMovModal(allMovements.find(m=>m.id===id));
   window._exportMovCSV = exportMovCSV;
@@ -1546,6 +1644,9 @@ function openMovModal(entry=null) {
 
     // หน่วยงานก่อนย้าย (ครบทุกช่อง) — รายงานย้อนหลังใช้ย้อนว่าก่อนวันที่มีผลอยู่หน่วยงานไหน · เก็บตอนบันทึกครั้งแรกเท่านั้น
     if(!existId && orgForm && empCode) data.org_from = orgFrom;
+    // วันที่มีผลยังไม่ถึง → เก็บไว้รอ ไม่แก้ทะเบียน (กด "ปรับทะเบียน" ได้ตั้งแต่วันที่มีผล)
+    const defer = orgForm && ORG_MOV_TYPES.includes(type) && !!empCode && !!data.date && data.date > todayLocal();
+    if(defer) data.org_to = { ...orgTo, _pending: true };
     const write = d => existId
       ? supabase.from("movements").update({...d, updated_at: new Date().toISOString()}).eq("id", existId)
       : supabase.from("movements").insert(d);
@@ -1555,20 +1656,27 @@ function openMovModal(entry=null) {
     // ยังไม่ได้รัน sql/schema_movement_joblevel.sql → บันทึกรายการได้ก่อน (ไม่มีคอลัมน์ job_level) แต่ยังอัปเดตระดับพนักงานให้
     if(error && /job_level/.test(error.message)){ const { job_level, ...rest } = data; ({ error } = await write(rest)); if(!error) toast("บันทึกแล้ว — แต่ยังไม่ได้เก็บ Job Level ในรายการนี้ (รัน sql/schema_movement_joblevel.sql)","info"); }
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
-    // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
-    if(data.emp_code){
+    if(defer){
+      // แก้รายการที่ทะเบียนเปลี่ยนไปก่อนแล้ว → ทะเบียนกลับเป็นหน่วยงานเดิม รอวันที่มีผล
+      const e = allEmployees.find(x=>x.emp_code===empCode);
+      if(entry0 && !isOrgPending(entry0) && entry0.org_from && e){
+        const back = orgRevertFields(e, { ...entry0, org_to: orgTo });
+        if(Object.keys(back).length) await supabase.from("employees").update({ ...back, updated_at: new Date().toISOString() }).eq("emp_code", empCode);
+      }
+    } else if(data.emp_code){
+      // อัปเดตข้อมูลพนักงานอัตโนมัติตามประเภท movement
       // ประเภทที่เกี่ยวกับหน่วยงาน: อัปเดตเฉพาะช่องที่เปลี่ยนจากตาราง (เดิมใส่ "แผนก / ตำแหน่ง" ทั้งก้อนลงช่องเดียว)
       const empUpdate = { updated_at: new Date().toISOString(),
         ...(orgForm ? { ...(type==="New Hire" ? empUpdateFromMovement(type, "", data.date, null) : (data.date ? { effective_date: data.date } : {})),
-              // ฝ่าย/แผนก/แผนกย่อย/ทีม: ว่าง = ล้าง (ย้ายแล้วไม่มีแผนกย่อย) · ตำแหน่ง/ระดับ: ว่าง = ไม่เปลี่ยน
-              ...Object.fromEntries(MV_ORG_ROWS.filter(([k])=>MV_ORG_LEVELS.includes(k) ? (orgTo[k]||"")!==(orgFrom[k]||"") : orgTo[k] && orgTo[k]!==(orgFrom[k]||"")).map(([k])=>[k, orgTo[k]||null])) }
+              ...orgEmpFields(orgFrom, orgTo) }
           : empUpdateFromMovement(data.type, data.to_dept, data.date, data.job_level)) };
       if(Object.keys(empUpdate).length>1){
         await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
       }
     }
     document.getElementById("modalPortal").innerHTML="";
-    if(existId) toast("บันทึกสำเร็จ","success");
+    if(defer) toast(`บันทึกแล้ว — ทะเบียนพนักงานยังไม่เปลี่ยน · รอปรับทะเบียนเมื่อถึงวันที่มีผล ${fmtDate(data.date)}`,"success");
+    if(existId){ if(!defer) toast("บันทึกสำเร็จ","success"); }
     else notify("เพิ่มรายการเคลื่อนไหว", `${name} · ${data.type||"-"}`, {category:"movement"});
   };
   // เปิดเอกสารแนบ — bucket เป็น private จึงต้องขอ signed URL อายุสั้นทุกครั้ง
@@ -1668,6 +1776,9 @@ async function movImport(inputEl){
       const nOrg = {}; batch.forEach(m=>{ if(ORG_MOV_TYPES.includes(m.type)) nOrg[m.emp_code]=(nOrg[m.emp_code]||0)+1; });
       batch.forEach(m=>{ const cur = nOrg[m.emp_code]===1 && allEmployees.find(e=>e.emp_code===m.emp_code); if(cur) m.org_from = orgSnapshot(cur); });
       if(batch.some(m=>m.org_from)){ const t = await supabase.from("movements").select("org_from").limit(1); if(t.error) batch.forEach(m=>{ delete m.org_from; }); }
+      // วันที่มีผลยังไม่ถึง → รอปรับทะเบียน (เหมือนบันทึกจากฟอร์ม) · ปรับทีหลังจาก to_dept / job_level
+      const today = todayLocal();
+      batch.forEach(m=>{ if(ORG_MOV_TYPES.includes(m.type) && m.date && m.date > today) m.org_to = { _pending: true }; });
       let { error } = await supabase.from("movements").insert(batch.map(m=>({...m, job_level: m.job_level||null})));
       if(error && /job_level/.test(error.message)) ({ error } = await supabase.from("movements").insert(batch.map(({job_level, ...m})=>m)));
       if(error){ toast("Import \u0E44\u0E21\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08: "+error.message,"error"); return; }
@@ -1675,6 +1786,7 @@ async function movImport(inputEl){
       let updated=0;
       const ordered=[...batch].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
       for(const m of ordered){
+        if(m.org_to?._pending) continue;
         const upd = empUpdateFromMovement(m.type, m.to_dept, m.date, m.job_level);
         if(Object.keys(upd).length){ upd.updated_at=new Date().toISOString(); const {error:ue}=await supabase.from("employees").update(upd).eq("emp_code",m.emp_code); if(!ue) updated++; }
       }

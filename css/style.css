@@ -1243,6 +1243,24 @@ thead .cp-sticky{z-index:3}
 .sep-pend .data-table{background:#fff;border-radius:8px;overflow:hidden}
 .sep-due{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:#B42318;background:#FEE4E2;border-radius:8px;padding:1px 7px}
 .sep-wait{display:inline-block;margin-left:6px;font-size:11px;color:var(--muted);background:#F1F5F9;border-radius:8px;padding:1px 7px}
+.org-pend{border-color:#C7D7F5;background:linear-gradient(180deg,#F4F8FF,#FFFFFF 70%)}
+.org-pend .sep-h b{color:var(--blue-dark)}.org-pend .sep-h span{color:var(--muted)}
+.op-list{display:flex;flex-direction:column;gap:8px}
+.op-row{display:grid;grid-template-columns:56px 1fr auto;grid-template-areas:"cal who st" ". diff diff" ". act act";align-items:center;gap:10px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+.op-row.op-early{border-color:#FDA29B;background:#FFFBFA}
+.op-cal{grid-area:cal;align-self:start;width:52px;border-radius:10px;overflow:hidden;text-align:center;border:1px solid #C7D7F5;background:#fff}
+.op-cal b{display:block;font-size:20px;line-height:1.2;color:var(--navy);padding-top:4px}
+.op-cal span{display:block;font-size:10px;font-weight:600;color:#fff;background:var(--blue);padding:2px 0}
+.op-early .op-cal{border-color:#FDA29B}.op-early .op-cal span{background:var(--exec-neg)}
+.op-who{grid-area:who}.op-st{grid-area:st}.op-who b{font-size:14px;color:var(--text)}.op-who>span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.op-diff{grid-area:diff;display:flex;flex-wrap:wrap;gap:6px}
+.op-chg{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--blue-light);border-radius:8px;padding:3px 9px;max-width:100%}
+.op-chg i{font-style:normal;font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}
+.op-chg s{color:var(--muted2)}.op-chg b{color:var(--blue-dark)}.op-arw{color:var(--blue);font-weight:700}
+.op-pill{display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:600;color:var(--blue-dark);background:var(--blue-light);border-radius:999px;padding:3px 10px}
+.op-pill.op-due{color:var(--exec-pos);background:var(--exec-pos-soft)}
+.op-pill.op-bad{color:var(--exec-neg);background:var(--exec-neg-soft)}
+.op-act{grid-area:act;display:flex;gap:6px;white-space:nowrap}
 /* ตรวจข้อมูล "เอ๊ะใจ" (js/data-checks.js · 2026-10-16) */
 .dck{border:1px solid var(--bd,#A6F4C5);background:var(--bg,#ECFDF3);border-radius:10px;padding:10px 14px;font-size:13px}
 .dck.ok{display:flex;gap:10px;align-items:center;color:#067647}.dck.ok span{color:var(--muted);font-size:12px}
