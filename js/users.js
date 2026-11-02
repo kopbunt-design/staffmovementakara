@@ -177,6 +177,7 @@ const secKind = k => SEC_KIND[k] || (k?.startsWith("public_") ? "ลิงก์
 const secTime = v => v ? new Date(v).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
 const secUA = ua => {
   if (!ua) return "–";
+  if (/HeadlessChrome|PhantomJS|Puppeteer|Playwright/i.test(ua)) return "🤖 บอท (เบราว์เซอร์อัตโนมัติ)";
   if (/curl|python|wget|go-http|okhttp|java|libwww|scrapy|httpclient|axios|node-fetch/i.test(ua)) return "🤖 สคริปต์ (" + ua.split(/[\s/]/)[0] + ")";
   const os = /Windows/.test(ua) ? "Windows" : /iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : /Mac OS/.test(ua) ? "Mac" : "";
   const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : ua.slice(0, 30);
