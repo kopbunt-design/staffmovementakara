@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from a2wsgi import ASGIMiddleware
 
 import db
+import guard
 from db import TABLES, HERE
 
 # The static site is copied next to this file at deploy time (see README). Locally it is the repo root.
@@ -37,6 +38,18 @@ if not SITE_DIR.exists():
     SITE_DIR = HERE.resolve().parent
 
 api = FastAPI(title="Akara HR System", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@api.middleware("http")
+async def security_guard(request: Request, call_next):
+    """Blocked IPs, request floods and repeated refusals from clients without a login (guard.py)."""
+    stop = guard.check(request)
+    if stop:
+        return JSONResponse({"detail": stop[1]}, stop[0])
+    resp = await call_next(request)
+    if resp.status_code in (401, 403) and request.url.path.startswith("/api/"):
+        guard.failed(request, f"http_{resp.status_code}")
+    return resp
 
 
 def current_user(request: Request) -> dict | None:
@@ -402,13 +415,24 @@ async def rest_call(request: Request):
 @api.post("/api/rpc/{name}")
 async def rpc_call(name: str, request: Request):
     public = name in rpc.PUBLIC
+    if public:
+        stop = guard.public_call(request)
+        if stop:
+            return JSONResponse({"detail": stop[1]}, stop[0])
     uid, _, _ = caller(request, need=not public)
     args = await request.json() if (await request.body()) else {}
     with closing(db.connect(uid, bypass=True)) as cn:
         try:
-            return {"data": rpc.call(cn, uid, name, args), "error": None}
+            data = rpc.call(cn, uid, name, args)
+            # a public call that finds nothing (wrong / used / expired link, wrong fund code) counts toward a ban
+            if public and (data is None or (isinstance(data, dict) and data.get("error"))):
+                guard.failed(request, f"public_{name}", str(data.get("error") if isinstance(data, dict) else "not found")[:200])
+            return {"data": data, "error": None}
         except rpc.E as e:
-            cn.rollback(); return {"data": None, "error": {"message": str(e), "code": "P0001"}}
+            cn.rollback()
+            if public:
+                guard.failed(request, f"public_{name}", str(e)[:200])
+            return {"data": None, "error": {"message": str(e), "code": "P0001"}}
         except rest.ApiError as e:
             cn.rollback(); return {"data": None, "error": e.body}
         except TypeError as e:
@@ -439,6 +463,25 @@ async def changes(request: Request):
                     "SELECT * FROM dbo.notifications WHERE created_at > ? AND " + (rest.rule_filter(ctx, "notifications", "read") or "1 = 1") + " ORDER BY created_at", body["since"]))]
         now_ = db.out_value(cur.execute("SELECT SYSDATETIMEOFFSET()").fetchone()[0])
     return {"data": {"sigs": out, "inserted": ins, "now": now_}, "error": None}
+
+
+@api.get("/api/admin/security")
+def admin_security(request: Request, days: int = 7):
+    """Security log: recent refused / failed calls without a login, top IPs, blocked IPs (guard.py)."""
+    _admin(request)[0].close()
+    return guard.overview(max(1, min(days, 90)))
+
+
+@api.post("/api/admin/security/block")
+async def admin_security_block(request: Request):
+    """{ip, on: true|false, reason?, hours?} — hours empty = until removed."""
+    cn, email = _admin(request); cn.close()
+    b = await request.json()
+    try:
+        ip = guard.set_block(b.get("ip") or "", bool(b.get("on", True)), email, b.get("reason") or "", b.get("hours"))
+    except ValueError:
+        raise HTTPException(400, "not an IP address")
+    return {"ok": True, "ip": ip}
 
 
 @api.post("/api/fn/{name}")
