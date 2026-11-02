@@ -32,7 +32,9 @@ export async function renderUsers() {
       <thead><tr><th>ชื่อ</th><th>อีเมล</th><th>Role</th><th>สถานะ</th><th></th></tr></thead>
       <tbody id="usersBody"><tr><td colspan="5" class="text-center text-muted" style="padding:32px;">กำลังโหลด...</td></tr></tbody>
     </table>
-  </div></div></div>`;
+  </div></div></div>
+  <div class="section pb-4" id="secLog" style="display:none;"></div>`;
+  renderSecurity(30);
 
   // ถ้ายังไม่ได้ติดตั้งตารางสิทธิ์ ให้ถอยไปใช้ 3 role เดิม
   const { data: rolesData } = await supabase.from("app_roles").select("key,label").order("sort_order");
@@ -162,5 +164,119 @@ export async function renderUsers() {
         toast("กด Ctrl+C เพื่อคัดลอก","info");
       }
     };
+  };
+}
+
+// ---- บันทึกความปลอดภัย (Azure เท่านั้น: /api/admin/security, admin) — ใครเข้าระบบ / ใครพยายามเข้า / IP ที่บล็อก
+const SEC_KIND = {
+  http_401: "เรียกข้อมูลโดยไม่ล็อกอิน", http_403: "ไม่มีสิทธิ์", blocked: "IP ถูกบล็อกแล้วยังเข้ามา",
+  rate: "ยิงถี่เกินกำหนด", rate_public: "เปิดลิงก์/ฟอร์มถี่เกิน", ban: "แบนอัตโนมัติ",
+  new_user: "บัญชีเข้าระบบครั้งแรก", foreign_account: "บัญชีนอกบริษัท",
+};
+const secKind = k => SEC_KIND[k] || (k?.startsWith("public_") ? "ลิงก์/รหัสผิด (" + k.slice(7) + ")" : k);
+const secTime = v => v ? new Date(v).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+const secUA = ua => {
+  if (!ua) return "–";
+  if (/curl|python|wget|go-http|okhttp|java|libwww|scrapy|httpclient|axios|node-fetch/i.test(ua)) return "🤖 สคริปต์ (" + ua.split(/[\s/]/)[0] + ")";
+  const os = /Windows/.test(ua) ? "Windows" : /iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : /Mac OS/.test(ua) ? "Mac" : "";
+  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : ua.slice(0, 30);
+  return [br, os].filter(Boolean).join(" · ");
+};
+
+async function renderSecurity(days) {
+  const box = document.getElementById("secLog");
+  if (!box) return;
+  let d;
+  try {
+    const r = await fetch(`/api/admin/security?days=${days}`, { credentials: "same-origin" });
+    if (!r.ok) return;                       // ไม่ใช่ admin / ไม่ได้รันบน Azure → ไม่แสดง
+    d = await r.json();
+  } catch { return; }
+  if (d.error) return;
+  const office = new Set(d.office || []);
+  const ipCell = ip => `<a href="https://ipinfo.io/${encodeURIComponent(ip)}" target="_blank" rel="noopener" style="font-family:monospace;">${esc(ip)}</a>${office.has(ip) ? ` <span class="badge" style="color:var(--green);background:var(--green-light);">ออฟฟิศ</span>` : ""}`;
+
+  // ใครเข้าระบบ: รวมต่อบัญชี
+  const byUser = {};
+  for (const l of d.logins || []) {
+    const u = byUser[l.email] ||= { email: l.email, name: l.name, ips: new Set(), days: new Set(), first: l.first, last: l.last, ua: l.user_agent };
+    u.ips.add(l.ip); u.days.add(l.day);
+    if (l.first < u.first) u.first = l.first;
+    if (l.last > u.last) { u.last = l.last; u.ua = l.user_agent; }
+  }
+  const users = Object.values(byUser).sort((a, b) => b.last.localeCompare(a.last));
+  const newUsers = new Set((d.events || []).filter(e => e.kind === "new_user").map(e => (e.detail || "").split(" ")[0]));
+  const attackers = (d.top_ips || []).filter(t => !t.kinds.every(k => k === "new_user"));
+  const blocks = d.blocks || [];
+  const tile = (n, label, color) => `<div class="card" style="padding:14px 16px;flex:1;min-width:140px;"><div style="font-size:24px;font-weight:700;color:${color};">${n}</div><div class="text-muted" style="font-size:12px;">${label}</div></div>`;
+
+  box.style.display = "";
+  box.innerHTML = `
+  <div class="page-header" style="margin-top:8px;">
+    <div><div class="page-heading" style="font-size:18px;">🛡️ บันทึกความปลอดภัย</div>
+      <div class="page-sub">ใครเข้าระบบ · ใครพยายามเข้าโดยไม่ได้ล็อกอิน · IP ที่บล็อก (เวลาไทย · เริ่มบันทึก 2 พ.ย. 2026)</div></div>
+    <select class="filter-select" id="secDays">${[1, 7, 30, 90].map(n => `<option value="${n}" ${n === days ? "selected" : ""}>${n} วันล่าสุด</option>`).join("")}</select>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+    ${tile(users.length, "บัญชีที่เข้าระบบ", "var(--blue)")}
+    ${tile(attackers.length, "IP ที่ถูกปฏิเสธ", attackers.length ? "var(--red)" : "var(--green)")}
+    ${tile(blocks.length + (d.seed || []).length, "IP ที่บล็อกอยู่", "var(--purple)")}
+  </div>
+
+  <div class="card" style="margin-bottom:12px;"><div style="padding:12px 16px;font-weight:600;">👤 ใครเข้าระบบ</div><div class="table-wrap"><table class="data-table">
+    <thead><tr><th>ผู้ใช้</th><th>IP</th><th>เครื่อง</th><th>วันที่เข้า</th><th>ครั้งแรก</th><th>ล่าสุด</th></tr></thead>
+    <tbody>${users.map(u => `<tr>
+      <td><div style="font-weight:600;">${esc(u.name || u.email)}</div><div class="text-muted" style="font-size:12px;">${esc(u.email)}
+        ${!u.email.endsWith("@akararesources.com") ? ` <span class="badge" style="color:var(--red);background:var(--red-light);">นอกบริษัท</span>` : ""}
+        ${newUsers.has(u.email) ? ` <span class="badge" style="color:var(--orange,#c2410c);background:#fff7ed;">เข้าครั้งแรก</span>` : ""}</div></td>
+      <td>${[...u.ips].map(ipCell).join("<br>")}</td>
+      <td class="text-muted" style="font-size:12px;">${esc(secUA(u.ua))}</td>
+      <td>${u.days.size} วัน</td>
+      <td style="white-space:nowrap;">${secTime(u.first)}</td>
+      <td style="white-space:nowrap;">${secTime(u.last)}</td>
+    </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted" style="padding:24px;">ยังไม่มีบันทึก</td></tr>`}</tbody>
+  </table></div></div>
+
+  <div class="card" style="margin-bottom:12px;"><div style="padding:12px 16px;font-weight:600;">🚨 ใครพยายามเข้า (ไม่ได้ล็อกอิน / ลิงก์ผิด / ถูกบล็อก)</div><div class="table-wrap"><table class="data-table">
+    <thead><tr><th>IP</th><th>ทำอะไร</th><th>เครื่องมือ</th><th>ครั้ง*</th><th>ครั้งแรก</th><th>ล่าสุด</th><th></th></tr></thead>
+    <tbody>${attackers.map(t => `<tr>
+      <td>${ipCell(t.ip)}</td>
+      <td style="font-size:12px;">${t.kinds.filter(k => k !== "new_user").map(k => esc(secKind(k))).join("<br>")}</td>
+      <td class="text-muted" style="font-size:12px;">${esc(secUA(t.user_agent))}</td>
+      <td>${t.events}</td>
+      <td style="white-space:nowrap;">${secTime(t.first)}</td>
+      <td style="white-space:nowrap;">${secTime(t.last)}</td>
+      <td>${blocks.some(b => b.ip === t.ip) || (d.seed || []).includes(t.ip) || office.has(t.ip) ? "" : `<button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._secBlock('${esc(t.ip)}')">⛔ บล็อก</button>`}</td>
+    </tr>`).join("") || `<tr><td colspan="7" class="text-center text-muted" style="padding:24px;">✅ ไม่มีใครพยายามเข้าในช่วงนี้</td></tr>`}</tbody>
+  </table></div>
+  <div class="text-muted" style="font-size:11px;padding:8px 16px;">* นับได้สูงสุดนาทีละ 1 ครั้งต่อประเภท (ยิงถล่มก็ไม่ทำให้ฐานข้อมูลเต็ม) · คลิก IP เพื่อดูประเทศ/ผู้ให้บริการ · ยิงผิดเกิน 30 ครั้งใน 15 นาที ระบบแบนเอง 1 ชม.</div></div>
+
+  <div class="card"><div style="padding:12px 16px;font-weight:600;display:flex;justify-content:space-between;align-items:center;">⛔ IP ที่บล็อก
+    <button class="btn btn-secondary btn-sm" onclick="window._secBlock('')">+ บล็อก IP</button></div><div class="table-wrap"><table class="data-table">
+    <thead><tr><th>IP</th><th>เหตุผล</th><th>ถึง</th><th>โดย</th><th></th></tr></thead>
+    <tbody>${(d.seed || []).map(ip => `<tr><td>${ipCell(ip)}</td><td class="text-muted">ผู้โจมตีระบบ Azure อื่นของบริษัท 31 ต.ค.–1 พ.ย. (ฝังในโปรแกรม)</td><td>ถาวร</td><td>ระบบ</td><td></td></tr>`).join("")}
+    ${blocks.map(b => `<tr><td>${ipCell(b.ip)}</td><td>${esc(b.reason || "")}</td>
+      <td style="white-space:nowrap;">${b.until ? (new Date(b.until) < new Date() ? "หมดแล้ว " : "") + secTime(b.until) : "ถาวร"}</td>
+      <td class="text-muted" style="font-size:12px;">${esc(b.created_by === "guard" ? "แบนอัตโนมัติ" : b.created_by || "")}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="window._secUnblock('${esc(b.ip)}')">ปลดบล็อก</button></td></tr>`).join("")}</tbody>
+  </table></div></div>`;
+
+  document.getElementById("secDays").onchange = e => renderSecurity(Number(e.target.value));
+  const post = async body => {
+    const r = await fetch("/api/admin/security/block", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) { toast("ไม่สำเร็จ: " + ((await r.json().catch(() => ({}))).detail || r.status), "error"); return false; }
+    return true;
+  };
+  window._secBlock = async ip => {
+    ip = ip || prompt("IP ที่จะบล็อก")?.trim();
+    if (!ip) return;
+    if (office.has(ip)) { toast("นี่คือ IP ออฟฟิศ บล็อกไม่ได้", "error"); return; }
+    const reason = prompt(`เหตุผลที่บล็อก ${ip}`, "พยายามเข้าระบบ");
+    if (reason === null) return;
+    if (await post({ ip, on: true, reason })) { toast(`บล็อก ${ip} แล้ว (มีผลภายใน 1 นาที)`, "success"); renderSecurity(days); }
+  };
+  window._secUnblock = async ip => {
+    if (!confirm(`ปลดบล็อก ${ip}?`)) return;
+    if (await post({ ip, on: false })) { toast(`ปลดบล็อก ${ip} แล้ว`, "success"); renderSecurity(days); }
   };
 }

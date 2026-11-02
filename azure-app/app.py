@@ -49,6 +49,8 @@ async def security_guard(request: Request, call_next):
     resp = await call_next(request)
     if resp.status_code in (401, 403) and request.url.path.startswith("/api/"):
         guard.failed(request, f"http_{resp.status_code}")
+    if guard.signed_in(request):
+        guard.seen(request, current_user(request))
     return resp
 
 
@@ -321,6 +323,7 @@ def caller(request: Request, need=True):
         if p:
             cur.execute("DELETE FROM dbo.pending_roles WHERE email_key = ?", key)
         cn.commit()
+        guard.log(guard.client_ip(request), "new_user", request, f"{email} → role {p[0] if p else 'user'}")
         return uid, email, u
 
 

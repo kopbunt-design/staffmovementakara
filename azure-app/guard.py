@@ -8,8 +8,10 @@ guessing can't succeed — the guard is there so that a flood is cut off early, 
 written down where HR/IT can see it.
 
   • only requests WITHOUT a Microsoft login are counted or banned — everyone in the office shares one public IP,
-    and a signed-in page that keeps polling must never get that IP banned. App Setting ALLOW_IPS (comma list,
-    e.g. the office IP) is never limited or banned.
+    and a signed-in page that keeps polling must never get that IP banned. OFFICE and App Setting ALLOW_IPS
+    (comma list) are never limited or banned.
+  • signed-in visits  → security_logins (who, which IP, first/last time per day); first-ever login of an account
+                       and accounts outside the company domain also go to security_events
   • blocked IPs      → 403 on every path. Sources: BLOCK_SEED below, App Service setting BLOCK_IPS (comma list),
                        table security_ip_block (auto-bans + admin blocks; re-read every 60 s by each worker)
   • any path per IP   → 300 requests / minute without a login, then 429
@@ -33,8 +35,11 @@ import db
 
 # IPs another company system saw attacking on 31 Oct – 1 Nov 2026 (shared by IT)
 BLOCK_SEED = {"202.61.72.13", "191.223.44.53", "102.244.78.57"}
+OFFICE = {"110.49.4.228"}                     # head-office internet (2026-11-02) — never banned, labelled in the log
 _env = lambda k: {x.strip() for x in (os.environ.get(k) or "").split(",") if x.strip()}
-BLOCK_ENV, ALLOW = _env("BLOCK_IPS"), _env("ALLOW_IPS")
+BLOCK_ENV, ALLOW = _env("BLOCK_IPS"), _env("ALLOW_IPS") | OFFICE
+COMPANY_DOMAIN = "@akararesources.com"
+LOGIN_EVERY = 10 * 60                         # a signed-in user+IP is written at most every 10 minutes
 
 API_PER_MIN = 300
 PUBLIC_PER_MIN = 30
@@ -45,6 +50,7 @@ CACHE_SECONDS = 60
 _lock = threading.Lock()
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)   # (ip, bucket) → timestamps
 _logged: dict[tuple[str, str], float] = {}                  # (ip, kind) → last time written
+_seen: dict[tuple[str, str], float] = {}                    # (email, ip) → last login row written
 _blocks: dict[str, float] = {}                              # ip → until (epoch); 0 = permanent
 _loaded = 0.0
 _tables_ok = False
@@ -76,6 +82,10 @@ def _tables(cur):
     cur.execute("""IF OBJECT_ID('dbo.security_ip_block') IS NULL
                    CREATE TABLE dbo.security_ip_block (ip NVARCHAR(64) NOT NULL PRIMARY KEY, reason NVARCHAR(300) NULL,
                      until DATETIMEOFFSET NULL, created_by NVARCHAR(320) NULL, created_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET())""")
+    cur.execute("""IF OBJECT_ID('dbo.security_logins') IS NULL
+                   CREATE TABLE dbo.security_logins (day DATE NOT NULL, email NVARCHAR(320) NOT NULL, ip NVARCHAR(64) NOT NULL,
+                     name NVARCHAR(200) NULL, user_agent NVARCHAR(300) NULL, first_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+                     last_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(), PRIMARY KEY (day, email, ip))""")
     _tables_ok = True
 
 
@@ -163,6 +173,30 @@ def signed_in(request) -> bool:
     return bool(request.headers.get("x-ms-client-principal"))
 
 
+def seen(request, user: dict | None):
+    """Who signed in, from where: one row per day + account + IP (Bangkok day), refreshed at most every
+    10 minutes. An account outside the company domain is also written as an event so it stands out."""
+    email = ((user or {}).get("email") or "").strip().lower()
+    if not email:
+        return
+    ip, now = client_ip(request), time.time()
+    with _lock:
+        if now - _seen.get((email, ip), 0) < LOGIN_EVERY:
+            return
+        _seen[(email, ip)] = now
+        if len(_seen) > 20000:
+            _seen.clear()
+    ua = (request.headers.get("user-agent") or "")[:300]
+    _db(lambda cur: cur.execute("""DECLARE @d DATE = CAST(SWITCHOFFSET(SYSDATETIMEOFFSET(), '+07:00') AS DATE);
+        MERGE dbo.security_logins AS t USING (SELECT @d AS day, ? AS email, ? AS ip) AS s
+          ON t.day = s.day AND t.email = s.email AND t.ip = s.ip
+        WHEN MATCHED THEN UPDATE SET last_at = SYSDATETIMEOFFSET(), user_agent = ?, name = ?
+        WHEN NOT MATCHED THEN INSERT (day, email, ip, name, user_agent) VALUES (@d, ?, ?, ?, ?);""",
+        email, ip, ua, (user.get("name") or "")[:200], email, ip, (user.get("name") or "")[:200], ua))
+    if not email.endswith(COMPANY_DOMAIN):
+        log(ip, "foreign_account", request, email)
+
+
 def check(request) -> tuple[int, str] | None:
     """Before the request: (status, message) to refuse it, or None to let it through."""
     ip = client_ip(request)
@@ -200,21 +234,27 @@ def overview(days: int = 7):
     def q(cur):
         ev = cur.execute("""SELECT TOP 500 at, ip, kind, path, detail, user_agent FROM dbo.security_events
                             WHERE at > DATEADD(day, ?, SYSDATETIMEOFFSET()) ORDER BY at DESC""", -days).fetchall()
-        top = cur.execute("""SELECT TOP 30 e.ip, COUNT(*) n, MIN(e.at), MAX(e.at),
+        top = cur.execute("""SELECT TOP 50 e.ip, COUNT(*) n, MIN(e.at), MAX(e.at),
                                (SELECT STRING_AGG(k.kind, ',') FROM (SELECT DISTINCT kind FROM dbo.security_events
-                                  WHERE ip = e.ip AND at > DATEADD(day, ?, SYSDATETIMEOFFSET())) k)
+                                  WHERE ip = e.ip AND at > DATEADD(day, ?, SYSDATETIMEOFFSET())) k),
+                               (SELECT TOP 1 user_agent FROM dbo.security_events WHERE ip = e.ip ORDER BY at DESC)
                              FROM dbo.security_events e WHERE e.at > DATEADD(day, ?, SYSDATETIMEOFFSET())
                              GROUP BY e.ip ORDER BY COUNT(*) DESC""", -days, -days).fetchall()
         bl = cur.execute("SELECT ip, reason, until, created_by, created_at FROM dbo.security_ip_block ORDER BY created_at DESC").fetchall()
-        return ev, top, bl
+        lg = cur.execute("""SELECT TOP 1000 day, email, ip, name, user_agent, first_at, last_at FROM dbo.security_logins
+                            WHERE day > DATEADD(day, ?, CAST(SWITCHOFFSET(SYSDATETIMEOFFSET(), '+07:00') AS DATE))
+                            ORDER BY last_at DESC""", -days).fetchall()
+        return ev, top, bl, lg
     r = _db(q)
     if r is None:
         return {"error": "security tables unavailable"}
     out = lambda v: db.out_value(v)
-    ev, top, bl = r
-    return {"seed": sorted(BLOCK_SEED | BLOCK_ENV), "allow": sorted(ALLOW),
+    ev, top, bl, lg = r
+    return {"seed": sorted(BLOCK_SEED | BLOCK_ENV), "allow": sorted(ALLOW), "office": sorted(OFFICE),
             "events": [dict(at=out(a), ip=i, kind=k, path=p, detail=d, user_agent=u) for a, i, k, p, d, u in ev],
-            "top_ips": [dict(ip=i, events=n, first=out(f), last=out(l), kinds=sorted(set((ks or "").split(",")))) for i, n, f, l, ks in top],
+            "top_ips": [dict(ip=i, events=n, first=out(f), last=out(l), kinds=sorted(set((ks or "").split(","))), user_agent=u)
+                        for i, n, f, l, ks, u in top],
+            "logins": [dict(day=out(d), email=e, ip=i, name=n, user_agent=u, first=out(f), last=out(l)) for d, e, i, n, u, f, l in lg],
             "blocks": [dict(ip=i, reason=r_, until=out(u), created_by=c, created_at=out(t)) for i, r_, u, c, t in bl]}
 
 

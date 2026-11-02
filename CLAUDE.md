@@ -35,9 +35,12 @@ that calls `/api/*`.
   `app.py` refuses blocked IPs (seed list, App Setting `BLOCK_IPS`, table `security_ip_block` re-read every 60 s),
   limits clients **without a Microsoft login** to 300 req/min and public RPCs to 30/min, and bans an IP for 1 h
   after 30 refused (401/403) or failed public calls (wrong/used link, wrong fund code) in 15 min. Signed-in users
-  and App Setting `ALLOW_IPS` are never counted (the office shares one IP). Client IP = last `X-Forwarded-For`
-  entry. Events → `security_events` (≤1 row per IP+kind per minute); both tables are created on first use. Admin:
-  `GET /api/admin/security`, `POST /api/admin/security/block {ip,on,reason,hours}`.
+  and the office IP (`OFFICE` in guard.py, 110.49.4.228) + App Setting `ALLOW_IPS` are never counted (the office
+  shares one IP). Client IP = last `X-Forwarded-For` entry. Events → `security_events` (≤1 row per IP+kind per
+  minute); signed-in visits → `security_logins` (day+account+IP, written ≤ every 10 min; first login of an account
+  and non-company accounts also become events). Tables are created on first use. Admin: `GET /api/admin/security`,
+  `POST /api/admin/security/block {ip,on,reason,hours}`; shown under the user list on the users page (admin only,
+  "🛡️ บันทึกความปลอดภัย", user 2026-11-02).
 - Deploy: `sh azure-app/build.sh`, **import-test `dist/`** (a missing file once crashed startup), copy `dist/`
   into the Azure Repos clone `~/AKARA-HR2` (keep its README), push `main`. Secrets only in App Service / Key Vault.
 
