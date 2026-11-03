@@ -61,7 +61,7 @@ const ACT_PRIMARY = ["submit", "review_ok", "approve", "sign", "issue", "accept"
 const EV_LABEL = { migrate: "เริ่มติดตามในระบบสารบรรณ", update: "แก้ข้อมูลเรื่อง", people: "แก้ผู้เกี่ยวข้อง", file_kind: "ระบุชนิดไฟล์",
   supersede_file: "แทนที่ฉบับจริง", superseded: "ถูกแทนที่ด้วยฉบับแก้ไข", revision_of: "สร้างเป็นฉบับแก้ไข", link: "เชื่อมโยงเอกสาร", unlink: "ลบการเชื่อมโยง",
   delegate: "มอบหมายแทน", deliver: "บันทึกการส่ง", ack: "บันทึกรับทราบ", deliver_cancel: "ยกเลิกรายการส่ง", hold: "ระงับทำลาย", unhold: "ปลดการระงับ",
-  dispose_propose: "เสนอทำลาย", register_contract: "ออกเลขให้สัญญาจ้าง", dispose: "ทำลาย", edit: "แก้ทะเบียน", void: "ยกเลิกเลข", export: "Export", retention_save: "บันทึกนโยบายอายุเก็บ",
+  dispose_propose: "เสนอทำลาย", register_contract: "ออกเลขให้สัญญาจ้าง", from_movement: "ลงรับจาก Staff Movement", dispose: "ทำลาย", edit: "แก้ทะเบียน", void: "ยกเลิกเลข", export: "Export", retention_save: "บันทึกนโยบายอายุเก็บ",
   rule_save: "ตั้งค่าขั้นตอนตามประเภท", dispose_decide: "พิจารณารายการทำลาย", ...ACT_LABEL };
 
 const S = { user: null, perms: new Set(), series: [], types: [], rows: [], files: new Map(), sources: new Map(), emps: [], ov: new Map(),
@@ -338,7 +338,7 @@ async function openDoc(r) {
       <div class="sec"><div class="h"><span>ข้อมูลเรื่อง</span>${w ? `<button class="btn btn-g btn-sm" data-meta>${IC.pen}แก้ไข</button>` : ""}</div><dl class="kv">
         ${kv("ผู้รับผิดชอบ", esc(m.owner_name || "—"))}${kv("กำหนดเสร็จ", m.due_date ? thDate(m.due_date) : "—")}${kv("ความเร่งด่วน", esc(PRIO[m.priority] || "ปกติ"))}
         ${kv("ชั้นข้อมูล", esc(SENS[m.sensitivity || (r.confidential ? "confidential" : "general")]))}${kv("วันที่มีผล", m.effective_date ? thDate(m.effective_date) : "")}${kv("แฟ้มเรื่อง", esc(m.case_ref || ""))}
-        ${kv("อนุมัติ", m.approved_at ? `${esc(m.approved_by_name || "")} · ${esc(thTime(m.approved_at))}` : "")}
+        ${kv("อนุมัติ", m.approved_at ? `${esc(m.approved_by_name || (d.source ? "ในระบบต้นทาง" : ""))} · ${esc(thTime(m.approved_at))}` : "")}
         ${kv("ลงนาม", m.signed_at || m.sign_method ? `${esc(m.signed_by_name || "")}${m.signed_at ? " · " + esc(thTime(m.signed_at)) : ""}<div class="sub">${esc(SIGNM[m.sign_method] || "")}${m.sign_note ? " · " + esc(m.sign_note) : ""}</div>` : "")}
         ${kv("ออกฉบับจริง", m.issued_at ? esc(thTime(m.issued_at)) : "")}</dl></div>
       ${d.tasks.filter(t => t.status === "open").length ? `<div class="sec"><div class="h">งานที่รออยู่</div>${d.tasks.filter(t => t.status === "open").map(t => `<div class="fl"><div class="t"><b>${{ review: "ตรวจทาน", approve: "อนุมัติ", sign: "ลงนาม" }[t.kind] || t.kind} · ${esc(t.assignee_name || "ผู้มีสิทธิ์คนใดก็ได้")}</b><span>${t.due_date ? "กำหนด " + thDate(t.due_date) + " · " : ""}มอบหมายโดย ${esc(t.created_by_name || "—")}${t.note ? " · " + esc(t.note) : ""}</span></div>
@@ -821,6 +821,9 @@ async function renderSettings() {
     ${w && can("data.doc.confidential") ? `<div class="card card-b" style="margin-bottom:16px"><div class="card-t">สัญญาจ้างงานในทะเบียน</div>
       <p class="sp-sub" style="margin-bottom:12px">สัญญาที่ส่งลงนามตั้งแต่วันนี้ได้เลข HR อัตโนมัติ (ส่งใหม่หลังถูกส่งกลับใช้เลขเดิม · ยกเลิกสัญญา = ยกเลิกเลข · ไม่พิมพ์เลขบนตัวสัญญา)
         <br>สัญญาที่ทำก่อนหน้านี้และยังไม่มีเลข: <b id="ecN">…</b> ฉบับ</p><button class="btn btn-s" id="ecFill" disabled>ออกเลขให้สัญญาเดิม</button></div>` : ""}
+    ${w ? `<div class="card card-b" style="margin-bottom:16px"><div class="card-t">ใบลาออกจาก Staff Movement</div>
+      <p class="sp-sub" style="margin-bottom:12px">บันทึก Movement “Resignation” พร้อมแนบใบลาออก → ลงรับในทะเบียน (เลข RCV ประเภทใบลาออก) และคัดลอกไฟล์มาให้อัตโนมัติ · เปลี่ยนไฟล์ภายหลัง = เพิ่มไฟล์ในเรื่องเดิม
+        <br>Movement ลาออกที่แนบไฟล์ไว้แล้วแต่ยังไม่อยู่ในทะเบียน: <b id="mvN">…</b> รายการ</p><button class="btn btn-s" id="mvFill" disabled>ลงรับรายการเดิม</button></div>` : ""}
     ${w ? `<div class="card card-b"><div class="card-t">นำเข้าประวัติจาก Excel เดิม</div><p class="sp-sub" style="margin-bottom:12px">ไฟล์ “01 ลำดับเอกสาร HR.xlsx” (ชีต HR และ Memo) · นำเข้าซ้ำได้ เลขที่มีแล้วข้าม</p>
       <label class="btn btn-s" style="cursor:pointer">${IC.up}เลือกไฟล์ Excel<input type="file" id="dxImp" accept=".xlsx,.xls" hidden></label></div>` : ""}`;
   $("#rlSave")?.addEventListener("click", async () => {
@@ -838,6 +841,11 @@ async function renderSettings() {
   });
   document.querySelectorAll("[data-pol]").forEach(b => b.onclick = () => policyForm(pol.find(p => p.id === +b.dataset.pol)));
   if ($("#ecN")) rpc("dms_contract_pending").then(x => { $("#ecN").textContent = x.count; $("#ecFill").disabled = !x.count; }).catch(() => { $("#ecN").textContent = "—"; });
+  if ($("#mvN")) rpc("dms_movement_pending").then(x => { $("#mvN").textContent = x.count; $("#mvFill").disabled = !x.count; }).catch(() => { $("#mvN").textContent = "—"; });
+  $("#mvFill")?.addEventListener("click", async () => {
+    if (!confirm(`ลงรับใบลาออกจาก Movement ${$("#mvN").textContent} รายการ (ออกเลข RCV เรียงตามวันที่บันทึก และคัดลอกไฟล์)? เลขที่ออกแล้วลบไม่ได้`)) return;
+    try { const x = await rpc("dms_movement_backfill"); toast(`ลงรับแล้ว ${x.count} รายการ`, "ok"); await loadAll(); renderSettings(); } catch (e) { fail(e); }
+  });
   $("#ecFill")?.addEventListener("click", async () => {
     if (!confirm(`ออกเลข HR ให้สัญญาจ้างเดิม ${$("#ecN").textContent} ฉบับ เรียงตามวันที่สัญญา? เลขที่ออกแล้วลบไม่ได้ (ยกเลิกได้)`)) return;
     try { const x = await rpc("dms_contract_backfill"); toast(`ออกเลขให้ ${x.count} ฉบับแล้ว`, "ok"); await loadAll(); renderSettings(); } catch (e) { fail(e); }

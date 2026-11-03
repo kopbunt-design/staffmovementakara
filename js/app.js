@@ -1662,6 +1662,10 @@ function openMovModal(entry=null) {
     // ยังไม่ได้รัน sql/schema_movement_joblevel.sql → บันทึกรายการได้ก่อน (ไม่มีคอลัมน์ job_level) แต่ยังอัปเดตระดับพนักงานให้
     if(error && /job_level/.test(error.message)){ const { job_level, ...rest } = data; ({ error } = await write(rest)); if(!error) toast("บันทึกแล้ว — แต่ยังไม่ได้เก็บ Job Level ในรายการนี้ (รัน sql/schema_movement_joblevel.sql)","info"); }
     if(error){ toast("บันทึกไม่สำเร็จ: "+error.message,"error"); return; }
+    // ใบลาออกที่แนบมา → ลงรับในทะเบียนสารบรรณ (/docs) อัตโนมัติ (ครั้งเดียวต่อรายการ · user 2026-11-03)
+    if(data.type==="Resignation" && data.attachment_path){
+      supabase.rpc("dms_from_movement",{ p_path: data.attachment_path }).then(({data:x})=>{ if(x?.doc_no) toast(`ลงรับใบลาออกในสารบรรณแล้ว · ${x.doc_no}`,"info"); });
+    }
     if(defer){
       // แก้รายการที่ทะเบียนเปลี่ยนไปก่อนแล้ว → ทะเบียนกลับเป็นหน่วยงานเดิม รอวันที่มีผล
       const e = allEmployees.find(x=>x.emp_code===empCode);

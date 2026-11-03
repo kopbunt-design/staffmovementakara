@@ -66,6 +66,7 @@ CREATE TABLE role_permissions (role_key TEXT, perm_key TEXT, PRIMARY KEY (role_k
 CREATE TABLE hr_letters (id INTEGER PRIMARY KEY, doc_id INT, status TEXT, approved_at TEXT);
 CREATE TABLE paf_forms (id INTEGER PRIMARY KEY, doc_id INT, status TEXT, approved_at TEXT);
 CREATE TABLE employees (emp_code TEXT PRIMARY KEY, end_date TEXT);
+CREATE TABLE movements (id TEXT PRIMARY KEY, emp_code TEXT, name TEXT, type TEXT, date TEXT, attachment_path TEXT, attachment_name TEXT, created_at TEXT);
 CREATE TABLE emp_contracts (id INTEGER PRIMARY KEY, status TEXT, contract_date TEXT, title_th TEXT, name_th TEXT, name_en TEXT,
   position_th TEXT, position_en TEXT, emp_code TEXT, signed_at TEXT, witnessed_at TEXT);
 """
@@ -557,12 +558,46 @@ def t_types_contract():
     ok(cn.execute("SELECT status, void_reason FROM doc_register WHERE id = ?", (d,)).fetchone() == ("void", "ยกเลิกสัญญาจ้าง"), "ยกเลิกสัญญา → เลขถูกยกเลิก")
 
 
+def t_resign_paf():
+    cn = fresh_db()
+    stub_rpc(cn)
+    hr = R(cn, "u-hr", HR | {"data.movement.create"})
+    copied = []
+    dms.COPY_BLOB = lambda src, dst: copied.append((src, dst)) or (1234, "application/pdf")
+    cn.execute("INSERT INTO movements VALUES ('m-1', 'AKR1', 'สมหญิง ลาออก', 'Resignation', '2026-12-01', 'AKR1/1-letter.pdf', 'ใบลาออก สมหญิง.pdf', '2026-11-03T03:00:00+00:00')")
+    cn.execute("INSERT INTO movements VALUES ('m-2', 'AKR2', 'โอน', 'Transfer', '2026-12-01', 'AKR2/x.pdf', 'x.pdf', '2026-11-03')")
+    cn.commit()
+    ok(call(hr, "dms_movement_pending")["count"] == 1, "นับเฉพาะ Movement ลาออกที่มีไฟล์")
+    x = call(hr, "dms_from_movement", p_path="AKR1/1-letter.pdf")
+    ok(x["doc_no"].startswith("IN-"), f"ได้เลขรับ {x}")
+    d = call(hr, "dms_doc", p_doc_id=x["doc_id"])
+    row = cn.execute("SELECT type_label, sender, person_name, emp_code FROM doc_register WHERE id = ?", (x["doc_id"],)).fetchone()
+    ok(row[0] == "ใบลาออก" and row[1] == "สมหญิง ลาออก", f"ประเภทใบลาออก จากพนักงาน {row}")
+    ok(d["meta"]["stage"] == "closed" and d["file_state"] == "complete" and d["files"][0]["kind"] == "received", "ลงรับ + ไฟล์ + ปิดเรื่อง (ดำเนินการใน Movement แล้ว)")
+    ok(copied and copied[0][0] == "AKR1/1-letter.pdf" and copied[0][1].startswith(f"{x['doc_id']}/"), "คัดลอกไฟล์ไปที่เก็บของสารบรรณ")
+    ok(call(hr, "dms_from_movement", p_path="AKR1/1-letter.pdf")["doc_id"] == x["doc_id"] and len(copied) == 1, "บันทึกซ้ำไม่ออกเลขใหม่/ไม่คัดลอกซ้ำ")
+    cn.execute("UPDATE movements SET attachment_path = 'AKR1/2-new.pdf', attachment_name = 'ใบลาออกฉบับแก้.pdf' WHERE id = 'm-1'"); cn.commit()
+    ok(call(hr, "dms_from_movement", p_path="AKR1/2-new.pdf")["doc_id"] == x["doc_id"] and len(call(hr, "dms_doc", p_doc_id=x["doc_id"])["files"]) == 2,
+       "เปลี่ยนไฟล์ = เพิ่มไฟล์ในเรื่องเดิม")
+    ok(call(hr, "dms_from_movement", p_path="AKR2/x.pdf") is None, "Movement ประเภทอื่นไม่ลงรับ")
+    ok(call(hr, "dms_movement_pending")["count"] == 0, "ไม่มีค้าง")
+    dms.COPY_BLOB = None
+    # ยกเลิกเลข PAF ในสารบรรณ → PAF ถูกยกเลิกด้วย
+    p = add_doc(cn, series="HR", seq=50, label="Personnel Action Form")
+    cn.execute("INSERT INTO paf_forms (id, doc_id, status, approved_at) VALUES (1, ?, 'approved', '2026-10-16T04:46:00+00:00')", (p,)); cn.commit()
+    pm = call(hr, "dms_doc", p_doc_id=p)
+    ok(pm["meta"]["stage"] == "issued" and "signing" not in [s for s in ("signing",) if pm["rule"]["need_sign"]], "PAF ไม่มีขั้นลงนาม (อนุมัติเป็นบันทึกในระบบ)")
+    call(hr, "dms_act", p_doc_id=p, p_action="cancel", p_reason="เอกสารทดสอบ เลขซ้ำกับฉบับกระดาษ")
+    ok(cn.execute("SELECT status FROM paf_forms WHERE id = 1").fetchone()[0] == "cancelled" and
+       cn.execute("SELECT status FROM doc_register WHERE id = ?", (p,)).fetchone()[0] == "void", "ยกเลิกเลข PAF → PAF ยกเลิกด้วย เลขเป็น void")
+
+
 def ids_of(r):
     return {x["id"] for x in dms.FUNCS["dms_overview"](r)["docs"]}
 
 
 if __name__ == "__main__":
-    for t in (t_core, t_concurrent_numbers, t_flow, t_official, t_access, t_misc, t_retention, t_types_contract):
+    for t in (t_core, t_concurrent_numbers, t_flow, t_official, t_access, t_misc, t_retention, t_types_contract, t_resign_paf):
         try:
             t()
         except Exception:

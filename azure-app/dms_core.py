@@ -102,7 +102,7 @@ TYPE_DEFAULTS = [
     ("ฝึกงาน",          {"sensitivity": "personal"}),
     ("ประกาศ",          {"need_review": True, "need_delivery": False}),
     ("บันทึกภายใน",     {"flow": "internal", "need_sign": False, "need_delivery": False}),
-    ("Personnel Action Form", {"sensitivity": "salary", "need_ack": True}),
+    ("Personnel Action Form", {"sensitivity": "salary", "need_sign": False, "need_ack": True}),   # อนุมัติเป็นบันทึกในระบบ ไม่มีลายเซ็น
     # เพิ่ม 2026-11-03 (user: ตรวจประเภทแล้วให้เพิ่ม)
     ("สัญญาจ้าง",        {"sensitivity": "salary", "need_approval": False, "need_ack": True}),   # ลงนามในหน้าสัญญาจ้าง · พนักงานเซ็นรับบนกระดาษ
     ("หน่วยงานราชการ",   {}),

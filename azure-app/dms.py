@@ -58,6 +58,8 @@ _T = {
     # เลขในทะเบียนที่ออกให้เอกสารจากโมดูลที่ไม่มีคอลัมน์ doc_id ของตัวเอง (สัญญาจ้าง)
     "doc_source_links": [("doc_id", "bigpk"), ("kind", "s20"), ("source_id", "big"), ("created_at", "ts")],
     "dms_migrations": [("name", "s100pk"), ("at", "ts"), ("detail", "s1000")],
+    # ใบลาออกที่ลงรับอัตโนมัติจาก Staff Movement (movement id เป็น uuid)
+    "doc_mov_links": [("doc_id", "bigpk"), ("movement_id", "uuid"), ("path", "s500"), ("created_at", "ts")],
 }
 _IDX = [("doc_people", "doc_id"), ("doc_tasks", "doc_id"), ("doc_events", "doc_id"), ("doc_file_meta", "doc_id"),
         ("doc_deliveries", "doc_id"), ("doc_links", "doc_id"), ("doc_disposal_items", "disposal_id")]
@@ -675,6 +677,24 @@ def _void_number(r, doc, reason):
         r.upd("doc_register", doc, vals)
     else:
         _update(r, "doc_register", "id = ?", (doc["id"],), vals)
+    # PAF ที่ใช้เลขนี้ → ยกเลิกด้วย (หน้า PAF ยกเลิกฉบับที่อนุมัติแล้วไม่ได้) · ไม่ย้อน Movement ที่สร้างไปแล้ว
+    f = _one(r, "SELECT id, status FROM {t:paf_forms} WHERE doc_id = ? AND status <> 'cancelled'", doc["id"]) if _has_table(r, "paf_forms") else None
+    if f:
+        if hasattr(r, "upd"):
+            r.flag("paf.flow")
+            r.upd("paf_forms", r.row("paf_forms", "id = ?", f["id"]), {"status": "cancelled", "cancel_reason": ("ยกเลิกเลขในสารบรรณ: " + (reason or ""))[:500],
+                                                                     "cur_step": None, "updated_at": _now()})
+            r.ins("paf_log", {"paf_id": f["id"], "action": "cancel", "actor_name": _name(r), "remark": (reason or "")[:500], "via": "app"})
+        else:
+            _update(r, "paf_forms", "id = ?", (f["id"],), {"status": "cancelled"})
+
+
+def _has_table(r, name):
+    try:
+        _q(r, f"SELECT 1 AS x FROM {{t:{name}}} WHERE 1 = 0")
+        return True
+    except Exception:
+        return False
 
 
 def _mark_official(r, doc_id, f, me):
@@ -1336,3 +1356,103 @@ def contract_cancelled(cur, ctx, old, new):
            row[0], _now(), str(ctx.uid) if ctx.uid else None, "ระบบ", "void", "ยกเลิกสัญญาจ้าง", f"สัญญาจ้าง #{new['id']} ถูกยกเลิก")
     except Exception:
         pass
+
+
+# ================================================================================ ใบลาออกจาก Staff Movement → ทะเบียนรับ (user 2026-11-03)
+COPY_BLOB = None       # เทสใส่ตัวคัดลอกปลอม · ปกติ = storage.get("movement-docs") → storage.put("doc-files")
+RESIGN_TYPE = "ใบลาออก"
+
+
+def _copy_blob(src_path, dst_path):
+    if COPY_BLOB:
+        return COPY_BLOB(src_path, dst_path)
+    import storage
+    data, ctype = storage.get("movement-docs", src_path)
+    storage.put("doc-files", dst_path, data, ctype, False)
+    return len(data), ctype
+
+
+def _ascii(name):
+    import re
+    m = re.match(r"^(.*?)(\.[A-Za-z0-9]{1,8})?$", name or "file")
+    base = re.sub(r"_+", "_", re.sub(r"[^\w.-]+", "_", (m.group(1) or "file").encode("ascii", "ignore").decode())).strip("_")[:60] or "file"
+    return base + (m.group(2) or "").lower()
+
+
+def register_resignation(r, mv):
+    """Movement ลาออกที่แนบไฟล์ → ลงรับในทะเบียน (ชุด IN ประเภทใบลาออก) + คัดลอกไฟล์มา · ทำครั้งเดียวต่อรายการ
+    เปลี่ยนไฟล์ใน Movement ภายหลัง → เพิ่มไฟล์ใหม่ในเรื่องเดิม ไม่ออกเลขใหม่"""
+    path = mv.get("attachment_path")
+    if mv.get("type") != "Resignation" or not path:
+        return None
+    link = _one(r, "SELECT doc_id, path FROM {t:doc_mov_links} WHERE movement_id = ?", str(mv["id"]))
+    me = _name(r)
+    if link and link["path"] == path:
+        return link["doc_id"]
+    if link:
+        doc_id = link["doc_id"]
+    else:
+        import rpc
+        t = _one(r, "SELECT id FROM {t:doc_types} WHERE series_code = 'IN' AND label = ?", RESIGN_TYPE)
+        got = str(mv.get("created_at") or "")[:10] or C.today_bkk().isoformat()
+        d = rpc._doc_issue(r, "IN", 1, t["id"] if t else None, f"ใบลาออก · {mv.get('name') or mv.get('emp_code') or ''}".strip(" ·"),
+                           got, None, f"ลงรับจาก Staff Movement · มีผล {mv.get('date') or '—'}",
+                           [{"emp_code": mv.get("emp_code"), "person_name": mv.get("name")}])[0]
+        doc_id = d["id"]
+        _update(r, "doc_register", "id = ?", (doc_id,), {"sender": (mv.get("name") or "")[:300] or None, "received_date": got})
+        _insert(r, "doc_mov_links", {"doc_id": doc_id, "movement_id": str(mv["id"]), "path": path, "created_at": _now()})
+        doc = _one(r, "SELECT * FROM {t:doc_register} WHERE id = ?", doc_id)
+        meta = _materialize(r, doc, None)
+        _set_meta(r, doc_id, meta["ver"], {"stage": "closed", "closed_at": _now(), "owner_id": str(r.uid) if r.uid else None,
+                                          "owner_name": me, "sensitivity": "personal"})
+        _event(r, doc_id, "from_movement", "registered", "closed", None, "ลงรับจาก Staff Movement (ดำเนินการลาออกแล้วในทะเบียนพนักงาน)")
+    name = mv.get("attachment_name") or path.rsplit("/", 1)[-1]
+    dst = f"{doc_id}/{int(datetime.now().timestamp() * 1000)}-{_ascii(name)}"
+    size, ctype = _copy_blob(path, dst)
+    fid = _insert(r, "doc_files", {"doc_id": doc_id, "name": name[:300], "path": dst, "size": size, "mime": ctype,
+                                   "uploaded_by": str(r.uid) if r.uid else None, "uploaded_name": me, "uploaded_at": _now()})
+    _file_meta(r, doc_id, fid, {"kind": "received", "set_by_name": me, "set_at": _now()})
+    if link:
+        _update(r, "doc_mov_links", "doc_id = ?", (doc_id,), {"path": path})
+        _event(r, doc_id, "file_kind", None, None, None, f"ไฟล์ใหม่จาก Staff Movement: {name}")
+    return doc_id
+
+
+@fn
+def dms_from_movement(r, p_path):
+    if not (r.has_perm("data.movement.create") or r.has_perm("data.docregister.write")):
+        raise C.Denied("ไม่มีสิทธิ์")
+    mv = _one(r, "SELECT * FROM {t:movements} WHERE attachment_path = ?", p_path)
+    if not mv:
+        raise C.Denied("ไม่พบรายการ Movement")
+    d = register_resignation(r, mv)
+    if not d:
+        return None
+    x = _one(r, "SELECT doc_no FROM {t:doc_register} WHERE id = ?", d)
+    return {"doc_id": d, "doc_no": x and x["doc_no"]}
+
+
+def _mov_pending(r):
+    return _q(r, """SELECT * FROM {t:movements} m WHERE m.type = 'Resignation' AND m.attachment_path IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM {t:doc_mov_links} l WHERE l.movement_id = m.id) ORDER BY m.created_at""")
+
+
+@fn
+def dms_movement_pending(r):
+    if not r.has_perm("page.docregister"):
+        raise C.Denied("ไม่มีสิทธิ์")
+    try:
+        return {"count": len(_mov_pending(r))}
+    except Exception:
+        return {"count": 0}
+
+
+@fn
+def dms_movement_backfill(r):
+    if not r.has_perm("data.docregister.write"):
+        raise C.Denied("ไม่มีสิทธิ์ออกเลข")
+    n = 0
+    for mv in _mov_pending(r):
+        if register_resignation(r, mv):
+            n += 1
+    return {"count": n}
