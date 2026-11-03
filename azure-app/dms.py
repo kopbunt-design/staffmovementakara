@@ -1407,7 +1407,7 @@ def register_resignation(r, mv):
                                           "owner_name": me, "sensitivity": "personal"})
         _event(r, doc_id, "from_movement", "registered", "closed", None, "ลงรับจาก Staff Movement (ดำเนินการลาออกแล้วในทะเบียนพนักงาน)")
     name = mv.get("attachment_name") or path.rsplit("/", 1)[-1]
-    dst = f"{doc_id}/{int(datetime.now().timestamp() * 1000)}-{_ascii(name)}"
+    dst = f"{doc_id}/{int(datetime.now().timestamp() * 1000)}-{uuid.uuid4().hex[:6]}-{_ascii(name)}"   # ชื่อไทยกลายเป็น "file" — กันชื่อซ้ำ
     size, ctype = _copy_blob(path, dst)
     fid = _insert(r, "doc_files", {"doc_id": doc_id, "name": name[:300], "path": dst, "size": size, "mime": ctype,
                                    "uploaded_by": str(r.uid) if r.uid else None, "uploaded_name": me, "uploaded_at": _now()})
@@ -1456,3 +1456,42 @@ def dms_movement_backfill(r):
         if register_resignation(r, mv):
             n += 1
     return {"count": n}
+
+
+# ================================================================================ ลบเลขทดสอบ (user 2026-11-03: PAF-001/002 เป็นเลขทดสอบ ชนกับเลขกระดาษ)
+@fn
+def dms_purge(r, p_doc_id, p_reason, p_confirm_no):
+    """ลบเลขออกจากทะเบียนจริง ๆ — ข้อยกเว้นของกติกา "เลขไม่ลบ" ใช้กับเลขทดสอบเท่านั้น:
+    Admin · เลขต้องยกเลิกแล้ว · ไม่มีไฟล์ · ไม่ผูกกับหนังสือ HR / สัญญาจ้าง / Movement · PAF ที่ผูกต้องยกเลิกแล้ว (ลบตามไปด้วย)
+    ประวัติระดับระบบเก็บว่าใครลบเลขอะไรเมื่อไร · ถ้าเป็นเลขท้ายสุดของชุด+ปี เลขนี้จะถูกออกใหม่ได้"""
+    if getattr(getattr(r, "ctx", None), "role", None) != "admin":
+        raise C.Denied("ลบเลขได้เฉพาะ Admin")
+    if not (p_reason or "").strip():
+        raise C.Denied("ต้องระบุเหตุผล")
+    doc = _one(r, "SELECT * FROM {t:doc_register} WHERE id = ?", int(p_doc_id))
+    if not doc or doc["doc_no"] != (p_confirm_no or "").strip():
+        raise C.Denied("พิมพ์เลขที่ให้ตรงเพื่อยืนยัน")
+    if doc["status"] != "void":
+        raise C.Denied("ยกเลิกเลขก่อน แล้วจึงลบ")
+    if _one(r, "SELECT COUNT(*) AS n FROM {t:doc_files} WHERE doc_id = ?", doc["id"])["n"]:
+        raise C.Denied("เลขนี้มีไฟล์แนบ — ไม่ใช่เลขทดสอบ ลบไม่ได้")
+    if _has_table(r, "hr_letters") and _one(r, "SELECT COUNT(*) AS n FROM {t:hr_letters} WHERE doc_id = ?", doc["id"])["n"]:
+        raise C.Denied("เลขนี้ผูกกับหนังสือในระบบออกหนังสือ — ลบไม่ได้")
+    if _one(r, "SELECT COUNT(*) AS n FROM {t:doc_source_links} WHERE doc_id = ?", doc["id"])["n"] or \
+       _one(r, "SELECT COUNT(*) AS n FROM {t:doc_mov_links} WHERE doc_id = ?", doc["id"])["n"]:
+        raise C.Denied("เลขนี้ผูกกับสัญญาจ้าง/Movement — ลบไม่ได้")
+    pafs = _q(r, "SELECT id, status FROM {t:paf_forms} WHERE doc_id = ?", doc["id"]) if _has_table(r, "paf_forms") else []
+    if any(p["status"] != "cancelled" for p in pafs):
+        raise C.Denied("PAF ที่ใช้เลขนี้ยังไม่ถูกยกเลิก")
+    for p in pafs:
+        for t in ("paf_tokens", "paf_log"):
+            if _has_table(r, t):
+                _exec(r, f"DELETE FROM {{t:{t}}} WHERE paf_id = ?", p["id"])
+        _exec(r, "DELETE FROM {t:paf_forms} WHERE id = ?", p["id"])
+    for t in ("doc_meta", "doc_people", "doc_tasks", "doc_deliveries", "doc_file_meta", "doc_events"):
+        _exec(r, f"DELETE FROM {{t:{t}}} WHERE doc_id = ?", doc["id"])
+    _exec(r, "DELETE FROM {t:doc_links} WHERE doc_id = ? OR other_id = ?", doc["id"], doc["id"])
+    _exec(r, "DELETE FROM {t:doc_access_log} WHERE doc_id = ?", doc["id"])
+    _exec(r, "DELETE FROM {t:doc_register} WHERE id = ?", doc["id"])
+    _event(r, None, "purge", None, None, p_reason, f"ลบเลขทดสอบ {doc['doc_no']}" + (f" (+ PAF #{', '.join(str(p['id']) for p in pafs)})" if pafs else ""))
+    return {"ok": True, "doc_no": doc["doc_no"]}

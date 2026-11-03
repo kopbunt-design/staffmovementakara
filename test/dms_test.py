@@ -60,6 +60,7 @@ CREATE TABLE doc_register (id INTEGER PRIMARY KEY AUTOINCREMENT, series_code TEX
   UNIQUE (series_code, year, seq));
 CREATE TABLE doc_files (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INT, name TEXT, path TEXT UNIQUE, size INT, mime TEXT, note TEXT,
   uploaded_by TEXT, uploaded_name TEXT, uploaded_at TEXT);
+CREATE TABLE doc_access_log (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INT, file_id INT, file_name TEXT, action TEXT, user_id TEXT, user_name TEXT, at TEXT);
 CREATE TABLE user_roles (user_id TEXT PRIMARY KEY, name TEXT, email TEXT, role TEXT, created_at TEXT);
 CREATE TABLE permissions (key TEXT PRIMARY KEY, category TEXT, label TEXT, description TEXT, sort_order INT);
 CREATE TABLE role_permissions (role_key TEXT, perm_key TEXT, PRIMARY KEY (role_key, perm_key));
@@ -590,6 +591,16 @@ def t_resign_paf():
     call(hr, "dms_act", p_doc_id=p, p_action="cancel", p_reason="เอกสารทดสอบ เลขซ้ำกับฉบับกระดาษ")
     ok(cn.execute("SELECT status FROM paf_forms WHERE id = 1").fetchone()[0] == "cancelled" and
        cn.execute("SELECT status FROM doc_register WHERE id = ?", (p,)).fetchone()[0] == "void", "ยกเลิกเลข PAF → PAF ยกเลิกด้วย เลขเป็น void")
+    # ลบเลขทดสอบ (Admin)
+    ok(raises(lambda: call(hr, "dms_purge", p_doc_id=p, p_reason="ทดสอบ", p_confirm_no="HR-050-2026"), "Admin"), "คนที่ไม่ใช่ Admin ลบไม่ได้")
+    adm = R(cn, "u-adm", HR); adm.ctx = types.SimpleNamespace(role="admin")
+    live = add_doc(cn, series="HR", seq=51)
+    ok(raises(lambda: call(adm, "dms_purge", p_doc_id=live, p_reason="x", p_confirm_no="HR-051-2026"), "ยกเลิกเลขก่อน"), "เลขที่ยังใช้อยู่ลบไม่ได้")
+    ok(raises(lambda: call(adm, "dms_purge", p_doc_id=p, p_reason="x", p_confirm_no="HR-999"), "พิมพ์เลขที่"), "ต้องพิมพ์เลขให้ตรง")
+    call(adm, "dms_purge", p_doc_id=p, p_reason="เลขทดสอบ", p_confirm_no="HR-050-2026")
+    ok(not cn.execute("SELECT 1 FROM doc_register WHERE id = ?", (p,)).fetchone() and not cn.execute("SELECT 1 FROM paf_forms WHERE id = 1").fetchone(),
+       "ลบเลข + PAF ทดสอบแล้ว")
+    ok(cn.execute("SELECT detail FROM doc_events WHERE action = 'purge'").fetchone()[0].startswith("ลบเลขทดสอบ HR-050-2026"), "มีประวัติการลบ")
 
 
 def ids_of(r):

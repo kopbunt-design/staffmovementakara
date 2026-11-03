@@ -61,7 +61,7 @@ const ACT_PRIMARY = ["submit", "review_ok", "approve", "sign", "issue", "accept"
 const EV_LABEL = { migrate: "เริ่มติดตามในระบบสารบรรณ", update: "แก้ข้อมูลเรื่อง", people: "แก้ผู้เกี่ยวข้อง", file_kind: "ระบุชนิดไฟล์",
   supersede_file: "แทนที่ฉบับจริง", superseded: "ถูกแทนที่ด้วยฉบับแก้ไข", revision_of: "สร้างเป็นฉบับแก้ไข", link: "เชื่อมโยงเอกสาร", unlink: "ลบการเชื่อมโยง",
   delegate: "มอบหมายแทน", deliver: "บันทึกการส่ง", ack: "บันทึกรับทราบ", deliver_cancel: "ยกเลิกรายการส่ง", hold: "ระงับทำลาย", unhold: "ปลดการระงับ",
-  dispose_propose: "เสนอทำลาย", register_contract: "ออกเลขให้สัญญาจ้าง", from_movement: "ลงรับจาก Staff Movement", dispose: "ทำลาย", edit: "แก้ทะเบียน", void: "ยกเลิกเลข", export: "Export", retention_save: "บันทึกนโยบายอายุเก็บ",
+  dispose_propose: "เสนอทำลาย", register_contract: "ออกเลขให้สัญญาจ้าง", from_movement: "ลงรับจาก Staff Movement", purge: "ลบเลขทดสอบ", dispose: "ทำลาย", edit: "แก้ทะเบียน", void: "ยกเลิกเลข", export: "Export", retention_save: "บันทึกนโยบายอายุเก็บ",
   rule_save: "ตั้งค่าขั้นตอนตามประเภท", dispose_decide: "พิจารณารายการทำลาย", ...ACT_LABEL };
 
 const S = { user: null, perms: new Set(), series: [], types: [], rows: [], files: new Map(), sources: new Map(), emps: [], ov: new Map(),
@@ -91,6 +91,7 @@ async function boot() {
   S.user = session.user;
   const { data: perms } = await supabase.rpc("my_permissions");
   S.perms = new Set((perms || []).map(p => typeof p === "string" ? p : p.perm_key || p.key));
+  try { const ma = await (await fetch("/api/me/access", { credentials: "same-origin" })).json(); S.isAdmin = ma?.role === "admin" || ma?.admin === true; } catch {}
   const name = S.user.user_metadata?.full_name || S.user.email || "";
   const role = [canWrite() ? "HR · ออกเลขได้" : "ดูอย่างเดียว", can("doc.approve") && "อนุมัติ", can("doc.sign") && "ลงนาม", can("data.doc.confidential") && "ดูเอกสารลับ"].filter(Boolean).join(" · ");
   $("#spUser").innerHTML = `<div class="sp-av">${esc(name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase())}</div><div><b>${esc(name)}</b><span>${esc(role)}</span></div>`;
@@ -420,12 +421,18 @@ async function openDoc(r) {
   const actionBar = m => {
     const acts = d.actions.filter(a => !(a === "register_official" && m.stage === "issued"));
     const prim = acts.filter(a => ACT_PRIMARY.includes(a)), rest = acts.filter(a => !ACT_PRIMARY.includes(a));
-    return `${rest.map(a => `<button class="btn ${["cancel", "reject"].includes(a) ? "btn-d" : "btn-s"}" data-act="${a}">${ACT_LABEL[a]}</button>`).join("")}<span style="flex:1"></span>
+    const purge = m.stage === "cancelled" && S.isAdmin && !d.files.length ? `<button class="btn btn-d" data-purge>ลบเลขทดสอบ</button>` : "";
+    return `${purge}${rest.map(a => `<button class="btn ${["cancel", "reject"].includes(a) ? "btn-d" : "btn-s"}" data-act="${a}">${ACT_LABEL[a]}</button>`).join("")}<span style="flex:1"></span>
       <button class="btn btn-g" data-cp>คัดลอกเลข</button>${prim.map(a => `<button class="btn btn-p" data-act="${a}">${a === "submit" ? `ส่งต่อ → ${STAGE[flowAfter(m.stage, d.rule)]?.[0] || ""}` : ACT_LABEL[a]}</button>`).join("")}`;
   };
   const wireTab = (m, inn, w) => {
     const g = s => el.querySelector(s);
     g("[data-cp]")?.addEventListener("click", () => copy(r.doc_no));
+    g("[data-purge]")?.addEventListener("click", async () => {
+      const no = prompt(`ลบ ${r.doc_no} ออกจากทะเบียนถาวร (ใช้กับเลขทดสอบเท่านั้น)\nถ้าเป็นเลขท้ายสุดของชุด เลขนี้จะถูกออกใหม่ได้\n\nพิมพ์เลขที่เพื่อยืนยัน:`); if (!no) return;
+      const why = prompt("เหตุผล:", "เลขทดสอบ"); if (!why) return;
+      try { await rpc("dms_purge", { p_doc_id: r.id, p_reason: why, p_confirm_no: no }); toast(`ลบ ${r.doc_no} แล้ว`, "ok"); el.remove(); await loadAll(); rerender(); } catch (e) { fail(e); }
+    });
     g("[data-ed]")?.addEventListener("click", () => editForm(r, async () => { await after(); }));
     g("[data-meta]")?.addEventListener("click", () => metaForm(r, d, run));
     g("[data-people]")?.addEventListener("click", () => peopleForm(r, d, run));
