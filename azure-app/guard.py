@@ -56,11 +56,20 @@ _loaded = 0.0
 _tables_ok = False
 
 
+AFD_ID = (os.environ.get("AFD_ID") or "").strip().lower()   # Front Door profile id (X-Azure-FDID) — App Setting, optional
+
+
 def client_ip(request) -> str:
     """App Service's front end appends the real client to X-Forwarded-For ("1.2.3.4:5678"); anything before it
-    was sent by the client and can be forged, so take the last entry."""
+    was sent by the client and can be forged, so take the last entry.
+    Behind Azure Front Door (IT, 2026-11-03: ep-akarahr2-….azurefd.net, Thailand only) that last entry is a Front Door
+    edge server shared by many users — banning it would lock everyone out — so take X-Azure-ClientIP, which Front Door
+    sets itself. Trusted only with X-Azure-FDID (matching App Setting AFD_ID when set); once the old *.azurewebsites.net
+    host accepts only Front Door traffic (access restriction on the FDID), nobody can send these headers directly."""
+    fdid = (request.headers.get("x-azure-fdid") or "").strip().lower()
+    afd = request.headers.get("x-azure-clientip") if fdid and (not AFD_ID or fdid == AFD_ID) else None
     xff = request.headers.get("x-forwarded-for") or ""
-    ip = xff.split(",")[-1].strip() if xff else (request.client.host if request.client else "")
+    ip = afd.strip() if afd else xff.split(",")[-1].strip() if xff else (request.client.host if request.client else "")
     if ip.startswith("["):                       # [ipv6]:port
         ip = ip[1:ip.find("]")] if "]" in ip else ip
     elif ip.count(":") == 1:                     # ipv4:port

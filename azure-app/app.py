@@ -66,6 +66,15 @@ async def security_guard(request: Request, call_next):
     return resp
 
 
+# Address users must use (IT, 2026-11-03): Azure Front Door, Thailand only — the *.azurewebsites.net host will be closed.
+# Links in e-mails always use it; App Setting PUBLIC_URL overrides (e.g. a custom domain later).
+PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "https://ep-akarahr2-dwh8h3axhdbharbt.a01.azurefd.net").rstrip("/")
+
+
+def public_url(request: Request) -> str:
+    return PUBLIC_URL or str(request.base_url).rstrip("/").replace("http://", "https://")
+
+
 def current_user(request: Request) -> dict | None:
     """App Service Authentication puts the signed-in user in X-MS-CLIENT-PRINCIPAL (base64 JSON).
     The header is set by the platform, not the browser — App Service strips any client-sent copy."""
@@ -502,7 +511,7 @@ async def admin_security_block(request: Request):
 @api.post("/api/fn/{name}")
 async def fn_call(name: str, request: Request):
     body = await request.json() if (await request.body()) else {}
-    app_url = str(request.base_url).rstrip("/").replace("http://", "https://")
+    app_url = public_url(request)
     if name == "letter-notify":
         uid, email, _ = caller(request, need=False)
         with closing(db.connect(None, bypass=True)) as acn:
