@@ -73,7 +73,23 @@ def _doc_visible(ctx, cur, path):
     if not first.isdigit():
         return False
     r = cur.execute("SELECT confidential FROM dbo.doc_register WHERE id = ?", int(first)).fetchone()
-    return bool(r) and ctx.has_perm("page.docregister") and (not r[0] or ctx.has_perm("data.doc.confidential"))
+    if not r:
+        return False
+    import dms
+    try:
+        dms.ensure(cur)
+        m = cur.execute("SELECT sensitivity FROM dbo.doc_meta WHERE doc_id = ?", int(first)).fetchone()
+    except Exception:
+        m = None
+    return dms.C.visible(ctx.has_perm, r[0], m[0] if m else None)
+
+
+def _perm_known(cur, key):
+    """สิทธิ์ใหม่ยังไม่ถูกลงทะเบียน (ระบบสารบรรณยังไม่เคยเริ่ม) → ใช้กติกาเดิมไปก่อน ไม่ล็อกทุกคนออก"""
+    try:
+        return bool(cur.execute("SELECT 1 FROM dbo.permissions WHERE [key] = ?", key).fetchone())
+    except Exception:
+        return True
 
 
 def allowed(ctx, cur, bucket, path, op):
@@ -87,7 +103,15 @@ def allowed(ctx, cur, bucket, path, op):
     if bucket == "expense-files":
         return ctx.has_perm("page.expense" if op == "read" else "data.expense.write")
     if bucket == "doc-files":
-        return _doc_visible(ctx, cur, path) and (op == "read" or ctx.has_perm("data.docregister.write"))
+        if not _doc_visible(ctx, cur, path):
+            return False
+        if op == "read":                       # เปิด/ดาวน์โหลดไฟล์เป็นสิทธิ์แยกจากการดูรายการ (สารบรรณ 2026-11-03)
+            return ctx.has_perm("doc.files.open") or not _perm_known(cur, "doc.files.open")
+        if op == "delete":
+            import dms
+            if dms.file_locked(cur, path=path):  # ฉบับจริงที่ล็อกแล้วลบไม่ได้
+                return False
+        return ctx.has_perm("data.docregister.write")
     if bucket == "letter-assets":
         if op == "read":
             return any(ctx.has_perm(p) for p in LA_READ)

@@ -300,14 +300,15 @@ BEFORE_UPDATE = {
     "paf_forms": [paf_guard],
 }
 AFTER_UPDATE = {
-    "doc_register": [doc_void_cascade],
-    "emp_contracts": [ec_token_issue],
+    "doc_register": [doc_void_cascade, lambda c, x, o, n: __import__("dms").log_register_edit(c, x, o, n)],
+    "emp_contracts": [ec_token_issue, lambda c, x, o, n: __import__("dms").contract_cancelled(c, x, o, n)],
     "exp_invoices": [exp_token_issue],
     "payroll_period": [pr_reset_on_reupload],
     "sub_workers": [log_sub_worker_update],
     "uniform_move": [lambda c, x, o, n: (check_uniform_balance(c, x, o.get("item_id")), check_uniform_balance(c, x, n.get("item_id")))],
 }
 BEFORE_DELETE = {
+    "doc_files": [lambda c, x, o: __import__("dms").block_locked_delete(c, x, o)],
     "contract_pay_adjust": [lambda c, x, o: block_locked_run(c, x, o)],
     "contract_pay_item": [lambda c, x, o: block_locked_run(c, x, o)],
     "exp_invoice_lines": [lambda c, x, o: exp_line_guard(c, x, o)],

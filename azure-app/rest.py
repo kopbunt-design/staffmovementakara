@@ -203,7 +203,15 @@ def rule_filter(ctx, table, kind, alias=None):
     body = body.replace("dbo.auth_uid()", uid)
     q = alias if alias is not None else f"[{table}]."   # qualify outer columns — rules may contain sub-queries
     body = re.sub(r"@(\w+)", lambda m: f"{q}[{m.group(1)}]", body)
+    if table in DOC_CAT_COL:                            # สารบรรณ: หมวดลับที่ผู้ใช้ไม่มีสิทธิ์ (dms.py) — ใช้กับทุกคำสั่ง
+        import dms
+        extra = dms.hidden_filter(ctx, f"{q}[{DOC_CAT_COL[table]}]")
+        if extra:
+            body = f"({body}) AND {extra}"
     return f"({body})"
+
+
+DOC_CAT_COL = {"doc_register": "id", "doc_files": "doc_id", "doc_access_log": "doc_id"}
 
 
 def order_clause(table, req):

@@ -221,12 +221,22 @@ def doc_sources(r):
                                   FROM dbo.{table} l WHERE l.doc_id IS NOT NULL) x JOIN dbo.doc_register d ON d.id = x.doc_id WHERE x.rn = 1""")
         out += [{"doc_id": x["doc_id"], "kind": kind, "source_id": x["source_id"], "status": x["status"], "decided_at": x["decided_at"]}
                 for x in rows if doc_visible(r, x["confidential"])]
+    for doc_id, x in dms.contract_sources(r).items():
+        conf = r.val("SELECT confidential FROM dbo.doc_register WHERE id = ?", doc_id)
+        if doc_visible(r, conf):
+            out.append({"doc_id": doc_id, **x})
+    hide = dms.C.hidden_cats(r.has_perm)          # หมวดลับ (เงินเดือน/วินัย/สุขภาพ) ที่ผู้เรียกไม่มีสิทธิ์
+    if hide and out:
+        dms.ensure(r.cur)
+        cat = {x["doc_id"]: x["sensitivity"] for x in r.rows(None, "SELECT doc_id, sensitivity FROM dbo.doc_meta")}
+        out = [x for x in out if cat.get(x["doc_id"]) not in hide]
     return out
 
 
 def _doc_issue(r, p_series, p_count, p_type_id, p_subject, p_issued_date, p_ref, p_note, p_people):
     import uuid
-    issued = p_issued_date or today()
+    # วันที่ตามเวลาไทย — ตี 0–7 ของ 1 ม.ค. ต้องได้ปีใหม่ ไม่ใช่ปีเก่าตาม UTC (ลำดับเลขนับตามปีของวันที่เอกสาร)
+    issued = p_issued_date or datetime.now(timezone(timedelta(hours=7))).date().isoformat()
     y = int(str(issued)[:4])
     if not p_count or p_count < 1 or p_count > 500:
         raise E("จำนวนต้องอยู่ระหว่าง 1–500")
@@ -946,9 +956,11 @@ def ec_submit(r, p_id, p_signer, p_witness):
     if not c:
         raise E("ส่งได้เฉพาะสัญญาที่เป็นร่างหรือถูกส่งกลับ")
     r.flag("ec.deciding")
-    return r.upd("emp_contracts", c, {"status": "pending", "signer_id": p_signer, "witness_id": p_witness, "signer": None, "witness": None,
-                                      "signed_at": None, "witnessed_at": None, "reject_reason": None, "requested_by": r.uid,
-                                      "requested_email": r.email_of(r.uid), "submitted_at": now(), "updated_at": now()})
+    c = r.upd("emp_contracts", c, {"status": "pending", "signer_id": p_signer, "witness_id": p_witness, "signer": None, "witness": None,
+                                   "signed_at": None, "witnessed_at": None, "reject_reason": None, "requested_by": r.uid,
+                                   "requested_email": r.email_of(r.uid), "submitted_at": now(), "updated_at": now()})
+    dms.contract_register(r, c)        # เลขในทะเบียนสารบรรณ (ส่งครั้งแรก · ส่งใหม่ใช้เลขเดิม) — user 2026-11-03
+    return c
 
 
 @fn
@@ -1348,3 +1360,8 @@ def pr_link_decide(r, p_token, p_ok, p_remark=None):
     title = {"approved": "Payroll Register ลงนามครบแล้ว", "rejected": "Payroll Register ถูกส่งกลับ"}.get(s["status"], f"Payroll Register ผ่านขั้น {t['step']} แล้ว")
     r.notify(title, s["month"], s.get("submitted_by"), "payrollbuild")
     return {"status": s["status"], "cur_step": s.get("cur_step"), "month": s["month"]}
+
+
+# ================================================================================ ระบบสารบรรณและควบคุมเอกสาร (dms.py)
+import dms  # noqa: E402  (ต้องนำเข้าหลัง FUNCS / fn — dms ใช้ _doc_issue จากไฟล์นี้)
+FUNCS.update(dms.FUNCS)

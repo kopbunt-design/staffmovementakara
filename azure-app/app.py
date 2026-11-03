@@ -40,6 +40,18 @@ if not SITE_DIR.exists():
 api = FastAPI(title="Akara HR System", docs_url=None, redoc_url=None, openapi_url=None)
 
 
+@api.on_event("startup")
+def dms_tables():
+    """ตารางและสิทธิ์ของระบบสารบรรณ (dms.py) — สร้างตอนเริ่มเครื่อง ถ้าฐานยังไม่พร้อมก็สร้างตอนใช้ครั้งแรกแทน"""
+    try:
+        import dms
+        with closing(db.connect(None, bypass=True)) as cn:
+            dms.ensure(cn.cursor())
+            cn.commit()
+    except Exception:
+        pass
+
+
 @api.middleware("http")
 async def security_guard(request: Request, call_next):
     """Blocked IPs, request floods and repeated refusals from clients without a login (guard.py)."""
