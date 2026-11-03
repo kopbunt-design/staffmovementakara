@@ -84,11 +84,26 @@ async function fetchSession() {
     try {
       const r = await fetch("/api/auth/session", { credentials: "same-origin" });
       if (r.status === 401) return msLogin();
+      if (r.status === 403) { const j = await r.json().catch(() => ({})); if (j?.detail?.code === "not_registered") return notRegistered(j.detail.email); }
       if (r.ok) { const j = await r.json(); return j?.user ? { user: j.user, access_token: "azure" } : null; }
     } catch (_) { /* network blip — retry */ }
     await new Promise(res => setTimeout(res, 3000));
   }
   return null;
+}
+// Signed in to Microsoft but not added on User Management (only HR use the system — user 2026-11-03)
+function notRegistered(email) {
+  const esc = t => String(t || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  document.title = "ไม่มีสิทธิ์ใช้งาน · Akara HR";
+  document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F7F8FA;font-family:'IBM Plex Sans Thai','Sarabun',system-ui,sans-serif;padding:16px">
+    <div style="max-width:440px;width:100%;background:#fff;border:1px solid #E4E8EE;border-radius:16px;padding:32px;text-align:center;box-shadow:0 2px 8px -2px rgba(18,25,38,.08)">
+      <img src="/assets/logo.png" alt="Akara Resources" style="height:44px;margin-bottom:18px">
+      <h1 style="font-size:20px;margin:0 0 8px;color:#121926">บัญชีนี้ยังไม่มีสิทธิ์ใช้ระบบ HR</h1>
+      <p style="color:#4B5565;font-size:14px;line-height:1.7;margin:0 0 6px">${esc(email)}</p>
+      <p style="color:#6B7585;font-size:13.5px;line-height:1.7;margin:0 0 22px">ระบบนี้ใช้ได้เฉพาะฝ่ายบุคคล · ถ้าต้องใช้งาน ติดต่อผู้ดูแลระบบ HR ให้เพิ่มบัญชีที่หน้า User Management</p>
+      <a href="/.auth/logout?post_logout_redirect_uri=/" style="display:inline-block;background:#2B5DA8;color:#fff;border-radius:8px;padding:10px 18px;text-decoration:none;font-size:14px">ออกจากระบบ / ใช้บัญชีอื่น</a>
+    </div></div>`;
+  return new Promise(() => {});
 }
 let sessionP = null;
 const loadSession = () => sessionP ||= fetchSession();

@@ -55,8 +55,7 @@ export async function renderUsers() {
           ${appRoles.map(r=>`<option value="${esc(r.key)}" ${u.role===r.key?"selected":""}>${esc(r.label)}</option>`).join("")}
         </select></td>
         <td><span class="badge" style="color:${rc};background:${rbg};">${esc(roleLabel(u.role))}</span></td>
-        <td style="white-space:nowrap;">${!isSelf?`<button class="btn btn-secondary btn-sm" onclick="window._resetPw('${u.user_id}','${esc(u.name||u.email||"")}')">🔑 รีเซ็ตรหัสผ่าน</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._removeUser('${u.user_id}','${esc(u.name||u.email||"")}')">ลบ</button>`:""}</td>
+        <td style="white-space:nowrap;">${!isSelf?`<button class="btn btn-secondary btn-sm" style="color:var(--red);" onclick="window._removeUser('${u.user_id}','${esc(u.name||u.email||"")}')">ลบ</button>`:""}</td>
       </tr>`;
     }).join("")||`<tr><td colspan="5" class="text-center text-muted" style="padding:32px;">ยังไม่มีผู้ใช้</td></tr>`;
   };
@@ -96,14 +95,9 @@ export async function renderUsers() {
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
           <div class="form-group"><label class="form-label">ชื่อ-นามสกุล</label><input id="nu_name" class="form-control" placeholder="สมชาย ใจดี"></div>
           <div class="form-group"><label class="form-label">อีเมล *</label><input id="nu_email" class="form-control" type="email" placeholder="email@akararesources.com"></div>
-          <div class="form-group"><label class="form-label">รหัสผ่าน * (อย่างน้อย 6 ตัว)</label>
-            <div style="display:flex;gap:8px;">
-              <input id="nu_password" class="form-control" type="text" placeholder="ตั้งเองหรือกดสุ่ม" style="flex:1;">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="window._genPassword()" style="white-space:nowrap;">🎲 สุ่มรหัส</button>
-            </div>
-          </div>
+
           <div class="form-group"><label class="form-label">Role</label><select id="nu_role" class="form-control"><option value="user">User</option><option value="hr">HR</option><option value="admin">Admin</option></select></div>
-          <div style="padding:12px;background:var(--blue-light);border-radius:8px;font-size:12px;color:var(--blue-dark);line-height:1.6;">ระบบจะสร้างบัญชีให้ทันที กรุณาส่งอีเมลและรหัสผ่านนี้ให้ผู้ใช้เพื่อเข้าสู่ระบบ</div>
+          <div style="padding:12px;background:var(--blue-light);border-radius:8px;font-size:12px;color:var(--blue-dark);line-height:1.6;">ใช้อีเมลบริษัท (@akararesources.com) · ผู้ใช้เข้าด้วยบัญชี Microsoft ของตัวเอง ไม่ต้องตั้งรหัสผ่าน · <b>เฉพาะคนที่อยู่ในรายชื่อนี้เท่านั้นที่เข้าระบบได้</b></div>
           <div id="nu_err" style="color:var(--red);font-size:12px;"></div>
         </div>
         <div class="modal-footer">
@@ -122,18 +116,19 @@ export async function renderUsers() {
     window._saveNewUser=async()=>{
       const name=document.getElementById("nu_name").value.trim();
       const email=document.getElementById("nu_email").value.trim();
-      const password=document.getElementById("nu_password").value;
+
       const role=document.getElementById("nu_role").value;
       const errEl=document.getElementById("nu_err");
       errEl.textContent="";
       if(!email){ errEl.textContent="กรุณากรอกอีเมล"; return; }
-      if(!password||password.length<6){ errEl.textContent="รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"; return; }
+
       const btn=document.getElementById("nu_submit");
       btn.disabled=true; btn.textContent="กำลังสร้าง...";
-      const {data,error}=await supabase.functions.invoke("admin-create-user",{body:{email,password,name,role}});
+      const {data,error}=await supabase.functions.invoke("admin-create-user",{body:{email,name,role}});
       btn.disabled=false; btn.textContent="สร้างผู้ใช้";
       if(error||data?.error){ errEl.textContent="ไม่สำเร็จ: "+await fnError(data,error); return; }
-      showCredentials(name,email,password);
+      document.getElementById("addUserModal")?.remove();
+      toast(`เพิ่ม ${email} แล้ว — ให้เจ้าตัวเข้าระบบด้วยบัญชี Microsoft ของบริษัท`,"success");
     };
   };
 
@@ -171,7 +166,7 @@ export async function renderUsers() {
 const SEC_KIND = {
   http_401: "เรียกข้อมูลโดยไม่ล็อกอิน", http_403: "ไม่มีสิทธิ์", blocked: "IP ถูกบล็อกแล้วยังเข้ามา",
   rate: "ยิงถี่เกินกำหนด", rate_public: "เปิดลิงก์/ฟอร์มถี่เกิน", ban: "แบนอัตโนมัติ",
-  new_user: "บัญชีเข้าระบบครั้งแรก", foreign_account: "บัญชีนอกบริษัท",
+  new_user: "บัญชีเข้าระบบครั้งแรก", foreign_account: "บัญชีนอกบริษัท", denied_account: "บัญชีที่ไม่ได้เพิ่มไว้ (ถูกปฏิเสธ)",
 };
 const secKind = k => SEC_KIND[k] || (k?.startsWith("public_") ? "ลิงก์/รหัสผิด (" + k.slice(7) + ")" : k);
 const secTime = v => v ? new Date(v).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";

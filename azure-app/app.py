@@ -316,8 +316,9 @@ from fastapi.responses import Response
 
 
 def caller(request: Request, need=True):
-    """(uid, email) of the signed-in Microsoft user, creating their user_roles row on first visit
-    (role from pending_roles, like the old first-login flow). need=False → (None, None) when not signed in."""
+    """(uid, email) of the signed-in Microsoft user. Only registered accounts (user_roles by e-mail, ms_accounts link,
+    or a pending_roles entry → row created on first visit) get in; anyone else → 403 not_registered.
+    need=False → (None, None, None) when not signed in / not registered (public link pages)."""
     u = current_user(request)
     if not u or not u.get("email"):
         if need:
@@ -338,13 +339,19 @@ def caller(request: Request, need=True):
             return str(r[0]), email, u
         key = re.sub(r"[.#$\[\]]", "_", email)
         p = cur.execute("SELECT [role] FROM dbo.pending_roles WHERE email_key = ?", key).fetchone()
+        if not p:
+            # 3) not registered (user 2026-11-03: only HR may use the system — any company account can sign in to
+            #    Microsoft, so an unknown account gets no row and no data). Admin adds people on User Management.
+            guard.log(guard.client_ip(request), "denied_account", request, email)
+            if need:
+                raise HTTPException(403, {"code": "not_registered", "email": email})
+            return None, None, None
         uid = str(uuid.uuid4())
         cur.execute("INSERT INTO dbo.user_roles (user_id, name, email, [role]) VALUES (?, ?, ?, ?)",
-                    uid, u.get("name") or email.split("@")[0], email, p[0] if p else "user")
-        if p:
-            cur.execute("DELETE FROM dbo.pending_roles WHERE email_key = ?", key)
+                    uid, u.get("name") or email.split("@")[0], email, p[0])
+        cur.execute("DELETE FROM dbo.pending_roles WHERE email_key = ?", key)
         cn.commit()
-        guard.log(guard.client_ip(request), "new_user", request, f"{email} → role {p[0] if p else 'user'}")
+        guard.log(guard.client_ip(request), "new_user", request, f"{email} → role {p[0]}")
         return uid, email, u
 
 
