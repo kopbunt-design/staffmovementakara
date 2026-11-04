@@ -172,9 +172,9 @@ export function letterPages(kind, d, opts = {}) {
       ["Employment Status", d.emp_status], ...(sal ? [[sal.label_en || "Monthly Salary", `THB ${money(sal.amount)} (${bahtEN(sal.amount)})`]] : [])]
       .filter(([, v]) => String(v ?? "").trim());
     const contact = [d.contact_phone, d.contact_email].filter(Boolean);
-    const costs = d.expenses === "company"
-      ? `All travel expenses will be borne by the Company.`
-      : `All travel expenses will be borne by ${P.him} personally.`;
+    // ใครออกค่าใช้จ่าย — "ไม่ระบุ" ไม่ขึ้นประโยคนี้ (รับรองการเดินทางทั่วไปไม่จำเป็น · ยื่นวีซ่ามักต้องมี)
+    const costs = d.expenses === "company" ? ` All travel expenses will be borne by the Company.`
+      : d.expenses === "employee" ? ` All travel expenses will be borne by ${P.him} personally.` : "";
     return frame("letter", `
       <div class="lt-a en-ref">Ref. No. ${esc(no)}<br>Date&nbsp;&nbsp; ${esc(enDate(d.issue_date))}</div>
       <div class="lt-a tv-title">${esc(K.title)}</div>
@@ -184,7 +184,7 @@ export function letterPages(kind, d, opts = {}) {
         <p class="tv-p">This is to certify that <b>${nm}</b>${d.passport_no ? `, holder of Passport No. ${esc(d.passport_no)},` : ""} is employed by <b>Akara Resources Public Company Limited</b>, a subsidiary of <b>Kingsgate Consolidated Limited, Australia</b>. ${P.His} employment details are as follows:</p>
         <div class="tv-rows">${rows.map(([k, v]) => `<div class="tv-row"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
         <p class="tv-p">${nmPlain} has been granted ${esc(leave)} from ${esc(from || "[date]")} to ${esc(to || "[date]")} (inclusive) to travel to ${esc(d.destination || "[country]")} for ${esc(purpose)}. ${P.He} ${P.he === "they" ? "are" : "is"} expected to resume ${P.his} duties with the Company on ${esc(back || "[date]")}.</p>
-        <p class="tv-p">${P.His} position will be retained during ${P.his} absence, and ${P.he} will remain an employee of the Company in good standing. ${costs}</p>
+        <p class="tv-p">${P.His} position will be retained during ${P.his} absence, and ${P.he} will remain an employee of the Company in good standing.${costs}</p>
         <p class="tv-p">We would be grateful for any assistance you may extend to ${P.him} ${d.use === "visa" ? `in the consideration of ${P.his} visa application` : `in connection with ${P.his} travel`}.${contact.length ? ` Should you require any further information, please do not hesitate to contact our Human Resources Department at ${esc(contact.join(" or "))}.` : ""}</p>
         <p class="tv-p">This certificate is issued at the employee's request ${d.use === "visa" ? "in support of the visa application" : "for the purpose of overseas travel"}.</p>
         <p class="tv-p tv-yours">Yours faithfully,</p>
@@ -358,7 +358,7 @@ export function draftFrom(kind, e, incomeItems = []) {
   if (kind === "travel_en") Object.assign(d, { passport_no: "", addressee: "", use: "general",
     emp_status: /contract|สัญญา|temporary/i.test(e?.contract_type || "") ? "Fixed-term contract, full-time" : "Permanent, full-time",
     leave_type: "annual", leave_from: "", leave_to: "", return_date: "", destination: "", purpose: "tourism", purpose_other: "",
-    expenses: "employee", contact_phone: "", contact_email: "" });
+    expenses: "none", contact_phone: "", contact_email: "" });
   if (kind === "offer_en") Object.assign(d, { name_en: e ? [e.firstname_en, e.lastname_en].filter(Boolean).join(" ") : "",
     salary: "", commencement: "", probation_days: 119, schedule: OFFER_SCHEDULE.map(r => [...r]), contact_email: "" });
   return d;
@@ -625,7 +625,7 @@ function openLetter(r) {
     <div class="lt-2">${f("return_date", "กลับมาทำงานวันที่", "date")}
       ${sel("purpose", "วัตถุประสงค์", { tourism: "ท่องเที่ยว", family: "เยี่ยมครอบครัว/เพื่อน", event: "ร่วมงานส่วนตัว", medical: "รักษาพยาบาล", study: "อบรม/เรียนระยะสั้น", other: "อื่น ๆ (พิมพ์เอง)" })}</div>
     ${d.purpose === "other" ? f("purpose_other", "Purpose (English ต่อจาก “for …” เช่น a family wedding)") : ""}
-    ${sel("expenses", "ค่าใช้จ่ายการเดินทาง", { employee: "พนักงานออกเอง", company: "บริษัทออกให้" })}
+    ${sel("expenses", "ค่าใช้จ่ายการเดินทาง", { none: "ไม่ระบุ", employee: "พนักงานออกเอง", company: "บริษัทออกให้" })}
     <div class="lt-2">${f("contact_phone", "เบอร์ติดต่อ HR (+66 …)")}${f("contact_email", "อีเมลติดต่อ HR")}</div>
     <div class="lt-sub">เงินเดือนในหนังสือ <span class="text-muted">(สถานทูตส่วนใหญ่ขอ · เอาติ๊กออกได้)</span></div>
     ${(d.incomes || []).map((x, i) => `<div class="lt-inc"><label><input type="checkbox" data-ion="${i}" ${x.on ? "checked" : ""} ${editable ? "" : "disabled"}>
@@ -658,6 +658,8 @@ function openLetter(r) {
         const rf = el.querySelector('[data-k="return_date"]'); if (rf) rf.value = d.return_date;
       }
       if (i.dataset.k === "return_date") d._auto_return = false;
+      // ยื่นวีซ่า → ค่าเริ่มต้นพนักงานออกเอง · ทั่วไป → ไม่ระบุ (ยังเปลี่ยนเองได้)
+      if (i.dataset.k === "use") { d.expenses = i.value === "visa" ? "employee" : "none"; form(); }
       if (i.dataset.k === "purpose") form();
       preview();
     });
