@@ -130,16 +130,23 @@ eq(M.pron("Ms. Prapa").his, "her", "Ms. = her"); eq(M.pron("Mr. Somchai").He, "H
     addressee: "The Visa Section, Embassy of Japan, Bangkok", contact_email: "hr@example.com" };
   const tv = M.letterPages("travel_en", d, { docNo: "HR-139-2026", draft: false });
   has(tv, "CERTIFICATE OF EMPLOYMENT AND LEAVE APPROVAL", "หัวเรื่อง");
-  has(tv, "To: The Visa Section, Embassy of Japan, Bangkok", "ผู้รับ");
+  has(tv, "To: The Visa Section, Embassy of Japan, Bangkok", "ผู้รับระบุสถานทูต");
+  has(M.letterPages("travel_en", { ...d, addressee: "" }, {}), "TO WHOM IT MAY CONCERN", "ผู้รับว่าง = TO WHOM IT MAY CONCERN");
+  not(M.letterPages("travel_en", { ...d, addressee: "to whom it may concern" }, {}), "To: to whom", "พิมพ์เองก็ไม่ซ้ำ To:");
+  not(M.letterPages("travel_en", { ...d, passport_no: "" }, {}), "Passport", "ไม่ใส่พาสปอร์ต = ไม่มีคำว่า Passport");
+  not(tv, "visa", "ใช้ทั่วไป: ไม่มีคำว่า visa");
+  has(tv, "for the purpose of overseas travel", "ใช้ทั่วไป: ประโยคท้ายกลาง ๆ");
+  has(M.letterPages("travel_en", { ...d, use: "visa" }, {}), "in support of the visa application", "เลือกยื่นวีซ่า");
   has(tv, "holder of Passport No. AA1234567", "เลขพาสปอร์ต");
   has(tv, "THB 14,150 (Fourteen Thousand One Hundred Fifty Baht)", "เงินเดือน + คำอังกฤษ");
-  has(tv, "approved her annual leave from 20 December 2026 to 28 December 2026 (inclusive) to travel to Japan for the purpose of tourism", "การลา");
+  has(M.letterPages("travel_en", { ...d, purpose: "family" }, {}), "Japan for a family visit.", "เยี่ยมครอบครัว");
+  has(tv, "has been granted annual leave from 20 December 2026 to 28 December 2026 (inclusive) to travel to Japan for tourism", "การลา");
   has(tv, "She is expected to resume her duties with the Company on 29 December 2026", "วันกลับมาทำงาน");
   has(tv, "borne by her personally", "ค่าใช้จ่ายพนักงานออกเอง");
   has(tv, "Yours faithfully,", "ลงท้ายแบบไม่ระบุชื่อผู้รับ");
   not(tv, "Transportation Allowance", "รายการที่ไม่ติ๊กไม่แสดง");
   has(M.letterPages("travel_en", { ...d, expenses: "company", name_en: "Mr. A" }, {}), "borne by the Company.", "บริษัทออกค่าใช้จ่าย");
   not(M.letterPages("travel_en", { ...d, incomes: [] }, {}), "Monthly Salary", "ไม่ติ๊กเงินเดือน = ไม่แสดง");
-  has(M.letterPages("travel_en", { ...d, purpose: "other", purpose_other: "attending a wedding" }, {}), "for the purpose of attending a wedding", "วัตถุประสงค์พิมพ์เอง");
+  has(M.letterPages("travel_en", { ...d, purpose: "other", purpose_other: "a family wedding" }, {}), "Japan for a family wedding", "วัตถุประสงค์พิมพ์เอง");
   eq(M.KINDS.travel_en.docType, "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)", "ประเภทในทะเบียน"); }
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);
