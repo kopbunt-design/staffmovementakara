@@ -24,7 +24,14 @@ export const KINDS = {
   cert_en:   { label: "Certificate of Employment (อังกฤษ)", lang: "en", title: "CERTIFICATE OF EMPLOYMENT", docType: "หนังสือรับรองการทำงาน (ภาษาอังกฤษ)", income: [] },
   salary_en: { label: "Salary Certificate (อังกฤษ)",        lang: "en", title: "SALARY CERTIFICATE", docType: "หนังสือรับรองเงินเดือน (ภาษาอังกฤษ)", income: ["salary"] },
   offer_en:  { label: "Offer Letter (จดหมายจ้างงาน)",        lang: "en", title: "Offer of Employment", docType: "Offer Letter (จดหมายจ้างงาน)" },
+  // ยื่นสถานทูต/ขอวีซ่า (user 2026-11-04): รับรองการทำงาน + อนุมัติวันลา + กลับมาทำงาน + ค่าใช้จ่าย
+  travel_en: { label: "Certificate for Overseas Travel / Visa (อังกฤษ)", lang: "en", title: "CERTIFICATE OF EMPLOYMENT AND LEAVE APPROVAL",
+               docType: "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)", income: ["salary"] },
 };
+// ตัวเลือกของหนังสือเดินทางต่างประเทศ — ข้อความภาษาอังกฤษที่ลงในหนังสือ
+export const TRAVEL_LEAVE = { annual: "annual leave", personal: "personal leave", unpaid: "unpaid leave", ordination: "ordination leave" };
+export const TRAVEL_PURPOSE = { tourism: "tourism", family: "visiting family and friends", event: "attending a personal event",
+  medical: "medical treatment", study: "a short course of study" };
 const STATUS = {
   draft:     ["ร่าง", "var(--muted)", "#f1f5f9"],
   pending:   ["รออนุมัติ", "var(--amber)", "var(--amber-light)"],
@@ -70,6 +77,33 @@ export const LETTER_IMG = { headLetter: "assets/letter/head-letter.png", footLet
                             headA4: "assets/letter/head-a4.png", footA4: "assets/letter/foot-a4.png" };
 const pageOf = kind => kind === "offer_en" ? "a4" : "letter";
 
+// จำนวนเงินเป็นคำภาษาอังกฤษ (หนังสือยื่นสถานทูต) เช่น 52,500 → "Fifty-Two Thousand Five Hundred Baht"
+const EN_1 = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen",
+  "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const EN_10 = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+const en999 = n => [n >= 100 ? `${EN_1[Math.floor(n / 100)]} Hundred` : "",
+  n % 100 < 20 ? EN_1[n % 100] : `${EN_10[Math.floor(n % 100 / 10)]}${n % 10 ? "-" + EN_1[n % 10] : ""}`].filter(Boolean).join(" ");
+export function enWords(n) {
+  n = Math.floor(Number(n) || 0);
+  if (!n) return "Zero";
+  const parts = [];
+  for (const [v, w] of [[1e9, "Billion"], [1e6, "Million"], [1e3, "Thousand"], [1, ""]]) {
+    const q = Math.floor(n / v); n %= v;
+    if (q) parts.push(`${en999(q)}${w ? " " + w : ""}`);
+  }
+  return parts.join(" ");
+}
+export function bahtEN(amount) {
+  const v = Math.round((Number(amount) || 0) * 100), b = Math.floor(v / 100), st = v % 100;
+  return `${enWords(b)} Baht${st ? ` and ${enWords(st)} Satang` : ""}`;
+}
+// คำแทนตัวตามคำนำหน้า (Mr. = he · Ms./Mrs./Miss = she · ไม่รู้ = they)
+export function pron(name, title) {
+  const t = String(title || String(name || "").match(/^(mr|mrs|ms|miss)\.?(?=\s)/i)?.[0] || "").toLowerCase().replace(".", "");
+  return t === "mr" ? { he: "he", his: "his", him: "him", He: "He", His: "His" }
+    : ["ms", "mrs", "miss"].includes(t) ? { he: "she", his: "her", him: "her", He: "She", His: "Her" }
+    : { he: "they", his: "their", him: "them", He: "They", His: "Their" };
+}
 const incomeTH = l => `${money(l.amount)} (${bahtText(l.amount)})`;
 const incomeEN = l => `THB ${money(l.amount)} per month`;
 const img = (src, cls) => src ? `<img class="${cls}" src="${src}" alt="">` : "";
@@ -122,6 +156,38 @@ export function letterPages(kind, d, opts = {}) {
         <p class="en-p en-yours">Yours sincerely,</p>
         <div class="en-name">${img(seal, "en-seal")}<span class="nm">${img(sig, "en-sig")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</span></div>
         <div class="en-name2">${esc(signer?.title_en || "Human Resources Manager")}</div>
+      </div>
+      <div class="lt-a en-remark"><b>Remark</b> - This document is digitally issued and does not require a handwritten signature.</div>`);
+  }
+  if (kind === "travel_en") {
+    // ยื่นสถานทูต — Letter หน้าเดียว · ถ้อยคำมาตรฐานจดหมายรับรองสำหรับขอวีซ่า (ตรวจคำ 2026-11-04)
+    const P = pron(d.name_en, d.title_en), nm = esc(d.name_en || "[Name]"), sal = inc.find(l => l.key === "salary") || inc[0];
+    const leave = TRAVEL_LEAVE[d.leave_type] || d.leave_type || "leave", purpose = TRAVEL_PURPOSE[d.purpose] || d.purpose_other || "tourism";
+    const from = enDate(d.leave_from), to = enDate(d.leave_to), back = enDate(d.return_date);
+    // ตาราง = ข้อมูลการจ้าง · การลา/ปลายทางอยู่ในย่อหน้าถัดไป (ไม่ซ้ำกัน)
+    const rows = [["Position", d.position], ["Department", d.department], ["Date of Employment", enDate(d.period_from)],
+      ["Employment Status", d.emp_status], ...(sal ? [[sal.label_en || "Monthly Salary", `THB ${money(sal.amount)} (${bahtEN(sal.amount)})`]] : [])]
+      .filter(([, v]) => String(v ?? "").trim());
+    const contact = [d.contact_phone, d.contact_email].filter(Boolean);
+    const costs = d.expenses === "company"
+      ? `All expenses relating to this trip will be borne by the Company.`
+      : `All expenses relating to this trip will be borne by ${P.him} personally.`;
+    return frame("letter", `
+      <div class="lt-a en-ref">Ref. No. ${esc(no)}<br>Date&nbsp;&nbsp; ${esc(enDate(d.issue_date))}</div>
+      <div class="lt-a tv-title">${esc(K.title)}</div>
+      <div class="lt-a tv-flow">
+        <p class="tv-to">To: ${esc(d.addressee || "To Whom It May Concern")}</p>
+        <p class="tv-re"><b>Re: Certificate of Employment and Leave Approval – ${nm}${d.passport_no ? `, Passport No. ${esc(d.passport_no)}` : ""}</b></p>
+        <p class="tv-p">This is to certify that <b>${nm}</b>${d.passport_no ? `, holder of Passport No. ${esc(d.passport_no)},` : ""} is employed by <b>Akara Resources Public Company Limited</b>, a subsidiary of <b>Kingsgate Consolidated Limited, Australia</b>. ${P.His} employment details are as follows:</p>
+        <div class="tv-rows">${rows.map(([k, v]) => `<div class="tv-row"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
+        <p class="tv-p">The Company has approved ${P.his} ${esc(leave)} from ${esc(from || "[date]")} to ${esc(to || "[date]")} (inclusive) to travel to ${esc(d.destination || "[country]")} for the purpose of ${esc(purpose)}. ${P.He} ${P.he === "they" ? "are" : "is"} expected to resume ${P.his} duties with the Company on ${esc(back || "[date]")}.</p>
+        <p class="tv-p">${P.His} position will be retained during ${P.his} absence, and ${P.he} will remain an employee of the Company in good standing. ${costs}</p>
+        <p class="tv-p">We would be grateful for any assistance you may extend to ${P.him} in the consideration of ${P.his} visa application.${contact.length ? ` Should you require any further information, please do not hesitate to contact our Human Resources Department at ${esc(contact.join(" or "))}.` : ""}</p>
+        <p class="tv-p">This certificate is issued at the employee's request for visa application purposes only.</p>
+        <p class="tv-p tv-yours">Yours faithfully,</p>
+        <div class="en-name tv-name">${img(seal, "en-seal")}<span class="nm">${img(sig, "en-sig")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</span></div>
+        <div class="en-name2">${esc(signer?.title_en || "Human Resources Manager")}</div>
+        <div class="en-name2">Akara Resources Public Company Limited</div>
       </div>
       <div class="lt-a en-remark"><b>Remark</b> - This document is digitally issued and does not require a handwritten signature.</div>`);
   }
@@ -207,6 +273,16 @@ body{background:#e9edf3}
 .en-sig{top:-13.2mm;height:12mm;max-width:46mm}
 .en-seal{position:absolute;left:48.2mm;top:-25.7mm;height:35mm}
 .en-remark{left:27.9mm;top:241.8mm;white-space:nowrap}
+/* ---- หนังสือรับรองเพื่อเดินทางต่างประเทศ (Letter) — ใช้หัว/ท้าย/ลายเซ็นชุดเดียวกับ Certificate of Employment ---- */
+.tv-title{left:27.9mm;right:27.9mm;top:44.2mm;font-size:12.5pt;font-weight:700;line-height:5.4mm;color:#3c3c3c}
+.tv-flow{left:27.9mm;width:160mm;top:53.4mm}
+.tv-to{line-height:5.2mm}
+.tv-re{line-height:5.2mm;margin-top:1.6mm}
+.tv-p{line-height:4.9mm;margin-top:3.2mm;text-align:justify}
+.tv-rows{margin-top:2.6mm;padding-left:6mm}
+.tv-row{display:flex;line-height:5.15mm}.tv-row b{width:46mm;flex:none}
+.tv-yours{margin-top:4.4mm}
+.tv-name{margin-top:13mm}
 /* ---- Offer Letter (A4) ---- */
 .lt-page.a4.en{font-size:11pt;line-height:4.3mm}
 .of-top{left:20mm;right:17.4mm;top:30.1mm;display:flex;justify-content:space-between}
@@ -276,6 +352,10 @@ export function draftFrom(kind, e, incomeItems = []) {
     incomes: incomeItems.filter(i => i.is_active).map(i => ({ key: i.key, label_th: i.label_th, label_en: i.label_en,
       on: (K.income || []).includes(i.key), amount: i.key === "salary" && e?.salary ? e.salary : "" })),
   };
+  if (kind === "travel_en") Object.assign(d, { passport_no: "", addressee: "To Whom It May Concern",
+    emp_status: /contract|สัญญา|temporary/i.test(e?.contract_type || "") ? "Fixed-term contract, full-time" : "Permanent, full-time",
+    leave_type: "annual", leave_from: "", leave_to: "", return_date: "", destination: "", purpose: "tourism", purpose_other: "",
+    expenses: "employee", contact_phone: "", contact_email: "" });
   if (kind === "offer_en") Object.assign(d, { name_en: e ? [e.firstname_en, e.lastname_en].filter(Boolean).join(" ") : "",
     salary: "", commencement: "", probation_days: 119, schedule: OFFER_SCHEDULE.map(r => [...r]), contact_email: "" });
   return d;
@@ -283,7 +363,8 @@ export function draftFrom(kind, e, incomeItems = []) {
 
 // ---------------------------------------------------------------- อีเมล (แบบ + ไฟล์ .eml สำหรับ Outlook)
 const KIND_MAIL = { cert_th: "หนังสือรับรองการทำงาน (ภาษาไทย)", cert_en: "Certificate of Employment (EN)",
-  salary_th: "หนังสือรับรองเงินเดือน (ภาษาไทย)", salary_en: "Salary Certificate (EN)", offer_en: "Offer Letter" };
+  salary_th: "หนังสือรับรองเงินเดือน (ภาษาไทย)", salary_en: "Salary Certificate (EN)", offer_en: "Offer Letter",
+  travel_en: "Certificate for Overseas Travel (EN)" };
 // แบบตั้งต้น (ใช้ตอนยังไม่ได้รัน SQL ส่วนแบบอีเมล) — แบบจริงแก้ได้ในหน้าตั้งค่า เก็บในตาราง mail_templates
 const DEFAULT_MAIL = [
   { key: "request", label: "ขออนุมัติหนังสือ", subject: "[ขออนุมัติ] {{doc_no}} {{kind}} — {{person}}",
@@ -513,6 +594,7 @@ function openLetter(r) {
           <textarea class="form-control" data-s="${i}.1" rows="2" ${editable ? "" : "disabled"}>${esc(row[1])}</textarea>
           ${editable ? `<button class="btn btn-sm btn-secondary" data-sdel="${i}" title="ลบแถว">✕</button>` : ""}</div>`).join("")}</div>
         ${editable ? `<button class="btn btn-sm btn-secondary" id="ltSAdd">+ เพิ่มแถว</button>` : ""}`
+      : kind === "travel_en" ? travelForm()
       : `${th ? `${f("name_th", "ชื่อ - นามสกุล (รวมคำนำหน้า)")}` : f("name_en", "Name (with title, e.g. Miss Prapa Iewsanurak)")}
         ${f("id_card", "เลขบัตรประชาชน", "text", 'inputmode="numeric" maxlength="13"')}
         ${th ? `${f("position_th", "ตำแหน่ง")}<div class="lt-2">${f("division_th", "ส่วน")}${f("department_th", "ฝ่าย")}</div><div class="lt-2">${f("section_th", "แผนก")}${f("team_th", "ทีม")}</div>`
@@ -524,12 +606,33 @@ function openLetter(r) {
           || `<div class="text-muted" style="font-size:12.5px;">ยังไม่มีรายการเงินได้</div>`}`}`;
     wireForm();
   };
+  const sel = (key, label, opts) => `<label class="lt-f"><span>${label}</span><select class="form-control" data-k="${key}" ${editable ? "" : "disabled"}>
+    ${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${String(d[key]) === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>`;
+  const travelForm = () => `
+    ${f("addressee", "ถึง (เช่น The Visa Section, Embassy of Japan, Bangkok)")}
+    ${f("name_en", "Name (with title, e.g. Ms. Prapa Iewsanurak)")}
+    <div class="lt-2">${f("passport_no", "Passport No.")}${f("emp_status", "Employment Status")}</div>
+    ${f("position", "Position")}${f("department", "Department")}
+    ${f("period_from", "Date of Employment", "date")}
+    <div class="lt-sub">การลาและการเดินทาง</div>
+    <div class="lt-2">${sel("leave_type", "ประเภทการลา", { annual: "ลาพักร้อน (annual leave)", personal: "ลากิจ (personal leave)", unpaid: "ลาไม่รับค่าจ้าง (unpaid leave)", ordination: "ลาบวช (ordination leave)" })}
+      ${f("destination", "Destination (เช่น Japan / Schengen Area)")}</div>
+    <div class="lt-2">${f("leave_from", "ลาตั้งแต่", "date")}${f("leave_to", "ถึง (รวมวันนี้)", "date")}</div>
+    <div class="lt-2">${f("return_date", "กลับมาทำงานวันที่", "date")}
+      ${sel("purpose", "วัตถุประสงค์", { tourism: "ท่องเที่ยว", family: "เยี่ยมครอบครัว/เพื่อน", event: "ร่วมงานส่วนตัว", medical: "รักษาพยาบาล", study: "อบรม/เรียนระยะสั้น", other: "อื่น ๆ (พิมพ์เอง)" })}</div>
+    ${d.purpose === "other" ? f("purpose_other", "Purpose (English, e.g. attending a wedding)") : ""}
+    ${sel("expenses", "ค่าใช้จ่ายการเดินทาง", { employee: "พนักงานออกเอง", company: "บริษัทออกให้" })}
+    <div class="lt-2">${f("contact_phone", "เบอร์ติดต่อ HR (+66 …)")}${f("contact_email", "อีเมลติดต่อ HR")}</div>
+    <div class="lt-sub">เงินเดือนในหนังสือ <span class="text-muted">(สถานทูตส่วนใหญ่ขอ · เอาติ๊กออกได้)</span></div>
+    ${(d.incomes || []).map((x, i) => `<div class="lt-inc"><label><input type="checkbox" data-ion="${i}" ${x.on ? "checked" : ""} ${editable ? "" : "disabled"}>
+      ${esc(x.label_en)}</label><input class="form-control" type="number" data-iam="${i}" value="${esc(x.amount)}" placeholder="บาท/เดือน" ${editable ? "" : "disabled"}></div>`).join("")}`;
   const wireForm = () => {
     $("#ltKind")?.addEventListener("change", e => {
       const keep = d; kind = e.target.value; d = draftFrom(kind, null, incomeItems);
       // เปลี่ยนประเภทแล้วข้อมูลคนเดิมยังอยู่
       for (const k of ["issue_date","id_card","name_th","name_en","title_en","position_th","division_th","department_th","section_th","team_th","position","division","department","section","team","period_from","period_to"]) if (keep[k]) d[k] = keep[k];
       d.contact_email = keep.contact_email || settings.hr_contact_email || "";
+      if (kind === "travel_en") { if (keep.title_en && !TITLE_RE.test(d.name_en || "")) d.name_en = withTitle(keep.title_en, d.name_en); }
       if (kind === "offer_en") { const m = String(d.name_en || "").match(TITLE_RE); if (m) { d.title_en = d.title_en || m[0].trim(); d.name_en = d.name_en.slice(m[0].length); } }
       form(); preview();
     });
@@ -542,7 +645,18 @@ function openLetter(r) {
       form(); preview();
     });
     if (d.emp_code && $("#ltEmp_txt")) { const e = allEmployees.find(x => x.emp_code === d.emp_code); if (e) $("#ltEmp_txt").value = empName(e); }
-    el.querySelectorAll("[data-k]").forEach(i => i.oninput = () => { d[i.dataset.k] = i.value; preview(); });
+    el.querySelectorAll("[data-k]").forEach(i => i.oninput = i.onchange = () => {
+      d[i.dataset.k] = i.value;
+      // วันกลับมาทำงาน = วันถัดจากวันลาวันสุดท้าย (แก้ได้ ถ้าตรงวันหยุด)
+      if (i.dataset.k === "leave_to" && i.value && (!d.return_date || d._auto_return)) {
+        const n = new Date(i.value + "T00:00:00"); n.setDate(n.getDate() + 1);
+        d.return_date = new Date(n - n.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); d._auto_return = true;
+        const rf = el.querySelector('[data-k="return_date"]'); if (rf) rf.value = d.return_date;
+      }
+      if (i.dataset.k === "return_date") d._auto_return = false;
+      if (i.dataset.k === "purpose") form();
+      preview();
+    });
     el.querySelectorAll("[data-ion]").forEach(i => i.onchange = () => { d.incomes[+i.dataset.ion].on = i.checked; preview(); });
     el.querySelectorAll("[data-iam]").forEach(i => i.oninput = () => { d.incomes[+i.dataset.iam].amount = i.value; preview(); });
     el.querySelectorAll("[data-s]").forEach(i => i.oninput = () => { const [a, b] = i.dataset.s.split("."); d.schedule[+a][+b] = i.value; preview(); });
@@ -606,7 +720,12 @@ function openLetter(r) {
     $("[data-save]")?.addEventListener("click", async () => { if (await save()) { toast("บันทึกร่างแล้ว", "success"); draw(); } });
     $("[data-submit]")?.addEventListener("click", async e => {
       if (!personOf()) { toast("ใส่ชื่อผู้รับหนังสือก่อน", "error"); return; }
-      if (kind !== "offer_en" && d.id_card && !/^\d{13}$/.test(d.id_card)) { toast("เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก", "error"); return; }
+      if (kind !== "offer_en" && kind !== "travel_en" && d.id_card && !/^\d{13}$/.test(d.id_card)) { toast("เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก", "error"); return; }
+      if (kind === "travel_en") {
+        const miss = [["passport_no", "Passport No."], ["leave_from", "วันลาเริ่ม"], ["leave_to", "วันลาสิ้นสุด"], ["return_date", "วันกลับมาทำงาน"], ["destination", "Destination"]].filter(([k]) => !String(d[k] || "").trim()).map(([, l]) => l);
+        if (miss.length) { toast("กรอกให้ครบ: " + miss.join(", "), "error"); return; }
+        if (d.leave_to < d.leave_from || d.return_date <= d.leave_to) { toast("วันที่ไม่สอดคล้อง: วันลาสิ้นสุดต้องไม่ก่อนวันเริ่ม และวันกลับมาทำงานต้องหลังวันลาสุดท้าย", "error"); return; }
+      }
       e.target.disabled = true;
       const saved = await save(); if (!saved) { e.target.disabled = false; return; }
       const { data, error } = await supabase.rpc("letter_submit", { p_id: saved.id, p_approver: $("#ltAppr").value, p_type_label: KINDS[kind].docType });

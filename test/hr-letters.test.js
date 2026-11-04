@@ -16,7 +16,7 @@ const M = new Function("btoa", `${baht}\nconst escText = s => String(s ?? "").re
   const masterDivisions = [{ name: "Operations", name_th: "ปฏิบัติการ" }], masterDepartments = [{ name: "Human Resources", name_th: "ทรัพยากรบุคคล" }],
         masterSections = [{ name: "HRIS", name_th: "ระบบสารสนเทศบุคคล" }], masterTeams = [], masterPositions = [{ name: "HRIS Supervisor", name_th: "หัวหน้างานระบบสารสนเทศบุคคล" }];
   ${strip(read(`${ROOT}/js/hr-letters.js`)).replace(/const esc = v => escText/, "const esc = v => escText")}
-  return { withTitle, letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
+  return { withTitle, enWords, bahtEN, pron, letterPages, thDate, enDate, usDate, draftFrom, KINDS, renderMail, emlText, mailList };`)(btoa);
 
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
@@ -119,4 +119,27 @@ eq(M.withTitle("", "Chalita Kongpradab"), "Chalita Kongpradab", "Offer: ไม�
 eq(M.withTitle("Miss", "miss Chalita"), "miss Chalita", "Offer: ไม่สนตัวพิมพ์");
 { const of2 = M.letterPages("offer_en", { ...M.draftFrom("offer_en", null, []), title_en: "Ms.", name_en: "Ms. Chalita Kongpradab" }, {});
   not(of2, "Ms. Ms.", "Offer: ไม่มี Ms. Ms. ในหนังสือ"); }
+// ---------- หนังสือรับรองเพื่อเดินทางต่างประเทศ (travel_en · 2026-11-04) ----------
+eq(M.enWords(52500), "Fifty-Two Thousand Five Hundred", "ตัวเลขเป็นคำอังกฤษ");
+eq(M.enWords(1000000), "One Million", "หนึ่งล้าน");
+eq(M.enWords(115), "One Hundred Fifteen", "115");
+eq(M.bahtEN(25000.5), "Twenty-Five Thousand Baht and Fifty Satang", "มีสตางค์");
+eq(M.pron("Ms. Prapa").his, "her", "Ms. = her"); eq(M.pron("Mr. Somchai").He, "He", "Mr. = He"); eq(M.pron("Prapa").he, "they", "ไม่รู้เพศ = they");
+{ const d = { ...M.draftFrom("travel_en", null, []), incomes: inc, name_en: "Ms. Test Person", passport_no: "AA1234567", position: "Engineer", department: "Processing",
+    period_from: "2021-03-15", leave_from: "2026-12-20", leave_to: "2026-12-28", return_date: "2026-12-29", destination: "Japan",
+    addressee: "The Visa Section, Embassy of Japan, Bangkok", contact_email: "hr@example.com" };
+  const tv = M.letterPages("travel_en", d, { docNo: "HR-139-2026", draft: false });
+  has(tv, "CERTIFICATE OF EMPLOYMENT AND LEAVE APPROVAL", "หัวเรื่อง");
+  has(tv, "To: The Visa Section, Embassy of Japan, Bangkok", "ผู้รับ");
+  has(tv, "holder of Passport No. AA1234567", "เลขพาสปอร์ต");
+  has(tv, "THB 14,150 (Fourteen Thousand One Hundred Fifty Baht)", "เงินเดือน + คำอังกฤษ");
+  has(tv, "approved her annual leave from 20 December 2026 to 28 December 2026 (inclusive) to travel to Japan for the purpose of tourism", "การลา");
+  has(tv, "She is expected to resume her duties with the Company on 29 December 2026", "วันกลับมาทำงาน");
+  has(tv, "borne by her personally", "ค่าใช้จ่ายพนักงานออกเอง");
+  has(tv, "Yours faithfully,", "ลงท้ายแบบไม่ระบุชื่อผู้รับ");
+  not(tv, "Transportation Allowance", "รายการที่ไม่ติ๊กไม่แสดง");
+  has(M.letterPages("travel_en", { ...d, expenses: "company", name_en: "Mr. A" }, {}), "borne by the Company.", "บริษัทออกค่าใช้จ่าย");
+  not(M.letterPages("travel_en", { ...d, incomes: [] }, {}), "Monthly Salary", "ไม่ติ๊กเงินเดือน = ไม่แสดง");
+  has(M.letterPages("travel_en", { ...d, purpose: "other", purpose_other: "attending a wedding" }, {}), "for the purpose of attending a wedding", "วัตถุประสงค์พิมพ์เอง");
+  eq(M.KINDS.travel_en.docType, "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)", "ประเภทในทะเบียน"); }
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

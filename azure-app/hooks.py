@@ -278,7 +278,7 @@ BEFORE_INSERT = {
     "exp_invoice_lines": [exp_line_guard],
     "exp_invoices": [exp_inv_guard_insert],
     "fund_form_submission": [fund_block_resubmit],
-    "hr_letters": [hr_letters_guard_insert],
+    "hr_letters": [lambda c, x, n: __import__("dms").ensure(c), hr_letters_guard_insert],   # ensure: kind travel_en (2026-11-04)
 }
 AFTER_INSERT = {
     "sub_workers": [log_sub_worker_insert],
@@ -295,7 +295,7 @@ BEFORE_UPDATE = {
     "exp_invoice_lines": [lambda c, x, o, n: (exp_line_guard(c, x, o), exp_line_guard(c, x, n))],
     "exp_invoices": [exp_inv_guard_update],
     "fund_form_submission": [fund_approval_guard, set_updated_at],
-    "hr_letters": [hr_letters_guard_update],
+    "hr_letters": [lambda c, x, o, n: __import__("dms").ensure(c), hr_letters_guard_update],
     "movements": [set_updated_at],
     "paf_forms": [paf_guard],
 }

@@ -93,6 +93,7 @@ DEFAULT_RULE = {"flow": "out", "need_review": False, "need_approval": True, "nee
 
 # ค่าเริ่มต้นตามประเภทเดิม (แก้ได้ในหน้าตั้งค่า) — เป็นค่าตั้งทางงาน ไม่ใช่นโยบายอายุเก็บ
 TYPE_DEFAULTS = [
+    ("เดินทางต่างประเทศ", {"sensitivity": "salary", "due_days": 3}),   # ต้องอยู่ก่อน "รับรองการทำงาน" (ชื่อมีคำนี้ด้วย)
     ("รับรองการทำงาน", {"sensitivity": "personal", "due_days": 3}),
     ("รับรองเงินเดือน", {"sensitivity": "salary", "due_days": 3}),
     ("Offer Letter",   {"sensitivity": "salary", "need_ack": True}),
@@ -131,6 +132,8 @@ NEW_TYPES = [
     ("IN", "หนังสือจากศาล / กรมบังคับคดี", True, None, 15),
 ]
 CONTRACT_TYPE = "สัญญาจ้างงาน"
+TRAVEL_TYPE = "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)"   # ออกจากระบบออกหนังสือ (kind travel_en) · 2026-11-04
+LETTER_KINDS = ("cert_th", "cert_en", "salary_th", "salary_en", "offer_en", "travel_en")
 
 
 def type_rule(series_direction: str, type_label: str | None, stored: dict | None = None) -> dict:

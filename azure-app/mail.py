@@ -25,7 +25,8 @@ import rest
 import storage
 
 KIND = {"cert_th": "หนังสือรับรองการทำงาน (ภาษาไทย)", "cert_en": "Certificate of Employment (EN)",
-        "salary_th": "หนังสือรับรองเงินเดือน (ภาษาไทย)", "salary_en": "Salary Certificate (EN)", "offer_en": "Offer Letter"}
+        "salary_th": "หนังสือรับรองเงินเดือน (ภาษาไทย)", "salary_en": "Salary Certificate (EN)", "offer_en": "Offer Letter",
+        "travel_en": "Certificate for Overseas Travel (EN)"}
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
 

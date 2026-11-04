@@ -29,6 +29,7 @@ const IC = {
 };
 const MAX_FILE = 20 * 1048576;
 const LETTER_KIND = { "หนังสือรับรองการทำงาน (ภาษาไทย)": "cert_th", "หนังสือรับรองการทำงาน (ภาษาอังกฤษ)": "cert_en",
+  "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)": "travel_en",
   "หนังสือรับรองเงินเดือน (ภาษาไทย)": "salary_th", "หนังสือรับรองเงินเดือน (ภาษาอังกฤษ)": "salary_en", "Offer Letter (จดหมายจ้างงาน)": "offer_en" };
 const SRC_ST = { draft: ["ร่าง", "n", ""], pending: ["รออนุมัติ/ลงนาม", "w", "wait"], approved: ["อนุมัติแล้ว", "g", "ok"], signed: ["ลงนามครบแล้ว", "g", "ok"], rejected: ["ส่งกลับแก้ไข", "r", "no"], cancelled: ["ยกเลิก", "r", "no"] };
 const SRC_NAME = { letter: ["ออกหนังสือ HR", "หนังสือ HR", x => `/?letter=${x}`], paf: ["Personnel Action Form", "PAF", x => `/?paf=${x}`], contract: ["สัญญาจ้างงาน", "สัญญาจ้าง", x => `/?econtract=${x}`] };

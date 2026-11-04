@@ -115,6 +115,7 @@ def ensure(cur):
                 raise
     _seed_perms(cur)
     _seed_types(cur)
+    _seed_travel(cur)
     # บันทึกทันที: ถ้าคำสั่งที่เรียกเราล้มแล้ว rollback ตารางต้องไม่หายไปด้วย (_ready ถูกตั้งแล้ว)
     try:
         cur.connection.commit()
@@ -168,6 +169,25 @@ def _seed_types(cur):
             moved += 1
     _x(cur, f"INSERT INTO {mg} (name, at, detail) VALUES (?, ?, ?)", "types_2026_11_03", _now(),
        f"เพิ่ม {len(added)} ประเภท · Offer Letter เป็นลับ · ย้ายประเภท {moved} เรื่อง")
+
+
+def _seed_travel(cur):
+    """หนังสือรับรองเพื่อเดินทางต่างประเทศ (2026-11-04): ประเภทในทะเบียน + ให้ hr_letters.kind รับ travel_en
+    (ข้อจำกัด CHECK เดิมรับแค่ 5 ชนิด) · ครั้งเดียว"""
+    mg = _tbl(cur, "dms_migrations")
+    if _x(cur, f"SELECT 1 FROM {mg} WHERE name = ?", "letters_travel_2026_11_04").fetchone():
+        return
+    t = _tbl(cur, "doc_types")
+    if not _x(cur, f"SELECT 1 FROM {t} WHERE series_code = 'HR' AND label = ?", C.TRAVEL_TYPE).fetchone():
+        _x(cur, f"INSERT INTO {t} (series_code, label, sort_order, is_active, confidential, form_code) VALUES ('HR', ?, 12, 1, 1, NULL)", C.TRAVEL_TYPE)
+    if not _lite(cur):
+        kinds = " OR ".join(f"[kind]=N'{k}'" for k in C.LETTER_KINDS)
+        for name in [r[0] for r in cur.execute("""SELECT name FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID('dbo.hr_letters')
+                                                  AND definition LIKE '%cert_en%'""").fetchall()]:
+            cur.execute(f"ALTER TABLE dbo.hr_letters DROP CONSTRAINT [{name}]")
+        cur.execute(f"ALTER TABLE dbo.hr_letters ADD CONSTRAINT ck_hr_letters_kind CHECK ({kinds})")
+    _x(cur, f"INSERT INTO {mg} (name, at, detail) VALUES (?, ?, ?)", "letters_travel_2026_11_04", _now(),
+       "เพิ่มประเภทหนังสือรับรองเพื่อเดินทางต่างประเทศ · hr_letters.kind รับ travel_en")
 
 
 # ================================================================================ SQL helpers
