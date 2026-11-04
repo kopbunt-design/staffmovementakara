@@ -1681,7 +1681,10 @@ function openMovModal(entry=null) {
               ...orgEmpFields(orgFrom, orgTo) }
           : empUpdateFromMovement(data.type, data.to_dept, data.date, data.job_level)) };
       if(Object.keys(empUpdate).length>1){
-        await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
+        // เดิมไม่ได้เช็กผล — ปรับทะเบียนไม่ผ่าน (สิทธิ์/ข้อมูล) แล้วเงียบ Movement บันทึกแต่ตำแหน่งในทะเบียนไม่เปลี่ยน (AKR26041350, 2026-11-04)
+        const { error: empErr } = await supabase.from("employees").update(empUpdate).eq("emp_code",data.emp_code);
+        if(empErr){ toast(`บันทึก Movement แล้ว แต่ปรับทะเบียนพนักงานไม่สำเร็จ: ${empErr.message} — แจ้ง Admin`,"error"); return; }
+        const e = allEmployees.find(x=>x.emp_code===data.emp_code); if(e) Object.assign(e, empUpdate);
       }
     }
     document.getElementById("modalPortal").innerHTML="";
