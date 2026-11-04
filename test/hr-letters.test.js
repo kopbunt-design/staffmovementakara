@@ -142,10 +142,12 @@ eq(M.pron("Ms. Prapa").his, "her", "Ms. = her"); eq(M.pron("Mr. Somchai").He, "H
   has(M.letterPages("travel_en", { ...d, purpose: "family" }, {}), "Japan for a family visit.", "เยี่ยมครอบครัว");
   has(tv, "has been granted annual leave from 20 December 2026 to 28 December 2026 (inclusive) to travel to Japan for tourism", "การลา");
   has(tv, "She is expected to resume her duties with the Company on 29 December 2026", "วันกลับมาทำงาน");
-  has(tv, "borne by her personally", "ค่าใช้จ่ายพนักงานออกเอง");
+  has(tv, "All travel expenses will be borne by her personally.", "ค่าใช้จ่ายพนักงานออกเอง");
+  has(tv, "in connection with her travel.", "ขอความช่วยเหลือแบบกลาง ๆ");
+  not(tv, "trip", "ไม่มีคำว่า trip");
   has(tv, "Yours faithfully,", "ลงท้ายแบบไม่ระบุชื่อผู้รับ");
   not(tv, "Transportation Allowance", "รายการที่ไม่ติ๊กไม่แสดง");
-  has(M.letterPages("travel_en", { ...d, expenses: "company", name_en: "Mr. A" }, {}), "borne by the Company.", "บริษัทออกค่าใช้จ่าย");
+  has(M.letterPages("travel_en", { ...d, expenses: "company", name_en: "Mr. A" }, {}), "All travel expenses will be borne by the Company.", "บริษัทออกค่าใช้จ่าย");
   not(M.letterPages("travel_en", { ...d, incomes: [] }, {}), "Monthly Salary", "ไม่ติ๊กเงินเดือน = ไม่แสดง");
   has(M.letterPages("travel_en", { ...d, purpose: "other", purpose_other: "a family wedding" }, {}), "Japan for a family wedding", "วัตถุประสงค์พิมพ์เอง");
   eq(M.KINDS.travel_en.docType, "หนังสือรับรองการทำงานเพื่อเดินทางต่างประเทศ (ภาษาอังกฤษ)", "ประเภทในทะเบียน"); }

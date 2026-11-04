@@ -173,8 +173,8 @@ export function letterPages(kind, d, opts = {}) {
       .filter(([, v]) => String(v ?? "").trim());
     const contact = [d.contact_phone, d.contact_email].filter(Boolean);
     const costs = d.expenses === "company"
-      ? `All expenses relating to this trip will be borne by the Company.`
-      : `All expenses relating to this trip will be borne by ${P.him} personally.`;
+      ? `All travel expenses will be borne by the Company.`
+      : `All travel expenses will be borne by ${P.him} personally.`;
     return frame("letter", `
       <div class="lt-a en-ref">Ref. No. ${esc(no)}<br>Date&nbsp;&nbsp; ${esc(enDate(d.issue_date))}</div>
       <div class="lt-a tv-title">${esc(K.title)}</div>
@@ -185,7 +185,7 @@ export function letterPages(kind, d, opts = {}) {
         <div class="tv-rows">${rows.map(([k, v]) => `<div class="tv-row"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
         <p class="tv-p">${nmPlain} has been granted ${esc(leave)} from ${esc(from || "[date]")} to ${esc(to || "[date]")} (inclusive) to travel to ${esc(d.destination || "[country]")} for ${esc(purpose)}. ${P.He} ${P.he === "they" ? "are" : "is"} expected to resume ${P.his} duties with the Company on ${esc(back || "[date]")}.</p>
         <p class="tv-p">${P.His} position will be retained during ${P.his} absence, and ${P.he} will remain an employee of the Company in good standing. ${costs}</p>
-        <p class="tv-p">We would be grateful for any assistance you may extend to ${P.him} ${d.use === "visa" ? `in the consideration of ${P.his} visa application` : "in connection with this trip"}.${contact.length ? ` Should you require any further information, please do not hesitate to contact our Human Resources Department at ${esc(contact.join(" or "))}.` : ""}</p>
+        <p class="tv-p">We would be grateful for any assistance you may extend to ${P.him} ${d.use === "visa" ? `in the consideration of ${P.his} visa application` : `in connection with ${P.his} travel`}.${contact.length ? ` Should you require any further information, please do not hesitate to contact our Human Resources Department at ${esc(contact.join(" or "))}.` : ""}</p>
         <p class="tv-p">This certificate is issued at the employee's request ${d.use === "visa" ? "in support of the visa application" : "for the purpose of overseas travel"}.</p>
         <p class="tv-p tv-yours">Yours faithfully,</p>
         <div class="en-name tv-name">${img(seal, "en-seal")}<span class="nm">${img(sig, "en-sig")}${esc(signer?.name_en || "Mr. Suphachoke Phanthumitr")}</span></div>
