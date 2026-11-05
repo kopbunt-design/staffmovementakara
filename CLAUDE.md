@@ -49,6 +49,10 @@ that calls `/api/*`.
   and non-company accounts also become events). Tables are created on first use. Admin: `GET /api/admin/security`,
   `POST /api/admin/security/block {ip,on,reason,hours}`; shown under the user list on the users page (admin only,
   "🛡️ บันทึกความปลอดภัย", user 2026-11-02).
+- Browser caching (2026-11-05): the app sends `Cache-Control: no-cache` on pages/scripts/styles, and menu pages loaded with
+  `import()` in `js/app.js` carry `?v=${PAGE_V}`, which `build.sh` stamps with the build time — otherwise users kept the old
+  page after a deploy even with a hard reload. Modules that other files also import directly (`hr-letters`,
+  `masterdata-admin`, `shift-allowance`) are imported without `?v=` so there is only one copy of their state.
 - Deploy: `sh azure-app/build.sh`, **import-test `dist/`** (a missing file once crashed startup), copy `dist/`
   into the Azure Repos clone `~/AKARA-HR2` (keep its README), push `main`. Secrets only in App Service / Key Vault.
 

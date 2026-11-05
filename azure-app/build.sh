@@ -9,6 +9,8 @@ for p in index.html fund.html vercel.json assets css js expense uniform contract
   [ -e "../$p" ] && cp -R "../$p" dist/site/
 done
 cp ../js/supabase-config.js dist/site/js/supabase-direct.js   # ตัวต่อ Supabase เดิม — ใช้เฉพาะหน้าย้ายข้อมูล /migrate/
+# เลขรุ่นหน้าเมนู (js/app.js PAGE_V) = เวลา build → หลัง deploy เบราว์เซอร์ต้องโหลดไฟล์หน้าใหม่
+sed -i.bak "s/const PAGE_V = \"dev\";/const PAGE_V = \"$(date +%Y%m%d%H%M%S)\";/" dist/site/js/app.js && rm -f dist/site/js/app.js.bak
 cp -R web/. dist/site/      # หน้าที่มีเฉพาะบน Azure (/migrate/) + js/supabase-config.js รุ่น Azure ทับของเดิม
 find dist -name .DS_Store -delete
 (cd dist && zip -qr ../dist.zip .)

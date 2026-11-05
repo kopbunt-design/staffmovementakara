@@ -7,6 +7,10 @@ import { runChecks, checksPanelHTML } from "./data-checks.js";
 // ===== SHARED STATE =====
 export let currentUser = null;
 export let userRole = "user";
+// เลขรุ่นของหน้าแต่ละเมนู — เปลี่ยนตอน build (azure-app/build.sh) ให้เบราว์เซอร์โหลดไฟล์ใหม่หลัง deploy
+// (หน้าเมนูโหลดทีหลังด้วย import() จึงไม่ถูกรีเฟรชตอนกดโหลดหน้าใหม่ — เคยค้างหน้าเก่าทั้งที่ deploy แล้ว 2026-11-05)
+// ยกเว้น hr-letters / masterdata-admin / shift-allowance ที่ไฟล์อื่น import ตรง ๆ ด้วย — ใส่ ?v= จะได้สำเนาที่สองที่ข้อมูลไม่ตรงกัน
+const PAGE_V = "dev";
 export let allMovements = [];
 export let allEmployees = [];
 export let allPosQuota = [];   // Approved Headcount Plan (ตาราง position_quota) — ว่างได้ถ้ายังไม่ตั้งแผน
@@ -425,30 +429,30 @@ async function renderPage(page) {
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
   if (!OPEN_PAGES.has(page)) await permsReady;
   if (!canPage(page)) { denyPage(page); return; }
-  if(page==="home") (await import("./launcher.js")).renderHome();
+  if(page==="home") (await import(`./launcher.js?v=${PAGE_V}`)).renderHome();
   else if(page==="dashboard") renderDashboard();
-  else if(page==="employees") (await import("./employees.js")).renderEmployees();
-  else if(page==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
+  else if(page==="employees") (await import(`./employees.js?v=${PAGE_V}`)).renderEmployees();
+  else if(page==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
   else if(page==="movements") renderMovements();
-  else if(page==="headcount") (await import("./headcount.js")).renderHeadcount();
-  else if(page==="movreport") (await import("./movement-report.js")).renderMovementReport();
-  else if(page==="workforce") (await import("./workforce-overview.js")).renderWorkforceOverview();
-  else if(page==="vacancy") (await import("./vacancy.js")).renderVacancy();
+  else if(page==="headcount") (await import(`./headcount.js?v=${PAGE_V}`)).renderHeadcount();
+  else if(page==="movreport") (await import(`./movement-report.js?v=${PAGE_V}`)).renderMovementReport();
+  else if(page==="workforce") (await import(`./workforce-overview.js?v=${PAGE_V}`)).renderWorkforceOverview();
+  else if(page==="vacancy") (await import(`./vacancy.js?v=${PAGE_V}`)).renderVacancy();
   else if(page==="analytics") renderAnalytics();
   else if(page==="payroll") renderPayroll();
-  else if(page==="payrollexp") (await import("./payroll-summary.js")).renderPayrollExpense();
-  else if(page==="payrollbuild") (await import("./payroll-build-ui.js")).renderPayrollBuild();
-  else if(page==="payrollapproval") (await import("./payroll-approval.js")).renderPayrollApproval();
-  else if(page==="fundforms") (await import("./fund-forms.js")).renderFundForms();
+  else if(page==="payrollexp") (await import(`./payroll-summary.js?v=${PAGE_V}`)).renderPayrollExpense();
+  else if(page==="payrollbuild") (await import(`./payroll-build-ui.js?v=${PAGE_V}`)).renderPayrollBuild();
+  else if(page==="payrollapproval") (await import(`./payroll-approval.js?v=${PAGE_V}`)).renderPayrollApproval();
+  else if(page==="fundforms") (await import(`./fund-forms.js?v=${PAGE_V}`)).renderFundForms();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();
-  else if(page==="empcontract") (await import("./emp-contract.js")).renderEmpContract();
-  else if(page==="paf") (await import("./paf.js")).renderPaf();
+  else if(page==="empcontract") (await import(`./emp-contract.js?v=${PAGE_V}`)).renderEmpContract();
+  else if(page==="paf") (await import(`./paf.js?v=${PAGE_V}`)).renderPaf();
   else if(page==="shiftallow") (await import("./shift-allowance.js")).renderShiftAllowance();
-  else if(page==="diligence") (await import("./diligence.js")).renderDiligence();
-  else if(page==="otaudit") (await import("./otaudit.js")).renderOtAudit();
-  else if(page==="otreport") (await import("./otreport.js")).renderOtReport();
-  else if(page==="shiftcompare") (await import("./shift-compare.js")).renderShiftCompare();
-  else if(page==="users") (await import("./users.js")).renderUsers();
+  else if(page==="diligence") (await import(`./diligence.js?v=${PAGE_V}`)).renderDiligence();
+  else if(page==="otaudit") (await import(`./otaudit.js?v=${PAGE_V}`)).renderOtAudit();
+  else if(page==="otreport") (await import(`./otreport.js?v=${PAGE_V}`)).renderOtReport();
+  else if(page==="shiftcompare") (await import(`./shift-compare.js?v=${PAGE_V}`)).renderShiftCompare();
+  else if(page==="users") (await import(`./users.js?v=${PAGE_V}`)).renderUsers();
   else if(page==="settings") (await import("./masterdata-admin.js")).renderSettings();
 }
 
@@ -612,13 +616,13 @@ function startRealtime() {
       if(currentPage==="dashboard") renderDashboard();
       if(currentPage==="movements") renderMovements();
       if(currentPage==="analytics") renderAnalytics();
-      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
+      if(currentPage==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"*", schema:"public", table:"employees"}, async () => {
       await loadEmployees();
       if(currentPage==="dashboard") renderDashboard();
-      if(currentPage==="employees") (await import("./employees.js")).renderEmployees();
-      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
+      if(currentPage==="employees") (await import(`./employees.js?v=${PAGE_V}`)).renderEmployees();
+      if(currentPage==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"INSERT", schema:"public", table:"notifications"}, (payload) => {
       pushNotification(payload.new); // เฉพาะ INSERT — upsert ซ้ำ dedup_key เดิมจะเป็น UPDATE ซึ่งไม่ต้องเด้งซ้ำ
