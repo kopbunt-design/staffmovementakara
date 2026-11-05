@@ -766,16 +766,18 @@ def fund_valid_thai_id(p):
 
 
 def fund_verify_invite(r, p_token, p_emp_code, p_last5):
-    inv = r.row("fund_form_invite", "token = ?", (p_token or "").strip())
+    """ลิงก์กลางลิงก์เดียว /fund.html (user 2026-11-05): เข้าด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย — ระบบหาคำเชิญของคนนั้นเอง
+    เข้าได้เฉพาะคนที่มีคำเชิญที่ยังไม่ยกเลิก · ไม่ดูวันหมดอายุแล้ว (ปิดรับ = HR ยกเลิกคำเชิญ) · ลิงก์ส่วนตัวเดิม (?t=) ไม่ใช้แล้ว
+    ผิดเกิน 8 ครั้งใน 30 นาที → ล็อกรหัสนั้น · ไม่บอกว่ารหัสไหนมี/ไม่มีคำเชิญ (คืน None เหมือนกัน)"""
+    code, last5 = (p_emp_code or "").strip().upper(), (p_last5 or "").strip()
+    if not code or not re.fullmatch(r"[0-9]{5}", last5):
+        return None
+    inv = r.row("fund_form_invite", "UPPER(LTRIM(RTRIM(emp_code))) = ? AND (cancelled = 0 OR cancelled IS NULL) ORDER BY created_at DESC, id DESC", code)
     if not inv:
         return None
-    if inv.get("cancelled"):
-        raise E("CANCELLED")
-    if datetime.fromisoformat(str(inv["expires_at"])) < datetime.now(timezone.utc):
-        raise E("EXPIRED")
     if r.val("SELECT COUNT(*) FROM dbo.fund_invite_attempt WHERE invite_id = ? AND at > DATEADD(minute, -30, SYSDATETIMEOFFSET())", inv["id"]) >= 8:
         raise E("LOCKED")
-    if (p_emp_code or "").strip().upper() != (inv["emp_code"] or "").upper() or (p_last5 or "").strip() != inv.get("id_last5"):
+    if last5 != (inv.get("id_last5") or ""):
         r.ins("fund_invite_attempt", {"invite_id": inv["id"]})
         r.cn.commit()     # the failed attempt must count even though nothing else happens
         return None

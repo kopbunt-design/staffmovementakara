@@ -21,9 +21,9 @@ const STATUS_TH = { submitted: "ส่งแล้ว รอ HR รับเร�
 const ERR_TH = {
   ALREADY_SUBMITTED: "ท่านส่งแบบฟอร์มแล้ว แก้ไขเองไม่ได้ — ถ้าต้องการแก้ไขหรือเปลี่ยนกองทุน กรุณาติดต่อ HR",
   VERIFY_FAILED: "ยืนยันตัวตนไม่ผ่าน กรุณาเริ่มใหม่",
-  LOCKED: "กรอกผิดหลายครั้งเกินไป ระบบล็อกลิงก์นี้ไว้ 30 นาที — ถ้ามั่นใจว่าข้อมูลถูก ติดต่อ HR",
-  EXPIRED: "ลิงก์นี้หมดอายุแล้ว กรุณาติดต่อ HR เพื่อขอลิงก์ใหม่",
-  CANCELLED: "ลิงก์นี้ถูกยกเลิกแล้ว กรุณาติดต่อ HR",
+  LOCKED: "กรอกผิดหลายครั้งเกินไป ระบบล็อกรหัสพนักงานนี้ไว้ 30 นาที — ถ้ามั่นใจว่าข้อมูลถูก ติดต่อ HR",
+  EXPIRED: "หมดเวลากรอกแบบฟอร์มแล้ว กรุณาติดต่อ HR",
+  CANCELLED: "ปิดรับแบบฟอร์มของท่านแล้ว กรุณาติดต่อ HR",
   FORM_NOT_ALLOWED: "แบบฟอร์มนี้ไม่ได้เปิดให้ท่านกรอก",
   WEF_ID_MISMATCH: "เลขประจำตัวประชาชนไม่ตรงกับเลข 5 ตัวท้ายที่ใช้ยืนยันตัว",
   NO_CONSENT: "กรุณาติ๊กยินยอมก่อนส่ง",
@@ -45,10 +45,12 @@ const digits = s => String(s || "").replace(/\D/g, "");
 const ageFrom = dob => { if (!dob) return ""; const d = new Date(dob), n = new Date();
   let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return a; };
 
+// ลิงก์ส่วนตัวเดิม ?t=… → ตัดออกจากแถบที่อยู่ ใช้หน้าเข้าสู่ระบบกลาง
+if (location.search) history.replaceState(null, "", location.pathname);
 // ------------------------------------------------------------------ state
 const S = {
   step: "verify", busy: false, err: "",
-  token: new URLSearchParams(location.search).get("t") || "",
+  token: "",          // ลิงก์กลาง (2026-11-05) — ไม่ใช้ token ส่วนตัวแล้ว
   cred: { code: "", last5: "" },
   emp: null,          // ผลจาก fund_form_lookup
   form: null,         // 'pvd' | 'wef'
@@ -158,12 +160,9 @@ const stepper = () => {
 const errBox = () => S.err ? `<div class="fx-err">${esc(S.err)}</div>` : "";
 
 function verify() {
-  if (!S.token) return `<div class="fx-card fx-narrow fx-center">
-    <h1>ต้องใช้ลิงก์ที่ HR ส่งให้</h1>
-    <p class="fx-muted">แบบฟอร์มกองทุนเปิดเฉพาะพนักงานที่ฝ่ายทรัพยากรบุคคลแจ้งไว้ กรุณาเปิดจากลิงก์ส่วนตัวที่ได้รับ</p></div>`;
   return `<div class="fx-card fx-narrow">
-    <h1>ยืนยันตัวตน</h1>
-    <p class="fx-muted">กรอกรหัสพนักงาน และเลขบัตรประชาชน 5 ตัวท้าย เพื่อเริ่มกรอกแบบฟอร์ม</p>
+    <h1>เข้าสู่แบบฟอร์มกองทุน</h1>
+    <p class="fx-muted">สำหรับพนักงานที่ฝ่ายทรัพยากรบุคคลแจ้งรายชื่อไว้ · เข้าด้วยรหัสพนักงาน และเลขบัตรประชาชน 5 ตัวท้าย</p>
     <form data-act="verify">
       <label class="fx-l">รหัสพนักงาน<input class="fx-i" name="code" value="${esc(S.cred.code)}" placeholder="เช่น AKR23030950" autocomplete="off" autocapitalize="characters" required></label>
       <label class="fx-l">เลขบัตรประชาชน 5 ตัวท้าย<input class="fx-i" name="last5" value="${esc(S.cred.last5)}" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" autocomplete="off" placeholder="เช่น 12345" required></label>
@@ -525,7 +524,7 @@ async function doVerify(form) {
   const { data, error } = await supabase.rpc("fund_form_lookup", { p_token: S.token, p_emp_code: S.cred.code, p_last5: S.cred.last5 });
   S.busy = false;
   if (error) { S.err = errMsg(error); render(); return; }
-  if (!data) { S.err = "ข้อมูลไม่ตรงกับคำเชิญ ตรวจรหัสพนักงานและเลขบัตร 5 ตัวท้ายอีกครั้ง (ถ้ายังไม่ได้ ติดต่อ HR)"; render(); return; }
+  if (!data) { S.err = "เข้าไม่ได้ — รหัสพนักงานหรือเลขบัตร 5 ตัวท้ายไม่ถูกต้อง หรือท่านไม่ได้อยู่ในรายชื่อที่ HR เปิดให้กรอก (ติดต่อ HR)"; render(); return; }
   S.emp = data;
   // เปิดให้ฟอร์มเดียวและยังไม่ได้ส่ง (หรือถูกส่งกลับ) → เข้าฟอร์มเลย · ส่งไปแล้วให้เห็นสถานะที่หน้าเลือกก่อน
   const only = (data.forms || []).length === 1 && data.forms[0];

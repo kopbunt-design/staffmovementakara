@@ -11,9 +11,8 @@
 <body>
 <!--
   หน้าให้พนักงานกรอกแบบฟอร์มกองทุนเอง — ไม่ต้องมีบัญชีในระบบ HR
-  เข้าได้เฉพาะคนที่ HR เชิญ: ลิงก์ส่วนตัว https://<โดเมน>/fund.html?t=<token>
-  + รหัสพนักงาน + เลขบัตรประชาชน 5 ตัวท้าย ผ่านฟังก์ชัน fund_form_lookup (sql/schema_fund_forms.sql)
-  ลิงก์ของแต่ละคนคัดลอกได้จากเมนู แบบฟอร์มกองทุน > คำเชิญ
+  ลิงก์กลางลิงก์เดียว https://<โดเมน>/fund.html (2026-11-05) — เข้าได้เฉพาะคนที่ HR ใส่ชื่อไว้ในหน้า คำเชิญ
+  ด้วยรหัสพนักงาน + เลขบัตรประชาชน 5 ตัวท้าย (fund_form_lookup ใน azure-app/rpc.py) · ลิงก์ส่วนตัว ?t= เดิมไม่ใช้แล้ว
 -->
 <header class="fx-top">
   <img src="assets/logo.png" alt="Akara Resources">
@@ -23,6 +22,6 @@
 <footer class="fx-foot">ฝ่ายทรัพยากรบุคคล · บริษัท อัครา รีซอร์สเซส จำกัด (มหาชน)</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script type="module" src="js/fund-public.js?v=17"></script>
+<script type="module" src="js/fund-public.js?v=18"></script>
 </body>
 </html>

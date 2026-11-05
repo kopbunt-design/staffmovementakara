@@ -126,6 +126,14 @@ Started as the Document Index (2026-10-16, replaced the HR app's "ทะเบ�
 - Cancelling a PAF's number in the DMS also cancels the PAF form (the PAF page can't cancel approved ones); the movement it created is not undone. PAF has no signing step (its approval is a log, not signatures).
 - Attachments: bucket `doc-files/<doc_id>/<ts>-<ascii name>` + `doc_files`; open/upload/delete still go to `doc_access_log`. DB origin: `sql/schema_doc_register.sql` + `sql/schema_doc_index.sql`.
 
+## Fund forms — one shared link (`fund.html`, `js/fund-public.js`, admin `js/fund-forms.js`)
+
+User, 2026-11-05: one link for everyone instead of personal `?t=` links. `fund_verify_invite` (azure-app/rpc.py) finds the
+employee's latest **non-cancelled** invite by emp code and checks the last 5 ID digits; invite expiry is no longer
+enforced (closing = cancel the invite); old personal links are ignored (the page strips `?t=`). Unknown code / wrong
+digits / cancelled all return the same "can't enter" answer; 8 wrong tries in 30 min lock that code. The invite tab shows
+the link with "คัดลอกลิงก์" / "คัดลอกข้อความประกาศ" (`announceMessage`).
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).

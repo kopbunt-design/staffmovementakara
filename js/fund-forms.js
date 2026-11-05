@@ -87,7 +87,9 @@ async function sendBack(r) {
 const dt = s => s ? new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : "-";
 const dOnly = s => s ? new Date(s).toLocaleDateString("th-TH", { dateStyle: "medium" }) : "-";
 const empName = e => [e.firstname_th, e.lastname_th].filter(Boolean).join(" ");
-const linkOf = inv => `${location.origin}/fund.html?t=${inv.token}`;
+// ลิงก์กลางลิงก์เดียวสำหรับทุกคนในรายชื่อ (user 2026-11-05) — ยืนยันตัวด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย
+export const FUND_LINK = () => `${location.origin}/fund.html`;
+const linkOf = () => FUND_LINK();
 const SHORT = { pvd: "สำรองเลี้ยงชีพ", wef: "สกล.5" };
 
 let rows = [], invites = [], tab = "invite", fStatus = "", search = "", onlyLatest = true;
@@ -390,7 +392,7 @@ function draw() {
   pg.innerHTML = `
   <div class="page-header">
     <div><div class="page-heading">แบบฟอร์มกองทุน</div>
-      <div class="page-sub">เฉพาะพนักงานที่เชิญ · แต่ละคนได้ลิงก์ส่วนตัว ยืนยันตัวด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย
+      <div class="page-sub">ลิงก์เดียวสำหรับทุกคน · เข้าได้เฉพาะคนที่อยู่ในรายชื่อคำเชิญ ด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย
         ${waiting ? ` · <b style="color:var(--amber);">รอรับเรื่อง ${waiting} คน</b>` : ""}</div></div>
     <div class="header-actions">
       ${tab === "invite"
@@ -469,12 +471,11 @@ const doneAll = inv => { const s = latestByEmp().get(inv.emp_code); return !!s &
 function invState(inv) {
   if (inv.cancelled) return "cancelled";
   if (doneAll(inv)) return "done";
-  if (expired(inv)) return "expired";
   return inv.opened_at ? "opened" : "new";
 }
 const INV_STATE = {
-  new:       { th: "ยังไม่เปิดลิงก์",      c: "var(--muted)", bg: "#f1f5f9" },
-  opened:    { th: "เปิดแล้ว ยังไม่ส่ง", c: "var(--amber)", bg: "var(--amber-light)" },
+  new:       { th: "ยังไม่เข้า",      c: "var(--muted)", bg: "#f1f5f9" },
+  opened:    { th: "เข้าแล้ว ยังไม่ส่ง", c: "var(--amber)", bg: "var(--amber-light)" },
   done:      { th: "ส่งแล้ว",              c: "var(--green)", bg: "var(--green-light)" },
   expired:   { th: "ลิงก์หมดอายุ",         c: "var(--red)",   bg: "var(--red-light)" },
   cancelled: { th: "ยกเลิกแล้ว",          c: "var(--muted)", bg: "#f1f5f9" },
@@ -490,24 +491,31 @@ function inviteHTML() {
   const formCell = inv => inv.forms.map(f => { const s = latestSub(inv.emp_code, f);
     return `<div style="white-space:nowrap;margin:2px 0;"><span style="display:inline-block;min-width:92px;">${SHORT[f]}</span>
       ${s ? `${badge(s.status)} <a href="#" data-view="${s.id}" style="font-size:12px;color:var(--blue);">#${s.id}</a>${isLatest(s) ? "" : ` <span class="text-muted" style="font-size:11px;">ถูกแทนแล้ว</span>`}` : `<span class="text-muted" style="font-size:12px;">ยังไม่ส่ง</span>`}</div>`; }).join("");
-  return `<div class="section" style="padding-top:12px;padding-bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+  return `<div class="section" style="padding-top:12px;padding-bottom:0;">
+      <div class="card" style="padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-left:4px solid var(--blue);">
+        <div style="flex:1;min-width:240px;"><div style="font-weight:600;">ลิงก์แบบฟอร์มกองทุน (ใช้ลิงก์เดียวกันทุกคน)</div>
+          <div style="font-family:monospace;font-size:13px;color:var(--blue);word-break:break-all;">${esc(FUND_LINK())}</div>
+          <div class="text-muted" style="font-size:12px;margin-top:2px;">เข้าได้เฉพาะ ${all.length} คนในรายชื่อด้านล่าง (ยกเลิกคำเชิญ = ปิดรับคนนั้น) · ผิดเกิน 8 ครั้งใน 30 นาทีระบบล็อกรหัสนั้น</div></div>
+        <button class="btn btn-secondary btn-sm" id="ffCopyLink">คัดลอกลิงก์</button>
+        <button class="btn btn-primary btn-sm" id="ffCopyPost">คัดลอกข้อความประกาศ</button>
+      </div></div>
+    <div class="section" style="padding-top:12px;padding-bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input class="form-control" id="ffISearch" placeholder="ค้นหา รหัส / ชื่อ / ฝ่าย" value="${esc(iSearch)}" style="max-width:260px;">
       <select class="form-control" id="ffIFilter" style="max-width:220px;">
         <option value="">ทุกคน (${all.length})</option>
-        ${["new", "opened", "done", "expired"].map(k => `<option value="${k}" ${iFilter === k ? "selected" : ""}>${INV_STATE[k].th} (${n(k)})</option>`).join("")}
+        ${["new", "opened", "done"].map(k => `<option value="${k}" ${iFilter === k ? "selected" : ""}>${INV_STATE[k].th} (${n(k)})</option>`).join("")}
         <option value="cancelled" ${iFilter === "cancelled" ? "selected" : ""}>ยกเลิกแล้ว</option></select>
     </div>
     <div class="section mt-4"><div class="card"><div class="table-wrap">
     ${list.length ? `<table class="data-table">
-      <thead><tr><th>รหัส</th><th>ชื่อ-สกุล</th><th>ฝ่าย/แผนก</th><th>ฟอร์มที่เปิดให้ · สถานะ</th><th>สถานะลิงก์</th><th>หมดอายุ</th><th></th></tr></thead>
+      <thead><tr><th>รหัส</th><th>ชื่อ-สกุล</th><th>ฝ่าย/แผนก</th><th>ฟอร์มที่เปิดให้ · สถานะ</th><th>สถานะ</th><th></th></tr></thead>
       <tbody>${list.map(i => `<tr>
         <td style="white-space:nowrap;">${esc(i.emp_code)}</td>
         <td>${esc([i.title, i.emp_name].filter(Boolean).join(" "))}</td>
         <td>${esc(i.department || "-")}</td>
         <td>${formCell(i)}</td>
         <td>${stBadge(invState(i))}${i.opened_at ? `<div class="text-muted" style="font-size:11px;">เปิด ${dt(i.opened_at)}</div>` : ""}</td>
-        <td style="white-space:nowrap;${expired(i) ? "color:var(--red);" : ""}">${dOnly(i.expires_at)}</td>
-        <td style="white-space:nowrap;">${i.cancelled ? "" : `<button class="btn btn-sm btn-primary" data-copy="${i.id}">คัดลอกข้อความ+ลิงก์</button>
+        <td style="white-space:nowrap;">${i.cancelled ? "" : `<button class="btn btn-sm btn-secondary" data-copy="${i.id}">คัดลอกข้อความ</button>
           ${canEdit() ? `<button class="btn btn-sm btn-secondary" data-edit="${i.id}">แก้ไข</button>` : ""}`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="card-body" style="padding:40px;text-align:center;"><div class="empty-title">${invites.length ? "ไม่มีรายการตามตัวกรอง" : "ยังไม่ได้เชิญใคร"}</div>
          <div class="empty-sub">${invites.length ? "" : "กด “นำเข้ารายชื่อ (Excel)” แล้วเลือกไฟล์รายชื่อพนักงานยังไม่เป็นสมาชิก"}</div></div>`}
@@ -528,12 +536,22 @@ export function inviteMessage(inv) {
       + "กรุณาเลือก 1 กองทุนและกรอกแบบฟอร์มผ่านลิงก์ด้านล่างค่ะ (มีตารางเปรียบเทียบให้ในลิงก์)"
     : inv.forms.includes("wef") ? wef + "กรุณากรอกแบบ สกล.5 เพื่อระบุผู้รับผลประโยชน์ผ่านลิงก์ด้านล่างค่ะ"
     : "บริษัทขอเชิญท่านสมัครสมาชิกกองทุนสำรองเลี้ยงชีพ กรุณากรอกแบบฟอร์มผ่านลิงก์ด้านล่างค่ะ";
-  const due = new Date(inv.expires_at).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
   return `เรียน คุณ${inv.emp_name || inv.emp_code}\n\n` + body + `\n\n` +
     `${linkOf(inv)}\n` +
     `เข้าสู่ระบบด้วยรหัสพนักงานและเลขบัตรประชาชน 5 หลักสุดท้าย โดยสามารถลงลายมือชื่อบนหน้าจอได้เลยค่ะ\n\n` +
-    `กรุณากรอกและส่งแบบฟอร์มกลับภายในวันที่ ${due}\n\n` +
-    `ลิงก์นี้เฉพาะท่าน กรุณาอย่าส่งต่อ`;
+    `กรุณาอย่าเปิดเผยเลขบัตรประชาชนของท่านกับผู้อื่น`;
+}
+
+// ข้อความประกาศรวม (ลิงก์เดียว) — สำหรับแปะในกลุ่ม/อีเมลถึงทุกคน
+export function announceMessage() {
+  return "เรียน พนักงานทุกท่าน\n\n"
+    + "ฝ่ายทรัพยากรบุคคลขอเชิญพนักงานที่มีรายชื่อ กรอกแบบฟอร์มกองทุน (กองทุนสำรองเลี้ยงชีพ / กองทุนสงเคราะห์ลูกจ้าง สกล.5) ผ่านลิงก์ด้านล่างค่ะ\n\n"
+    + `${FUND_LINK()}\n\n`
+    + "เข้าสู่ระบบด้วย\n• รหัสพนักงาน (เช่น AKR23030950)\n• เลขบัตรประชาชน 5 ตัวท้าย\n"
+    + "แล้วลงลายมือชื่อบนหน้าจอได้เลยค่ะ\n\n"
+    + "หากเข้าไม่ได้ แปลว่าท่านอาจไม่ได้อยู่ในรายชื่อ หรือกรอกข้อมูลไม่ถูกต้อง กรุณาติดต่อฝ่ายทรัพยากรบุคคล\n"
+    + "กรุณาอย่าเปิดเผยเลขบัตรประชาชนของท่านกับผู้อื่น\n\n"
+    + "ฝ่ายทรัพยากรบุคคล";
 }
 
 // ---- อ่านไฟล์รายชื่อ (ทำในเบราว์เซอร์ทั้งหมด — เลขบัตรเต็มไม่ถูกส่งออกไปไหน)
@@ -727,6 +745,9 @@ function wire() {
   pg.querySelectorAll("[data-req]").forEach(b => b.onclick = () => requestApproval(rows.find(r => r.id === +b.dataset.req)));
   if (tab === "settings") wireSettings();
   pg.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openInvite(invites.find(i => i.id === +b.dataset.edit)));
+  const copyText = async (txt, ok) => { try { await navigator.clipboard.writeText(txt); toast(ok, "success"); } catch { prompt("คัดลอกข้อความนี้", txt); } };
+  pg.querySelector("#ffCopyLink")?.addEventListener("click", () => copyText(FUND_LINK(), "คัดลอกลิงก์แล้ว"));
+  pg.querySelector("#ffCopyPost")?.addEventListener("click", () => copyText(announceMessage(), "คัดลอกข้อความประกาศแล้ว — วางในกลุ่ม LINE / อีเมลได้เลย"));
   pg.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
     const msg = inviteMessage(invites.find(i => i.id === +b.dataset.copy));
     try { await navigator.clipboard.writeText(msg); toast("คัดลอกแล้ว — วางใน LINE / อีเมลได้เลย", "success"); }
