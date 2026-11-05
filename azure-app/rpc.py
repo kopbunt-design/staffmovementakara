@@ -794,6 +794,9 @@ def fund_form_lookup(r, p_token, p_emp_code, p_last5):
     e = r.row("employees", "UPPER(LTRIM(RTRIM(emp_code))) = ?", inv["emp_code"].upper()) or {}
     subs = r.rows("fund_form_submission", "SELECT * FROM dbo.fund_form_submission WHERE emp_code = ? ORDER BY submitted_at DESC", inv["emp_code"])
     live = [s for s in subs if s["status"] != "cancelled"]
+    # รอบนี้ = คำขอที่ส่งภายใต้คำเชิญนี้ (user 2026-11-05: เคยส่ง สกล. แล้ว HR ยกเลิกคำเชิญ เชิญใหม่ให้สมัคร PVD
+    # → ต้องกรอกได้ ไม่ใช่ขึ้นว่าส่งแล้ว) · คำขอรอบก่อนยังแสดงในประวัติ แต่ไม่ล็อก
+    cur = [s for s in live if s.get("invite_id") == inv["id"]]
     latest_by_form = {}
     for s in live:
         latest_by_form.setdefault(s["form_type"], s)
@@ -804,8 +807,9 @@ def fund_form_lookup(r, p_token, p_emp_code, p_last5):
         "gender": e.get("gender"), "dob": e.get("dob"), "phone": e.get("phone"), "join_date": e.get("join_date"),
         "forms": inv.get("forms"), "expires_at": inv.get("expires_at"),
         "history": [{"id": s["id"], "form_type": s["form_type"], "status": s["status"], "submitted_at": s["submitted_at"],
+                     "cur": s.get("invite_id") == inv["id"],
                      "hr_note": s.get("hr_note") if s["status"] == "rejected" else None} for s in subs],
-        "latest": ({k: live[0].get(k) for k in ("id", "form_type", "status", "submitted_at", "payload")} if live else None),
+        "latest": ({k: cur[0].get(k) for k in ("id", "form_type", "status", "submitted_at", "payload")} if cur else None),
         "drafts": {ft: without(s.get("payload"), "signature", "consent") for ft, s in latest_by_form.items() if s["status"] == "rejected"},
     }
 
@@ -817,8 +821,8 @@ def fund_form_submit(r, p_token, p_emp_code, p_last5, p_form_type, p_payload):
         raise E("VERIFY_FAILED")
     if p_form_type not in (inv.get("forms") or []):
         raise E("FORM_NOT_ALLOWED")
-    last = r.val("""SELECT TOP 1 status FROM dbo.fund_form_submission WHERE emp_code = ? AND status <> N'cancelled'
-                    ORDER BY submitted_at DESC""", inv["emp_code"])
+    last = r.val("""SELECT TOP 1 status FROM dbo.fund_form_submission WHERE invite_id = ? AND status <> N'cancelled'
+                    ORDER BY submitted_at DESC""", inv["id"])     # เฉพาะรอบคำเชิญนี้ — รอบก่อนไม่กัน
     if last in ("submitted", "accepted", "received", "approved", "sent"):
         raise E("ALREADY_SUBMITTED")
     p = p_payload

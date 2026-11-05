@@ -83,11 +83,13 @@ const newWef = e => ({
 
 // ---------------------------------------------------- ฉบับที่ HR ส่งกลับให้แก้
 // ฉบับล่าสุดของคนนี้ (ฟอร์มใดก็ได้) — ได้สองกองทุนก็ต้องเลือกอย่างเดียว ส่งแบบใหม่ = แทนฉบับเดิม
-const latestAny = () => (S.emp?.history || []).find(x => x.status !== "cancelled");
+// เฉพาะคำขอรอบคำเชิญปัจจุบัน (cur) — รอบก่อนที่ HR ยกเลิกคำเชิญไปแล้วไม่ล็อก (user 2026-11-05)
+const thisRound = () => (S.emp?.history || []).filter(x => x.cur !== false);
+const latestAny = () => thisRound().find(x => x.status !== "cancelled");
 // HR รับเรื่องไปแล้ว → ส่งใหม่ไม่ได้ จนกว่า HR จะส่งกลับให้แก้ (DB กันซ้ำอีกชั้น)
 // ส่งแล้ว = ล็อกทันที แก้เองไม่ได้ ต้องให้ HR ยกเลิกให้ก่อน (status = rejected จึงกรอกใหม่ได้)
 const locked = () => ["submitted", "accepted", "received", "pending_approval", "approved", "sent"].includes(latestAny()?.status);
-const latestOf = f => (S.emp?.history || []).find(x => x.form_type === f && x.status !== "cancelled");
+const latestOf = f => thisRound().find(x => x.form_type === f && x.status !== "cancelled");
 const relIn = r => RELATIONS.includes(r) ? { relation: r, other: "" } : { relation: r ? "อื่น ๆ" : "", other: r || "" };
 function pvdFromDraft(d) {
   const bs = (d.beneficiaries || []).map(b => ({ name: b.name || "", ...relIn(b.relation), percent: b.percent ? String(b.percent) : "" }));
@@ -177,13 +179,14 @@ function histHTML() {
   const h = S.emp?.history || [];
   return h.length ? `<div class="fx-hist"><div class="fx-hist-t">คำขอที่เคยส่ง</div>${h.map(x => {
       // ยึดฉบับล่าสุดฉบับเดียว — ฉบับก่อนหน้าแสดงเป็นยกเลิก ให้พนักงานเห็นชัดว่าอันไหนใช้จริง
-      const old = x !== latestAny() && x.status !== "cancelled";
+      const prev = x.cur === false;     // รอบคำเชิญก่อน — แสดงสถานะจริง ไม่ขีดทิ้ง
+      const old = !prev && x !== latestAny() && x.status !== "cancelled";
       return `
       <div class="fx-hist-r${old || x.status === "cancelled" ? " fx-hist-old" : ""}"><span>#${x.id} ${esc(FORM_NAME[x.form_type])}</span>
       <span class="fx-muted">${new Date(x.submitted_at).toLocaleDateString("th-TH")}</span>
-      <span class="fx-tag st-${old ? "cancelled" : x.status}">${old ? "ยกเลิก · ใช้ฉบับล่าสุดแทน" : STATUS_TH[x.status] || x.status}</span>
-      ${!old && S.emp.latest?.id === x.id && x.status !== "rejected" ? `<button class="fx-btn fx-dl" data-act="dl" type="button">⬇ ดาวน์โหลด PDF</button>` : ""}
-      ${!old && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
+      <span class="fx-tag st-${old ? "cancelled" : x.status}">${old ? "ยกเลิก · ใช้ฉบับล่าสุดแทน" : (prev ? "รอบก่อน · " : "") + (STATUS_TH[x.status] || x.status)}</span>
+      ${!old && !prev && S.emp.latest?.id === x.id && x.status !== "rejected" ? `<button class="fx-btn fx-dl" data-act="dl" type="button">⬇ ดาวน์โหลด PDF</button>` : ""}
+      ${!old && !prev && x.status === "rejected" && x.hr_note ? `<div class="fx-small" style="flex-basis:100%;color:var(--red);">เหตุผล: ${esc(x.hr_note)}</div>` : ""}</div>`; }).join("")}
 </div>` : "";
 }
 

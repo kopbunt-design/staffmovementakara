@@ -205,8 +205,8 @@ def fund_approval_guard(cur, ctx, old, new):
 
 
 def fund_block_resubmit(cur, ctx, new):
-    st = _one(cur, """SELECT TOP 1 status FROM dbo.fund_form_submission WHERE emp_code = ? AND status <> N'cancelled'
-                      ORDER BY submitted_at DESC""", new.get("emp_code"))
+    st = _one(cur, """SELECT TOP 1 status FROM dbo.fund_form_submission WHERE invite_id = ? AND status <> N'cancelled'
+                      ORDER BY submitted_at DESC""", new.get("invite_id"))     # เฉพาะรอบคำเชิญเดียวกัน
     if st == "pending_approval":
         raise HookError("ALREADY_SUBMITTED")
 
