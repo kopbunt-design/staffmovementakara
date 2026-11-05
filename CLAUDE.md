@@ -131,8 +131,8 @@ Started as the Document Index (2026-10-16, replaced the HR app's "ทะเบ�
 User, 2026-11-05: one link for everyone instead of personal `?t=` links. `fund_verify_invite` (azure-app/rpc.py) finds the
 employee's latest **non-cancelled** invite by emp code and checks the last 5 ID digits; invite expiry is no longer
 enforced (closing = cancel the invite); old personal links are ignored (the page strips `?t=`). Unknown code / wrong
-digits / cancelled all return the same "can't enter" answer; 8 wrong tries in 30 min lock that code. The invite tab shows
-the link with "คัดลอกลิงก์" / "คัดลอกข้อความประกาศ" (`announceMessage`).
+digits / cancelled all return the same "can't enter" answer; 8 wrong tries in 30 min lock that code. A box above the tabs (every tab) shows
+the clickable link with "คัดลอกลิงก์" / "คัดลอกข้อความประกาศ" (`announceMessage`).
 
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 

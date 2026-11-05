@@ -402,6 +402,14 @@ function draw() {
         : tab === "pvd" || tab === "wef" ? `<button class="btn btn-primary" id="ffExport">Export Excel</button>` : ""}
     </div>
   </div>
+  <div class="section" style="padding-top:4px;padding-bottom:0;">
+      <div class="card" style="padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-left:4px solid var(--blue);">
+        <div style="flex:1;min-width:240px;"><div style="font-weight:600;">ลิงก์แบบฟอร์มกองทุน (ใช้ลิงก์เดียวกันทุกคน)</div>
+          <a href="${esc(FUND_LINK())}" target="_blank" rel="noopener" style="display:block;font-family:monospace;font-size:13px;color:var(--blue);word-break:break-all;">${esc(FUND_LINK())}</a>
+          <div class="text-muted" style="font-size:12px;margin-top:2px;">เข้าได้เฉพาะ ${live} คนในรายชื่อแท็บคำเชิญ (ยกเลิกคำเชิญ = ปิดรับคนนั้น) · ผิดเกิน 8 ครั้งใน 30 นาทีระบบล็อกรหัสนั้น</div></div>
+        <button class="btn btn-secondary btn-sm" id="ffCopyLink">คัดลอกลิงก์</button>
+        <button class="btn btn-primary btn-sm" id="ffCopyPost">คัดลอกข้อความประกาศ</button>
+      </div></div>
   <div class="section" style="padding-top:12px;padding-bottom:0;">
     <div class="cp-tabs">
       <button class="cp-tab${tab === "invite" ? " on" : ""}" data-tab="invite">คำเชิญ (${live})</button>
@@ -491,15 +499,7 @@ function inviteHTML() {
   const formCell = inv => inv.forms.map(f => { const s = latestSub(inv.emp_code, f);
     return `<div style="white-space:nowrap;margin:2px 0;"><span style="display:inline-block;min-width:92px;">${SHORT[f]}</span>
       ${s ? `${badge(s.status)} <a href="#" data-view="${s.id}" style="font-size:12px;color:var(--blue);">#${s.id}</a>${isLatest(s) ? "" : ` <span class="text-muted" style="font-size:11px;">ถูกแทนแล้ว</span>`}` : `<span class="text-muted" style="font-size:12px;">ยังไม่ส่ง</span>`}</div>`; }).join("");
-  return `<div class="section" style="padding-top:12px;padding-bottom:0;">
-      <div class="card" style="padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-left:4px solid var(--blue);">
-        <div style="flex:1;min-width:240px;"><div style="font-weight:600;">ลิงก์แบบฟอร์มกองทุน (ใช้ลิงก์เดียวกันทุกคน)</div>
-          <div style="font-family:monospace;font-size:13px;color:var(--blue);word-break:break-all;">${esc(FUND_LINK())}</div>
-          <div class="text-muted" style="font-size:12px;margin-top:2px;">เข้าได้เฉพาะ ${all.length} คนในรายชื่อด้านล่าง (ยกเลิกคำเชิญ = ปิดรับคนนั้น) · ผิดเกิน 8 ครั้งใน 30 นาทีระบบล็อกรหัสนั้น</div></div>
-        <button class="btn btn-secondary btn-sm" id="ffCopyLink">คัดลอกลิงก์</button>
-        <button class="btn btn-primary btn-sm" id="ffCopyPost">คัดลอกข้อความประกาศ</button>
-      </div></div>
-    <div class="section" style="padding-top:12px;padding-bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+  return `<div class="section" style="padding-top:12px;padding-bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input class="form-control" id="ffISearch" placeholder="ค้นหา รหัส / ชื่อ / ฝ่าย" value="${esc(iSearch)}" style="max-width:260px;">
       <select class="form-control" id="ffIFilter" style="max-width:220px;">
         <option value="">ทุกคน (${all.length})</option>
