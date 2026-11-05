@@ -137,6 +137,8 @@ employee's latest **non-cancelled** invite by emp code and checks the last 5 ID 
 enforced (closing = cancel the invite); old personal links are ignored (the page strips `?t=`). Unknown code / wrong
 digits / cancelled all return the same "can't enter" answer; 8 wrong tries in 30 min lock that code. A box above the tabs (every tab) shows
 the clickable link with "คัดลอกลิงก์" / "คัดลอกข้อความประกาศ" (`announceMessage`).
+Only submissions **under the current invite** (`invite_id`) lock the form (user, 2026-11-05: someone who sent a WEF form
+in an earlier round, re-invited for PVD, saw "already sent"); earlier rounds still show in the history as "รอบก่อน".
 
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
