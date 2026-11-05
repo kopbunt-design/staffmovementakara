@@ -63,6 +63,11 @@ async def security_guard(request: Request, call_next):
         guard.failed(request, f"http_{resp.status_code}")
     if guard.signed_in(request):
         guard.seen(request, current_user(request))
+    # หน้าเว็บ/สคริปต์: ให้เบราว์เซอร์ถามเซิร์ฟเวอร์ทุกครั้ง (ใช้ ETag ได้ ไม่โหลดซ้ำถ้าไม่เปลี่ยน) — เดิมไม่มีหัวนี้
+    # เบราว์เซอร์จึงเดาอายุแคชเอง หลัง deploy ผู้ใช้ยังเห็นหน้าเก่าจนกด refresh แรง ๆ (2026-11-05) · เหมือน vercel.json เดิม
+    p = request.url.path
+    if not p.startswith("/api/") and "cache-control" not in resp.headers and (p.endswith((".js", ".css", ".html")) or "." not in p.rsplit("/", 1)[-1]):
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
 
