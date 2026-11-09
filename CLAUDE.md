@@ -52,7 +52,9 @@ that calls `/api/*`.
 - Browser caching (2026-11-05): the app sends `Cache-Control: no-cache` on pages/scripts/styles, and menu pages loaded with
   `import()` in `js/app.js` carry `?v=${PAGE_V}`, which `build.sh` stamps with the build time — otherwise users kept the old
   page after a deploy even with a hard reload. Modules that other files also import directly (`hr-letters`,
-  `masterdata-admin`, `shift-allowance`) are imported without `?v=` so there is only one copy of their state.
+  `masterdata-admin`, `shift-allowance`, `employee-profile`, `employees`, `launcher`) are imported without `?v=` so there
+  is only one copy of their state — a versioned copy of `employee-profile` showed "ไม่พบพนักงาน รหัส -" (2026-11-09):
+  before adding `?v=` to a page, check nothing else imports it.
 - Deploy: `sh azure-app/build.sh`, **import-test `dist/`** (a missing file once crashed startup), copy `dist/`
   into the Azure Repos clone `~/AKARA-HR2` (keep its README), push `main`. Secrets only in App Service / Key Vault.
 

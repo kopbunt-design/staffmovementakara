@@ -429,10 +429,10 @@ async function renderPage(page) {
   // กันเข้าหน้าตรง ๆ ทั้งที่เมนูถูกซ่อน — เมนูซ่อนอย่างเดียวไม่พอ
   if (!OPEN_PAGES.has(page)) await permsReady;
   if (!canPage(page)) { denyPage(page); return; }
-  if(page==="home") (await import(`./launcher.js?v=${PAGE_V}`)).renderHome();
+  if(page==="home") (await import("./launcher.js")).renderHome();
   else if(page==="dashboard") renderDashboard();
-  else if(page==="employees") (await import(`./employees.js?v=${PAGE_V}`)).renderEmployees();
-  else if(page==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
+  else if(page==="employees") (await import("./employees.js")).renderEmployees();
+  else if(page==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
   else if(page==="movements") renderMovements();
   else if(page==="headcount") (await import(`./headcount.js?v=${PAGE_V}`)).renderHeadcount();
   else if(page==="movreport") (await import(`./movement-report.js?v=${PAGE_V}`)).renderMovementReport();
@@ -616,13 +616,13 @@ function startRealtime() {
       if(currentPage==="dashboard") renderDashboard();
       if(currentPage==="movements") renderMovements();
       if(currentPage==="analytics") renderAnalytics();
-      if(currentPage==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
+      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"*", schema:"public", table:"employees"}, async () => {
       await loadEmployees();
       if(currentPage==="dashboard") renderDashboard();
-      if(currentPage==="employees") (await import(`./employees.js?v=${PAGE_V}`)).renderEmployees();
-      if(currentPage==="empprofile") (await import(`./employee-profile.js?v=${PAGE_V}`)).renderEmployeeProfile();
+      if(currentPage==="employees") (await import("./employees.js")).renderEmployees();
+      if(currentPage==="empprofile") (await import("./employee-profile.js")).renderEmployeeProfile();
     })
     .on("postgres_changes", {event:"INSERT", schema:"public", table:"notifications"}, (payload) => {
       pushNotification(payload.new); // เฉพาะ INSERT — upsert ซ้ำ dedup_key เดิมจะเป็น UPDATE ซึ่งไม่ต้องเด้งซ้ำ
