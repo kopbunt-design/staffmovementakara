@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/diligence-calc.js`).replace(/^export /gm, "");
-const M = new Function(`${src}; return { rateFor, parseBy, classifyReason, editDays, leaveKinds, evaluate, parseProcessed, parseEdits, parseWebReasons, serialToISO, nextYM, prevYM, applyHistEdit };`)();
+const M = new Function(`${src}; return { rateFor, parseBy, classifyReason, editDays, leaveKinds, evaluate, parseProcessed, parseEdits, parseWebReasons, serialToISO, nextYM, prevYM, applyHistEdit, backpayOf };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 
@@ -170,5 +170,15 @@ const edits = M.parseEdits([["บริษัท"], ["AKR00000009 นายท�
 eq([edits.length, edits[0].emp, edits[0].reason, edits[0].at], [1, "AKR00000009", "รปภ.สแกนไม่ติด", "2026-09-02"], "อ่านไฟล์เพิ่มเวลา");
 const wr = M.parseWebReasons([[null, null, null, "AKR00000009 นายทดสอบ"], [null, null, null, null, null, 46266.33, null, null, 46266.33, null, "ลืมบัตร", null, null, null, null, null, "AKR00000001,2/Sep/26 10:00"]]);
 eq(wr.get(`AKR00000009|${Math.round(46266.33 * 1440)}`), "ลืมบัตร", "อ่านเหตุผลจากไฟล์ web");
+
+// ตกเบิก (2026-11-11): ให้สิทธิ์ ก.ย. ย้อนหลัง + ติ๊กตกเบิก → จ่ายส่วนต่างในงวดถัดไป · ไม่ติ๊ก = จ่ายไปแล้ว
+const late = { qualified: true, streak: 1, amount: 300, auto_qualified: false, auto_amount: 0, manual: { action: "grant", note: "x", backpay: true } };
+eq(M.backpayOf(late), 300, "ตกเบิก = ยอดที่ให้ย้อนหลัง");
+eq(M.backpayOf({ ...late, manual: { action: "grant", note: "x" } }), 0, "ไม่ติ๊กตกเบิก = จ่ายในงวดเดิมแล้ว");
+eq(M.backpayOf({ ...late, qualified: false, amount: 0 }), 0, "ตัดสิทธิ์ = ไม่มีตกเบิก");
+eq(M.backpayOf({ ...late, auto_qualified: true, auto_amount: 300, amount: 600 }), 300, "เพิ่มยอดจาก 300 เป็น 600 = ตกเบิก 300");
+eq(M.backpayOf(null), 0, "ไม่มีเดือนก่อน");
+eq(M.applyHistEdit({ ym: "2026-09", qualified: false, streak: 0, amount: 0, auto_qualified: false, auto_amount: 0 }, late.manual, null),
+   { qualified: true, streak: 1, amount: 300 }, "ให้สิทธิ์ ก.ย. ย้อนหลัง = เดือนที่ 1 ฿300 (ต.ค. ต่อเป็นเดือนที่ 2)");
 
 console.log(F === 0 ? `ผ่านทั้งหมด ${P} เคส` : `ผ่าน ${P} · ตก ${F}`);

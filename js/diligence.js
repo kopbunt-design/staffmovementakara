@@ -3,13 +3,15 @@
 // ตาราง: sql/schema_diligence.sql · เดือนต่อเนื่องนับจากผลที่ "บันทึก" ของเดือนก่อน จึงต้องบันทึกทีละเดือนตามลำดับ
 import { esc, toast, can, allEmployees, currentUser } from "./app.js";
 import { supabase } from "./supabase-config.js";
-import { START_YM, MAX_EDIT_DAYS, OFFSITE_DEADLINE_DAY, GROUPS, nextYM, prevYM, manualAmount, applyHistEdit,
+import { START_YM, MAX_EDIT_DAYS, OFFSITE_DEADLINE_DAY, GROUPS, nextYM, prevYM, manualAmount, applyHistEdit, backpayOf,
          parseProcessed, parseEdits, parseWebReasons, editDays, evaluate } from "./diligence-calc.js";
 
 const TH_M = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 const ymTH = ym => { const [y, m] = ym.split("-").map(Number); return `${TH_M[m - 1]} ${y + 543}`; };
 const dTH = iso => `${Number(iso.slice(8))} ${TH_M[Number(iso.slice(5, 7)) - 1]}`;
 const fmt = n => Number(n || 0).toLocaleString("en-US");
+// ตกเบิกจากเดือนก่อน (backpayOf ใน diligence-calc.js) — แสดง/Export คู่กับเบี้ยขยันเดือนนี้ ไม่เก็บแยกใน DB (คิดจากเดือนก่อนทุกครั้ง)
+const bp = (prev, ym) => { const n = backpayOf(prev); return n > 0 ? { backpay: n, backpayFrom: ymTH(prevYM(ym)) } : { backpay: 0 }; };
 const empName = e => [e?.firstname_th, e?.lastname_th].filter(Boolean).join(" ") || [e?.firstname_en, e?.lastname_en].filter(Boolean).join(" ");
 const defaultYM = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); };
 
@@ -135,7 +137,7 @@ async function loadPrev() {
   const p = prevYM(S.ym);
   const [{ data: run }, { data: rows, error }] = await Promise.all([
     supabase.from("diligence_runs").select("ym").eq("ym", p).maybeSingle(),
-    supabase.from("diligence_results").select("emp_code,qualified,streak").eq("ym", p),
+    supabase.from("diligence_results").select("emp_code,emp_name,department,job_level,qualified,streak,amount,auto_qualified,auto_amount,manual").eq("ym", p),
   ]);
   if (error) { toast("อ่านผลเดือนก่อนไม่ได้: " + error.message + " (รัน sql/schema_diligence.sql แล้วหรือยัง)", "error"); }
   S.prevSaved = !!run;
@@ -159,8 +161,10 @@ async function recompute() {
     if (!r.inScope) continue;
     const auto = S.manual.has(c) ? evaluate(args) : r;          // ผลที่ระบบคิดเอง ก่อน HR แก้
     S.results.push({ ...r, code: e.emp_code, name: empName(e), department: e.department || "", job_level: e.job_level || "", eds: byEmp[c] || [],
-                     autoQualified: auto.qualified, autoAmount: auto.amount, manual: S.manual.get(c) || null });
+                     autoQualified: auto.qualified, autoAmount: auto.amount, manual: S.manual.get(c) || null, ...bp(S.prev.get(e.emp_code), S.ym) });
   }
+  // ตกเบิกของคนที่ไม่อยู่ในขอบเขตเดือนนี้ (ออก/เปลี่ยนสัญญา) — ไม่มีแถวให้จ่าย ต้องแจ้ง HR
+  S.bpOut = [...S.prev.values()].filter(p => backpayOf(p) > 0 && !S.results.some(r => r.code === p.emp_code));
   S.results.sort((a, b) => a.department.localeCompare(b.department) || a.code.localeCompare(b.code));
   drawOut();
 }
@@ -168,11 +172,12 @@ async function recompute() {
 function drawOut() {
   const el = document.getElementById("dgOut"); if (!el) return;
   const R = S.results, ok = R.filter(r => r.qualified), flagged = R.filter(r => r.flags.length);
-  const total = ok.reduce((s, r) => s + r.amount, 0);
+  const total = ok.reduce((s, r) => s + r.amount, 0), bpR = R.filter(r => r.backpay > 0), bpTotal = bpR.reduce((s, r) => s + r.backpay, 0);
   const tiers = [1, 4, 7].map((from, i) => ok.filter(r => r.streak >= from && r.streak < [4, 7, 1e9][i]).length);
   const warns = [];
   if (S.ym > START_YM && !S.prevSaved) warns.push(`ยังไม่ได้บันทึกเดือน ${ymTH(prevYM(S.ym))} — เดือนต่อเนื่องจะเริ่มนับ 1 ทุกคน และบันทึกเดือนนี้ไม่ได้จนกว่าจะบันทึกเดือนก่อน`);
   if (S.restored && (S.restored.people || S.restored.days)) warns.push(`ดึงการแก้ไขของ HR จากที่บันทึกไว้ (${new Date(S.restored.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}) มาใช้ต่อแล้ว: แก้รายคน ${S.restored.people} คน · กลุ่มการแก้เวลา ${S.restored.days} วัน — ไม่ต้องแก้ซ้ำ`);
+  if (S.bpOut?.length) warns.push(`มีตกเบิกเวลา ${ymTH(prevYM(S.ym))} แต่ไม่อยู่ในขอบเขตเดือนนี้ — ต้องจ่ายเอง: ${S.bpOut.map(p => `${esc(p.emp_code)} ${esc(p.emp_name || "")} ฿${fmt(backpayOf(p))}`).join(", ")}`);
   if (S.notFound.length) warns.push(`${S.notFound.length} รหัสในไฟล์ไม่พบในทะเบียนพนักงาน: ${S.notFound.slice(0, 6).map(x => esc(x.code)).join(", ")}${S.notFound.length > 6 ? " …" : ""}`);
   const noWeb = S.edits.filter(e => e.date.startsWith(S.ym) && /HR\s*Approve\s*\(web\)/i.test(e.reason) && !S.web.get(`${e.emp}|${e.minute}`)).length;
   if (noWeb) warns.push(`${noWeb} รายการแก้เวลาเขียนแค่ “HR Approve(web)” ${S.files.web ? "และหาเหตุผลในไฟล์ web ไม่เจอ" : "— อัปโหลดไฟล์ 3 เพื่อเอาเหตุผลจริง"} → นับเป็นแก้เวลา`);
@@ -189,7 +194,7 @@ function drawOut() {
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
     ${stat("อยู่ในขอบเขต", fmt(R.length) + " คน", "พนักงานประจำ O/S สัญชาติไทย ครบเดือน")}
     ${stat("ได้เบี้ยขยัน", fmt(ok.length) + " คน", `300 × ${tiers[0]} · 600 × ${tiers[1]} · 1,000 × ${tiers[2]}`, "var(--green)")}
-    ${stat("ยอดรวม", "฿" + fmt(total), `จ่ายงวด ${ymTH(nextYM(S.ym))}`, "var(--green)")}
+    ${stat("ยอดรวม", "฿" + fmt(total + bpTotal), bpTotal ? `เบี้ยขยัน ${fmt(total)} + ตกเบิก ${fmt(bpTotal)} (${bpR.length} คน) · จ่ายงวด ${ymTH(nextYM(S.ym))}` : `จ่ายงวด ${ymTH(nextYM(S.ym))}`, "var(--green)")}
     ${stat("ไม่ได้", fmt(R.length - ok.length) + " คน", "ดูเหตุผลในตาราง")}
     ${stat("ต้องตรวจ", fmt(flagged.length) + " คน", "สแกนไม่ติด · อุบัติเหตุ · กะไม่ครบ", flagged.length ? "var(--gold-dark)" : "")}
   </div>
@@ -248,21 +253,21 @@ function amountCell(r, onclick) {
   const inner = `${changed ? `<span class="sa-struck">${fmt(r.autoAmount)}</span> ` : ""}<b style="color:${changed ? "var(--gold-dark)" : r.qualified ? "var(--green)" : "var(--muted)"};">${r.qualified ? fmt(r.amount) : "0"}</b>`;
   return onclick ? `<button class="sa-edit-cell" data-edit="${esc(r.code)}" title="กดเพื่อแก้">${inner}<span class="sa-pencil">✎</span></button>` : inner;
 }
-const reasonsCell = r => `${(r.reasons || []).map(x => `<div style="color:var(--red);">• ${esc(x)}</div>`).join("")}${(r.flags || []).filter(x => !/^HR (ให้สิทธิ์|กำหนดยอด)/.test(x)).map(x => `<div style="color:var(--gold-dark);">⚑ ${esc(x)}</div>`).join("")}${r.manual ? `<div style="color:var(--blue);">✎ ${esc(manualText(r.manual))}</div>` : ""}${!(r.reasons || []).length && !(r.flags || []).length && !r.manual ? `<span class="text-muted">มาครบ${r.editCount ?? r.edit_days ? ` · แก้เวลา ${r.editCount ?? r.edit_days} วัน` : ""}</span>` : ""}`;
-const manualText = m => [m.action === "grant" ? "ให้สิทธิ์" : m.action === "deny" ? "ตัดสิทธิ์" : "", manualAmount(m) != null ? `ยอด ${fmt(manualAmount(m))}` : "", m.note].filter(Boolean).join(" · ") + (m.by ? ` (${m.by})` : "");
+const reasonsCell = r => `${r.backpay > 0 ? `<div style="color:var(--green);font-weight:600;">＋ ตกเบิกเวลา ${esc(r.backpayFrom)} ฿${fmt(r.backpay)}</div>` : ""}${(r.reasons || []).map(x => `<div style="color:var(--red);">• ${esc(x)}</div>`).join("")}${(r.flags || []).filter(x => !/^HR (ให้สิทธิ์|กำหนดยอด)/.test(x)).map(x => `<div style="color:var(--gold-dark);">⚑ ${esc(x)}</div>`).join("")}${r.manual ? `<div style="color:var(--blue);">✎ ${esc(manualText(r.manual))}</div>` : ""}${!(r.reasons || []).length && !(r.flags || []).length && !r.manual ? `<span class="text-muted">มาครบ${r.editCount ?? r.edit_days ? ` · แก้เวลา ${r.editCount ?? r.edit_days} วัน` : ""}</span>` : ""}`;
+const manualText = m => [m.action === "grant" ? "ให้สิทธิ์" : m.action === "deny" ? "ตัดสิทธิ์" : "", manualAmount(m) != null ? `ยอด ${fmt(manualAmount(m))}` : "", m.backpay ? "จ่ายเป็นตกเบิกงวดถัดไป" : "", m.note].filter(Boolean).join(" · ") + (m.by ? ` (${m.by})` : "");
 
 function drawTable() {
   const q = S.q.trim().toLowerCase();
   const rows = S.results.filter(r => S.filter === "all" || (S.filter === "ok" ? r.qualified : S.filter === "no" ? !r.qualified : S.filter === "edit" ? r.manual : r.flags.length))
     .filter(r => !q || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(q));
-  const canW = can("data.diligence.write");
+  const canW = can("data.diligence.write"), hasBp = S.results.some(r => r.backpay > 0);
   document.getElementById("dgTable").innerHTML = `<div style="overflow:auto;"><table class="data-table"><thead><tr>
-    <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
+    <th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th>${hasBp ? `<th style="text-align:right;">ตกเบิก</th>` : ""}<th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
       <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td>
-      <td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>
+      <td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>${hasBp ? `<td style="text-align:right;">${r.backpay > 0 ? `<b style="color:var(--green);">${fmt(r.backpay)}</b>` : ""}</td>` : ""}
       <td style="font-size:12px;max-width:440px;">${reasonsCell(r)}</td></tr>`).join("")
-      || `<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
+      || `<tr><td colspan="8" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
   </tbody></table></div>`;
   document.querySelectorAll("#dgTable [data-edit]").forEach(b => b.onclick = () => {
     const r = S.results.find(x => x.code === b.dataset.edit);
@@ -272,7 +277,7 @@ function drawTable() {
 
 // ---------------------------------------------------------------- หน้าต่างแก้ไข (ใช้ทั้งหน้าคำนวณและประวัติ)
 // คืน manual = { action: "" | "grant" | "deny", amount: null | ตัวเลข, note, by, at } หรือ null (ล้างการแก้ไข)
-function editModal(r, monthLabel, onApply) {
+function editModal(r, monthLabel, onApply, opts = {}) {
   const m = r.manual || {};
   const portal = document.getElementById("modalPortal");
   const presets = ["พักงาน (ข้อ 4.9)", "อุบัติเหตุจากความประมาท (ข้อ 4.11)", "มาทำงานจริง ไฟล์เวลาผิด", "ผู้บริหารอนุมัติเป็นกรณีพิเศษ"];
@@ -292,6 +297,9 @@ function editModal(r, monthLabel, onApply) {
           <input type="checkbox" id="dgFix" style="width:auto;margin:0;" ${manualAmount(m) != null ? "checked" : ""}> กำหนดยอดเอง (บาท)</label>
         <input id="dgAmt" type="number" min="0" step="1" class="form-input" value="${manualAmount(m) ?? (r.qualified ? r.amount : 300)}" ${manualAmount(m) != null ? "" : "disabled"}>
         <div class="text-sm text-muted mt-1">ปกติไม่ต้องกำหนด — ระบบใช้อัตราตามเดือนต่อเนื่อง (300 / 600 / 1,000) · ยอด 0 = ไม่จ่ายเดือนนี้ แต่ยังนับเดือนต่อเนื่อง</div></div>
+      ${opts.payLabel ? `<div class="form-group" style="margin-top:14px;"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="dgBp" style="width:auto;margin:0;" ${m.backpay ? "checked" : ""}> งวด ${esc(opts.payLabel)} จ่ายไปแล้ว — จ่ายส่วนที่เพิ่มเป็น <b>ตกเบิก</b> ในงวดถัดไป</label>
+        <div class="text-sm text-muted mt-1">ติ๊กเมื่อให้สิทธิ์ / เพิ่มยอดหลังส่งเงินเดือนงวดนั้นแล้ว — เดือนถัดไปจะขึ้นคอลัมน์ตกเบิก (จ่ายแม้เดือนถัดไปจะไม่ได้เบี้ยขยัน)</div></div>` : ""}
       <div class="form-group" style="margin-top:14px;"><label class="form-label">เหตุผล *</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${presets.map(p => `<button class="btn btn-sm" data-p="${esc(p)}">${esc(p)}</button>`).join("")}</div>
         <textarea id="dgNote" class="form-input" rows="2" placeholder="บังคับกรอก — ให้รู้ภายหลังว่าทำไมผลไม่ตรงกับที่ระบบคิด">${esc(m.note || "")}</textarea></div>
@@ -308,18 +316,18 @@ function editModal(r, monthLabel, onApply) {
   el.querySelector("[data-ok]").onclick = () => {
     const action = el.querySelector("[name=dgAct]:checked")?.value || "";
     const amount = el.querySelector("#dgFix").checked ? Number(el.querySelector("#dgAmt").value) : null;
-    const note = el.querySelector("#dgNote").value.trim();
+    const note = el.querySelector("#dgNote").value.trim(), backpay = !!el.querySelector("#dgBp")?.checked;
     if (!action && amount == null) { close(); onApply(null); return; }
     if (amount != null && !(amount >= 0)) { toast("ยอดเงินไม่ถูกต้อง", "error"); return; }
     if (!note) { toast("กรุณาใส่เหตุผล", "error"); return; }
     close();
-    onApply({ action, amount, note, by: currentUser?.user_metadata?.full_name || currentUser?.email || "", at: new Date().toISOString() });
+    onApply({ action, amount, note, ...(backpay ? { backpay: true } : {}), by: currentUser?.user_metadata?.full_name || currentUser?.email || "", at: new Date().toISOString() });
   };
 }
 
 async function save() {
   if (S.ym > START_YM && !S.prevSaved) { toast(`บันทึกเดือน ${ymTH(prevYM(S.ym))} ก่อน`, "error"); return; }
-  if (!confirm(`บันทึกเบี้ยขยันเวลา ${ymTH(S.ym)} (จ่ายงวด ${ymTH(nextYM(S.ym))})\n${S.results.filter(r => r.qualified).length} คนได้ · รวม ฿${fmt(S.results.reduce((s, r) => s + (r.qualified ? r.amount : 0), 0))}\n\nถ้าเคยบันทึกเดือนนี้แล้ว จะแทนที่ของเดิม`)) return;
+  if (!confirm(`บันทึกเบี้ยขยันเวลา ${ymTH(S.ym)} (จ่ายงวด ${ymTH(nextYM(S.ym))})\n${S.results.filter(r => r.qualified).length} คนได้ · รวม ฿${fmt(S.results.reduce((s, r) => s + (r.qualified ? r.amount : 0), 0))}${S.results.some(r => r.backpay > 0) ? ` + ตกเบิก ฿${fmt(S.results.reduce((s, r) => s + (r.backpay || 0), 0))}` : ""}\n\nถ้าเคยบันทึกเดือนนี้แล้ว จะแทนที่ของเดิม`)) return;
   const rows = S.results.map(r => ({ code: r.code, name: r.name, department: r.department, job_level: r.job_level, qualified: r.qualified,
     streak: r.streak, amount: r.qualified ? r.amount : 0, edit_days: r.editCount, reasons: r.reasons, flags: r.flags, manual: r.manual,
     auto_qualified: r.autoQualified, auto_amount: r.autoAmount }));
@@ -333,12 +341,15 @@ async function save() {
 function exportXlsx(results, ym, days = []) {
   if (!window.XLSX) { toast("กรุณารอโหลด library", "error"); return; }
   const X = window.XLSX, wb = X.utils.book_new();
-  const pay = results.filter(r => r.qualified && Number(r.amount) > 0).map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
-    "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.amount }));
-  pay.push({ "รหัสพนักงาน": "รวม", "เบี้ยขยัน": pay.reduce((s, r) => s + r["เบี้ยขยัน"], 0) });
+  const bp = results.some(r => r.backpay > 0), amt = r => r.qualified ? Number(r.amount) || 0 : 0;
+  const pay = results.filter(r => amt(r) > 0 || r.backpay > 0).map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
+    "เดือนต่อเนื่อง": r.qualified ? r.streak : "", "เบี้ยขยัน": amt(r),
+    ...(bp ? { [`ตกเบิก (เวลา ${ymTH(prevYM(ym))})`]: r.backpay || 0, "รวมจ่าย": amt(r) + (r.backpay || 0) } : {}) }));
+  const sum = k => pay.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  pay.push({ "รหัสพนักงาน": "รวม", "เบี้ยขยัน": sum("เบี้ยขยัน"), ...(bp ? { [`ตกเบิก (เวลา ${ymTH(prevYM(ym))})`]: sum(`ตกเบิก (เวลา ${ymTH(prevYM(ym))})`), "รวมจ่าย": sum("รวมจ่าย") } : {}) });
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(pay), "จ่าย");
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(results.map(r => ({ "รหัสพนักงาน": r.code, "ชื่อ-สกุล": r.name, "แผนก": r.department, "ระดับ": r.job_level,
-    "ได้": r.qualified ? "ได้" : "ไม่ได้", "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.qualified ? r.amount : 0,
+    "ได้": r.qualified ? "ได้" : "ไม่ได้", "เดือนต่อเนื่อง": r.streak, "เบี้ยขยัน": r.qualified ? r.amount : 0, ...(bp ? { "ตกเบิก": r.backpay || 0 } : {}),
     "ระบบคิด": (r.autoQualified ?? r.auto_qualified ?? r.qualified) ? (r.autoAmount ?? r.auto_amount ?? r.amount) : 0,
     "HR แก้ไข": r.manual ? manualText(r.manual) : "", "แก้เวลา (วัน)": r.editCount ?? r.edit_days,
     "เหตุผล": (r.reasons || []).join(" · "), "ข้อสังเกต": (r.flags || []).join(" · ") }))), "ทั้งหมด");
@@ -362,10 +373,11 @@ async function renderHist(sel) {
   if (ym !== H.ym) H.edits.clear();
   const [{ data: rows }, { data: prev }] = await Promise.all([
     supabase.from("diligence_results").select("*").eq("ym", ym).order("department").order("emp_code"),
-    ym > START_YM ? supabase.from("diligence_results").select("emp_code,qualified,streak").eq("ym", prevYM(ym)) : Promise.resolve({ data: [] }),
+    ym > START_YM ? supabase.from("diligence_results").select("emp_code,qualified,streak,amount,auto_qualified,auto_amount,manual").eq("ym", prevYM(ym)) : Promise.resolve({ data: [] }),
   ]);
   Object.assign(H, { ym, runs, later: runs.some(r => r.ym > ym), prev: new Map((prev || []).map(p => [p.emp_code, p])),
     rows: (rows || []).map(r => ({ ...r, code: r.emp_code, name: r.emp_name })) });
+  for (const r of H.rows) Object.assign(r, bp(H.prev.get(r.code), ym));
   drawHist();
 }
 
@@ -379,13 +391,14 @@ const histView = r => {
 function drawHist() {
   const box = document.getElementById("dgHist"), run = H.runs.find(r => r.ym === H.ym), canW = can("data.diligence.write");
   const V = H.rows.map(histView), ok = V.filter(r => r.qualified), total = ok.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const hasBp = V.some(r => r.backpay > 0), bpTotal = V.reduce((s, r) => s + (r.backpay || 0), 0);
   const q = H.q.trim().toLowerCase();
   const list = V.filter(r => H.filter === "all" || (H.filter === "ok" ? r.qualified : H.filter === "no" ? !r.qualified : r.manual))
                 .filter(r => !q || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(q));
   box.innerHTML = `
   <div class="card card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <select class="filter-select" id="dgHM">${H.runs.map(r => `<option value="${r.ym}" ${r.ym === H.ym ? "selected" : ""}>เวลา ${ymTH(r.ym)} → จ่ายงวด ${ymTH(r.pay_ym)}</option>`).join("")}</select>
-    <div style="font-size:13px;">ได้ <b>${ok.length}</b> / ${V.length} คน · รวม <b style="color:var(--green);">฿${fmt(total)}</b>
+    <div style="font-size:13px;">ได้ <b>${ok.length}</b> / ${V.length} คน · รวม <b style="color:var(--green);">฿${fmt(total)}</b>${hasBp ? ` + ตกเบิก <b style="color:var(--green);">฿${fmt(bpTotal)}</b>` : ""}
       <span class="text-muted">· บันทึก ${new Date(run.saved_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}</span></div>
     <div style="margin-left:auto;display:flex;gap:8px;">
       ${canW && H.edits.size ? `<button class="btn btn-secondary" id="dgHU">ยกเลิกการแก้</button><button class="btn btn-primary" id="dgHS">💾 บันทึกการแก้ไข (${H.edits.size})</button>` : ""}
@@ -400,10 +413,10 @@ function drawHist() {
         .map(([k, t]) => `<button class="btn btn-sm ${H.filter === k ? "btn-primary" : ""}" data-hf="${k}">${t}</button>`).join("")}
       <input class="search-input" id="dgHQ" placeholder="ค้นหารหัส / ชื่อ / แผนก" value="${esc(H.q)}" style="min-width:200px;">
     </div>
-    <div style="overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th><th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
+    <div style="overflow:auto;"><table class="data-table"><thead><tr><th>รหัส</th><th>ชื่อ</th><th>แผนก</th><th>ระดับ</th><th style="text-align:center;">เดือนที่</th><th style="text-align:right;">เบี้ยขยัน</th>${hasBp ? `<th style="text-align:right;">ตกเบิก</th>` : ""}<th>เหตุผล / ข้อสังเกต</th></tr></thead><tbody>
     ${list.map(r => `<tr${r.pending ? ' style="background:var(--gold-light);"' : ""}><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.department)}</td><td>${esc(r.job_level)}</td>
-      <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td><td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>
-      <td style="font-size:12px;max-width:440px;">${reasonsCell(r)}</td></tr>`).join("") || `<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
+      <td style="text-align:center;">${r.qualified ? r.streak : "-"}</td><td style="text-align:right;white-space:nowrap;">${amountCell(r, canW)}</td>${hasBp ? `<td style="text-align:right;">${r.backpay > 0 ? `<b style="color:var(--green);">${fmt(r.backpay)}</b>` : ""}</td>` : ""}
+      <td style="font-size:12px;max-width:440px;">${reasonsCell(r)}</td></tr>`).join("") || `<tr><td colspan="8" class="text-muted" style="text-align:center;padding:20px;">ไม่มีรายการ</td></tr>`}
     </tbody></table></div></div>`;
   box.querySelector("#dgHM").onchange = e => renderHist(e.target.value);
   box.querySelector("#dgHQ").oninput = e => { H.q = e.target.value; drawHist(); const i = document.getElementById("dgHQ"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); };
@@ -420,7 +433,7 @@ function drawHist() {
       if (H.later) { const x = applyHistEdit(base, next, H.prev.get(r.code));
         if (x.qualified !== base.qualified) { H.edits.delete(r.code); toast("เดือนถัดไปบันทึกแล้ว — เปลี่ยนได้/ไม่ได้ของเดือนนี้ไม่ได้ แก้ได้เฉพาะยอดเงิน", "error"); } }
       drawHist();
-    });
+    }, { payLabel: ymTH(run.pay_ym) });
   });
   box.querySelector("#dgHD")?.addEventListener("click", async () => {
     if (!confirm(`ลบผลเบี้ยขยันเวลา ${ymTH(H.ym)} ทั้งเดือน?`)) return;

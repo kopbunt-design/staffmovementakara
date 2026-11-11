@@ -292,3 +292,13 @@ export function applyHistEdit(row, manual, prev) {
   const streak = !q ? 0 : q === row.qualified && row.streak > 0 ? row.streak : streakAfter(row.ym, prev);
   return { qualified: q, streak, amount: !q ? 0 : fixed != null ? fixed : rateFor(streak) };
 }
+
+// ตกเบิก (user 2026-11-11): HR ให้สิทธิ์เดือนที่บันทึกแล้วย้อนหลัง หลังงวดนั้นจ่ายไปแล้ว → ติ๊ก "จ่ายเป็นตกเบิก" (manual.backpay)
+//   ส่วนที่เพิ่มจากที่ระบบคิดไว้ตอนจ่าย (auto_*) จ่ายในงวดถัดไปพร้อมเบี้ยขยันเดือนนั้น — ได้ตกเบิกแม้เดือนถัดไปจะไม่ได้เบี้ยขยัน
+//   ไม่ติ๊ก = ถือว่าจ่ายในงวดเดิมแล้ว (การแก้ ก.ย. ช่วง 9–19 ต.ค. ถูกจ่ายในงวด ต.ค. ไปแล้ว — ห้ามนับซ้ำ)
+// prev: แถว diligence_results ของเดือนก่อน (มี manual, qualified, amount, auto_qualified, auto_amount)
+export function backpayOf(prev) {
+  if (!prev?.manual?.backpay || !prev.qualified) return 0;
+  const paid = (prev.auto_qualified ?? false) ? Number(prev.auto_amount) || 0 : 0;
+  return Math.max(0, (Number(prev.amount) || 0) - paid);
+}
