@@ -21,9 +21,13 @@ const GEO_TEAM = {
   "K.Punnee": ["AKR23020187", "AKR23020865", "AKR24021101", "AKR24021099", "AKR24051166", "AKR24081227", "AKR24081228", "AKR25011257", "AKR25101311", "AKR25101312"],
 };
 const GEO_OF = new Map(Object.entries(GEO_TEAM).flatMap(([t, cs]) => cs.map(c => [c, t])));
+// Mine Operation: ทีมน้ำมัน + สูบน้ำ แยกชุด (ผู้ใช้ 2026-11-12) · คนอื่นใน Mine Operation อยู่ชุดเดิม
+const MINEOP_FD = new Set(["AKR24041140", "AKR24041142", "AKR24061195", "AKR24061196", "AKR23030927", "AKR23030928", "AKR23030929", "AKR23030930",
+  "AKR23030931", "AKR26011336", "AKR26041352", "AKR26041353"]);
 export function reportGroup(e) {
-  const g = baseGroup(e);
-  if (g === "Mining-Geology") return `Mining-Geology-${GEO_OF.get(String(e.emp_code || "").trim().toUpperCase()) || "Others"}`;
+  const g = baseGroup(e), code = String(e.emp_code || "").trim().toUpperCase();
+  if (g === "Mining-Geology") return `Mining-Geology-${GEO_OF.get(code) || "Others"}`;
+  if (g === "Mining-Mine Operation" && MINEOP_FD.has(code)) return "Mining-Mine Operation-Fuel & Dewatering";
   return g;
 }
 function baseGroup(e) {
