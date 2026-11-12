@@ -52,9 +52,20 @@ def dms_tables():
         pass
 
 
+_ONCE = []
+
+
+def _once():
+    if _ONCE:
+        return
+    _ONCE.append(1)
+    dms_tables()
+
+
 @api.middleware("http")
 async def security_guard(request: Request, call_next):
     """Blocked IPs, request floods and repeated refusals from clients without a login (guard.py)."""
+    _once()                                           # a2wsgi: startup ไม่ทำงาน — ตาราง/การแก้ข้อมูลครั้งเดียวของ dms ตอนคำขอแรก
     stop = guard.check(request)
     if stop:
         return JSONResponse({"detail": stop[1]}, stop[0])

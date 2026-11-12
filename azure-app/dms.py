@@ -116,6 +116,10 @@ def ensure(cur):
     _seed_perms(cur)
     _seed_types(cur)
     _seed_travel(cur)
+    try:
+        _fix_diligence_2026_10(cur)
+    except Exception:                                 # ห้ามทำให้ระบบสารบรรณล้ม — ลองใหม่ครั้งหน้า
+        pass
     # บันทึกทันที: ถ้าคำสั่งที่เรียกเราล้มแล้ว rollback ตารางต้องไม่หายไปด้วย (_ready ถูกตั้งแล้ว)
     try:
         cur.connection.commit()
@@ -188,6 +192,46 @@ def _seed_travel(cur):
         cur.execute(f"ALTER TABLE dbo.hr_letters ADD CONSTRAINT ck_hr_letters_kind CHECK ({kinds})")
     _x(cur, f"INSERT INTO {mg} (name, at, detail) VALUES (?, ?, ?)", "letters_travel_2026_11_04", _now(),
        "เพิ่มประเภทหนังสือรับรองเพื่อเดินทางต่างประเทศ · hr_letters.kind รับ travel_en")
+
+
+def _fix_diligence_2026_10(cur):
+    """เบี้ยขยันเวลา ต.ค. 2569 (user 2026-11-12): ระบบเดิมนับเหตุผลที่พนักงานพิมพ์ต่อท้ายประเภทการลา (" ลาพักร้อน  ลาพักผ่อน")
+    เป็นการลาที่ตัดสิทธิ์ ("ลา N วัน") — แก้ผลที่บันทึกไว้แทนการให้ HR อัปโหลดไฟล์ใหม่ · ครั้งเดียว
+    ทำเฉพาะเมื่อเดือน ต.ค. ยังเป็นชุดที่บันทึก 11 พ.ย. 18:00 และยังไม่มีเดือนหลัง · AKR23031006 = ลาช่วยภรรยาคลอดจริง ไม่แตะ"""
+    import json, re
+    if _lite(cur):
+        return
+    mg = _tbl(cur, "dms_migrations"), "diligence_leave_2026_10"
+    if _x(cur, f"SELECT 1 FROM {mg[0]} WHERE name = ?", mg[1]).fetchone():
+        return
+    run = cur.execute("SELECT CONVERT(varchar(19), saved_at, 120) FROM dbo.diligence_runs WHERE ym = '2026-10'").fetchone()
+    later = cur.execute("SELECT COUNT(*) FROM dbo.diligence_runs WHERE ym > '2026-10'").fetchone()[0]
+    if not run or run[0] != "2026-11-11 11:00:20" or later:
+        _x(cur, f"INSERT INTO {mg[0]} (name, at, detail) VALUES (?, ?, ?)", mg[1], _now(), "ข้าม: เดือน ต.ค. ถูกบันทึกใหม่แล้ว หรือมีเดือนหลัง")
+        return
+    generic, done = re.compile(r"^ลา \d+ วัน"), []
+    rows = cur.execute("""SELECT o.emp_code, o.reasons, o.flags, o.manual, s.qualified, s.streak FROM dbo.diligence_results o
+                          LEFT JOIN dbo.diligence_results s ON s.emp_code = o.emp_code AND s.ym = '2026-09'
+                          WHERE o.ym = '2026-10' AND o.reasons LIKE N'%"ลา %'""").fetchall()
+    for code, reasons, flags, manual, sq, ss in rows:
+        if code == "AKR23031006":
+            continue
+        rs = json.loads(reasons or "[]")
+        keep = [x for x in rs if not generic.match(x)]
+        if len(keep) == len(rs):
+            continue
+        if keep or manual or json.loads(flags or "[]"):
+            cur.execute("UPDATE dbo.diligence_results SET reasons = ? WHERE ym = '2026-10' AND emp_code = ?", json.dumps(keep, ensure_ascii=False), code)
+            done.append(f"{code} เหตุผล")
+            continue
+        streak = (int(ss or 0) if sq else 0) + 1
+        amt = 300 if streak <= 3 else 600 if streak <= 6 else 1000
+        cur.execute("""UPDATE dbo.diligence_results SET reasons = '[]', qualified = 1, streak = ?, amount = ?, auto_qualified = 1, auto_amount = ?
+                       WHERE ym = '2026-10' AND emp_code = ?""", streak, amt, amt, code)
+        done.append(f"{code} ได้ {amt}")
+    q, tot = cur.execute("SELECT SUM(CASE WHEN qualified = 1 THEN 1 ELSE 0 END), COALESCE(SUM(amount), 0) FROM dbo.diligence_results WHERE ym = '2026-10'").fetchone()
+    cur.execute("UPDATE dbo.diligence_runs SET qualified = ?, total = ? WHERE ym = '2026-10'", q or 0, float(tot or 0))
+    _x(cur, f"INSERT INTO {mg[0]} (name, at, detail) VALUES (?, ?, ?)", mg[1], _now(), ("แก้ผล ต.ค.: " + ", ".join(done))[:1000])
 
 
 # ================================================================================ SQL helpers
