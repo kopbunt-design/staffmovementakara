@@ -15,7 +15,11 @@ eq(G("Processing", "Metallurgy", "Metallurgy"), "Metallurgy", "Processing / Meta
 eq(G("Processing", "Maintenance", "Electrical"), "Maintenance-Electrical", "Maintenance แยกตาม Team");
 eq(G("Mining", "Mining Operation"), "Mining-Mine Operation", "Mining ชื่อตามรายงานเดิม");
 eq(G("Mining", "Mine Planning"), "Mining-Mining Planning", "Mining Planning");
-eq(G("Mining", "Geology"), "Mining-Geology", "Mining Geology");
+const GG = code => M.reportGroup({ emp_code: code, department: "Mining", section: "Geology" });
+eq(GG("AKR23020336"), "Mining-Geology-K.Owin", "Geology ทีม K.Owin");
+eq(GG("akr24081228"), "Mining-Geology-K.Punnee", "Geology ทีม K.Punnee");
+eq(GG("AKR24021090"), "Mining-Geology-Others", "Geology ไม่อยู่ในรายชื่อ = Others");
+eq(M.reportGroup({ emp_code: "AKR23020336", department: "Mining", section: "Mine Planning" }), "Mining-Mining Planning", "ย้ายออกจาก Geology ไม่ติดทีมเดิม");
 eq(G("Community Relations & Development", "Sustainable Development"), "CRD", "ย่อ CRD");
 eq(G("Finance & Accounting", "Finance & Accounting"), "Finance-Accounting", "Finance-Accounting");
 eq(G("Laboratory", "Laboratory"), "Laboratory", "แผนกอื่นใช้ชื่อแผนก");

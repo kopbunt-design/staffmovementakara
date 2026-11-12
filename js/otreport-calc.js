@@ -1,5 +1,5 @@
 // ============================================================================
-// รายงานโอที & เบี้ยขยัน — ตรรกะล้วน (เทส: test/otreport.test.js)
+// รายงานโอที & เบี้ยขยัน (Perfect Attendance Allowance) — ตรรกะล้วน (เทส: test/otreport.test.js)
 // ทำตามแบบ "August 2026 Overtime Records" (PDF แยกตามกลุ่มแผนก) ที่ HR ใช้อยู่ — ผู้ใช้ขอ 2026-10-12:
 //   ระดับ O: ชั่วโมงโอที 1 / 1.5 / 3 เท่า ต่อคน + ช่องเบี้ยขยัน
 //   ระดับ S: รายงานแยก เฉพาะเบี้ยขยัน (ไม่ใส่โอที)
@@ -12,7 +12,21 @@
 //   Mining → "Mining-" + Section (ชื่อตามรายงานเดิม) · แผนกอื่น = ชื่อแผนก (ย่อบางชื่อ)
 const MINING = { "Geology": "Geology", "Mine Planning": "Mining Planning", "Mining Operation": "Mine Operation" };
 const DEPT_ALIAS = { "Community Relations & Development": "CRD", "Finance & Accounting": "Finance-Accounting" };
+// Geology แยกตามหัวหน้าที่อนุมัติ (ไฟล์ "Approve Geo.xlsx" ผู้ใช้ 2026-11-12: หัวหน้าดูเฉพาะลูกน้องตัวเอง) · คนใน Geology ที่ไม่อยู่ในรายชื่อ = กลุ่ม Others
+// คนใหม่/ย้ายทีม → เพิ่มรหัสที่นี่
+const GEO_TEAM = {
+  "K.Owin": ["AKR23020336", "AKR23051054", "AKR24031108", "AKR24121251", "AKR25111323", "AKR26031345", "AKR26031346", "AKR26101392", "AKR26111405",
+    "AKR23020864", "AKR23020866", "AKR23020867", "AKR23020872", "AKR24021097", "AKR24021098", "AKR24021102", "AKR24061187", "AKR25101313", "AKR25101314",
+    "AKR25101315", "AKR25101316", "AKR26101393", "AKR26101394", "AKR26101395", "AKR26101396", "AKR26111403", "AKR26111404"],
+  "K.Punnee": ["AKR23020187", "AKR23020865", "AKR24021101", "AKR24021099", "AKR24051166", "AKR24081227", "AKR24081228", "AKR25011257", "AKR25101311", "AKR25101312"],
+};
+const GEO_OF = new Map(Object.entries(GEO_TEAM).flatMap(([t, cs]) => cs.map(c => [c, t])));
 export function reportGroup(e) {
+  const g = baseGroup(e);
+  if (g === "Mining-Geology") return `Mining-Geology-${GEO_OF.get(String(e.emp_code || "").trim().toUpperCase()) || "Others"}`;
+  return g;
+}
+function baseGroup(e) {
   const dept = String(e.department || "").trim(), sec = String(e.section || "").trim(), team = String(e.team || "").trim();
   if (/^processing$/i.test(dept)) {
     if (/^maintenance$/i.test(sec)) return team ? `Maintenance-${team}` : "Maintenance";

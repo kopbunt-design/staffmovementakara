@@ -39,7 +39,7 @@ export function renderOtReport() {
       </div>
       <div class="text-muted" style="font-size:12.5px;line-height:1.8;margin-top:10px;">
         • คนในรายงาน = ระดับนั้นที่เป็นพนักงานช่วงใดช่วงหนึ่งของเดือน (ไม่มีโอทีก็ขึ้น 0:00) · โอทีรวมทุกวันในเดือนจากไฟล์ TigerSoft<br>
-        • กลุ่มแผนก: Processing แยกตาม Section (Maintenance แยกต่อตาม Team) · Mining แยกตาม Section · แผนกอื่นใช้ชื่อแผนก — ตามรายงานเดิมของ HR<br>
+        • กลุ่มแผนก: Processing แยกตาม Section (Maintenance แยกต่อตาม Team) · Mining แยกตาม Section (Geology แยกตามหัวหน้า K.Owin / K.Punnee / Others) · แผนกอื่นใช้ชื่อแผนก — ตามรายงานเดิมของ HR<br>
         • เบี้ยขยันดึงจากผลที่ <b>บันทึก</b> ในหน้าเบี้ยขยันของเดือนเดียวกัน (เวลาเดือนนี้ → จ่ายงวดถัดไป)
       </div>
     </div>
@@ -94,7 +94,7 @@ function drawOut() {
   <div class="card mt-4">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);">
       <div><div class="card-title" style="margin:0;">เวลา ${ymTH(S.ym)} · ${monthEn(S.ym)}</div>
-        <div class="text-muted" style="font-size:12px;">PDF ภาษาอังกฤษ ตามแบบรายงานเดิม (ฟอนต์ IBM Plex Sans Thai) · zip แยกโฟลเดอร์ระดับ O / ระดับ S + README</div></div>
+        <div class="text-muted" style="font-size:12px;">PDF ภาษาอังกฤษ (เบี้ยขยัน = Perfect Attendance Allowance) ตามแบบรายงานเดิม (ฟอนต์ IBM Plex Sans Thai) · zip แยกโฟลเดอร์ระดับ O / ระดับ S + README</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-primary" id="orZip">📦 ดาวน์โหลด PDF ทั้งหมด (zip)</button>
         <button class="btn btn-gold" id="orXlsx">📤 Excel</button>
@@ -122,7 +122,7 @@ function drawOut() {
 }
 const fmtN = n => Number(n || 0).toLocaleString("en-US");
 const groupNames = () => [...new Set([...S.rep.groupsO.map(g => g.name), ...S.rep.groupsS.map(g => g.name)])].sort();
-const fileName = (lv, name) => lv === "O" ? `${monthEn(S.ym)} Overtime & Diligence_${safe(name)}.pdf` : `${monthEn(S.ym)} Diligence Allowance Level S_${safe(name)}.pdf`;
+const fileName = (lv, name) => lv === "O" ? `${monthEn(S.ym)} Overtime & Perfect Attendance_${safe(name)}.pdf` : `${monthEn(S.ym)} Perfect Attendance Allowance Level S_${safe(name)}.pdf`;
 
 // ---------------------------------------------------------------- PDF (jsPDF + autoTable · ฟอนต์ IBM Plex Sans Thai)
 const LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
@@ -206,33 +206,33 @@ function table(doc, c, head, body, foot, widths, aligns, colorCol) {
 async function pdfO(g) {
   await ensureLibs();
   const doc = newDoc(), t = g.totals, R = S.rep, review = t.review ? `${t.review} to review` : "Complete";
-  const c = chrome(doc, g.name, `${monthEn(S.ym)} Overtime & Diligence`, `${g.name}  •  ${S.ym}-01 to ${lastDay(S.ym)}  •  Level O1–O3`,
+  const c = chrome(doc, g.name, `${monthEn(S.ym)} Overtime & Perfect Attendance Allowance`, `${g.name}  •  ${S.ym}-01 to ${lastDay(S.ym)}  •  Level O1–O3`,
     [["EMPLOYEES", fmtN(t.employees)], ["OT 1", H(t.ot1)], ["OT 1.5", H(t.ot15)], ["OT 3", H(t.ot3)], ["TOTAL OT", H(t.total)],
-     ["DILIGENCE (THB)", R.hasDil ? baht(t.dil) : "—", COL.green], ["DATA REVIEW", review]]);
+     ["PERFECT ATTENDANCE (THB)", R.hasDil ? baht(t.dil) : "—", COL.green], ["DATA REVIEW", review]]);
   const body = g.rows.map((r, i) => [i + 1, r.division, r.department, r.section, r.team, r.code, r.name, hm(r.ot1), hm(r.ot15), hm(r.ot3), hm(r.total),
     r.dil ? (r.dil.qualified && r.dil.amount ? `${baht(r.dil.amount)} (${r.dil.streak})` : baht(r.dil.amount)) : "—",   // "300 (1)" = ยอด (เดือนต่อเนื่อง)
     r.status.join(" · ")]);                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF ระดับ O (ผู้ใช้ 2026-10-12)
-  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "OT 1", "OT 1.5", "OT 3", "Total", "Diligence", "Status"], body,
+  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "OT 1", "OT 1.5", "OT 3", "Total", "Perfect Attendance", "Status"], body,
     [{ content: "DEPARTMENT TOTAL", colSpan: 7 }, H(t.ot1), H(t.ot15), H(t.ot3), H(t.total), R.hasDil ? baht(t.dil) : "—", ""],
     [28, 78, 100, 100, 100, 86, 170, 52, 52, 52, 56, 66, 103], ["center", "left", "left", "left", "left", "left", "left", "right", "right", "right", "right", "right", "left"],
     d => { if (d.column.index === 11) d.cell.styles.textColor = d.cell.raw === "0" || d.cell.raw === "—" ? COL.ter : COL.green;
            if (d.column.index === 12) d.cell.styles.textColor = COL.sub; });
-  finish(doc, "Source: TigerSoft processed report + employee master + saved diligence results");
+  finish(doc, "Source: TigerSoft processed report + employee master + saved perfect attendance allowance results");
   return doc;
 }
 async function pdfS(g) {
   await ensureLibs();
   const doc = newDoc(), t = g.totals, R = S.rep;
-  const c = chrome(doc, g.name, `${monthEn(S.ym)} Diligence Allowance`, `${g.name}  •  Time ${S.ym}-01 to ${lastDay(S.ym)}  •  Paid with ${monthEn(nextYM(S.ym))} salary  •  Level S1–S3`,
+  const c = chrome(doc, g.name, `${monthEn(S.ym)} Perfect Attendance Allowance`, `${g.name}  •  Time ${S.ym}-01 to ${lastDay(S.ym)}  •  Paid with ${monthEn(nextYM(S.ym))} salary  •  Level S1–S3`,
     [["EMPLOYEES", fmtN(t.employees)], ["QUALIFIED", R.hasDil ? fmtN(t.dilPeople) : "—", COL.green], ["NOT QUALIFIED", R.hasDil ? fmtN(t.employees - t.dilPeople) : "—", COL.red], ["TOTAL (THB)", R.hasDil ? baht(t.dil) : "—", COL.green]]);
   const body = g.rows.map((r, i) => [i + 1, r.division, r.department, r.section, r.team, r.code, r.name,
     r.dil ? (r.dil.qualified && r.dil.amount ? `${baht(r.dil.amount)} (${r.dil.streak})` : baht(r.dil.amount)) : "—", r.status.join(" · ")]);   // "300 (1)" = ยอด (เดือนต่อเนื่อง)                  // เหตุไม่ได้เบี้ยขยันไม่ใส่ใน PDF (ผู้ใช้ 2026-10-12)
-  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "Diligence", "Status"], body,
+  table(doc, c, ["No.", "Division", "Department", "Section", "Team", "Employee ID", "Name-Surname", "Perfect Attendance", "Status"], body,
     [{ content: "TOTAL", colSpan: 7 }, R.hasDil ? baht(t.dil) : "—", ""],
     [28, 100, 125, 125, 115, 90, 200, 90, 170], ["center", "left", "left", "left", "left", "left", "left", "right", "left"],
     d => { if (d.column.index === 7) d.cell.styles.textColor = d.cell.raw === "0" || d.cell.raw === "—" ? COL.ter : COL.green;
            if (d.column.index === 8) d.cell.styles.textColor = COL.sub; });
-  finish(doc, "Source: saved diligence results + employee master");
+  finish(doc, "Source: saved perfect attendance allowance results + employee master");
   return doc;
 }
 
@@ -241,19 +241,19 @@ async function downloadZip() {
   try {
     await ensureLibs();
     const zip = new window.JSZip(), R = S.rep, m = monthEn(S.ym);
-    const fo = zip.folder(`${m} Overtime & Diligence - Level O`), fs = zip.folder(`${m} Diligence Allowance - Level S`);
+    const fo = zip.folder(`${m} Overtime & Perfect Attendance - Level O`), fs = zip.folder(`${m} Perfect Attendance Allowance - Level S`);
     let i = 0; const total = R.groupsO.length + R.groupsS.length;
     for (const g of R.groupsO) { btn.textContent = `กำลังสร้าง ${++i}/${total}…`; fo.file(fileName("O", g.name), (await pdfO(g)).output("arraybuffer")); }
     for (const g of R.groupsS) { btn.textContent = `กำลังสร้าง ${++i}/${total}…`; fs.file(fileName("S", g.name), (await pdfS(g)).output("arraybuffer")); }
     const o = R.totalsO, s = R.totalsS;
-    zip.file("00_README.txt", [`${m} Overtime & Diligence`, "",
+    zip.file("00_README.txt", [`${m} Overtime & Perfect Attendance Allowance`, "",
       `Level O1-O3`, `Employees: ${o.employees}`, `Employees with OT: ${o.withOT}`, `OT 1: ${H(o.ot1)}`, `OT 1.5: ${H(o.ot15)}`, `OT 3: ${H(o.ot3)}`, `Total OT: ${H(o.total)}`,
-      `Diligence: ${R.hasDil ? baht(o.dil) + " THB (" + o.dilPeople + " employees)" : "not saved yet"}`, `Data review: ${o.review} employee record(s)`, "",
-      `Level S1-S3 (diligence only)`, `Employees: ${s.employees}`, `Diligence: ${R.hasDil ? baht(s.dil) + " THB (" + s.dilPeople + " employees)" : "not saved yet"}`, "",
-      `Time data: ${S.file}`, `Diligence = time ${m}, paid with ${monthEn(nextYM(S.ym))} salary`,
+      `Perfect Attendance Allowance: ${R.hasDil ? baht(o.dil) + " THB (" + o.dilPeople + " employees)" : "not saved yet"}`, `Data review: ${o.review} employee record(s)`, "",
+      `Level S1-S3 (perfect attendance allowance only)`, `Employees: ${s.employees}`, `Perfect Attendance Allowance: ${R.hasDil ? baht(s.dil) + " THB (" + s.dilPeople + " employees)" : "not saved yet"}`, "",
+      `Time data: ${S.file}`, `Perfect Attendance Allowance = time ${m}, paid with ${monthEn(nextYM(S.ym))} salary`,
       ...(R.notInMaster.length ? ["", `Codes in the time file but not in the employee master (not reported): ${R.notInMaster.join(", ")}`] : [])].join("\r\n"));
     const blob = await zip.generateAsync({ type: "blob" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${m} Overtime & Diligence.zip`; document.body.appendChild(a); a.click(); a.remove();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${m} Overtime & Perfect Attendance.zip`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     toast(`สร้าง PDF ${total} ไฟล์แล้ว`, "success");
   } catch (e) { toast("สร้าง zip ไม่สำเร็จ: " + e.message, "error"); }
@@ -264,12 +264,12 @@ function exportXlsx() {
   if (!window.XLSX) { toast("กรุณารอโหลด library", "error"); return; }
   const X = window.XLSX, wb = X.utils.book_new(), R = S.rep;
   const rowsO = R.groupsO.flatMap(g => g.rows.map(r => ({ Group: g.name, Division: r.division, Department: r.department, Section: r.section, Team: r.team, "Employee ID": r.code,
-    "Name-Surname": r.name, Level: r.level, "OT 1": hm(r.ot1), "OT 1.5": hm(r.ot15), "OT 3": hm(r.ot3), Total: hm(r.total), Diligence: r.dil ? r.dil.amount : "",
-    Status: [...r.status, r.dil && !r.dil.qualified ? `No diligence: ${r.dil.why}` : ""].filter(Boolean).join(" · ") })));
+    "Name-Surname": r.name, Level: r.level, "OT 1": hm(r.ot1), "OT 1.5": hm(r.ot15), "OT 3": hm(r.ot3), Total: hm(r.total), "Perfect Attendance": r.dil ? r.dil.amount : "",
+    Status: [...r.status, r.dil && !r.dil.qualified ? `No allowance: ${r.dil.why}` : ""].filter(Boolean).join(" · ") })));
   const rowsS = R.groupsS.flatMap(g => g.rows.map(r => ({ Group: g.name, Division: r.division, Department: r.department, Section: r.section, Team: r.team, "Employee ID": r.code,
-    "Name-Surname": r.name, Level: r.level, Month: r.dil?.qualified ? r.dil.streak : "", Diligence: r.dil ? r.dil.amount : "",
+    "Name-Surname": r.name, Level: r.level, Month: r.dil?.qualified ? r.dil.streak : "", "Perfect Attendance": r.dil ? r.dil.amount : "",
     Reason: [r.dil && !r.dil.qualified ? r.dil.why : "", ...r.status].filter(Boolean).join(" · ") })));
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rowsO), "Level O");
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rowsS), "Level S");
-  X.writeFile(wb, `${monthEn(S.ym)} Overtime & Diligence.xlsx`);
+  X.writeFile(wb, `${monthEn(S.ym)} Overtime & Perfect Attendance.xlsx`);
 }
