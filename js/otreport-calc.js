@@ -24,8 +24,11 @@ const GEO_OF = new Map(Object.entries(GEO_TEAM).flatMap(([t, cs]) => cs.map(c =>
 // Mine Operation: ทีมน้ำมัน + สูบน้ำ แยกชุด (ผู้ใช้ 2026-11-12) · คนอื่นใน Mine Operation อยู่ชุดเดิม
 const MINEOP_FD = new Set(["AKR24041140", "AKR24041142", "AKR24061195", "AKR24061196", "AKR23030927", "AKR23030928", "AKR23030929", "AKR23030930",
   "AKR23030931", "AKR26011336", "AKR26041352", "AKR26041353"]);
+// รายคนที่ HR ให้ไปอยู่ชุดอื่นทั้งที่ทะเบียนอยู่ที่อื่น (ผู้ใช้ 2026-11-12)
+const PERSON_GROUP = { "AKR26021341": "Mining-Mining Planning-Civil" };   // Panuwat Chamnankit, TSF Supervisor (ทะเบียน: Mining Operation)
 export function reportGroup(e) {
   const g = baseGroup(e), code = String(e.emp_code || "").trim().toUpperCase();
+  if (PERSON_GROUP[code]) return PERSON_GROUP[code];
   if (g === "Mining-Geology") return `Mining-Geology-${GEO_OF.get(code) || "Others"}`;
   if (g === "Mining-Mine Operation" && MINEOP_FD.has(code)) return "Mining-Mine Operation-Fuel & Dewatering";
   if (g === "Mining-Mining Planning" && /^civil$/i.test(String(e.team || "").trim())) return "Mining-Mining Planning-Civil";   // ทีม Civil แยกชุด (ผู้ใช้ 2026-11-12) — ตามทีมในทะเบียน
