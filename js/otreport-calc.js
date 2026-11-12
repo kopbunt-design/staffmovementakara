@@ -28,6 +28,7 @@ export function reportGroup(e) {
   const g = baseGroup(e), code = String(e.emp_code || "").trim().toUpperCase();
   if (g === "Mining-Geology") return `Mining-Geology-${GEO_OF.get(code) || "Others"}`;
   if (g === "Mining-Mine Operation" && MINEOP_FD.has(code)) return "Mining-Mine Operation-Fuel & Dewatering";
+  if (g === "Mining-Mining Planning" && /^civil$/i.test(String(e.team || "").trim())) return "Mining-Mining Planning-Civil";   // ทีม Civil แยกชุด (ผู้ใช้ 2026-11-12) — ตามทีมในทะเบียน
   return g;
 }
 function baseGroup(e) {

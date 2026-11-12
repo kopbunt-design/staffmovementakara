@@ -20,6 +20,8 @@ eq(GG("AKR23020336"), "Mining-Geology-K.Owin", "Geology ทีม K.Owin");
 eq(GG("akr24081228"), "Mining-Geology-K.Punnee", "Geology ทีม K.Punnee");
 eq(M.reportGroup({ emp_code: "AKR23030931", department: "Mining", section: "Mining Operation" }), "Mining-Mine Operation-Fuel & Dewatering", "ทีมน้ำมัน/สูบน้ำ แยกชุด");
 eq(M.reportGroup({ emp_code: "AKR99999999", department: "Mining", section: "Mining Operation" }), "Mining-Mine Operation", "Mine Operation คนอื่นอยู่ชุดเดิม");
+eq(G("Mining", "Mine Planning", "Civil"), "Mining-Mining Planning-Civil", "ทีม Civil แยกชุด");
+eq(G("Mining", "Mine Planning", "Survey"), "Mining-Mining Planning", "Mine Planning ทีมอื่นอยู่ชุดเดิม");
 eq(GG("AKR24021090"), "Mining-Geology-Others", "Geology ไม่อยู่ในรายชื่อ = Others");
 eq(M.reportGroup({ emp_code: "AKR23020336", department: "Mining", section: "Mine Planning" }), "Mining-Mining Planning", "ย้ายออกจาก Geology ไม่ติดทีมเดิม");
 eq(G("Community Relations & Development", "Sustainable Development"), "CRD", "ย่อ CRD");
