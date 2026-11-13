@@ -16,14 +16,14 @@ export const thMonth = period => { const [y, m] = period.split("-").map(Number);
 const taxBase = it => Number(it.tax_base ?? (Number(it.base_amount) + Number(it.extra_amount)));
 
 // เลข 13 หลักลงช่องแบบฟอร์ม: 1-4-5-2-1
-const idBoxes = id => {
+export const idBoxes = id => {
   const d = String(id || "").replace(/\D/g, "").padEnd(13, " ").slice(0, 13).split("");
   const g = [1, 4, 5, 2, 1]; let i = 0;
   return `<span class="ids">${g.map(n => `<span class="grp">${d.slice(i, i += n).map(c => `<i>${c.trim() ? esc(c) : "&nbsp;"}</i>`).join("")}</span>`).join('<span class="dash">-</span>')}</span>`;
 };
-const box = on => `<span class="cb">${on ? "✓" : ""}</span>`;
+export const box = on => `<span class="cb">${on ? "✓" : ""}</span>`;
 
-const CSS50 = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:'Sarabun','TH Sarabun New',sans-serif;color:#000;font-size:11.5px}
+export const CSS50 = `@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:'Sarabun','TH Sarabun New',sans-serif;color:#000;font-size:11.5px}
 .pg{width:210mm;height:297mm;overflow:hidden;padding:8mm 11mm;page-break-after:always;position:relative}.pg:last-child{page-break-after:auto}
 .copy{font-size:11px;line-height:1.35}.copy b{font-weight:700}
 .frame{border:1.2px solid #000;margin-top:2mm}
@@ -49,7 +49,7 @@ table.inc tr.tot td{border-top:1px solid #000;font-weight:700}
 .foot{font-size:10.5px;margin-top:1.5mm;line-height:1.45}
 .draft{position:absolute;top:40%;left:0;right:0;text-align:center;font-size:60px;color:rgba(200,0,0,.12);transform:rotate(-24deg);font-weight:700;pointer-events:none}`;
 
-const INC = [
+export const INC = [
   ["1. เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)", ""], ["2. ค่าธรรมเนียม ค่านายหน้า ฯลฯ ตามมาตรา 40 (2)", ""], ["3. ค่าแห่งลิขสิทธิ์ ฯลฯ ตามมาตรา 40 (3)", ""],
   ["4. (ก) ดอกเบี้ย ฯลฯ ตามมาตรา 40 (4) (ก)", ""], ["(ข) เงินปันผล เงินส่วนแบ่งกำไร ฯลฯ ตามมาตรา 40 (4) (ข)", "i1"],
   ["(1) กรณีผู้ได้รับเงินปันผลได้รับเครดิตภาษี โดยจ่ายจากกำไรสุทธิของกิจการที่ต้องเสียภาษีเงินได้นิติบุคคลในอัตราดังนี้", "i2"],

@@ -183,6 +183,35 @@ PVD application from them shows as "สมัครไม่ได้". The 4 pe
   amounts; investment plan only in the member's **first** month (`pvd_data.first`). Members who left the fund during or
   after the month still belong to that month (`inMonth`). The fund manager's "Approval Summary" per policy is not built.
 
+## Akara Tax (`tax/`) — separate app at `/tax` (employee income & tax register, 50 ทวิ)
+
+User, 2026-11-13: register each employee's income and tax to issue the annual 50 ทวิ (one per person per year, ภ.ง.ด.1ก)
+and reconcile with ภ.ง.ด.1 / ภ.ง.ด.1ก. Same design family as Akara Fund (links `/fund/fx.css` + `tax/tx.css`). Must NOT
+import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เงินเดือน · ค่าตอบแทน).
+- **Sources differ by month** (user: payroll was in Excel before TigerSoft) — `readPayroll` in `js/tax-calc.js` (tested by
+  `test/tax.test.js`) detects: `ydp` = TigerSoft BeforeProcessYDP (Jul 2026 →), `excel` = "NN Payroll - <Month> YYYY.xlsx"
+  sheet "Salary Final " (Total Income/WHT/SSO/PVD, cannot split severance), `tshist` = "Payroll-Tigersoft_YYYY-MM-ไม่sum.xlsx"
+  (รายได้/รายหัก, splits เงินชดเชย1/2 — prefer it over Excel for Jan–Jun). 40(1) = รวมรายได้ − ขาด/ลา/มาสาย/ออกก่อน/พักงาน −
+  severance − ค่าตอบแทนกรรมการ; tax = ภาษี + ภาษีเงินชดเชย. Checked: Aug 2026 PND1 file vs TigerSoft 489/489 people identical
+  (incl. DAY… daily workers — every code prefix is kept, not only AKR); Feb/Jun Excel = tshist for every person.
+  ค่าตอบแทนกรรมการ = 40(2) (line 2 of the form); severance = line 6 "อื่น ๆ — จ่ายครั้งเดียวเพราะเหตุออกจากงาน".
+- ภ.ง.ด.1 file = pipe text from the RD program (`Pnd1_YYYY-MM.txt`, fields: 6 tax id, 8–10 name, 11–13 address/zip, 14 month,
+  15 BE year, 19 income, 20 tax). Uploading it fills `tax_people` (tax id + address, never over HR's manual edits) and
+  reconciles per person (`reconcileMonth`). A file with no month per line = ภ.ง.ด.1ก (`YYYY-1K`). The "ใบงาน ภ.ง.ด.1ก" Excel
+  is a working sheet for HR (rows per income type), not the RD upload format.
+- Data: Azure-only tables owned by `azure-app/tax.py` (`tax_income`, `tax_months`, `tax_people`, `tax_pnd`, `tax_pnd_files`,
+  `tax_certs`, `tax_log`, `tax_my_attempt`; RPCs `tax_*`). Perms seeded once: `page.tax` (← page.payroll), `data.tax.write`
+  (← data.payroll.write), `data.tax.sign` (← data.contract.approve); amounts also need `field.salary.read`.
+- 50 ทวิ flow: prepare draft from the year totals (snapshot of figures + person) → send to a signer (`letter_signers` +
+  `data.tax.sign`; number assigned at first send, by emp code, continuing the year's last number) → **signer picks: sign
+  one, some, or all at once** (user's choice) on `#/sign`, or returns with a reason → signed (date = signing day, Bangkok).
+  Figures changed after signing → "ยอดเปลี่ยน" → HR voids and prepares again (same number, version + 1). Leavers must get
+  theirs within 1 month of leaving (`leaverAlerts`). Form = `tax/doc.js` reusing `CSS50`/`INC` from `contract/doc.js`.
+- Employees download their own signed 50 ทวิ at `/tax/my.html` (user: both HR print and self-service): emp code + full
+  13-digit tax id must match `tax_people`; public RPC `tax_my_certs` (8 wrong tries / 30 min locks the code; guard bans
+  IPs). Signature/seal images are returned as data URLs by the server (`_art`). `tax_my_certs` is sent without the login
+  cookie (`LINK_RPC` in `azure-app/web/js/supabase-config.js`).
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).

@@ -58,6 +58,14 @@ def dms_tables():
             cn.commit()
     except Exception:
         pass
+    try:                                              # ทะเบียนรายได้และภาษี (tax.py) — ตาราง + สิทธิ์ page.tax / data.tax.*
+        import tax
+        import rpc
+        with closing(db.connect(None, bypass=True)) as cn:
+            tax.ensure(rpc.R(cn, None))
+            cn.commit()
+    except Exception:
+        pass
 
 
 _ONCE = []
@@ -676,7 +684,7 @@ async def spa_fallback(request: Request, exc):
     path = request.url.path
     if path.startswith("/api/"):
         return JSONResponse({"detail": getattr(exc, "detail", "not found")}, 404)
-    for sub in ("expense", "uniform", "contract", "sub", "docs", "fund"):
+    for sub in ("expense", "uniform", "contract", "sub", "docs", "fund", "tax"):
         if path == f"/{sub}" or path.startswith(f"/{sub}/"):
             return FileResponse(SITE_DIR / sub / "index.html")
     return FileResponse(SITE_DIR / "index.html")

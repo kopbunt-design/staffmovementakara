@@ -308,7 +308,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","pvd","docregister","letters","empcontract","paf","expense","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","tax","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","pvd","docregister","letters","empcontract","paf","expense","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
@@ -321,6 +321,7 @@ export function navigate(page) {
   // กองทุนสำรองเลี้ยงชีพ + แบบฟอร์มกองทุน → เว็บแยก Akara Fund /fund (2026-11-13) — ?fund=ID จากอีเมล/กระดิ่ง/งานค้าง ส่งต่อไป
   if (page === "fundforms") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
     const id = new URLSearchParams(location.search).get("fund"); location.href = `/fund/${id ? "?fund=" + encodeURIComponent(id) : ""}#/forms`; return; }
+  if (page === "tax") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/tax/"; return; }
   if (page === "pvd") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/fund/"; return; }
   // ทะเบียนเลขที่เอกสาร → สารบัญเอกสาร เว็บแยก /docs (2026-10-16) — ตารางเดิม doc_register
   if (page === "docregister") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/docs/"; return; }
@@ -468,10 +469,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ตอนนี้แปลเฉพาะเปลือกแอป (ป้ายเมนู/หัวกลุ่มที่ติด data-i18n) — เนื้อหาในหน้ายังเป็นไทย
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
-  th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
+  th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา", "nav.tax":"ทะเบียนรายได้และภาษี (50 ทวิ)",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "nav.pvd":"กองทุนสำรองเลี้ยงชีพ", "grp.fund":"กองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"สารบัญเอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
-  en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
+  en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll", "nav.tax":"Income & Tax Register (50 Tawi)",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "nav.pvd":"Provident Fund", "grp.fund":"Funds", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Index", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
 };

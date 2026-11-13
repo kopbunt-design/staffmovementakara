@@ -26,7 +26,7 @@ const post = async (url, body, anon = false) => {
     return { data: null, error: { message: `${r.status} ${t.slice(0, 300)} [${by}${id ? " · " + id : ""} · ${new Date().toISOString()}]`, code: String(r.status) } };
   }
 };
-const LINK_RPC = /_link_(get|decide)$/;
+const LINK_RPC = /_link_(get|decide)$|^tax_my_certs$/;   // หน้าที่ไม่ต้อง login (ลิงก์อีเมล · หน้าพนักงานโหลด 50 ทวิ)
 const isLinkCall = b => Object.keys(b || {}).some(k => /_token$/.test(k) && b[k]);
 
 // ---------------------------------------------------------------- tables
