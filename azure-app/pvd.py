@@ -80,7 +80,9 @@ def _need(r, *perms):
 
 
 def _s(v, n=None):
-    v = None if v is None else str(v).strip()
+    if v is None:
+        return None
+    v = str(v).strip()
     return (v[:n] if n else v) or None
 
 
