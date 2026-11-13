@@ -76,17 +76,20 @@ const DONE = new Set(["accepted", "received", "approved", "sent"]);
 function bridgeData() {
   const latest = new Map();
   for (const x of S.subs) if (x.form_type === "pvd" && DONE.has(x.status) && !latest.has(x.emp_code)) latest.set(x.emp_code, x);
-  const apply = [], rate = [], policy = [];
+  const apply = [], rate = [], policy = [], blocked = [];
   for (const x of latest.values()) {
     const p = x.payload || {}, req = new Set(p.requests || []), m = mem(x.emp_code), r = p.rate ? Math.round(Number(p.rate) * 100) / 10000 : null;
-    if (req.has("apply") && (!m || m.status === "declined")) apply.push({ x, rate: r, policy: p.policy || null });
+    if (req.has("apply") && P.barred(m, S.E.get(x.emp_code), today())) blocked.push({ x });
+    else if (req.has("apply") && (!m || m.status === "declined")) apply.push({ x, rate: r, policy: p.policy || null });
     else if (m && m.status === "active") {
       if ((req.has("apply") || req.has("rate")) && r && Math.abs(r - (m.emp_rate || 0)) > 1e-6) rate.push({ x, m, rate: r });
       if ((req.has("apply") || req.has("policy")) && p.policy && p.policy !== m.policy && !m.policy) policy.push({ x, m, policy: p.policy });
     }
   }
   const invited = new Set(S.invites.filter(i => !i.cancelled && (i.forms || []).includes("pvd")).map(i => i.emp_code));
-  return { apply, rate, policy, invited, waiting: S.subs.filter(x => x.status === "submitted").length };
+  const wefInv = new Set(S.invites.filter(i => !i.cancelled && (i.forms || []).includes("wef")).map(i => i.emp_code));
+  const wefSent = new Set(S.subs.filter(x => x.form_type === "wef" && x.status !== "cancelled" && x.status !== "rejected").map(x => x.emp_code));
+  return { apply, rate, policy, blocked, invited, wefInv, wefSent, waiting: S.subs.filter(x => x.status === "submitted").length };
 }
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -135,7 +138,7 @@ function alertData(ahead = S.ahead) {
   const tiers = P.tierAlerts(M, S.E, ym, ahead), ra = P.registerAlerts(M, S.emps, today());
   const B = bridgeData();
   return { ym, tiers, ra, B, count: tiers.filter(t => t.changes && t.eff <= P.ymAdd(ym, 1)).length + ra.left.length + ra.eligible.length + ra.missing.length
-    + B.apply.length + B.rate.length + B.policy.length };
+    + B.apply.length + B.rate.length + B.policy.length + B.blocked.length + ra.wef.filter(x => !B.wefSent.has(x.emp_code) && !B.wefInv.has(x.emp_code)).length };
 }
 
 // ---------------------------------------------------------------- ภาพรวม
@@ -177,7 +180,7 @@ function overview() {
     ${kpi("#/alerts", I.warn, "ico-em", "ข้อมูลทะเบียนไม่ครบ", A.ra.missing.length, "ช่องที่ไฟล์ส่งกองทุนต้องใช้")}
   </div>
   <div class="two">
-    <div class="card"><div class="card-h"><div><div class="card-t">ใครจะได้เงินสมทบขั้นใหม่</div><div class="card-s">ครบ 3 / 6 / 10 ปี → เพดาน 7 / 10 / 12% · มีผลเดือนถัดจากเดือนที่ครบ · <span class="chip chip-gold">สีทอง</span> = เงินสมทบขึ้นจริง</div></div>
+    <div class="card"><div class="card-h"><div><div class="card-t">ใครจะได้เงินสมทบขั้นใหม่</div><div class="card-s">ครบ 3 / 6 / 10 ปี → เพดาน 7 / 10 / 12% · มีผลเดือนที่ครบเลย · <span class="chip chip-gold">สีทอง</span> = เงินสมทบขึ้นจริง</div></div>
       <a class="btn btn-sm btn-ghost" href="#/alerts">ดูทั้งหมด →</a></div>
       <div class="card-b"><div class="tl">${months.map(m => { const L = byM[m] || [];
         return `<div class="tl-row"><div class="tl-m">${ymShort(m)}<span>${L.length ? L.length + " คน" : "—"}</span></div><div class="tl-ppl">${L.length ? [...L.filter(t => t.changes), ...L.filter(t => !t.changes)].slice(0, 12).map(t => { const e = S.E.get(t.emp_code);
@@ -204,7 +207,7 @@ function alerts() {
   const sec = (cls, ico, icls, title, sub, n, inner, extra = "") => `<div class="card al ${cls}"><div class="card-h"><div style="display:flex;gap:12px;align-items:center">
       <div class="ico ${icls}">${ico}</div><div><div class="card-t">${title} <span class="chip ${n ? "chip-gold" : "chip-gray"}">${n}</span></div><div class="card-s">${sub}</div></div></div>${extra}</div>
       ${n ? `<div class="tbl-wrap">${inner}</div>` : `<div class="ok-line">${I.check}ไม่มีรายการ</div>`}</div>`;
-  const B = A.B, nB = B.apply.length + B.rate.length + B.policy.length;
+  const B = A.B, nB = B.apply.length + B.rate.length + B.policy.length + B.blocked.length;
   render(`${head("กองทุนสำรองเลี้ยงชีพ", "แจ้งเตือน", "สิ่งที่ HR ต้องทำในรอบนี้ — เรียงจากเรื่องเงินก่อน")}
   ${nB ? `${sec("blue", I.file, "ico-blue", "จากใบสมัคร / คำขอ — ทะเบียนยังไม่ตรง",
     "ระบบเทียบใบที่ HR รับเรื่องแล้วในหน้าแบบฟอร์มกองทุน กับทะเบียน PVD · กดปุ่มแล้วระบบกรอกค่าจากใบให้ ตรวจแล้วกดบันทึก", nB,
@@ -212,6 +215,9 @@ function alerts() {
      ${B.apply.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-em">สมัครสมาชิก</span> <span class="muted small">#${a.x.id} · ${dTH(a.x.submitted_at?.slice(0, 10))}</span></td>
        <td>สะสม <b>${pct(a.rate)}</b>${a.policy ? ` · ${esc(a.policy)}` : ""}</td><td class="muted">${mem(a.x.emp_code) ? "ไม่สมัคร" : "ยังไม่มี"}</td>
        <td style="text-align:right">${w ? `<button class="btn btn-sm btn-p" data-fromapp="${a.x.id}">${I.plus}ลงทะเบียนจากใบสมัคร</button>` : ""}</td></tr>`).join("")}
+     ${B.blocked.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-red">สมัครสมาชิก — สมัครไม่ได้</span> <span class="muted small">#${a.x.id}</span></td>
+       <td colspan="2" class="small">เคยลาออกจากกองทุนสำรองเลี้ยงชีพแล้ว กลับเข้าไม่ได้ — ส่งใบกลับ แล้วให้สมัครกองทุนสงเคราะห์ลูกจ้าง</td>
+       <td style="text-align:right">${can("data.fundforms.write") ? `<button class="btn btn-sm" data-invite="${esc(a.x.emp_code)}" data-forms="wef">เชิญกรอก สกล.5</button>` : ""}</td></tr>`).join("")}
      ${B.rate.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-gold">เปลี่ยนอัตราสะสม</span> <span class="muted small">#${a.x.id} · ${dTH(a.x.submitted_at?.slice(0, 10))}</span></td>
        <td><b>${pct(a.rate)}</b></td><td>${pct(a.m.emp_rate)}</td>
        <td style="text-align:right">${w ? `<button class="btn btn-sm" data-fromrate="${a.x.id}">ปรับตามคำขอ</button>` : ""}</td></tr>`).join("")}
@@ -220,7 +226,7 @@ function alerts() {
        <td style="text-align:right">${w ? `<button class="btn btn-sm" data-frompol="${a.x.id}">ใส่แผนตามใบ</button>` : ""}</td></tr>`).join("")}
     </tbody></table>`)}<div class="mt"></div>` : ""}
   ${sec("gold", I.up, "ico-gold", "อายุงานครบขั้น — เพดานเงินสมทบเปลี่ยน",
-    `ครบ 3 / 6 / 10 ปี → เพดาน 7% / 10% / 12% · มีผลรอบเงินเดือนเดือนถัดจากเดือนที่ครบ · รอบ ${ymTH(ym)} ถึง ${ymTH(P.ymAdd(ym, S.ahead))}`, tiers.length,
+    `ครบ 3 / 6 / 10 ปี → เพดาน 7% / 10% / 12% · มีผลรอบเงินเดือนของเดือนที่ครบเลย · รอบ ${ymTH(ym)} ถึง ${ymTH(P.ymAdd(ym, S.ahead))}`, tiers.length,
     `<table class="tbl"><thead><tr><th>พนักงาน</th><th>วันเริ่มงาน</th><th>ครบ</th><th>มีผลรอบ</th><th class="r">สะสม</th><th class="r">สมทบ เดิม → ใหม่</th><th>ต้องทำ</th></tr></thead><tbody>
      ${tiers.map(a => `<tr class="click" data-open="${esc(a.emp_code)}"><td>${who(a.emp_code, S.E.get(a.emp_code)?.department)}</td><td>${dTH(S.E.get(a.emp_code)?.join_date?.slice(0, 10))}</td>
        <td><span class="chip chip-blue">${a.years} ปี</span> ${dTH(a.anniv)}</td><td><b>${ymTH(a.eff)}</b></td><td class="r">${pct(a.empRate)}</td>
@@ -235,6 +241,13 @@ function alerts() {
      ${A.ra.left.map(x => `<tr><td>${who(x.emp_code, S.E.get(x.emp_code)?.department)}</td><td>${dTH(x.end)}</td><td>${x.years} ปี</td>
        <td><span class="vest"><i style="width:${x.pct * 100}%"></i></span><b>${Math.round(x.pct * 100)}%</b></td>
        <td>${w ? `<button class="btn btn-sm" data-close="${esc(x.emp_code)}" data-end="${esc(x.end)}">ปิดสมาชิก</button>` : ""}</td></tr>`).join("")}</tbody></table>`)}
+  <div class="mt"></div>
+  ${sec("red", I.coin, "ico-red", "ลาออกจากกองทุนแล้ว — ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง",
+    "ลาออกจากกองทุนสำรองเลี้ยงชีพระหว่างยังเป็นพนักงาน กลับเข้าไม่ได้อีก (ระเบียบ) · ต้องสมัครกองทุนสงเคราะห์ลูกจ้าง (สกล.5) — กองทุนเริ่มเก็บ ม.ค. 2027", A.ra.wef.length,
+    `<table class="tbl"><thead><tr><th>พนักงาน</th><th>ออกจาก PVD</th><th>สกล.5</th><th></th></tr></thead><tbody>
+     ${A.ra.wef.map(x => `<tr><td>${who(x.emp_code, S.E.get(x.emp_code)?.department)}</td><td>${x.left_date ? dTH(x.left_date) : `<span class="muted">ไม่ทราบวันที่</span>`}</td>
+       <td>${B.wefSent.has(x.emp_code) ? `<span class="chip chip-em">ส่งใบแล้ว</span>` : B.wefInv.has(x.emp_code) ? `<span class="chip chip-blue">เชิญแล้ว รอกรอก</span>` : `<span class="chip chip-amb">ยังไม่ได้เชิญ</span>`}</td>
+       <td style="text-align:right">${!B.wefSent.has(x.emp_code) && !B.wefInv.has(x.emp_code) && can("data.fundforms.write") ? `<button class="btn btn-sm btn-g" data-invite="${esc(x.emp_code)}" data-forms="wef">เชิญกรอก สกล.5</button>` : ""}</td></tr>`).join("")}</tbody></table>`)}
   <div class="mt"></div>
   ${sec("blue", I.user, "ico-blue", "พ้นทดลองงานแล้ว ยังไม่อยู่ในทะเบียน", "พนักงานประจำ พ้นทดลองงาน (วันที่ 119) · สมัครแล้วกด “เพิ่มสมาชิก” · ไม่สมัครกด “ไม่สมัคร” จะได้ไม่ขึ้นซ้ำ", A.ra.eligible.length,
     `<table class="tbl"><thead><tr><th>พนักงาน</th><th>วันเริ่มงาน</th><th>พ้นทดลองงาน</th><th></th></tr></thead><tbody>
@@ -269,7 +282,7 @@ function members() {
         <td>${y != null ? `${y} ปี` : `<span class="chip chip-red">ไม่มีวันเริ่มงาน</span>`}</td><td class="r"><b>${pct(m.emp_rate)}</b></td>
         <td class="r">${j && m.emp_rate ? pct(P.erRateFor(m.emp_rate, j, ym)) : "-"}</td>
         <td>${v != null ? `<span class="vest"><i style="width:${v * 100}%"></i></span>${Math.round(v * 100)}%` : "-"}</td><td class="small">${esc(m.policy || "")}</td>
-        <td>${m.status === "active" ? `<span class="chip chip-em">เป็นสมาชิก</span>` : m.status === "left" ? `<span class="chip chip-gray">ออก ${dTH(m.left_date)}</span>` : m.status === "declined" ? `<span class="chip chip-amb">ไม่สมัคร</span>` : `<span class="chip chip-blue">รอเป็นสมาชิก</span>`}</td></tr>`; }).join("")
+        <td>${m.status === "active" ? `<span class="chip chip-em">เป็นสมาชิก</span>` : m.status === "left" ? `<span class="chip ${P.barred(m, e, today()) ? "chip-red" : "chip-gray"}">ออก${m.left_date ? " " + dTH(m.left_date) : ""}${P.barred(m, e, today()) ? " · ห้ามกลับ" : ""}</span>` : m.status === "declined" ? `<span class="chip chip-amb">ไม่สมัคร</span>` : `<span class="chip chip-blue">รอเป็นสมาชิก</span>`}</td></tr>`; }).join("")
       || `<tr><td colspan="8" class="empty">ไม่พบ</td></tr>`}
     </tbody></table></div></div>
   <div class="small muted" style="margin-top:10px">* สิทธิ์ในเงินสมทบถ้าออกวันนี้ (อายุงานรวมทดลองงาน) · สมทบ = เท่าเงินสะสมแต่ไม่เกินเพดานตามอายุงาน</div>`);
@@ -297,9 +310,11 @@ function drawer(code, preset = {}, reason = "") {
       <div class="s">${esc(code || "")}${e ? ` · ${esc(e.department || "")} · ${esc(e.position || "")}` : ""}${e?.end_date ? ` · พ้นสภาพ ${dTH(e.end_date.slice(0, 10))}` : ""}</div>
       ${j ? `<div class="dr-stats"><div><span>อายุงาน</span><b>${y} ปี</b></div><div><span>เพดานสมทบรอบนี้</span><b>${pct(P.erCapFor(j, curYM()))}</b></div>
         <div><span>สิทธิ์เงินสมทบถ้าออกวันนี้</span><b>${Math.round(P.vestOf(j, today()).pct * 100)}%</b></div>
-        <div><span>ขั้นถัดไป</span><b>${nxt ? `${pct(P.capOf(nxt))} · ${ymShort(P.ymAdd(P.addYears(j, nxt).slice(0, 7), 1))}` : "สูงสุดแล้ว"}</b></div></div>` : ""}
+        <div><span>ขั้นถัดไป</span><b>${nxt ? `${pct(P.capOf(nxt))} · ${ymShort(P.addYears(j, nxt).slice(0, 7))}` : "สูงสุดแล้ว"}</b></div></div>` : ""}
     </div>
     <div class="dr-b">
+      ${P.barred(m, e, today()) ? `<div class="card al red" style="margin-bottom:14px"><div class="card-b"><b style="color:var(--red-600)">ลาออกจากกองทุนแล้ว — สมัครใหม่ไม่ได้</b>
+        <div class="small muted">ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง (สกล.5) แทน · ระบบไม่ให้เปลี่ยนกลับเป็น “เป็นสมาชิก”</div></div></div>` : ""}
       ${isNew && !code ? `<label class="fld" style="margin-bottom:14px"><span>รหัสพนักงาน *</span><input class="inp" id="drCode" list="drEmps" placeholder="AKR…"></label>
         <datalist id="drEmps">${S.emps.filter(x => !x.end_date && !mem(x.emp_code)).map(x => `<option value="${esc(x.emp_code)}">${esc([x.firstname_th, x.lastname_th].join(" "))}</option>`).join("")}</datalist>` : ""}
       <div class="card"><div class="card-b"><div class="grid-f">
@@ -310,9 +325,11 @@ function drawer(code, preset = {}, reason = "") {
         ${f("title_th", "คำนำหน้า")}${f("first_th", "ชื่อ (ไทย)")}${f("last_th", "นามสกุล (ไทย)")}
         ${f("id_card", "เลขบัตรประชาชน", `maxlength="13"`)}${f("dob", "วันเกิด (ddmmyyyy ตามไฟล์กองทุน)", `maxlength="8"`)}
         ${f("member_date", "วันที่เป็นสมาชิก", "", "date")}
-        <label class="fld"><span>สถานะ</span><select class="inp" data-f="status" ${w ? "" : "disabled"}>${Object.entries(P.STATUS_TH).map(([k, t]) => `<option value="${k}" ${v.status === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+        <label class="fld"><span>สถานะ</span><select class="inp" data-f="status" ${w ? "" : "disabled"}>${Object.entries(P.STATUS_TH).map(([k, t]) => `<option value="${k}" ${v.status === k ? "selected" : ""} ${P.barred(m, e, today()) && (k === "active" || k === "pending") ? "disabled" : ""}>${t}</option>`).join("")}</select></label>
         ${f("left_date", "วันที่ออกจากกองทุน", "", "date")}
       </div>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px;cursor:pointer"><input type="checkbox" data-c="no_rejoin" ${v.no_rejoin || P.barred(m, e, today()) ? "checked" : ""} ${w ? "" : "disabled"}>
+        เคยลาออกจากกองทุนระหว่างเป็นพนักงาน — สมัครใหม่ไม่ได้ (ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง)</label>
       <label class="fld" style="margin-top:12px"><span>หมายเหตุ</span><textarea class="inp" data-f="note" rows="2" ${w ? "" : "disabled"}>${esc(v.note || "")}</textarea></label>
       ${w ? `<label class="fld" style="margin-top:12px"><span>เหตุผลที่แก้ (เก็บในประวัติ)</span><input class="inp" id="drReason" value="${esc(reason)}" placeholder="เช่น พนักงานขอเพิ่มอัตราสะสม (ปีละ 1 ครั้ง)"></label>` : ""}
       </div></div>
@@ -329,7 +346,7 @@ function drawer(code, preset = {}, reason = "") {
     if (isNew && mem(c)) { toast("คนนี้มีในทะเบียนแล้ว", "error"); return; }
     const row = collect(root);
     if (row.status === "active" && !(row.emp_rate >= 0.02 && row.emp_rate <= 0.15)) { toast("อัตราเงินสะสม 2–15%", "error"); return; }
-    if (row.status === "left" && !row.left_date) { toast("ใส่วันที่ออกจากกองทุน", "error"); return; }
+    if (row.status === "left" && !row.left_date && !row.no_rejoin) { toast("ใส่วันที่ออกจากกองทุน", "error"); return; }
     const { data, error } = await supabase.rpc("pvd_member_save", { p_emp_code: c, p_row: row, p_reason: root.querySelector("#drReason")?.value || null });
     if (error) { toast(error.message, "error"); return; }
     close(); toast(data.changed.length ? "บันทึกแล้ว" : "ไม่มีอะไรเปลี่ยน", "success"); await load(); route();
@@ -337,6 +354,7 @@ function drawer(code, preset = {}, reason = "") {
 }
 function collect(root) {
   const row = {}; root.querySelectorAll("[data-f]").forEach(i => { row[i.dataset.f] = i.value.trim() || null; });
+  root.querySelectorAll("[data-c]").forEach(i => { row[i.dataset.c] = i.checked; });
   if (row.emp_rate != null) row.emp_rate = Math.round(Number(row.emp_rate) * 100) / 10000;
   if (row.id_card && !row.id_card.startsWith("•")) row.id_card = row.id_card.replace(/\D/g, "");
   return row;
@@ -458,8 +476,9 @@ async function forms() {
     const tab = document.querySelector('#pageFundforms [data-tab="invite"]'); if (tab && !tab.classList.contains("on")) { tab.click(); await new Promise(r => setTimeout(r, 50)); }
     document.getElementById("ffAdd")?.click();
     const inp = document.getElementById("ffEmp");
-    if (inp) { inp.value = code; inp.dispatchEvent(new Event("input")); const fp = document.getElementById("ffFp"); if (fp) fp.checked = true;
-      document.getElementById("ffLast5")?.focus(); toast(`กรอก ${code} ให้แล้ว — ใส่เลขบัตร 5 ตัวท้ายแล้วกดเชิญ`); }
+    if (inp) { inp.value = code; inp.dispatchEvent(new Event("input")); const wef = S.inviteForms === "wef";
+      const fp = document.getElementById("ffFp"), fw = document.getElementById("ffFw"); if (fp) fp.checked = !wef; if (fw) fw.checked = wef;
+      document.getElementById("ffLast5")?.focus(); toast(`กรอก ${code} ให้แล้ว (${wef ? "สกล.5" : "กองทุนสำรองเลี้ยงชีพ"}) — ใส่เลขบัตร 5 ตัวท้ายแล้วกดเชิญ`); }
   }
 }
 
@@ -521,7 +540,7 @@ function wireCommon(root) {
     drawer(x.emp_code, { emp_rate: Math.round(Number(x.payload.rate) * 100) / 10000 }, `คำขอเปลี่ยนอัตราสะสม #${x.id}`); });
   root.querySelectorAll("[data-frompol]").forEach(b => b.onclick = () => { const x = sub(b.dataset.frompol);
     drawer(x.emp_code, { policy: x.payload.policy }, `แผนการลงทุนตามใบ #${x.id}`); });
-  root.querySelectorAll("[data-invite]").forEach(b => b.onclick = () => { S.inviteFor = b.dataset.invite; location.hash = "#/forms"; });
+  root.querySelectorAll("[data-invite]").forEach(b => b.onclick = () => { S.inviteFor = b.dataset.invite; S.inviteForms = b.dataset.forms || "pvd"; location.hash = "#/forms"; });
   root.querySelectorAll("[data-open]").forEach(a => a.onclick = ev => { ev.preventDefault(); drawer(a.dataset.open); });
   root.querySelectorAll("[data-close]").forEach(b => b.onclick = () => drawer(b.dataset.close, { status: "left", left_date: b.dataset.end }));
   root.querySelectorAll("[data-decline]").forEach(b => b.onclick = async () => {

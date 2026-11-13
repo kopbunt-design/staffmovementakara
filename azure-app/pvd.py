@@ -40,7 +40,9 @@ PERMS = [("page.pvd", "page", "กองทุนสำรองเลี้ย�
          ("data.pvd.write", "data", "จัดการทะเบียนกองทุนสำรองเลี้ยงชีพ", "แก้ทะเบียน นำเข้า บันทึกยอดรายเดือน เห็นเลขบัตรประชาชน", "data.fundforms.write")]
 STATUS = {"active", "left", "declined", "pending"}
 FIELDS = ["member_code", "id_card", "dob", "title_th", "first_th", "last_th", "sec_code", "member_date", "left_date", "emp_rate",
-          "policy", "status", "note"]
+          "policy", "status", "note", "no_rejoin"]
+# ลาออกจากกองทุนระหว่างเป็นพนักงาน → สมัครใหม่ไม่ได้ ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง (user 2026-11-13) — คนที่ HR แจ้งมา
+NO_REJOIN_2026_11_13 = ["AKR23030905", "AKR23030973", "AKR23020846", "AKR25011255"]
 _ready = False
 
 
@@ -54,6 +56,7 @@ def ensure(r):
         except Exception as e:                       # อีก worker สร้างพร้อมกัน
             if "already" not in str(e).lower():
                 raise
+    r.cur.execute("IF COL_LENGTH('dbo.pvd_members', 'no_rejoin') IS NULL ALTER TABLE dbo.pvd_members ADD no_rejoin BIT NULL")
     for key, cat, label, desc, grant in PERMS:
         if r.val("SELECT COUNT(*) FROM dbo.permissions WHERE [key] = ?", key):
             continue
@@ -61,7 +64,34 @@ def ensure(r):
                       key, cat, label, desc, 25 if cat == "page" else 44)
         for (role,) in r.cur.execute("SELECT role_key FROM dbo.role_permissions WHERE perm_key = ?", grant).fetchall():
             r.cur.execute("INSERT INTO dbo.role_permissions (role_key, perm_key) VALUES (?, ?)", role, key)
+    try:
+        _mark_no_rejoin(r)
+    except Exception:
+        pass
     _ready = True
+
+
+def _mark_no_rejoin(r):
+    """ครั้งเดียว: 4 คนที่ HR แจ้งว่าสมัครกองทุนไม่ได้ (เคยลาออกจาก PVD) — คนที่ยังไม่มีในทะเบียนเพิ่มเป็นสถานะออกจากกองทุน"""
+    if r.val("SELECT OBJECT_ID('dbo.dms_migrations')") is None:
+        return
+    if r.val("SELECT COUNT(*) FROM dbo.dms_migrations WHERE name = ?", "pvd_no_rejoin_2026_11_13"):
+        return
+    done = []
+    for code in NO_REJOIN_2026_11_13:
+        if r.val("SELECT COUNT(*) FROM dbo.pvd_members WHERE emp_code = ?", code):
+            r.cur.execute("UPDATE dbo.pvd_members SET no_rejoin = 1 WHERE emp_code = ?", code)
+            done.append(code)
+        else:
+            e = r.rows(None, "SELECT firstname_th, lastname_th FROM dbo.employees WHERE emp_code = ?", code)
+            if not e:
+                continue
+            r.cur.execute("""INSERT INTO dbo.pvd_members (emp_code, first_th, last_th, status, no_rejoin, note, updated_at, updated_by_name)
+                             VALUES (?, ?, ?, 'left', 1, ?, ?, ?)""", code, e[0]["firstname_th"], e[0]["lastname_th"],
+                          "เคยลาออกจากกองทุนสำรองเลี้ยงชีพ — สมัครใหม่ไม่ได้ ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง (HR แจ้ง 13 พ.ย. 2026)", _now(), "ระบบ")
+            done.append(code + " (เพิ่ม)")
+        _log(r, code, "no_rejoin", "ลาออกจากกองทุนแล้ว สมัครใหม่ไม่ได้ — ต้องเข้ากองทุนสงเคราะห์ลูกจ้าง (HR แจ้ง 13 พ.ย. 2026)", "ระบบ")
+    r.cur.execute("INSERT INTO dbo.dms_migrations (name, at, detail) VALUES (?, ?, ?)", "pvd_no_rejoin_2026_11_13", _now(), ", ".join(done))
 
 
 def _now():
@@ -112,7 +142,7 @@ def _clean(x):
            "title_th": _s(x.get("title_th"), 40), "first_th": _s(x.get("first_th"), 100), "last_th": _s(x.get("last_th"), 150),
            "sec_code": _s(x.get("sec_code"), 20), "member_date": _d(x.get("member_date")), "left_date": _d(x.get("left_date")),
            "emp_rate": _rate(x.get("emp_rate")), "policy": _s(x.get("policy"), 20), "status": _s(x.get("status")) or "active",
-           "note": _s(x.get("note"), 1000)}
+           "note": _s(x.get("note"), 1000), "no_rejoin": 1 if x.get("no_rejoin") in (True, 1, "1", "true") else 0}
     if out["status"] not in STATUS:
         raise E("สถานะไม่ถูกต้อง")
     if out["id_card"] and (len(out["id_card"]) != 13 or not out["id_card"].isdigit()):
@@ -141,7 +171,7 @@ def _upsert(r, code, row, who, action="edit", reason=None):
                 except (TypeError, ValueError):
                     return False
             return (a or None) == (b or None)
-        changed = [f for f in FIELDS if not same(old.get(f), row[f])]
+        changed = [f for f in FIELDS if not (bool(old.get(f)) == bool(row[f]) if f == "no_rejoin" else same(old.get(f), row[f]))]
         if not changed:
             return []
         r.cur.execute(f"UPDATE dbo.pvd_members SET {', '.join(f'{f} = ?' for f in FIELDS)}, updated_at = ?, updated_by_name = ? WHERE emp_code = ?",
@@ -203,6 +233,15 @@ def pvd_member_save(r, p_emp_code, p_row, p_reason=None):
         raise E("อัตราเงินสะสมต้องอยู่ระหว่าง 2–15%")
     if row["member_code"] and r.val("SELECT COUNT(*) FROM dbo.pvd_members WHERE member_code = ? AND emp_code <> ?", row["member_code"], code):
         raise E(f"รหัสสมาชิก {row['member_code']} มีคนอื่นใช้แล้ว")
+    # ลาออกจากกองทุนระหว่างเป็นพนักงาน → กลับเข้าไม่ได้ (ระเบียบ · user 2026-11-13)
+    old = r.rows(None, "SELECT status, no_rejoin FROM dbo.pvd_members WHERE emp_code = ?", code)
+    emp = r.rows(None, "SELECT end_date FROM dbo.employees WHERE emp_code = ?", code)
+    employed = bool(emp) and (not emp[0]["end_date"] or str(emp[0]["end_date"])[:10] > date.today().isoformat())
+    was_out = bool(old) and (bool(old[0]["no_rejoin"]) or (old[0]["status"] == "left" and employed))
+    if was_out and row["status"] in ("active", "pending"):
+        raise E("คนนี้เคยลาออกจากกองทุนสำรองเลี้ยงชีพ สมัครใหม่ไม่ได้ — ให้สมัครกองทุนสงเคราะห์ลูกจ้างแทน")
+    if was_out or (row["status"] == "left" and employed):
+        row["no_rejoin"] = 1
     # คนที่ไม่มีสิทธิ์เห็นเลขบัตรเต็มส่งค่าที่ปิดไว้กลับมา → คงค่าเดิม
     if p_row and str(p_row.get("id_card") or "").startswith("•"):
         row["id_card"] = r.val("SELECT id_card FROM dbo.pvd_members WHERE emp_code = ?", code)
@@ -231,6 +270,8 @@ def pvd_import(r, p_members, p_sections=None, p_history=None, p_file=None):
             continue
         existed = r.val("SELECT COUNT(*) FROM dbo.pvd_members WHERE emp_code = ?", code)
         row = _clean(x)
+        if existed and r.val("SELECT COUNT(*) FROM dbo.pvd_members WHERE emp_code = ? AND no_rejoin = 1", code):
+            row["no_rejoin"] = 1                                # ไฟล์เดิมไม่มีช่องนี้ — อย่าลบที่ตั้งไว้
         if row["emp_rate"] is not None and row["emp_rate"] < 0.02 and row["status"] == "active":
             row["note"] = ((row["note"] or "") + " · อัตราสะสมในไฟล์ต่ำกว่า 2%").strip(" ·")
         if _upsert(r, code, row, who, "import", f"ไฟล์ {p_file}" if p_file else None):

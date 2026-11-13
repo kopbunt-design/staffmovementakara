@@ -3,7 +3,8 @@
 // กติกาจากระเบียบสวัสดิการ AKR-OHR-SD-002 ข้อ 14 (มีผล 16 เม.ย. 2026):
 //   เงินสะสม 2–15% ของฐานเงินเดือน · บริษัทสมทบเท่าเงินสะสม แต่ไม่เกินเพดานตามอายุงาน:
 //     < 3 ปี 5% · 3–<6 ปี 7% · 6–<10 ปี 10% · 10 ปีขึ้นไป 12%
-//   เพดานใหม่เริ่มรอบเงินเดือน "เดือนถัดจากเดือนที่ครบ" (user 2026-11-13 · ตรงกับ AKR23071058/1060 ครบ ก.ค. → ส.ค.)
+//   เพดานใหม่เริ่มรอบเงินเดือน "เดือนที่ครบ" เลย (user 2026-11-13 แก้จาก "เดือนถัดไป" ที่ตอบไว้ตอนแรก — เช่น AKR23101073 ครบ 3 ต.ค. ได้ 7% รอบ ต.ค.)
+//   ลาออกจากกองทุนระหว่างยังเป็นพนักงาน → กลับเข้า PVD ไม่ได้อีก ต้องสมัครกองทุนสงเคราะห์ลูกจ้างแทน (user 2026-11-13) — barred()
 //   สิทธิ์ในเงินสมทบเมื่อพ้นสภาพ (อายุงานรวมทดลองงาน): 1–<2 ปี 25% · 2–<3 50% · 3–<4 75% · 4 ปีขึ้นไป 100%
 // ฐานที่หัก = เงินเดือน − ขาด/ลา/มาสาย/ออกก่อน/พักงาน (ตรวจกับไฟล์เงินเดือน ต.ค. 2026: 452/452 คน)
 // ============================================================================
@@ -35,8 +36,10 @@ export function yearsAt(join, on) {
   return n;
 }
 export const capOf = years => CAP_TIERS.find(([y]) => years >= y)[1];
-// เพดานสมทบของรอบเงินเดือน ym = อายุงาน ณ สิ้นเดือนก่อนหน้า (ครบเดือนไหน → เดือนถัดไปจึงได้)
-export const erCapFor = (join, ym) => capOf(yearsAt(join, lastDay(ymAdd(ym, -1))));
+// เพดานสมทบของรอบเงินเดือน ym = อายุงาน ณ สิ้นเดือนนั้น (ครบเดือนไหน ได้อัตราใหม่เดือนนั้นเลย)
+export const erCapFor = (join, ym) => capOf(yearsAt(join, lastDay(ym)));
+// ลาออกจากกองทุนแล้วสมัครใหม่ไม่ได้: ติ๊กไว้ (no_rejoin) หรือสถานะ "ออกจากกองทุน" ทั้งที่ยังเป็นพนักงานอยู่
+export const barred = (m, e, today) => !!m && (!!m.no_rejoin || (m.status === "left" && !!e && (!e.end_date || iso(e.end_date) > today)));
 export const erRateFor = (empRate, join, ym) => Math.min(Number(empRate) || 0, erCapFor(join, ym));
 // สิทธิ์ในเงินสมทบเมื่อพ้นสภาพ — end = วันที่พ้นสภาพ (วันแรกที่ไม่ได้ทำงาน ตามทะเบียน) → ทำงานครบถึงวันก่อนหน้า
 export const vestOf = (join, end) => { const y = yearsAt(join, end); return { years: y, pct: VEST_TIERS.find(([t]) => y >= t)[1] }; };
@@ -50,7 +53,7 @@ export function tierAlerts(members, emps, ym, ahead = 3) {
     const e = emps.get(m.emp_code); const join = iso(e?.join_date);
     if (!join || (e.end_date && iso(e.end_date) <= lastDay(ym))) continue;
     for (const t of [3, 6, 10]) {
-      const anniv = addYears(join, t), eff = ymAdd(anniv.slice(0, 7), 1);
+      const anniv = addYears(join, t), eff = anniv.slice(0, 7);
       if (eff < ym || eff > ymAdd(ym, ahead)) continue;
       const before = capOf(t - 1), after = capOf(t), r = Number(m.emp_rate) || 0;
       out.push({ emp_code: m.emp_code, years: t, anniv, eff, capBefore: before, capAfter: after, empRate: r,
@@ -66,10 +69,11 @@ export const probationEnd = join => { const [y, m, d] = iso(join).split("-").map
   return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`; };
 export function registerAlerts(members, employees, today) {
   const byCode = new Map(members.map(m => [m.emp_code, m]));
-  const eligible = [], left = [], missing = [];
+  const eligible = [], left = [], missing = [], wef = [];
   for (const e of employees) {
     const code = e.emp_code, m = byCode.get(code), end = iso(e.end_date), join = iso(e.join_date);
     if (m?.status === "active" && end && end <= today) left.push({ emp_code: code, end, ...vestOf(join, end) });
+    if (barred(m, e, today)) wef.push({ emp_code: code, left_date: m.left_date || null });
     // ยังไม่มีแถวในทะเบียน (คนที่ไม่สมัครให้บันทึกสถานะ "ไม่สมัคร" ไว้ จะได้ไม่ขึ้นซ้ำ) · เฉพาะพนักงานประจำ
     if (!m && join && (!end || end > today) && /^permanent$/i.test(norm(e.contract_type || "Permanent")) && probationEnd(join) <= today)
       eligible.push({ emp_code: code, join, probationEnd: probationEnd(join) });
@@ -79,7 +83,7 @@ export function registerAlerts(members, employees, today) {
                   !(Number(m.emp_rate) >= EMP_RATE_MIN && Number(m.emp_rate) <= EMP_RATE_MAX) && "อัตราสะสม"].filter(Boolean);
     if (miss.length) missing.push({ emp_code: m.emp_code, miss });
   }
-  return { eligible, left, missing };
+  return { eligible, left, missing, wef };
 }
 
 // ---------------------------------------------------------------- ไฟล์เงินเดือน TigerSoft (BeforeProcessYDP)
@@ -129,7 +133,7 @@ export function checkMonth({ pay, members, emps, ym }) {
       const was = round2(p.base * Math.min(it.emp_rate, erCapFor(join, ymAdd(ym, -1))));
       const tier = Math.abs(p.er - was) <= TOL && was < wantR;
       add(p.code, tier ? "tier_not_applied" : "er_rate", tier
-        ? `อายุงานครบ ${yearsAt(join, lastDay(ymAdd(ym, -1)))} ปี — รอบนี้ต้องสมทบ ${(Math.min(it.emp_rate, it.er_cap) * 100).toFixed(0)}% = ${wantR.toFixed(2)} แต่ไฟล์ยังเป็น ${p.er.toFixed(2)}`
+        ? `อายุงานครบ ${yearsAt(join, lastDay(ym))} ปี — รอบนี้ต้องสมทบ ${(Math.min(it.emp_rate, it.er_cap) * 100).toFixed(0)}% = ${wantR.toFixed(2)} แต่ไฟล์ยังเป็น ${p.er.toFixed(2)}`
         : `เงินสมทบ ${p.er.toFixed(2)} ≠ ${(Math.min(it.emp_rate, it.er_cap) * 100).toFixed(0)}% ของฐาน = ${wantR.toFixed(2)} (เพดานตามอายุงาน ${(it.er_cap * 100).toFixed(0)}%)`);
     }
     const miss = [!m.member_code && "รหัสสมาชิก", !/^\d{13}$/.test(m.id_card || "") && "เลขบัตร", !m.dob && "วันเกิด", !m.sec_code && "รหัสสังกัด"].filter(Boolean);
