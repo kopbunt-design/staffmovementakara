@@ -57,7 +57,7 @@ const META_EN = {
   settings: "Master data: divisions, departments, positions, levels",
 };
 const GROUP_EN = {
-  "grp.records": "People, movements and benefits", "grp.sub": "Contractor-company workers, monthly headcount", "grp.pay": "Shift pay, payroll, approvals, contract pay",
+  "grp.records": "People, movements and uniforms", "grp.fund": "Provident fund register, PVD / WEF application forms", "grp.sub": "Contractor-company workers, monthly headcount", "grp.pay": "Shift pay, payroll, approvals, contract pay",
   "grp.reports": "Dashboard, headcount, movement, analytics", "grp.plan": "Position quotas and vacancies",
   "grp.docs": "Document numbers, certificates, offer letters",
   "grp.system": "Users, access and master data",
@@ -131,7 +131,8 @@ function tile(it, tone) {
 // หมวดบนหน้าแรก — กดแล้วขยายเป็นแผงเมนูย่อย (แบบเปิดโฟลเดอร์)
 // ผูกด้วย key ของหัวหมวดในแถบข้าง (data-i18n) ไม่ใช่ชื่อ — ชื่อเปลี่ยนตามภาษา ไทย/EN
 const GROUP_META = {
-  "grp.records":       ["ข้อมูลพนักงาน ความเคลื่อนไหว สวัสดิการ", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
+  "grp.records":       ["ข้อมูลพนักงาน ความเคลื่อนไหว ยูนิฟอร์ม", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.7.7 2.7 2.4 3 5.2"/>'],
+  "grp.fund":           ["กองทุนสำรองเลี้ยงชีพ แบบฟอร์มสมัคร PVD / สกล.5", '<path d="M12 3 4 6.5V12c0 4.4 3.3 8 8 9 4.7-1 8-4.6 8-9V6.5Z"/><path d="M12 8v8M9.5 10.2c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1.1 1.4-2.5 1.8-2.5.8-2.5 1.8 1.1 1.7 2.5 1.7 2.5-.7 2.5-1.7"/>'],
   "grp.sub":            ["คนจากบริษัทผู้รับเหมา · รายงานรายเดือน", '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01"/>'],
   "grp.pay": ["ค่ากะ เงินเดือน ใบอนุมัติ ค่าจ้างเหมา", '<rect x="2.5" y="6" width="19" height="12.5" rx="2.5"/><circle cx="12" cy="12.25" r="2.75"/><path d="M6 9.5v.01M18 15v.01"/>'],
   "grp.reports":        ["ภาพรวม headcount movement วิเคราะห์", '<path d="M3 3v18h18"/><path d="M7.5 16v-4M12 16V8M16.5 16v-6"/>'],
