@@ -4,6 +4,7 @@
 // ยอดเงินรายคนเดาเงินเดือนได้ → หน้า/ตัวเลขเงินต้องมี field.salary.read · ไฟล์เงินเดือนอ่านในเบราว์เซอร์ ส่งขึ้นเฉพาะยอดกองทุน
 import { supabase } from "../js/supabase-config.js";
 import * as P from "../js/pvd-calc.js";
+import { initShim } from "./app-shim.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -35,7 +36,7 @@ const I = {
   xl: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="m8 8 8 8M16 8l-8 8"/></svg>',
 };
 
-const S = { user: null, perms: new Set(), D: null, emps: [], E: new Map(), q: "", fStatus: "active", ahead: 3, onlyChange: false, month: null, imp: null };
+const S = { user: null, perms: new Set(), D: null, emps: [], E: new Map(), subs: [], invites: [], q: "", fStatus: "active", ahead: 3, onlyChange: false, month: null, imp: null };
 const can = p => S.perms.has(p);
 
 function toast(msg, type = "") {
@@ -56,9 +57,36 @@ async function fetchAll(q) {
   return out;
 }
 async function load() {
+  if (!can("page.pvd")) { S.D = { members: [], sections: [], runs: [], first: {}, can_write: false, can_money: false, none: true }; return; }
   const { data, error } = await supabase.rpc("pvd_data");
   if (error) throw error;
   S.D = data;
+}
+// ใบสมัคร/คำขอจากหน้าแบบฟอร์มกองทุน — ใช้จับคู่กับทะเบียน (ไม่มีสิทธิ์ = ว่าง)
+async function loadForms() {
+  if (!can("page.fundforms")) return;
+  const [a, b] = await Promise.all([
+    supabase.from("fund_form_submission").select("id,form_type,emp_code,emp_name,status,payload,submitted_at,invite_id").order("submitted_at", { ascending: false }),
+    supabase.from("fund_form_invite").select("emp_code,forms,cancelled,opened_at,created_at")]);
+  S.subs = (a.data || []).map(x => ({ ...x, emp_code: String(x.emp_code || "").toUpperCase() }));
+  S.invites = (b.data || []).map(x => ({ ...x, emp_code: String(x.emp_code || "").toUpperCase() }));
+}
+// สะพานใบสมัคร ↔ ทะเบียน: ใบสมัคร PVD ที่ HR รับเรื่องแล้วแต่ยังไม่ลงทะเบียน · คำขอเปลี่ยนอัตรา/แผนที่ทะเบียนยังไม่ตรง
+const DONE = new Set(["accepted", "received", "approved", "sent"]);
+function bridgeData() {
+  const latest = new Map();
+  for (const x of S.subs) if (x.form_type === "pvd" && DONE.has(x.status) && !latest.has(x.emp_code)) latest.set(x.emp_code, x);
+  const apply = [], rate = [], policy = [];
+  for (const x of latest.values()) {
+    const p = x.payload || {}, req = new Set(p.requests || []), m = mem(x.emp_code), r = p.rate ? Math.round(Number(p.rate) * 100) / 10000 : null;
+    if (req.has("apply") && (!m || m.status === "declined")) apply.push({ x, rate: r, policy: p.policy || null });
+    else if (m && m.status === "active") {
+      if ((req.has("apply") || req.has("rate")) && r && Math.abs(r - (m.emp_rate || 0)) > 1e-6) rate.push({ x, m, rate: r });
+      if ((req.has("apply") || req.has("policy")) && p.policy && p.policy !== m.policy && !m.policy) policy.push({ x, m, policy: p.policy });
+    }
+  }
+  const invited = new Set(S.invites.filter(i => !i.cancelled && (i.forms || []).includes("pvd")).map(i => i.emp_code));
+  return { apply, rate, policy, invited, waiting: S.subs.filter(x => x.status === "submitted").length };
 }
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -69,26 +97,34 @@ async function boot() {
   S.perms = new Set((perms || []).map(p => typeof p === "string" ? p : p.perm_key || p.key));
   const name = S.user.user_metadata?.full_name || S.user.email || "";
   $("#fxUser").innerHTML = `<div class="av">${esc(ini(name).toUpperCase())}</div><div><b>${esc(name)}</b><span>${can("data.pvd.write") ? "จัดการกองทุน" : "ดูอย่างเดียว"}</span></div>`;
-  if (!can("page.pvd")) { $("#fxMain").innerHTML = `<div class="empty">บัญชีนี้ยังไม่มีสิทธิ์ “กองทุนสำรองเลี้ยงชีพ” — ให้ Admin เพิ่มที่ User Management</div>`; return; }
+  if (!can("page.pvd") && !can("page.fundforms")) { $("#fxMain").innerHTML = `<div class="empty">บัญชีนี้ยังไม่มีสิทธิ์ใช้ Akara Fund — ให้ Admin เพิ่มสิทธิ์ “กองทุนสำรองเลี้ยงชีพ” หรือ “แบบฟอร์มกองทุน” ที่ User Management</div>`; return; }
   try {
     const [, emps] = await Promise.all([load(), fetchAll(() => supabase.from("employees")
       .select("emp_code,firstname_th,lastname_th,firstname_en,lastname_en,department,section,position,job_level,join_date,end_date,status,contract_type,dob").order("emp_code"))]);
     S.emps = emps.map(e => ({ ...e, emp_code: String(e.emp_code).toUpperCase() })); S.E = new Map(S.emps.map(e => [e.emp_code, e]));
+    const role = (await supabase.from("user_roles").select("role").eq("user_id", S.user.id).maybeSingle()).data?.role || "user";
+    initShim({ employees: S.emps, user: S.user, role, perms: S.perms, toast });
+    await loadForms();
   } catch (e) { $("#fxMain").innerHTML = `<div class="card card-b"><b>โหลดข้อมูลไม่สำเร็จ</b><p class="muted">${esc(e.message)}</p></div>`; return; }
   if (!S.D.can_money) $("#navMonthly").style.display = "none";
+  if (S.D.none) document.querySelectorAll('#fxNav a[data-r]:not([data-r="forms"])').forEach(a => { a.style.display = "none"; });
+  if (!can("page.fundforms")) $('#fxNav a[data-r="forms"]').style.display = "none";
   if (!S.D.can_write) $("#navImport").style.display = "none";
   window.addEventListener("hashchange", route);
   route();
 }
-function route() {
-  const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (S.D.members.length ? "overview" : S.D.can_write ? "import" : "overview");
+async function route() {
+  if (S.lastR === "forms") await loadForms();          // สถานะใบอาจเปลี่ยนในหน้าแบบฟอร์ม — อ่านใหม่ก่อนจับคู่กับทะเบียน
+  const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (S.D.none ? "forms" : S.D.members.length ? "overview" : S.D.can_write ? "import" : "overview");
+  S.lastR = r;
   document.querySelectorAll("#fxNav a[data-r]").forEach(a => a.classList.toggle("on", a.dataset.r === r));
   badge();
-  ({ overview, alerts, members, monthly, log: logPage, import: importPage }[r] || overview)();
+  ({ overview, alerts, members, monthly, log: logPage, import: importPage, forms }[r] || overview)();
   window.scrollTo(0, 0);
 }
 function badge() {
   const n = alertData().count; $("#navAl").textContent = n ? String(n) : "";
+  const w = bridgeData().waiting; $("#navForms").textContent = w ? String(w) : "";
 }
 const head = (eyebrow, title, sub, actions = "") => `<div class="fx-head"><div><div class="fx-eyebrow">${eyebrow}</div><div class="fx-title">${title}</div>
   <div class="fx-sub">${sub}</div></div><div class="fx-actions">${actions}</div></div>`;
@@ -97,7 +133,9 @@ const render = html => { $("#fxMain").innerHTML = html; wireCommon($("#fxMain"))
 function alertData(ahead = S.ahead) {
   const ym = curYM(), M = S.D.members;
   const tiers = P.tierAlerts(M, S.E, ym, ahead), ra = P.registerAlerts(M, S.emps, today());
-  return { ym, tiers, ra, count: tiers.filter(t => t.changes && t.eff <= P.ymAdd(ym, 1)).length + ra.left.length + ra.eligible.length + ra.missing.length };
+  const B = bridgeData();
+  return { ym, tiers, ra, B, count: tiers.filter(t => t.changes && t.eff <= P.ymAdd(ym, 1)).length + ra.left.length + ra.eligible.length + ra.missing.length
+    + B.apply.length + B.rate.length + B.policy.length };
 }
 
 // ---------------------------------------------------------------- ภาพรวม
@@ -166,7 +204,21 @@ function alerts() {
   const sec = (cls, ico, icls, title, sub, n, inner, extra = "") => `<div class="card al ${cls}"><div class="card-h"><div style="display:flex;gap:12px;align-items:center">
       <div class="ico ${icls}">${ico}</div><div><div class="card-t">${title} <span class="chip ${n ? "chip-gold" : "chip-gray"}">${n}</span></div><div class="card-s">${sub}</div></div></div>${extra}</div>
       ${n ? `<div class="tbl-wrap">${inner}</div>` : `<div class="ok-line">${I.check}ไม่มีรายการ</div>`}</div>`;
+  const B = A.B, nB = B.apply.length + B.rate.length + B.policy.length;
   render(`${head("กองทุนสำรองเลี้ยงชีพ", "แจ้งเตือน", "สิ่งที่ HR ต้องทำในรอบนี้ — เรียงจากเรื่องเงินก่อน")}
+  ${nB ? `${sec("blue", I.file, "ico-blue", "จากใบสมัคร / คำขอ — ทะเบียนยังไม่ตรง",
+    "ระบบเทียบใบที่ HR รับเรื่องแล้วในหน้าแบบฟอร์มกองทุน กับทะเบียน PVD · กดปุ่มแล้วระบบกรอกค่าจากใบให้ ตรวจแล้วกดบันทึก", nB,
+    `<table class="tbl"><thead><tr><th>พนักงาน</th><th>ใบ</th><th>ในใบ</th><th>ในทะเบียน</th><th></th></tr></thead><tbody>
+     ${B.apply.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-em">สมัครสมาชิก</span> <span class="muted small">#${a.x.id} · ${dTH(a.x.submitted_at?.slice(0, 10))}</span></td>
+       <td>สะสม <b>${pct(a.rate)}</b>${a.policy ? ` · ${esc(a.policy)}` : ""}</td><td class="muted">${mem(a.x.emp_code) ? "ไม่สมัคร" : "ยังไม่มี"}</td>
+       <td style="text-align:right">${w ? `<button class="btn btn-sm btn-p" data-fromapp="${a.x.id}">${I.plus}ลงทะเบียนจากใบสมัคร</button>` : ""}</td></tr>`).join("")}
+     ${B.rate.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-gold">เปลี่ยนอัตราสะสม</span> <span class="muted small">#${a.x.id} · ${dTH(a.x.submitted_at?.slice(0, 10))}</span></td>
+       <td><b>${pct(a.rate)}</b></td><td>${pct(a.m.emp_rate)}</td>
+       <td style="text-align:right">${w ? `<button class="btn btn-sm" data-fromrate="${a.x.id}">ปรับตามคำขอ</button>` : ""}</td></tr>`).join("")}
+     ${B.policy.map(a => `<tr><td>${who(a.x.emp_code, S.E.get(a.x.emp_code)?.department)}</td><td><span class="chip chip-blue">แผนการลงทุน</span> <span class="muted small">#${a.x.id}</span></td>
+       <td><b>${esc(a.policy)}</b></td><td class="muted">ว่าง</td>
+       <td style="text-align:right">${w ? `<button class="btn btn-sm" data-frompol="${a.x.id}">ใส่แผนตามใบ</button>` : ""}</td></tr>`).join("")}
+    </tbody></table>`)}<div class="mt"></div>` : ""}
   ${sec("gold", I.up, "ico-gold", "อายุงานครบขั้น — เพดานเงินสมทบเปลี่ยน",
     `ครบ 3 / 6 / 10 ปี → เพดาน 7% / 10% / 12% · มีผลรอบเงินเดือนเดือนถัดจากเดือนที่ครบ · รอบ ${ymTH(ym)} ถึง ${ymTH(P.ymAdd(ym, S.ahead))}`, tiers.length,
     `<table class="tbl"><thead><tr><th>พนักงาน</th><th>วันเริ่มงาน</th><th>ครบ</th><th>มีผลรอบ</th><th class="r">สะสม</th><th class="r">สมทบ เดิม → ใหม่</th><th>ต้องทำ</th></tr></thead><tbody>
@@ -187,7 +239,9 @@ function alerts() {
   ${sec("blue", I.user, "ico-blue", "พ้นทดลองงานแล้ว ยังไม่อยู่ในทะเบียน", "พนักงานประจำ พ้นทดลองงาน (วันที่ 119) · สมัครแล้วกด “เพิ่มสมาชิก” · ไม่สมัครกด “ไม่สมัคร” จะได้ไม่ขึ้นซ้ำ", A.ra.eligible.length,
     `<table class="tbl"><thead><tr><th>พนักงาน</th><th>วันเริ่มงาน</th><th>พ้นทดลองงาน</th><th></th></tr></thead><tbody>
      ${A.ra.eligible.map(x => `<tr><td>${who(x.emp_code, S.E.get(x.emp_code)?.department)}</td><td>${dTH(x.join)}</td><td>${dTH(x.probationEnd)}</td>
-       <td style="white-space:nowrap;text-align:right">${w ? `<button class="btn btn-sm btn-p" data-open="${esc(x.emp_code)}">${I.plus}เพิ่มสมาชิก</button> <button class="btn btn-sm" data-decline="${esc(x.emp_code)}">ไม่สมัคร</button>` : ""}</td></tr>`).join("")}</tbody></table>`)}
+       <td style="white-space:nowrap;text-align:right">${B.invited.has(x.emp_code) ? `<span class="chip chip-em" style="margin-right:6px">เชิญกรอกใบสมัครแล้ว</span>`
+         : can("data.fundforms.write") ? `<button class="btn btn-sm btn-g" data-invite="${esc(x.emp_code)}">ส่งคำเชิญสมัคร</button> ` : ""}
+         ${w ? `<button class="btn btn-sm btn-p" data-open="${esc(x.emp_code)}">${I.plus}เพิ่มสมาชิก</button> <button class="btn btn-sm" data-decline="${esc(x.emp_code)}">ไม่สมัคร</button>` : ""}</td></tr>`).join("")}</tbody></table>`)}
   <div class="mt"></div>
   ${sec("gray", I.warn, "ico-em", "ข้อมูลทะเบียนไม่ครบ", "ช่องที่ไฟล์ส่งกองทุนต้องใช้", A.ra.missing.length,
     `<table class="tbl"><thead><tr><th>พนักงาน</th><th>ขาด</th></tr></thead><tbody>
@@ -226,7 +280,7 @@ function members() {
 }
 
 // ---------------------------------------------------------------- ลิ้นชักสมาชิก
-function drawer(code, preset = {}) {
+function drawer(code, preset = {}, reason = "") {
   const m = code ? mem(code) : null, isNew = !m, e = code ? S.E.get(code) : null, w = S.D.can_write;
   const v = { status: "active", emp_rate: 0.05, ...(m || {}), ...preset };
   if (isNew && e) {
@@ -260,14 +314,14 @@ function drawer(code, preset = {}) {
         ${f("left_date", "วันที่ออกจากกองทุน", "", "date")}
       </div>
       <label class="fld" style="margin-top:12px"><span>หมายเหตุ</span><textarea class="inp" data-f="note" rows="2" ${w ? "" : "disabled"}>${esc(v.note || "")}</textarea></label>
-      ${w ? `<label class="fld" style="margin-top:12px"><span>เหตุผลที่แก้ (เก็บในประวัติ)</span><input class="inp" id="drReason" placeholder="เช่น พนักงานขอเพิ่มอัตราสะสม (ปีละ 1 ครั้ง)"></label>` : ""}
+      ${w ? `<label class="fld" style="margin-top:12px"><span>เหตุผลที่แก้ (เก็บในประวัติ)</span><input class="inp" id="drReason" value="${esc(reason)}" placeholder="เช่น พนักงานขอเพิ่มอัตราสะสม (ปีละ 1 ครั้ง)"></label>` : ""}
       </div></div>
       <div id="drHist"></div>
     </div>
     <div class="dr-f"><button class="btn" data-x>ปิด</button>${w ? `<button class="btn btn-p" id="drSave">${I.save}บันทึก</button>` : ""}</div></div>`;
   const root = $("#fxDrawer"), close = () => { root.innerHTML = ""; };
   root.querySelectorAll("[data-x]").forEach(b => b.onclick = close);
-  root.querySelector("#drCode")?.addEventListener("change", ev => { const c = ev.target.value.trim().toUpperCase(); if (S.E.has(c)) drawer(c, collect(root)); });
+  root.querySelector("#drCode")?.addEventListener("change", ev => { const c = ev.target.value.trim().toUpperCase(); if (S.E.has(c)) drawer(c, collect(root), reason); });
   if (!isNew) history(code, root.querySelector("#drHist"));
   root.querySelector("#drSave")?.addEventListener("click", async () => {
     const c = code || root.querySelector("#drCode")?.value.trim().toUpperCase();
@@ -382,6 +436,33 @@ async function saveMonth() {
   toast(`บันทึก ${ymTH(M.ym)} แล้ว · ${data.members} คน`, "success"); await load(); monthly();
 }
 
+// ---------------------------------------------------------------- แบบฟอร์มกองทุน (หน้าเดิม js/fund-forms.js ในดีไซน์นี้)
+async function forms() {
+  if (!can("page.fundforms")) { render(`<div class="empty">บัญชีนี้ยังไม่มีสิทธิ์ “แบบฟอร์มกองทุน”</div>`); return; }
+  const B = bridgeData(), ra = S.D.none ? null : P.registerAlerts(S.D.members, S.emps, today());
+  const notInvited = ra ? ra.eligible.filter(x => !B.invited.has(x.emp_code)).length : 0, nB = B.apply.length + B.rate.length + B.policy.length;
+  render(`${head("ใบสมัคร & คำขอ", "แบบฟอร์มกองทุน", "ลิงก์เดียวสำหรับทุกคน · พนักงานเข้าด้วยรหัสพนักงาน + เลขบัตร 5 ตัวท้าย · ใบที่รับเรื่องแล้วระบบจับคู่กับทะเบียน PVD ให้เอง")}
+  ${S.D.none ? "" : `<div class="bridge">
+      <a href="#/forms" id="brWait"><div class="ico ico-gold">${I.file}</div><div><div class="spark">รอรับเรื่อง</div><b>${B.waiting}</b><span>ใบที่พนักงานส่งออนไลน์ ยังไม่ได้รับเรื่อง</span></div></a>
+      <a href="#/alerts"><div class="ico ico-blue">${I.check}</div><div><div class="spark">ใบ → ทะเบียน PVD</div><b>${nB}</b><span>รับเรื่องแล้ว แต่ทะเบียนยังไม่ตรงกับใบ — กดเพื่อลงทะเบียนอัตโนมัติ</span></div></a>
+      <a href="#/alerts"><div class="ico ico-em">${I.user}</div><div><div class="spark">ยังไม่ได้เชิญ</div><b>${notInvited}</b><span>พ้นทดลองงาน ยังไม่สมัคร PVD และยังไม่มีคำเชิญ</span></div></a>
+    </div>`}<div id="pageFundforms" class="fx-legacy"><div class="empty">กำลังโหลด…</div></div>`);
+  try {
+    const m = await import("/js/fund-forms.js");
+    await m.renderFundForms();
+  } catch (e) { $("#pageFundforms").innerHTML = `<div class="card card-b"><b>เปิดหน้าแบบฟอร์มไม่สำเร็จ</b><p class="muted">${esc(e.message)}</p></div>`; return; }
+  // มาจากปุ่ม "ส่งคำเชิญสมัคร" — เปิดหน้าต่างเชิญพร้อมกรอกรหัสและติ๊ก PVD ให้
+  if (S.inviteFor) {
+    const code = S.inviteFor; S.inviteFor = null;
+    for (let i = 0; i < 40 && !document.getElementById("ffAdd"); i++) await new Promise(r => setTimeout(r, 100));
+    const tab = document.querySelector('#pageFundforms [data-tab="invite"]'); if (tab && !tab.classList.contains("on")) { tab.click(); await new Promise(r => setTimeout(r, 50)); }
+    document.getElementById("ffAdd")?.click();
+    const inp = document.getElementById("ffEmp");
+    if (inp) { inp.value = code; inp.dispatchEvent(new Event("input")); const fp = document.getElementById("ffFp"); if (fp) fp.checked = true;
+      document.getElementById("ffLast5")?.focus(); toast(`กรอก ${code} ให้แล้ว — ใส่เลขบัตร 5 ตัวท้ายแล้วกดเชิญ`); }
+  }
+}
+
 // ---------------------------------------------------------------- ประวัติ
 async function logPage() {
   render(`${head("กองทุนสำรองเลี้ยงชีพ", "ประวัติการแก้ไข", "ทุกการเพิ่ม/แก้/นำเข้า/บันทึกยอด · 300 รายการล่าสุด")}<div class="card"><div class="empty">กำลังโหลด…</div></div>`);
@@ -432,6 +513,15 @@ function readMaster(file) {
 
 // ---------------------------------------------------------------- ปุ่มที่ใช้ร่วม
 function wireCommon(root) {
+  const sub = id => S.subs.find(x => String(x.id) === String(id));
+  root.querySelectorAll("[data-fromapp]").forEach(b => b.onclick = () => { const x = sub(b.dataset.fromapp), p = x.payload || {};
+    drawer(x.emp_code, { status: "pending", emp_rate: p.rate ? Math.round(Number(p.rate) * 100) / 10000 : 0.05, policy: p.policy || null,
+      note: `จากใบสมัครออนไลน์ #${x.id} (${dTH(x.submitted_at?.slice(0, 10))}) — ใส่รหัสสมาชิกเมื่อกองทุนตอบรับ แล้วเปลี่ยนเป็น "เป็นสมาชิก"` }, `ใบสมัคร #${x.id}`); });
+  root.querySelectorAll("[data-fromrate]").forEach(b => b.onclick = () => { const x = sub(b.dataset.fromrate);
+    drawer(x.emp_code, { emp_rate: Math.round(Number(x.payload.rate) * 100) / 10000 }, `คำขอเปลี่ยนอัตราสะสม #${x.id}`); });
+  root.querySelectorAll("[data-frompol]").forEach(b => b.onclick = () => { const x = sub(b.dataset.frompol);
+    drawer(x.emp_code, { policy: x.payload.policy }, `แผนการลงทุนตามใบ #${x.id}`); });
+  root.querySelectorAll("[data-invite]").forEach(b => b.onclick = () => { S.inviteFor = b.dataset.invite; location.hash = "#/forms"; });
   root.querySelectorAll("[data-open]").forEach(a => a.onclick = ev => { ev.preventDefault(); drawer(a.dataset.open); });
   root.querySelectorAll("[data-close]").forEach(b => b.onclick = () => drawer(b.dataset.close, { status: "left", left_date: b.dataset.end }));
   root.querySelectorAll("[data-decline]").forEach(b => b.onclick = async () => {

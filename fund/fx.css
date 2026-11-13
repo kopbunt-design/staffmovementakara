@@ -238,3 +238,82 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .hero-v { font-size: 36px; }
   .dr-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ================================================================ แบบฟอร์มกองทุน (js/fund-forms.js เดิม) ในเว็บนี้
+   หน้าเดิมใช้คลาสของระบบ HR (css/style.css) — ชั้นนี้แปลงคลาสพวกนั้นให้เป็นดีไซน์ Akara Fund (เฉพาะใต้ .fx-legacy)
+   ตัวแปรสีที่หน้าเดิมใส่ไว้ใน style="" ก็ชี้มาที่สีของเว็บนี้ */
+.fx-legacy {
+  --navy: var(--navy-800); --blue: var(--navy-600); --blue-dark: var(--navy-700); --blue-light: var(--blue-100);
+  --green: var(--em-600); --green-light: var(--em-100); --red: var(--red-600); --red-light: var(--red-100);
+  --amber: var(--amber-600); --amber-light: var(--amber-100); --gold: var(--gold-500); --gold-light: var(--gold-100); --gold-dark: #8A6500;
+  --purple: #6D3FC0; --purple-light: #EFE8FC; --muted: var(--ink-3); --muted2: var(--ink-3); --text: var(--ink);
+  --border: var(--line); --border2: var(--line); --bg: var(--bg); --radius-sm: 10px;
+}
+.fx-legacy .section { padding: 0; }
+.fx-legacy .mt-4 { margin-top: 18px; } .fx-legacy .pb-4 { padding-bottom: 18px; } .fx-legacy .mt { margin-top: 12px; }
+.fx-legacy .text-muted { color: var(--ink-3); }
+.fx-legacy .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+/* หัวเรื่องของหน้าเดิมซ้ำกับหัวของเว็บนี้ (fx.js forms) — เหลือแค่ปุ่ม */
+.fx-legacy .page-header > div:first-child { display: none; }
+.fx-legacy .page-header { justify-content: flex-end; margin: -6px 0 14px; }
+.fx-legacy .page-heading { font-size: 28px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25; }
+.fx-legacy .page-sub { color: var(--ink-2); max-width: 760px; margin-top: 4px; }
+.fx-legacy .header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fx-legacy .card { border-radius: var(--r-lg); }
+.fx-legacy .card-body { padding: 18px 22px; }
+.fx-legacy .btn-primary { background: linear-gradient(180deg, var(--navy-700), var(--navy-800)); color: #fff; border-color: var(--navy-800); }
+.fx-legacy .btn-primary:hover { background: linear-gradient(180deg, var(--navy-600), var(--navy-700)); }
+.fx-legacy .btn-secondary { background: #fff; }
+.fx-legacy .btn-danger { background: var(--red-600); color: #fff; border-color: var(--red-600); }
+.fx-legacy .btn-gold { background: linear-gradient(180deg, var(--gold-400), var(--gold-500)); color: var(--navy-950); border-color: #E3AA00; }
+.fx-legacy .cp-tabs { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: #fff; border: 1px solid var(--line); box-shadow: var(--sh-1); width: fit-content; max-width: 100%; overflow-x: auto; }
+.fx-legacy .cp-tab { border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-2); padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+.fx-legacy .cp-tab:hover { color: var(--ink); background: var(--line-2); }
+.fx-legacy .cp-tab.on { background: var(--navy-800); color: #fff; }
+.fx-legacy .cp-tab.on b { color: var(--gold-400) !important; }
+.fx-legacy .table-wrap { overflow-x: auto; }
+.fx-legacy .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.fx-legacy .data-table th { position: sticky; top: 0; background: #F8FAFD; color: var(--ink-2); text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 600;
+  border-bottom: 1px solid var(--line); white-space: nowrap; }
+.fx-legacy .data-table td { padding: 11px 14px; border-bottom: 1px solid var(--line-2); vertical-align: middle; }
+.fx-legacy .data-table tr:last-child td { border-bottom: 0; }
+.fx-legacy .data-table tbody tr:hover td { background: #F8FAFD; }
+.fx-legacy .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.fx-legacy .badge-blue { background: var(--blue-100); color: var(--navy-600); } .fx-legacy .badge-green { background: var(--em-100); color: var(--em-600); }
+.fx-legacy .badge-red { background: var(--red-100); color: var(--red-600); } .fx-legacy .badge-gold { background: var(--gold-100); color: #8A6500; }
+.fx-legacy .badge-gray { background: var(--line-2); color: var(--ink-2); }
+.fx-legacy .form-group { display: flex; flex-direction: column; gap: 5px; }
+.fx-legacy .form-label { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.fx-legacy .form-control, .fx-legacy .form-input { width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 11px; font: inherit; color: var(--ink); background: #fff; }
+.fx-legacy .form-control:focus, .fx-legacy .form-input:focus { outline: 3px solid rgba(31,76,143,.15); border-color: var(--navy-600); }
+.fx-legacy .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .fx-legacy .col-span-2 { grid-column: span 2; }
+.fx-legacy .empty-state { text-align: center; padding: 48px 24px; color: var(--ink-3); }
+.fx-legacy .empty-title { font-weight: 600; margin-bottom: 4px; }
+.fx-legacy .fc-t { font-size: 15px; font-weight: 700; margin-bottom: 2px; } .fx-legacy .fc-ok { color: var(--em-600); font-weight: 600; font-size: 12.5px; }
+.fx-legacy .fc-no { color: var(--red-600); font-weight: 600; font-size: 12.5px; }
+.fx-legacy .lt-f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); font-weight: 600; margin-top: 8px; }
+.fx-legacy .lt-hint { font-size: 12px; color: var(--ink-2); background: var(--blue-100); border-radius: 10px; padding: 7px 11px; margin-top: 8px; }
+.fx-legacy .lt-mail-ed { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.fx-legacy .lt-mail-ed iframe { width: 100%; height: 330px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.fx-legacy .lt-mail-subj { font-weight: 700; font-size: 13.5px; margin: 4px 0 6px; }
+/* modal ของหน้าเดิม → การ์ดลอยดีไซน์เดียวกับลิ้นชัก */
+.fx-legacy .modal-overlay { position: fixed; inset: 0; background: rgba(6,18,36,.45); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; animation: fade .15s; }
+.fx-legacy .modal { background: var(--bg); border-radius: 22px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 30px 80px -20px rgba(6,18,36,.5); animation: slide .2s; }
+.fx-legacy .modal-lg { max-width: 900px; }
+.fx-legacy .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px; position: sticky; top: 0; z-index: 2; color: #fff;
+  background: radial-gradient(80% 140% at 100% 0%, rgba(245,184,0,.3), transparent 60%), linear-gradient(135deg, var(--navy-800), var(--navy-950)); }
+.fx-legacy .modal-header .text-muted, .fx-legacy .modal-header .text-sm { color: #B9C7DD; }
+.fx-legacy .modal-title { font-size: 18px; font-weight: 700; color: #fff; }
+.fx-legacy .modal-close { background: rgba(255,255,255,.1); border: 0; color: #fff; width: 34px; height: 34px; border-radius: 10px; cursor: pointer; font-size: 18px; }
+.fx-legacy .modal-body { padding: 20px 24px; }
+.fx-legacy .modal-footer { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: #fff; }
+@media (max-width: 860px) { .fx-legacy .lt-mail-ed, .fx-legacy .form-grid { grid-template-columns: 1fr; } .fx-legacy .col-span-2 { grid-column: auto; } }
+
+/* ---------------------------------------------------------------- สะพานใบสมัคร ↔ ทะเบียน */
+.bridge { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.bridge a { display: flex; gap: 14px; align-items: center; padding: 16px 18px; border-radius: var(--r-lg); background: #fff; border: 1px solid var(--line); box-shadow: var(--sh-1);
+  color: inherit; text-decoration: none !important; transition: box-shadow .15s, transform .15s; }
+.bridge a:hover { box-shadow: var(--sh-2); transform: translateY(-2px); }
+.bridge b { display: block; font-size: 22px; line-height: 1.1; }
+.bridge span { font-size: 12.5px; color: var(--ink-2); }
+.spark { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--em-600); text-transform: uppercase; }

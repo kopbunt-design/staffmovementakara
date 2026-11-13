@@ -318,9 +318,11 @@ export function navigate(page) {
   if (page === "uniform") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/uniform/"; return; }
   // ทะเบียนผู้รับเหมา (SUB) — เว็บแยก /sub (2026-10-15)
   if (page === "sub") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/sub/"; return; }
-  // ทะเบียนเลขที่เอกสาร → สารบัญเอกสาร เว็บแยก /docs (2026-10-16) — ตารางเดิม doc_register
-  // กองทุนสำรองเลี้ยงชีพย้ายเป็นเว็บแยก /fund (Akara Fund, 2026-11-13)
+  // กองทุนสำรองเลี้ยงชีพ + แบบฟอร์มกองทุน → เว็บแยก Akara Fund /fund (2026-11-13) — ?fund=ID จากอีเมล/กระดิ่ง/งานค้าง ส่งต่อไป
+  if (page === "fundforms") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {});
+    const id = new URLSearchParams(location.search).get("fund"); location.href = `/fund/${id ? "?fund=" + encodeURIComponent(id) : ""}#/forms`; return; }
   if (page === "pvd") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/fund/"; return; }
+  // ทะเบียนเลขที่เอกสาร → สารบัญเอกสาร เว็บแยก /docs (2026-10-16) — ตารางเดิม doc_register
   if (page === "docregister") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/docs/"; return; }
   // ค่าจ้างเหมา 3% ย้ายไปเป็นเว็บแยก /contract (2026-10-15) — ฐานข้อมูลเดิม
   if (page === "contractpay") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/contract/"; return; }

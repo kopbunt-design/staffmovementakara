@@ -149,6 +149,15 @@ Moved out of the HR app on 2026-11-13 (user: separate web, "ดีไซน์�
 Akara gold + emerald; does NOT link spend.css). Must NOT import `js/app.js`. HR app `navigate("pvd")` redirects there; menu
 group "กองทุน" keeps the entry. `app.py` SPA fallback and `build.sh` include `fund`. Social Security / Employee Welfare Fund
 are placeholder menu items. Not to be confused with `fund.html` (public employee fund form).
+- **Fund forms admin page moved in too** (user, 2026-11-13: "ย้ายแบบฟอร์มกองทุนไปด้วย … ดูฉลาด"): route `#/forms` runs the
+  unchanged `js/fund-forms.js` (+ hr-letters / mail-templates) inside `#pageFundforms.fx-legacy`. `fund/index.html` has an
+  **import map** `"/js/app.js" → "/fund/app-shim.js"`, so those files get a stand-in app.js (exports allEmployees, can,
+  currentUser, esc, notify, toast, userRole — **if any file in that import tree adds another name imported from app.js,
+  add it to the shim or the page fails to load**). `.fx-legacy` rules at the end of `fx.css` restyle the HR classes.
+  HR app `navigate("fundforms")` redirects to `/fund/?fund=<id>#/forms` (bell / e-mail / tasks deep links keep working).
+- "Smart bridge" (`bridgeData` in fx.js): accepted/approved PVD applications not yet in the register → "ลงทะเบียนจาก
+  ใบสมัคร" (drawer pre-filled: status pending, rate, policy); approved rate-change requests whose rate ≠ register → "ปรับ
+  ตามคำขอ"; eligible-not-registered people show "เชิญแล้ว" or "ส่งคำเชิญสมัคร" (opens the invite dialog pre-filled).
 Rules and data are described below.
 
 ### Provident Fund rules and data

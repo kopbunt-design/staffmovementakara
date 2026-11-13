@@ -53,7 +53,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&l
 
 // โหลดโลโก้เป็น data URL ไว้ก่อน — หน้าต่างพิมพ์จะได้ไม่ต้องรอโหลดรูปเอง (บางเบราว์เซอร์สั่งพิมพ์ก่อนรูปมา)
 let LOGO_DATA = "";
-fetch("assets/logo.png").then(r => r.ok ? r.blob() : null).then(b => {
+fetch("/assets/logo.png").then(r => r.ok ? r.blob() : null).then(b => {
   if (!b) return; const fr = new FileReader(); fr.onload = () => { LOGO_DATA = fr.result; }; fr.readAsDataURL(b);
 }).catch(() => {});
 
