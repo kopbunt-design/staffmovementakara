@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akara Fund · กองทุนพนักงาน</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fund/fx.css?v=1">
+</head>
+<body>
+<!--
+  Akara Fund — เว็บกองทุนพนักงาน (/fund) แยกจากระบบ HR แต่อยู่โดเมนเดียวกัน → ใช้ login เดียวกัน · user 2026-11-13
+  ตอนนี้: กองทุนสำรองเลี้ยงชีพ (azure-app/pvd.py + js/pvd-calc.js) · ประกันสังคม / กองทุนสงเคราะห์ลูกจ้าง = เมนูรอทำ
+  ห้าม import js/app.js (จะบูตระบบ HR ซ้อนเข้ามา)
+-->
+<div class="fx-shell">
+  <aside class="fx-side">
+    <div class="fx-brand">
+      <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5V12c0 4.4 3.3 8 8 9 4.7-1 8-4.6 8-9V6.5Z"/><path d="m8.5 12.5 2.3 2.3 4.7-4.8"/></svg></div>
+      <div><b>AKARA FUND</b><span>กองทุนพนักงาน</span></div>
+    </div>
+    <nav class="fx-nav" id="fxNav">
+      <div class="grp">กองทุนสำรองเลี้ยงชีพ</div>
+      <a href="#/overview" data-r="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>ภาพรวม</a>
+      <a href="#/alerts" data-r="alerts"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>แจ้งเตือน<em id="navAl"></em></a>
+      <a href="#/members" data-r="members"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>ทะเบียนสมาชิก</a>
+      <a href="#/monthly" data-r="monthly" id="navMonthly"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 14h3M8 17h6"/></svg>ยอดรายเดือน</a>
+      <a href="#/log" data-r="log"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>ประวัติการแก้ไข</a>
+      <a href="#/import" data-r="import" id="navImport"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>นำเข้า</a>
+      <div class="grp">กองทุนอื่น</div>
+      <a href="/?fund=open" data-ext="1"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>แบบฟอร์มสมัคร PVD / สกล.5</a>
+      <a class="soon"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.4-7-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 7 3.5C19 16.6 12 21 12 21Z"/></svg>ประกันสังคม<i>เร็ว ๆ นี้</i></a>
+      <a class="soon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.5 10c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1.1 1.4-2.5 1.8-2.5.8-2.5 1.8 1.1 1.7 2.5 1.7 2.5-.7 2.5-1.7"/></svg>สงเคราะห์ลูกจ้าง<i>ม.ค. 2027</i></a>
+    </nav>
+    <div class="fx-foot">
+      <a class="fx-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+      <div class="fx-user" id="fxUser"></div>
+    </div>
+  </aside>
+  <main class="fx-main" id="fxMain"><div class="fx-loading">กำลังโหลด…</div></main>
+</div>
+<div id="fxDrawer"></div>
+<div class="toasts" id="fxToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/fund/fx.js?v=1"></script>
+</body>
+</html>

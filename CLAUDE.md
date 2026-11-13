@@ -142,7 +142,16 @@ the clickable link with "คัดลอกลิงก์" / "คัดลอ�
 Only submissions **under the current invite** (`invite_id`) lock the form (user, 2026-11-05: someone who sent a WEF form
 in an earlier round, re-invited for PVD, saw "already sent"); earlier rounds still show in the history as "รอบก่อน".
 
-## Provident Fund register (`js/pvd.js`, page `pvd`, next to แบบฟอร์มกองทุน)
+## Akara Fund (`fund/`) — separate app at `/fund` (Provident Fund register)
+
+Moved out of the HR app on 2026-11-13 (user: separate web, "ดีไซน์แบบปังๆ"): `fund/index.html`, `fund/fx.js` (hash routes
+`#/overview` `#/alerts` `#/members` `#/monthly` `#/log` `#/import`; member drawer), own design system `fund/fx.css` (navy +
+Akara gold + emerald; does NOT link spend.css). Must NOT import `js/app.js`. HR app `navigate("pvd")` redirects there; menu
+group "กองทุน" keeps the entry. `app.py` SPA fallback and `build.sh` include `fund`. Social Security / Employee Welfare Fund
+are placeholder menu items. Not to be confused with `fund.html` (public employee fund form).
+Rules and data are described below.
+
+### Provident Fund rules and data
 
 User, 2026-11-13: fund management, PVD first (Employee Welfare Fund postponed to Jan 2027 by the government; Social Security
 later, no files yet). Rules from the welfare regulation AKR-OHR-SD-002 §14 in `js/pvd-calc.js` (pure, `test/pvd.test.js`):

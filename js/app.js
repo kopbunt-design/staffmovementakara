@@ -319,6 +319,8 @@ export function navigate(page) {
   // ทะเบียนผู้รับเหมา (SUB) — เว็บแยก /sub (2026-10-15)
   if (page === "sub") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/sub/"; return; }
   // ทะเบียนเลขที่เอกสาร → สารบัญเอกสาร เว็บแยก /docs (2026-10-16) — ตารางเดิม doc_register
+  // กองทุนสำรองเลี้ยงชีพย้ายเป็นเว็บแยก /fund (Akara Fund, 2026-11-13)
+  if (page === "pvd") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/fund/"; return; }
   if (page === "docregister") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/docs/"; return; }
   // ค่าจ้างเหมา 3% ย้ายไปเป็นเว็บแยก /contract (2026-10-15) — ฐานข้อมูลเดิม
   if (page === "contractpay") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/contract/"; return; }
@@ -444,7 +446,6 @@ async function renderPage(page) {
   else if(page==="payrollbuild") (await import(`./payroll-build-ui.js?v=${PAGE_V}`)).renderPayrollBuild();
   else if(page==="payrollapproval") (await import(`./payroll-approval.js?v=${PAGE_V}`)).renderPayrollApproval();
   else if(page==="fundforms") (await import(`./fund-forms.js?v=${PAGE_V}`)).renderFundForms();
-  else if(page==="pvd") (await import(`./pvd.js?v=${PAGE_V}`)).renderPvd();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();
   else if(page==="empcontract") (await import(`./emp-contract.js?v=${PAGE_V}`)).renderEmpContract();
   else if(page==="paf") (await import(`./paf.js?v=${PAGE_V}`)).renderPaf();

@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 rm -rf dist dist.zip && mkdir -p dist/site
 cp app.py guard.py dms.py dms_core.py pvd.py db.py rest.py rpc.py hooks.py mail.py storage.py tables.json schema_full.sql security_rules.json gunicorn.conf.py requirements.txt dist/
-for p in index.html fund.html vercel.json assets css js expense uniform contract sub docs econtract paf payroll; do
+for p in index.html fund.html vercel.json assets css js expense uniform contract sub docs fund econtract paf payroll; do
   [ -e "../$p" ] && cp -R "../$p" dist/site/
 done
 cp ../js/supabase-config.js dist/site/js/supabase-direct.js   # ตัวต่อ Supabase เดิม — ใช้เฉพาะหน้าย้ายข้อมูล /migrate/

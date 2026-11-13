@@ -676,7 +676,7 @@ async def spa_fallback(request: Request, exc):
     path = request.url.path
     if path.startswith("/api/"):
         return JSONResponse({"detail": getattr(exc, "detail", "not found")}, 404)
-    for sub in ("expense", "uniform", "contract", "sub", "docs"):
+    for sub in ("expense", "uniform", "contract", "sub", "docs", "fund"):
         if path == f"/{sub}" or path.startswith(f"/{sub}/"):
             return FileResponse(SITE_DIR / sub / "index.html")
     return FileResponse(SITE_DIR / "index.html")
