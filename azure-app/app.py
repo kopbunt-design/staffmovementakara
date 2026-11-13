@@ -50,6 +50,14 @@ def dms_tables():
             cn.commit()
     except Exception:
         pass
+    try:                                              # ทะเบียน PVD (pvd.py) — ตาราง + สิทธิ์ page.pvd / data.pvd.write
+        import pvd
+        import rpc
+        with closing(db.connect(None, bypass=True)) as cn:
+            pvd.ensure(rpc.R(cn, None))
+            cn.commit()
+    except Exception:
+        pass
 
 
 _ONCE = []

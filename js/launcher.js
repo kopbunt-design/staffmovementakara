@@ -21,6 +21,7 @@ const META = {
   sub:             ["คนจากบริษัทผู้รับเหมา · รายงานรายเดือน", '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/>'],
   uniform:         ["รับเข้า จ่ายออก ยอดคงเหลือ", '<path d="M8 3 4 5.5 2.5 10l3 1.2V21h13V11.2l3-1.2L20 5.5 16 3a4 4 0 0 1-8 0Z"/>'],
   fundforms:       ["คำเชิญและคำขอ PVD / สกล.5", '<path d="M12 3 4 6.5V12c0 4.4 3.3 8 8 9 4.7-1 8-4.6 8-9V6.5Z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/>'],
+  pvd:             ["ทะเบียนสมาชิก · ขั้นเงินสมทบตามอายุงาน · ไฟล์ส่งกองทุนรายเดือน", '<path d="M4 20h16"/><path d="M6 20v-6M10 20v-9M14 20v-7M18 20V8"/><path d="m5 9 5-4 4 3 6-5"/>'],
   shiftallow:      ["คำนวณค่ากะจากไฟล์ timesheet", '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
   diligence:       ["เบี้ยขยันจากไฟล์เวลา TigerSoft · นับเดือนต่อเนื่อง", '<path d="M12 3.5 14.6 9l5.9.6-4.4 4 1.3 5.9L12 16.6 6.6 19.5 7.9 13.6 3.5 9.6 9.4 9Z"/>'],
   otreport:        ["PDF โอที (ระดับ O) + เบี้ยขยัน (O/S) แยกตามแผนก", '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 17v-3M12 17v-6M15 17v-4"/>'],
@@ -46,7 +47,7 @@ const META = {
 const META_EN = {
   dashboard: "Workforce snapshot and latest movements", employees: "Employee records and profiles",
   movements: "Record and approve joiners, leavers, transfers", uniform: "Stock in, issue out, balances", sub: "Contractor workers by company, monthly headcount", empcontract: "Employment agreements, signed online", paf: "Salary, position and transfer approvals",
-  fundforms: "PVD / WEF invitations and requests", shiftallow: "Calculate shift pay from timesheets",
+  fundforms: "PVD / WEF invitations and requests", pvd: "Provident fund register, contribution tiers, monthly fund file", shiftallow: "Calculate shift pay from timesheets",
   shiftcompare: "Compare shift pay between two months", diligence: "Diligence allowance from TigerSoft time data", otaudit: "Check OT requests against TigerSoft", otreport: "OT (level O) and diligence (O/S) PDFs by department", payroll: "Monthly payroll report",
   payrollexp: "Payroll cost history", payrollbuild: "Build the register from raw payroll files",
   payrollapproval: "Summary for payroll approval", contractpay: "Consultant / contractor pay runs, 3% WHT",

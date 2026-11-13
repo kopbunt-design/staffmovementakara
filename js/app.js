@@ -308,7 +308,7 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","docregister","letters","empcontract","paf","expense","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","pvd","docregister","letters","empcontract","paf","expense","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
@@ -444,6 +444,7 @@ async function renderPage(page) {
   else if(page==="payrollbuild") (await import(`./payroll-build-ui.js?v=${PAGE_V}`)).renderPayrollBuild();
   else if(page==="payrollapproval") (await import(`./payroll-approval.js?v=${PAGE_V}`)).renderPayrollApproval();
   else if(page==="fundforms") (await import(`./fund-forms.js?v=${PAGE_V}`)).renderFundForms();
+  else if(page==="pvd") (await import(`./pvd.js?v=${PAGE_V}`)).renderPvd();
   else if(page==="letters") (await import("./hr-letters.js")).renderLetters();
   else if(page==="empcontract") (await import(`./emp-contract.js?v=${PAGE_V}`)).renderEmpContract();
   else if(page==="paf") (await import(`./paf.js?v=${PAGE_V}`)).renderPaf();
@@ -465,10 +466,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 // ถ้าจะแปลทั้งแอปต้องไล่ติด data-i18n ทุกหน้า ซึ่งเป็นงานอีกก้อน (จดไว้ใน TODO.md)
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา",
-        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
+        "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "nav.pvd":"กองทุนสำรองเลี้ยงชีพ", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
         "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"สารบัญเอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll",
-        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
+        "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "nav.pvd":"Provident Fund", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
         "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Index", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";

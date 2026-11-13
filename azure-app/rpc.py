@@ -1371,3 +1371,7 @@ def pr_link_decide(r, p_token, p_ok, p_remark=None):
 # ================================================================================ ระบบสารบรรณและควบคุมเอกสาร (dms.py)
 import dms  # noqa: E402  (ต้องนำเข้าหลัง FUNCS / fn — dms ใช้ _doc_issue จากไฟล์นี้)
 FUNCS.update(dms.FUNCS)
+
+# ================================================================================ กองทุนสำรองเลี้ยงชีพ (pvd.py)
+import pvd  # noqa: E402
+FUNCS.update(pvd.FUNCS)

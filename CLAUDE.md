@@ -142,6 +142,27 @@ the clickable link with "คัดลอกลิงก์" / "คัดลอ�
 Only submissions **under the current invite** (`invite_id`) lock the form (user, 2026-11-05: someone who sent a WEF form
 in an earlier round, re-invited for PVD, saw "already sent"); earlier rounds still show in the history as "รอบก่อน".
 
+## Provident Fund register (`js/pvd.js`, page `pvd`, next to แบบฟอร์มกองทุน)
+
+User, 2026-11-13: fund management, PVD first (Employee Welfare Fund postponed to Jan 2027 by the government; Social Security
+later, no files yet). Rules from the welfare regulation AKR-OHR-SD-002 §14 in `js/pvd-calc.js` (pure, `test/pvd.test.js`):
+employee 2–15%; company matches but capped by service — <3 y 5%, 3–<6 7%, 6–<10 10%, 10+ 12%; **the new cap starts the
+payroll month after the month the anniversary falls in** (user 2026-11-13; `erCapFor` = years completed at the end of the
+previous month). Vesting on leaving (service incl. probation): 1 y 25%, 2 y 50%, 3 y 75%, 4+ 100%. Contribution base =
+เงินเดือน − ขาด/ลา/มาสาย/ออกก่อน/พักงาน (matched 452/452 in the Oct 2026 TigerSoft payroll file).
+- Data: Azure-only tables owned by `azure-app/pvd.py` (`pvd_members`, `pvd_log`, `pvd_sections`, `pvd_runs`, `pvd_items`; created on
+  first use / at startup, no REST access, RPCs `pvd_*`). Perms seeded once: `page.pvd` (← page.fundforms), `data.pvd.write`
+  (← data.fundforms.write; also needed to see full ID numbers); per-person amounts also need `field.salary.read`.
+- Tabs: alerts (tier change ahead, left but still a member + vesting %, eligible after probation (day 119) not yet
+  registered — "ไม่สมัคร" = status `declined`, missing data), register, monthly (TigerSoft payroll file → check against
+  register/caps → save → **fund upload file** "Akara Provident Fund_<Month YYYY>.xlsx"), history log, import (old "PVD
+  Master" workbook: DataPVD + รหัสสังกัด + Record history).
+- Upload file = exactly the old hand-made one (checked against October 2026: 452/452 rows identical): company 2958, section
+  code, member code, ID, DOB **as stored** (old members BE ddmmyyyy, newer AD — copied as is), pay date ddmmyyyy BE,
+  amounts; investment plan only in the member's **first** month (`pvd_data.first`). Members who left the fund during or
+  after the month still belong to that month (`inMonth`). The fund manager's "Approval Summary" per policy is not built.
+- Oct 2026 finding: AKR23101073 (3 years on 3 Oct) already got 7% in October — one month early under the rule above.
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).
