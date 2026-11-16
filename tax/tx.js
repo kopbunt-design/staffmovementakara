@@ -470,6 +470,7 @@ function pndPage() {
       <td>${x.error ? "" : `<input class="inp" list="partList" data-part="${i}" value="${esc(x.part)}" style="width:130px">`}</td>
       <td class="r">${x.rows?.length ?? ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "income")) : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "tax")) : ""}</td>
       <td class="small">${x.error ? "" : [old ? `แทนชุดเดิม (${old.rows_n} รายการ)` : "",
+        x.wrongYM ? `<span class="neg"><b>ชื่อไฟล์เป็น ${ymTH(x.wrongYM)} แต่วันที่จ่ายในไฟล์เป็น ${ymTH(x.k)}</b> — อาจเป็นไฟล์ที่คัดลอกมาแล้วยังไม่ได้แก้ ตรวจไฟล์ก่อน</span>` : "",
         x.unknown?.length ? `<span class="neg">รหัสเงินได้ที่ไม่รู้จัก: ${esc(x.unknown.join(", "))} — ถือเป็น 40(1)</span>` : "",
         o && o.n && !(x.part === "กรรมการ" || o.n >= o.all / 2) ? `${o.n} คนยอดไม่ตรงกับเงินเดือน — ดูในตารางกระทบยอดหลังบันทึก` :
         o && o.n ? `<div class="pn-hint"><b>${o.n} คน · ${baht(o.income)}</b> ไม่มีในไฟล์เงินเดือน ${ymTH(x.k)}${o.emp ? ` (เป็นพนักงาน ${o.emp} คน)` : ""}
@@ -564,12 +565,15 @@ async function readPnd(files) {
       if (!k.startsWith(String(S.year))) throw new Error(`เป็นไฟล์ปี ${+k.slice(0, 4) + 543} — เลือกปีภาษีนั้นก่อน`);
       const rows = T.matchPnd(r.rows, people, S.emps, k.endsWith("1K") ? [] : S.rows.filter(x => x.ym === k)), part = T.guessPart(f.name), o = k.endsWith("1K") ? null : outside(k, rows);
       // ชุดกรรมการ หรือคนส่วนใหญ่ไม่มีในไฟล์เงินเดือนเดือนนั้น → เสนอให้รับเข้าทะเบียน
-      S.pimp.push({ file: f.name, k, part, rows, unknown: r.unknown || [], adopt: !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
+      const ny = guessYM(f.name), wrongYM = ny && !k.endsWith("1K") && ny !== k ? ny : "";
+      S.pimp.push({ file: f.name, k, part, rows, unknown: r.unknown || [], wrongYM, adopt: !wrongYM && !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
     } catch (e) { S.pimp.push({ file: f.name, error: e.message }); }
   }
   pndPage();
 }
 async function savePnd() {
+  const bad = S.pimp.filter(x => !x.error && x.wrongYM);
+  if (bad.length && !confirm(`${bad.map(x => `${x.file}: ชื่อไฟล์ ${ymTH(x.wrongYM)} แต่วันที่จ่าย ${ymTH(x.k)}`).join("\n")}\n\nจะบันทึกเป็นเดือนตามวันที่จ่าย (${bad.map(x => ymTH(x.k)).join(", ")}) และแทนชุดเดิมของเดือนนั้น — แน่ใจไหม`)) return;
   for (const x of S.pimp.filter(x => !x.error)) {
     try {
       const r = await rpc("tax_pnd_save", { p_key: x.k, p_file: x.file, p_rows: x.rows, p_part: x.part || "" });
