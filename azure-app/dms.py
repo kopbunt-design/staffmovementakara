@@ -285,7 +285,8 @@ def _insert(r, table, row: dict):
     if _lite(r.cur):
         c = r.cur.execute(f"INSERT INTO {t} ({', '.join(f'[{c}]' for c in cols)}) VALUES ({', '.join('?' for _ in cols)})", vals)
         return c.lastrowid
-    pk = "doc_id" if table == "doc_meta" else "file_id" if table == "doc_file_meta" else "type_id" if table == "doc_type_rules" else "id"
+    # คีย์หลักตามโครงสร้างใน _T (doc_source_links / doc_mov_links ไม่มีคอลัมน์ id — เคยทำให้ส่งสัญญาจ้างไม่ได้ 2026-11-16)
+    pk = next((c for c, k in _T[table] if k in ("id", "bigpk") or k.endswith("pk")), "id") if table in _T else "id"
     got = r.cur.execute(f"INSERT INTO {t} ({', '.join(f'[{c}]' for c in cols)}) OUTPUT INSERTED.[{pk}] VALUES ({', '.join('?' for _ in cols)})",
                         *vals).fetchone()
     return got[0] if got else None
