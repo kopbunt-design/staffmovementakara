@@ -26,69 +26,112 @@ const idxOf = h => { const m = {}; h.forEach((k, i) => { const n = norm(k); if (
 const has = (o, ...ks) => ks.every(k => k in o);
 
 // ---------------------------------------------------------------- อ่านไฟล์เงินเดือน
-// sheets = { ชื่อแผ่น: aoa } → { format, rows: Map(code → {name, ...FIELDS}), skipped }
-export function readPayroll(sheets) {
+// เงินได้ 40(1) เก็บเป็น "รายการ" ทีละคอลัมน์ของไฟล์ (items: { คอลัมน์: ยอด } · ขาด/ลา/… เป็นค่าลบ) แล้ว inc401 = ผลรวมของรายการ
+// ที่ไม่อยู่ใน "รายการไม่นับเป็นเงินได้" (ตั้งค่าในหน้าเว็บ · user 2026-11-16) · ยอดรวมในไฟล์ที่อธิบายด้วยคอลัมน์ไม่ได้ → UNEXPLAINED
+// ตรวจแล้ว: YDP เงินเดือน…(ก่อน ขาด) = รวมรายได้ ทุกคน ก.ค.–ต.ค. 2569 · Excel (Join Date…Total Income ไม่นับ "Income" ที่เป็นยอดย่อย) = Total Income ม.ค.–ก.ค.
+export const UNEXPLAINED = "(ส่วนต่างที่ไม่ระบุคอลัมน์)";
+export const KIND_TH = { inc: "เงินได้ 40(1)", less: "หักขาด/ลา", sev: "เงินชดเชย", inc402: "เงินได้ 40(2)", off: "ไม่นับเป็นเงินได้" };
+const exSet = ex => ex instanceof Set ? ex : new Set(ex || []);
+export function incFrom(items, exclude) {
+  const ex = exSet(exclude); let s = 0;
+  for (const [k, v] of Object.entries(items || {})) if (!ex.has(k)) s += v;
+  return r2(s);
+}
+// สรุปทีละคอลัมน์ไว้โชว์ก่อนบันทึก: { คอลัมน์: { kind, total, n } }
+function colAdd(cols, k, kind, v) { if (!v) return; const c = cols[k] ||= { kind, total: 0, n: 0 }; c.total = r2(c.total + v); c.n++; }
+function item(x, cols, k, kind, v) {
+  if (!v) return;
+  colAdd(cols, k, kind, v);
+  if (kind === "sev") x.sev += v; else if (kind === "inc402") x.inc402 += v; else x.items[k] = r2((x.items[k] || 0) + v);
+}
+const kindOf = k => k === "เงินชดเชย1" || k === "เงินชดเชย2" ? "sev" : k === "ค่าตอบแทนกรรมการ" ? "inc402" : "inc";
+function finish(x, ex) { x.sev = r2(x.sev); x.inc402 = r2(x.inc402); x.inc401 = incFrom(x.items, ex); return x; }
+
+// sheets = { ชื่อแผ่น: aoa } · opts.exclude = ชื่อคอลัมน์ที่ไม่นับเป็นเงินได้
+// → { format, rows: Map(code → {name, items, ...FIELDS}), skipped, cols }
+export function readPayroll(sheets, opts = {}) {
   for (const aoa of Object.values(sheets)) {
     const ix = idxOf(aoa[0] || []);
-    if (has(ix, "รหัสพนักงาน", "รวมรายได้", "ภาษี")) return { format: "ydp", ...parseYDP(aoa) };
+    if (has(ix, "รหัสพนักงาน", "รวมรายได้", "ภาษี")) return { format: "ydp", ...parseYDP(aoa, opts) };
   }
   for (const aoa of Object.values(sheets)) {
     const hi = aoa.slice(0, 15).findIndex(r => (r || []).some(c => norm(c) === "Employee No."));
-    if (hi >= 0 && has(idxOf(aoa[hi]), "Total Income", "WHT")) return { format: "excel", ...parseExcel(aoa, hi) };
+    if (hi >= 0 && has(idxOf(aoa[hi]), "Total Income", "WHT")) return { format: "excel", ...parseExcel(aoa, hi, opts) };
   }
-  if (sheets["รายได้"] && sheets["รายหัก"]) return { format: "tshist", ...parseTsHist(sheets["รายได้"], sheets["รายหัก"]) };
+  if (sheets["รายได้"] && sheets["รายหัก"]) return { format: "tshist", ...parseTsHist(sheets["รายได้"], sheets["รายหัก"], opts) };
   throw new Error("ไม่รู้จักรูปแบบไฟล์ — ใช้ BeforeProcessYDP (TigerSoft), Payroll - <เดือน>.xlsx (แผ่น Salary Final) หรือ Payroll-Tigersoft_…-ไม่sum.xlsx");
 }
 
 const LESS = ["ขาด", "ลา", "มาสาย", "ออกก่อน", "พักงาน"];
-export function parseYDP(aoa) {
-  const ix = idxOf(aoa[0]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(); let skipped = 0;
+export function parseYDP(aoa, opts = {}) {
+  const ix = idxOf(aoa[0]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
+  const h = (aoa[0] || []).map(norm);
+  // คอลัมน์รายได้ = ตั้งแต่ "เงินเดือน" จนก่อน "ขาด" (ในไฟล์รวมกันได้ "รวมรายได้")
+  const a = ix["เงินเดือน"] ?? -1, b = ix["ขาด"] ?? -1;
+  const incCols = a >= 0 && b > a ? h.map((k, i) => [k, i]).filter(([k, i]) => i >= a && i < b && k) : [];
   for (const r of aoa.slice(1)) {
     const c = code(r?.[ix["รหัสพนักงาน"]]); if (!isEmp(c)) continue;
-    const sev = g(r, "เงินชดเชย1") + g(r, "เงินชดเชย2"), inc402 = g(r, "ค่าตอบแทนกรรมการ");
-    const x = { name: norm(r[ix["ชื่อ-นามสกุล"]]), inc401: r2(g(r, "รวมรายได้") - LESS.reduce((s, k) => s + g(r, k), 0) - sev - inc402), inc402: r2(inc402), sev: r2(sev),
+    const x = { name: norm(r[ix["ชื่อ-นามสกุล"]]), items: {}, ...empty(),
       tax: r2(g(r, "ภาษี")), sev_tax: r2(g(r, "ภาษีเงินชดเชย")), sso: r2(g(r, "ประกันสังคม")), pvd: r2(g(r, "กองทุนสำรองเลี้ยงชีพ")),
       co_tax: r2(g(r, "ภาษีบริษัทจ่ายให้")), wef: r2(g(r, "กองทุนสงเคราะห์ลูกจ้าง")) };
+    const pc = {}; let sum = 0;
+    for (const [k, i] of incCols) { const v = num(r[i]); sum += v; item(x, pc, k, kindOf(k), v); }
+    if (!incCols.length) { item(x, pc, "เงินชดเชย1", "sev", g(r, "เงินชดเชย1")); item(x, pc, "เงินชดเชย2", "sev", g(r, "เงินชดเชย2")); item(x, pc, "ค่าตอบแทนกรรมการ", "inc402", g(r, "ค่าตอบแทนกรรมการ")); sum = x.sev + x.inc402; }
+    item(x, pc, UNEXPLAINED, "inc", r2(g(r, "รวมรายได้") - sum));
+    for (const k of LESS) item(x, pc, k, "less", -g(r, k));
+    finish(x, ex);
     if (FIELDS.every(f => !x[f])) { skipped++; continue; }          // TigerSoft ใส่คนลาออกแล้วมาด้วย ยอดศูนย์ทั้งแถว
-    add(rows, c, x);
+    merge(cols, pc); add(rows, c, x, ex);
   }
-  return { rows, skipped };
+  return { rows, skipped, cols };
 }
-export function parseExcel(aoa, hi) {
-  const ix = idxOf(aoa[hi]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(); let skipped = 0;
+export function parseExcel(aoa, hi, opts = {}) {
+  const ix = idxOf(aoa[hi]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
+  const h = (aoa[hi] || []).map(norm), a = ix["Join Date"] ?? -1, t = ix["Total Income"];
+  // คอลัมน์รายได้ = ระหว่าง Join Date กับ Total Income · "Income" = เงินเดือน + ค่ากะ (ยอดย่อย) ไม่นับซ้ำ
+  const incCols = a >= 0 && t > a ? h.map((k, i) => [k, i]).filter(([k, i]) => i > a && i < t && k && !(k === "Income" && "Salary" in ix)) : [];
   for (const r of aoa.slice(hi + 1)) {
     const c = code(r?.[ix["Employee No."]]); if (!isEmp(c)) continue;
     const name = [r[ix["ชื่อ"]], r[ix["นามสกุล"]]].map(norm).filter(Boolean).join(" ");
-    const x = { name, ...empty(), inc401: r2(g(r, "Total Income")), tax: r2(g(r, "WHT")), sso: r2(g(r, "SSO")), pvd: r2(g(r, "PVD")) };
+    const x = { name, items: {}, ...empty(), tax: r2(g(r, "WHT")), sso: r2(g(r, "SSO")), pvd: r2(g(r, "PVD")) };
+    const pc = {}; let sum = 0;
+    for (const [k, i] of incCols) { const v = num(r[i]); sum += v; item(x, pc, k, "inc", v); }
+    item(x, pc, UNEXPLAINED, "inc", r2(g(r, "Total Income") - sum));
+    finish(x, ex);
     if (FIELDS.every(f => !x[f])) { skipped++; continue; }
-    add(rows, c, x);
+    merge(cols, pc); add(rows, c, x, ex);
   }
-  return { rows, skipped };
+  return { rows, skipped, cols };
 }
-export function parseTsHist(inc, ded) {
-  const rows = new Map(); let skipped = 0;
+export function parseTsHist(inc, ded, opts = {}) {
+  const rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
   const walk = (aoa, fn) => { const ix = idxOf(aoa[0] || []); if (!("รหัสพนักงาน" in ix)) return 0; let n = 0;
     for (const r of aoa.slice(1)) { const c = code(r?.[ix["รหัสพนักงาน"]]); if (!isEmp(c)) continue; n++; fn(c, r, ix); } return n; };
-  const get = c => rows.get(c) || (rows.set(c, { name: "", ...empty() }), rows.get(c));
+  const get = c => rows.get(c) || (rows.set(c, { name: "", items: {}, ...empty() }), rows.get(c));
   const SKIP = new Set(["CGM", "รหัสพนักงาน", "ชื่อ-นามสกุล", "ชื่อ"]);
   const nInc = walk(inc, (c, r, ix) => { const x = get(c);
-    for (const [k, i] of Object.entries(ix)) {
-      if (SKIP.has(k)) continue;
-      const v = num(r[i]); if (!v) continue;
-      if (k === "เงินชดเชย1" || k === "เงินชดเชย2") x.sev += v; else if (k === "ค่าตอบแทนกรรมการ") x.inc402 += v; else x.inc401 += v;
-    } });
+    for (const [k, i] of Object.entries(ix)) if (!SKIP.has(k)) item(x, cols, k, kindOf(k), num(r[i]));
+  });
   const nDed = walk(ded, (c, r, ix) => { const x = get(c), g = k => k in ix ? num(r[ix[k]]) : 0;
-    x.inc401 -= LESS.reduce((s, k) => s + g(k), 0);
+    for (const k of LESS) item(x, cols, k, "less", -g(k));
     x.tax += g("ภาษี"); x.sev_tax += g("ภาษีชดเชย") + g("ภาษีเงินชดเชย"); x.sso += g("ประกันสังคม"); x.pvd += g("กองทุนสำรองเลี้ยงชีพ"); });
   if (!nInc && !nDed) throw new Error("ไฟล์ รายได้/รายหัก ไม่มีคอลัมน์ “รหัสพนักงาน” ที่เป็นรหัส AKR — หัวตารางอาจเลื่อน (เช่น ไฟล์ ม.ค. 2569) ใช้ไฟล์ Excel เงินเดือนแทน");
-  for (const [c, x] of rows) { FIELDS.forEach(f => { x[f] = r2(x[f]); }); if (FIELDS.every(f => !x[f])) { rows.delete(c); skipped++; } }
-  return { rows, skipped };
+  for (const [c, x] of rows) { finish(x, ex); FIELDS.forEach(f => { x[f] = r2(x[f]); }); if (FIELDS.every(f => !x[f])) { rows.delete(c); skipped++; } }
+  return { rows, skipped, cols };
 }
+function merge(cols, pc) { for (const [k, c] of Object.entries(pc)) { const o = cols[k] ||= { kind: c.kind, total: 0, n: 0 }; o.total = r2(o.total + c.total); o.n += c.n; } }
 // คนเดียวมีหลายแถวในไฟล์ (เช่น จ่ายสองรอบ) → รวมกัน
-function add(rows, c, x) {
+function add(rows, c, x, ex) {
   const o = rows.get(c);
   if (!o) { rows.set(c, x); return; }
-  FIELDS.forEach(f => { o[f] = r2(o[f] + x[f]); }); o.name ||= x.name;
+  for (const [k, v] of Object.entries(x.items || {})) o.items[k] = r2((o.items[k] || 0) + v);
+  FIELDS.forEach(f => { o[f] = r2(o[f] + x[f]); }); o.inc401 = incFrom(o.items, ex); o.name ||= x.name;
+}
+// รายการไม่นับ → ทำเครื่องหมาย kind = off ในสรุปคอลัมน์ (คอลัมน์รายได้เท่านั้น)
+export function colList(cols, exclude) {
+  const ex = exSet(exclude);
+  return Object.entries(cols || {}).map(([k, c]) => ({ col: k, ...c, kind: c.kind === "inc" && ex.has(k) ? "off" : c.kind }))
+    .filter(c => c.total || c.n);
 }
 
 // ---------------------------------------------------------------- ไฟล์ ภ.ง.ด.1 / ภ.ง.ด.1ก (ข้อความคั่นด้วย | จากโปรแกรมยื่นแบบ)
