@@ -239,7 +239,8 @@ async function drawer(code) {
       <div class="card mt"><div class="card-h"><div class="card-t">รายเดือน</div><div class="card-s">ภ.ง.ด.1 = ยอดในไฟล์ที่ยื่น (ถ้าอัปแล้ว)</div></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>เดือน</th><th class="r">เงินได้</th><th class="r">ภาษี</th><th class="r">ปกส.</th><th class="r">PVD</th><th class="r">ภ.ง.ด.1</th>${w ? "<th></th>" : ""}</tr></thead><tbody>
         ${months.map(m => { const r = mine.find(x => x.ym === m), pp = pBy[m], bad = pp && r && (Math.abs(pp.income - T.income(r)) >= .01 || Math.abs(pp.tax - T.taxAll(r)) >= .01) || (pp && !r) || (!pp && r && S.D.pnd.some(f => f.k === m));
-          return `<tr><td><b>${ymTH(m)}</b>${r?.edited_note ? `<div class="small muted">แก้มือ: ${esc(r.edited_note)}</div>` : ""}</td>
+          const ex = (r?.srcs || []).filter(x => x.startsWith("pnd:")).map(x => x.slice(4) || "หลัก");
+          return `<tr><td><b>${ymTH(m)}</b>${r?.edited_note ? `<div class="small muted">แก้มือ: ${esc(r.edited_note)}</div>` : ""}${ex.length ? `<div class="small" style="color:var(--navy-600)">+ ภ.ง.ด.1 ชุด${ex.map(esc).join(", ")}</div>` : ""}</td>
             <td class="r money">${r ? baht(T.income(r)) : "-"}${r && (r.sev || r.inc402) ? `<div class="small muted">${r.sev ? "ชดเชย " + baht(r.sev) : ""}${r.inc402 ? " 40(2) " + baht(r.inc402) : ""}</div>` : ""}</td>
             <td class="r money">${r ? baht(T.taxAll(r)) : "-"}</td><td class="r money">${r ? baht(r.sso) : "-"}</td><td class="r money">${r ? baht(r.pvd) : "-"}</td>
             <td class="r money ${bad ? "neg" : ""}">${pp ? `${baht(pp.income)}<div class="small">${baht(pp.tax)}</div>` : S.D.pnd.some(f => f.k === m) ? "ไม่มีในไฟล์" : "<span class='muted'>—</span>"}</td>
@@ -447,14 +448,22 @@ function pndPage() {
     for (const [c, p] of P) if (!S.tot.has(c)) annual.push({ c, t: null, p });
   }
   const KIND = { diff: ["ยอดไม่ตรง", "chip-red"], type: ["ประเภทเงินได้ไม่ตรง", "chip-gold"], not_in_pnd: ["ไม่มีใน ภ.ง.ด.1", "chip-amb"], not_in_reg: ["ไม่มีในทะเบียน", "chip-amb"], unmatched: ["จับคู่ไม่ได้", "chip-gray"] };
-  render(`${head(`ปีภาษี ${yr + 543}`, "กระทบยอด ภ.ง.ด.1 / ภ.ง.ด.1ก", "อัปไฟล์ข้อความที่ยื่นจริง (Pnd1_YYYY-MM.txt) — ระบบเทียบกับทะเบียนรายคน และเติมเลขผู้เสียภาษี/ที่อยู่ให้คนที่ยังไม่มี")}
-  ${w ? `<div class="card"><div class="card-b"><label class="drop" id="pDrop"><input type="file" id="pFile" accept=".txt,.csv" multiple hidden><div class="ico ico-gold">${I.file}</div>
-      <div><b>ลากไฟล์ ภ.ง.ด.1 / ภ.ง.ด.1ก มาวาง (หลายไฟล์ได้)</b><span class="small muted">ไฟล์ข้อความคั่นด้วย | จากโปรแกรมยื่นแบบ · ไฟล์ที่ไม่มีเดือนในแต่ละบรรทัดถือเป็น ภ.ง.ด.1ก ของปีที่เลือก</span></div></label></div></div>` : ""}
+  render(`${head(`ปีภาษี ${yr + 543}`, "กระทบยอด ภ.ง.ด.1 / ภ.ง.ด.1ก", "อัปไฟล์ที่ยื่นจริง (Excel แบบฟอร์มกรมสรรพากร หรือ Pnd1_YYYY-MM.txt) — เดือนหนึ่งมีได้หลายชุด · ระบบเทียบกับทะเบียนรายคน และเติมเลขผู้เสียภาษีให้คนที่ยังไม่มี")}
+  ${w ? `<div class="card"><div class="card-b"><label class="drop" id="pDrop"><input type="file" id="pFile" accept=".txt,.csv,.xlsx,.xls" multiple hidden><div class="ico ico-gold">${I.file}</div>
+      <div><b>ลากไฟล์ ภ.ง.ด.1 / ภ.ง.ด.1ก มาวาง (หลายไฟล์ได้)</b><span class="small muted">Excel (บัตร ปชช · เงินได้ตามมาตรา · วันที่จ่าย · เงินได้ · ภาษี) หรือไฟล์ข้อความคั่นด้วย | · ชุดพนักงาน / กรรมการ / ยื่นเพิ่มเติม แยกไฟล์ได้ · ไม่มีเดือนในไฟล์ = ภ.ง.ด.1ก</span></div></label></div></div>` : ""}
   ${S.pimp.length ? `<div class="card mt"><div class="card-h"><div class="card-t">ตรวจก่อนบันทึก</div><div class="fx-actions"><button class="btn" id="pClear">ล้าง</button><button class="btn btn-p" id="pSave">${I.save}บันทึกทั้งหมด</button></div></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>ไฟล์</th><th>รอบ</th><th class="r">รายการ</th><th class="r">จับคู่ได้</th><th class="r">เงินได้</th><th class="r">ภาษี</th></tr></thead><tbody>
-    ${S.pimp.map(x => `<tr><td class="small">${esc(x.file)}</td><td>${x.error ? `<span class="neg">${esc(x.error)}</span>` : x.k.endsWith("1K") ? `ภ.ง.ด.1ก ${+x.k.slice(0, 4) + 543}` : `ภ.ง.ด.1 ${ymTH(x.k)}`}</td>
-      <td class="r">${x.rows?.length ?? ""}</td><td class="r">${x.rows ? x.rows.filter(r => r.emp_code).length : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "income")) : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "tax")) : ""}</td></tr>`).join("")}
-    </tbody></table></div></div>` : ""}
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>ไฟล์</th><th>รอบ</th><th>ชุดที่ยื่น</th><th class="r">รายการ</th><th class="r">เงินได้</th><th class="r">ภาษี</th><th>ระบบตรวจพบ</th></tr></thead><tbody>
+    ${S.pimp.map((x, i) => { const o = x.rows && !x.k.endsWith("1K") ? outside(x.k, x.rows) : null, old = F.find(f => f.k === x.k && (f.part || "") === x.part);
+      return `<tr><td class="small">${esc(x.file)}</td><td>${x.error ? `<span class="neg">${esc(x.error)}</span>` : x.k.endsWith("1K") ? `ภ.ง.ด.1ก ${+x.k.slice(0, 4) + 543}` : `ภ.ง.ด.1 ${ymTH(x.k)}`}</td>
+      <td>${x.error ? "" : `<input class="inp" list="partList" data-part="${i}" value="${esc(x.part)}" style="width:130px">`}</td>
+      <td class="r">${x.rows?.length ?? ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "income")) : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "tax")) : ""}</td>
+      <td class="small">${x.error ? "" : [old ? `แทนชุดเดิม (${old.rows_n} รายการ)` : "",
+        x.unknown?.length ? `<span class="neg">รหัสเงินได้ที่ไม่รู้จัก: ${esc(x.unknown.join(", "))} — ถือเป็น 40(1)</span>` : "",
+        o && o.n && !(x.part === "กรรมการ" || o.n >= o.all / 2) ? `${o.n} คนยอดไม่ตรงกับเงินเดือน — ดูในตารางกระทบยอดหลังบันทึก` :
+        o && o.n ? `<div class="pn-hint"><b>${o.n} คน · ${baht(o.income)}</b> ไม่มีในไฟล์เงินเดือน ${ymTH(x.k)}${o.emp ? ` (เป็นพนักงาน ${o.emp} คน)` : ""}
+          <label class="pn-adopt"><input type="checkbox" data-adopt="${i}" ${x.adopt ? "checked" : ""}> รับเข้าทะเบียนเป็นเงินได้นอกเงินเดือน</label></div>` : o ? `<span class="diff-ok">ทุกคนมีในไฟล์เงินเดือน</span>` : ""].filter(Boolean).join(" ")}</td></tr>`; }).join("")}
+    </tbody></table></div><datalist id="partList"><option value="พนักงาน"><option value="กรรมการ"><option value="ยื่นเพิ่มเติม"><option value="หลัก"></datalist></div>` : ""}
+  ${filesCard(F)}
   <div class="card mt"><div class="card-h"><div><div class="card-t">ภ.ง.ด.1 รายเดือน</div><div class="card-s">เงินได้ = 40(1) + 40(2) + เงินชดเชย · ภาษี = ภาษี + ภาษีเงินชดเชย</div></div></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>เดือน</th><th class="r">ทะเบียน (คน / เงินได้ / ภาษี)</th><th class="r">ภ.ง.ด.1 ที่ยื่น</th><th class="r">ผลต่างเงินได้</th><th class="r">ผลต่างภาษี</th><th>ผล</th></tr></thead><tbody>
     ${Array.from({ length: 12 }, (_, i) => `${yr}-${String(i + 1).padStart(2, "0")}`).filter(m => byYM[m] || R[m]).map(m => { const rc = R[m], reg = byYM[m] || [];
@@ -482,8 +491,50 @@ function pndPage() {
   }
   document.querySelectorAll("[data-pm]").forEach(tr => tr.onclick = () => { S.pOpen = S.pOpen === tr.dataset.pm ? null : tr.dataset.pm; pndPage(); });
   $("#pClear") && ($("#pClear").onclick = () => { S.pimp = []; pndPage(); });
+  document.querySelectorAll("[data-part]").forEach(i => i.onchange = () => { S.pimp[+i.dataset.part].part = i.value.trim(); pndPage(); });
+  document.querySelectorAll("[data-adopt]").forEach(c => c.onchange = () => { S.pimp[+c.dataset.adopt].adopt = c.checked; });
+  document.querySelectorAll("[data-padopt]").forEach(b => b.onclick = async () => {
+    const [k, part] = b.dataset.padopt.split("|"), on = b.dataset.on === "1";
+    if (on && part !== "กรรมการ" && !confirm(`รับ ภ.ง.ด.1 ${ymTH(k)} ชุด${part || "หลัก"} เข้าทะเบียน = ยอดของชุดนี้จะถูก “บวกเพิ่ม” จากเงินเดือน — ใช้กับเงินได้ที่จ่ายนอกไฟล์เงินเดือนเท่านั้น (ชุดพนักงานที่ตรงกับเงินเดือนห้ามรับ ยอดจะซ้ำ) ต่อไหม?`)) return;
+    if (!on && !confirm(`เลิกรับ ภ.ง.ด.1 ${ymTH(k)} ชุด${part || "หลัก"} ออกจากทะเบียน — ยอดที่รับเข้าไว้จะถูกลบ (50 ทวิ ที่ออกแล้วจะขึ้น “ยอดเปลี่ยน”)`)) return;
+    try { const r = await rpc("tax_pnd_adopt", { p_key: k, p_part: part, p_on: on }); toast(on ? `รับเข้าทะเบียนแล้ว ${r.people} คน${r.new ? ` · สร้างรหัส EXT ใหม่ ${r.new} คน` : ""}` : "เลิกรับเข้าทะเบียนแล้ว", "success"); }
+    catch (e) { toast(e.message, "error"); return; }
+    await loadYear(); badge(); pndPage();
+  });
+  document.querySelectorAll("[data-pdel]").forEach(b => b.onclick = async () => {
+    const [k, part] = b.dataset.pdel.split("|"), why = prompt(`ลบไฟล์ ภ.ง.ด.1 ${k.endsWith("1K") ? "ภ.ง.ด.1ก" : ymTH(k)} ชุด${part || "หลัก"} — เหตุผล`); if (!why) return;
+    try { await rpc("tax_pnd_delete", { p_key: k, p_part: part, p_reason: why }); } catch (e) { toast(e.message, "error"); return; }
+    await loadYear(); badge(); pndPage();
+  });
   $("#pSave") && ($("#pSave").onclick = savePnd);
   $("#b1k").onclick = export1k;
+}
+// คนใน ภ.ง.ด.1 ชุดหนึ่งที่ไม่มีในไฟล์เงินเดือนของเดือนนั้น (เงินได้นอกเงินเดือน เช่น ค่ากรรมการ) · emp = ในนั้นเป็นพนักงานกี่คน
+function outside(k, rows) {
+  // ชุดเงินเดือนตรงกับเงินเดือนในทะเบียนรายคน · ชุดอื่น (เช่น กรรมการ) ยอดต่อคนไม่ตรงกับเงินเดือน หรือไม่มีเงินเดือนเลย
+  //   → พนักงานที่เป็นกรรมการด้วยก็ถูกนับว่ามีเงินได้นอกเงินเดือน
+  const pay = new Map(S.rows.filter(r => r.ym === k && r.pay_inc != null).map(r => [r.emp_code, +r.pay_inc]));
+  if (!pay.size) return null;                        // ยังไม่ได้นำเข้าเงินเดือนเดือนนั้น — ยังบอกไม่ได้
+  const amt = new Map(); for (const r of rows) if (r.emp_code) amt.set(r.emp_code, (amt.get(r.emp_code) || 0) + +r.income);
+  const out = rows.filter(r => !r.emp_code || !pay.has(r.emp_code) || Math.abs(amt.get(r.emp_code) - pay.get(r.emp_code)) >= 0.01);
+  return { n: out.length, income: T.sumBy(out, "income"), emp: out.filter(r => r.emp_code && S.E.has(r.emp_code)).length, all: rows.length };
+}
+// ไฟล์ที่ยื่นแล้วทุกชุด · ชุดที่มีคนไม่อยู่ในไฟล์เงินเดือนและยังไม่รับเข้า → แนะนำ
+function filesCard(F) {
+  const w = S.D.can_write, list = F.filter(f => !f.k.endsWith("1K")).concat(F.filter(f => f.k.endsWith("1K")));
+  if (!list.length) return "";
+  const rowsOf = f => S.pnd.filter(p => p.k === f.k && (p.part || "") === (f.part || "")).map(p => ({ ...p, first: p.first_th, last: p.last_th }));
+  const hint = f => { if (f.adopted || f.k.endsWith("1K")) return null; const o = outside(f.k, rowsOf(f)); return o?.n && (f.part === "กรรมการ" || o.n >= o.all / 2) ? o : null; };
+  const sug = list.map(f => [f, hint(f)]).filter(([, o]) => o);
+  return `<div class="card mt"><div class="card-h"><div><div class="card-t">ไฟล์ที่ยื่นแล้ว</div><div class="card-s">เดือนหนึ่งมีได้หลายชุด · “รับเข้าทะเบียน” = ยอดของชุดนั้นเป็นเงินได้นอกไฟล์เงินเดือน (เช่น ค่าตอบแทนกรรมการ) นับรวมใน 50 ทวิ และ ภ.ง.ด.1ก</div></div></div>
+    ${sug.map(([f, o]) => `<div class="ty-new"><div class="ic">!</div><div class="tx"><b>ภ.ง.ด.1 ${ymTH(f.k)} ชุด${esc(f.part || "หลัก")}: ${o.n} คน เงินได้ ${baht(o.income)} ไม่มีในไฟล์เงินเดือน</b>${o.emp ? ` (เป็นพนักงาน ${o.emp} คน — ยอดจะรวมกับเงินเดือนของคนนั้น)` : ""} — น่าจะเป็นเงินได้ที่จ่ายนอกระบบเงินเดือน รับเข้าทะเบียนเพื่อให้ 50 ทวิ ครบ</div>
+      ${w ? `<button class="btn btn-sm btn-p" data-padopt="${esc(f.k)}|${esc(f.part || "")}" data-on="1">รับเข้าทะเบียน</button>` : ""}</div>`).join("")}
+    <div class="tbl-wrap" style="margin-top:6px"><table class="tbl"><thead><tr><th>รอบ</th><th>ชุด</th><th class="r">รายการ</th><th class="r">เงินได้</th><th class="r">ภาษี</th><th>ไฟล์</th><th>สถานะ</th>${w ? "<th></th>" : ""}</tr></thead><tbody>
+    ${list.map(f => `<tr><td><b>${f.k.endsWith("1K") ? `ภ.ง.ด.1ก ${+f.k.slice(0, 4) + 543}` : ymTH(f.k)}</b></td><td>${esc(f.part || "หลัก")}</td><td class="r">${f.rows_n}</td>
+      <td class="r money">${baht(f.income)}</td><td class="r money">${baht(f.tax)}</td><td class="small muted">${esc(f.file_name || "")}</td>
+      <td>${f.adopted ? `<span class="chip chip-em">รับเข้าทะเบียนแล้ว</span>` : f.k.endsWith("1K") ? "" : `<span class="chip chip-gray">ใช้เทียบอย่างเดียว</span>`}</td>
+      ${w ? `<td style="white-space:nowrap">${f.k.endsWith("1K") ? "" : `<button class="btn btn-sm" data-padopt="${esc(f.k)}|${esc(f.part || "")}" data-on="${f.adopted ? 0 : 1}">${f.adopted ? "เลิกรับ" : "รับเข้า"}</button>`}
+        <button class="btn btn-sm" data-pdel="${esc(f.k)}|${esc(f.part || "")}">ลบ</button></td>` : ""}</tr>`).join("")}</tbody></table></div></div>`;
 }
 async function readPnd(files) {
   const people = [...S.P.values()];
@@ -491,19 +542,32 @@ async function readPnd(files) {
   const names = [...S.emps, ...people.filter(p => !S.E.has(p.emp_code) && p.first_th).map(p => ({ emp_code: p.emp_code, firstname_th: p.first_th, lastname_th: p.last_th }))];
   for (const f of files) {
     try {
-      const text = await f.text(), r = T.parsePnd(text, S.D.settings?.company_tax_id || "");
+      let r;
+      if (/\.xlsx?$/i.test(f.name)) {
+        const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array" });
+        for (const n of wb.SheetNames) { r = T.parsePndSheet(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null })); if (r?.rows.length) break; }
+        if (!r) throw new Error("ไม่พบหัวตาราง ภ.ง.ด.1 (บัตร ปชช / เงินได้ / ภาษี)");
+      } else r = T.parsePnd(await f.text(), S.D.settings?.company_tax_id || "");
       if (!r.rows.length) throw new Error("ไม่พบรายการ");
       if (r.months.length > 1) throw new Error(`มีหลายเดือนในไฟล์เดียว (${r.months.join(", ")})`);
       const k = r.months[0] || `${S.year}-1K`;
       if (!k.startsWith(String(S.year))) throw new Error(`เป็นไฟล์ปี ${+k.slice(0, 4) + 543} — เลือกปีภาษีนั้นก่อน`);
-      S.pimp.push({ file: f.name, k, rows: T.matchPnd(r.rows, people, names) });
+      const rows = T.matchPnd(r.rows, people, names), part = T.guessPart(f.name), o = k.endsWith("1K") ? null : outside(k, rows);
+      // ชุดกรรมการ หรือคนส่วนใหญ่ไม่มีในไฟล์เงินเดือนเดือนนั้น → เสนอให้รับเข้าทะเบียน
+      S.pimp.push({ file: f.name, k, part, rows, unknown: r.unknown || [], adopt: !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
     } catch (e) { S.pimp.push({ file: f.name, error: e.message }); }
   }
   pndPage();
 }
 async function savePnd() {
   for (const x of S.pimp.filter(x => !x.error)) {
-    try { const r = await rpc("tax_pnd_save", { p_key: x.k, p_file: x.file, p_rows: x.rows }); toast(`${x.file}: ${r.rows} รายการ · เติมข้อมูลผู้เสียภาษี ${r.filled} คน`, "success"); S.pimp = S.pimp.filter(y => y !== x); }
+    try {
+      const r = await rpc("tax_pnd_save", { p_key: x.k, p_file: x.file, p_rows: x.rows, p_part: x.part || "" });
+      let msg = `${x.file}: ${r.rows} รายการ · เติมข้อมูลผู้เสียภาษี ${r.filled} คน`;
+      if (x.adopt && !r.adopted && !x.k.endsWith("1K")) { const a = await rpc("tax_pnd_adopt", { p_key: x.k, p_part: x.part || "", p_on: true }); msg += ` · รับเข้าทะเบียน ${a.people} คน`; }
+      else if (r.adopted) msg += ` · รับเข้าทะเบียนใหม่ ${r.adopted.people} คน`;
+      toast(msg, "success"); S.pimp = S.pimp.filter(y => y !== x);
+    }
     catch (e) { toast(`${x.file}: ${e.message}`, "error"); break; }
   }
   await loadYear(); badge(); pndPage();

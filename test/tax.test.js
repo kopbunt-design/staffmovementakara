@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/tax-calc.js`).replace(/^export /gm, "");
-const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED };`)();
+const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED, parsePndSheet, pndCode, guessPart };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const pick = (x, ...k) => Object.fromEntries(k.map(f => [f, x[f]]));
@@ -89,6 +89,16 @@ const xx = [["x"], ["CGM", "Employee No.", "ชื่อ", "นามสกุ�
 const xr = T.readPayroll({ "Salary Final": xx }, { types: { "ERT Training": "off" } });
 eq([xr.rows.get("AKR1").inc401, xr.rows.get("AKR1").items], [31000, { Salary: 30000, "Shift Allowance": 1000, "ERT Training": 500 }], "Excel: ไม่นับคอลัมน์ Income (ยอดย่อย) ซ้ำ");
 // กระทบยอดแยกประเภท: ยอดรวมตรงแต่ยื่นเป็นเงินออกจากงาน
-const rcT = T.reconcileMonth([{ emp_code: "A", inc401: 100, sev: 0, inc402: 0, tax: 1, sev_tax: 0 }], [{ emp_code: "A", type: "2", income: 100, tax: 1 }]);
+const rcT = T.reconcileMonth([{ emp_code: "A", inc401: 100, sev: 0, inc402: 0, tax: 1, sev_tax: 0 }], [{ emp_code: "A", type: "3", income: 100, tax: 1 }]);
 eq(rcT.issues.map(i => i.kind), ["type"], "ภ.ง.ด.1 ประเภทเงินได้ไม่ตรง");
+
+// ภ.ง.ด.1 แบบ Excel ของกรมสรรพากร (user 2026-11-16): ปี พ.ศ. ในเซลล์วันที่ · รหัส 401N/402I · หลายชุดต่อเดือน
+const serial = (y, m, d) => (Date.UTC(y, m - 1, d) / 864e5) + 25569;
+const px = [["ลำดับ", "บัตร ปชช", "คำหน้า", "ชื่อ ", "สกุล", "เงินได้ตามมาตรา", "วันเดือนปีที่จ่าย", "เงินได้", "ภาษี", "เงื่อนไข"],
+  [1, "0991007801192", "นาย", "รอส", "สมิธ", "401N", serial(2569, 2, 13), 320000, 43000, 1],
+  [2, 3529900306155, "นาง", "ณุชรีย์", "ไศละสูต", "402I", "13/02/2569", 160000, 1600, 1], [null, "รวม", null, null, null, null, null, 480000, 44600]];
+const pr = T.parsePndSheet(px);
+eq([pr.months, pr.rows.map(r => [r.tax_id, r.type, r.ym, r.income])], [["2026-02"], [["0991007801192", "1", "2026-02", 320000], ["3529900306155", "4", "2026-02", 160000]]], "อ่าน ภ.ง.ด.1 Excel");
+eq([T.pndCode("401N").type, T.pndCode("402E").type, T.pndCode("3").type, T.pndCode("401X").known], ["1", "5", "3", false], "รหัสประเภทเงินได้");
+eq(["PND1 February 2026 Directors 1.xlsx", "PND1 January 2026 Staff.xlsx", "ยื่นเพิ่มเติม ก.พ.xlsx"].map(T.guessPart), ["กรรมการ", "พนักงาน", "ยื่นเพิ่มเติม"], "เดาชุดที่ยื่นจากชื่อไฟล์");
 console.log(F ? `ไม่ผ่าน ${F} / ${P + F}` : `ผ่านทั้งหมด ${P} เคส`);

@@ -62,3 +62,6 @@
 .chip-new { background: var(--gold-500); color: var(--navy-950); font-weight: 700; }
 .ty-row.off td { color: var(--ink-3); } .ty-row.off .money { text-decoration: line-through; }
 .ty-fixed { font-size: 12px; color: var(--ink-3); }
+.pn-hint { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 10px; background: #FFF7E0; border: 1px solid #F1DFA8; }
+.pn-adopt { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--navy-700); cursor: pointer; }
+.pn-adopt input { width: 16px; height: 16px; accent-color: var(--em-600); }

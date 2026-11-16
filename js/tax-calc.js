@@ -35,8 +35,8 @@ export const LESS = ["ขาด", "ลา", "มาสาย", "ออกก่�
 // ประเภทเงินได้ → บรรทัดใน 50 ทวิ และประเภทใน ภ.ง.ด.1
 export const TYPES = {
   inc: { th: "เงินเดือน ค่าจ้าง", law: "40(1)", line: "ข้อ 1", pnd: "1", field: "inc401" },
-  sev: { th: "ออกจากงาน (จ่ายครั้งเดียว)", law: "40(1)", line: "ข้อ 6", pnd: "2", field: "sev" },
-  inc402: { th: "ค่าตอบแทน / ค่านายหน้า", law: "40(2)", line: "ข้อ 2", pnd: "3", field: "inc402" },
+  sev: { th: "ออกจากงาน (จ่ายครั้งเดียว)", law: "40(1)(2)", line: "ข้อ 6", pnd: "3", field: "sev" },
+  inc402: { th: "ค่าตอบแทน / ค่านายหน้า", law: "40(2)", line: "ข้อ 2", pnd: "4", field: "inc402" },
   off: { th: "ไม่ใช่เงินได้", law: "—", line: "ไม่ลง 50 ทวิ", pnd: null, field: null },
 };
 export const TYPE_KEYS = Object.keys(TYPES);
@@ -181,6 +181,41 @@ export function parsePnd(text, companyId = "") {
   return { rows: out, months: [...months].sort() };
 }
 
+// ไฟล์ ภ.ง.ด.1 แบบ Excel (แบบฟอร์มนำเข้าของกรมสรรพากร): ลำดับ | บัตร ปชช | คำหน้า | ชื่อ | สกุล | เงินได้ตามมาตรา | วันเดือนปีที่จ่าย | เงินได้ | ภาษี | เงื่อนไข
+// วันที่จ่ายเก็บเป็นปี พ.ศ. ในเซลล์วันที่ (เช่น 13/02/2569) → เดือนของรอบ · ไม่มีที่อยู่ (ที่อยู่มาจากไฟล์ txt หรือ HR กรอก)
+const excelDate = v => {
+  if (typeof v === "number") { const d = new Date(Math.round((v - 25569) * 864e5)); return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]; }
+  const m = String(v ?? "").match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/) || String(v ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return m[1].length === 4 ? [+m[1], +m[2], +m[3]] : [+m[3], +m[2], +m[1]];
+};
+export function parsePndSheet(aoa) {
+  const hi = aoa.slice(0, 15).findIndex(r => (r || []).some(c => /บัตร|เลขประจำตัว/.test(norm(c))) && (r || []).some(c => /^เงินได้$|จำนวนเงิน/.test(norm(c))));
+  if (hi < 0) return null;
+  const h = aoa[hi].map(norm), col = re => h.findIndex(x => re.test(x));
+  const C = { id: col(/บัตร|เลขประจำตัว/), title: col(/คำ(นำ)?หน้า/), first: col(/^ชื่อ$/), last: col(/สกุล/), type: col(/มาตรา|ประเภท/),
+    date: col(/วัน/), income: col(/^เงินได้$|จำนวนเงิน/), tax: col(/^ภาษี|จำนวนเงินภาษี/), cond: col(/เงื่อนไข/) };
+  const out = [], months = new Set(), unknown = new Set();
+  for (const r of aoa.slice(hi + 1)) {
+    const id = String(r?.[C.id] ?? "").replace(/\D/g, "").padStart(13, "0");
+    if (!/^\d{13}$/.test(id) || /^0+$/.test(id)) continue;
+    const d = C.date >= 0 ? excelDate(r[C.date]) : null; let ym = null;
+    if (d) { const y = d[0] > 2400 ? d[0] - 543 : d[0]; ym = `${y}-${String(d[1]).padStart(2, "0")}`; months.add(ym); }
+    const pc = pndCode(C.type >= 0 ? r[C.type] : "1"); if (!pc.known) unknown.add(norm(r[C.type]));
+    out.push({ tax_id: id, title: norm(r[C.title]), first: norm(r[C.first]), last: norm(r[C.last]), addr1: "", addr2: "", zip: "", ym,
+      type: pc.type, code: norm(C.type >= 0 ? r[C.type] : ""), pay_date: d ? d.join("-") : null, income: r2(num(r[C.income])), tax: r2(num(r[C.tax])), cond: norm(r[C.cond]) });
+  }
+  return { rows: out, months: [...months].sort(), unknown: [...unknown] };
+}
+// ชื่อชุดที่ยื่น เดาจากชื่อไฟล์ (เดือนหนึ่งยื่นได้หลายชุด: พนักงาน / กรรมการ / ยื่นเพิ่มเติม)
+export function guessPart(name) {
+  const s = String(name || "");
+  if (/director|กรรมการ/i.test(s)) return "กรรมการ";
+  if (/เพิ่มเติม|additional|amend|addition/i.test(s)) return "ยื่นเพิ่มเติม";
+  if (/staff|พนักงาน|employee/i.test(s)) return "พนักงาน";
+  return "หลัก";
+}
+
 // เลขประจำตัวผู้เสียภาษี 13 หลัก — หลักสุดท้ายเป็นเลขตรวจสอบ
 export function validTaxId(id) {
   const d = String(id || "");
@@ -215,16 +250,27 @@ export const sumBy = (rows, f) => r2(rows.reduce((s, x) => s + num(typeof f === 
 
 // ---------------------------------------------------------------- กระทบยอดกับ ภ.ง.ด.1 รายเดือน
 // reg = แถว tax_income ของเดือน · pnd = แถว tax_pnd ของเดือน (จับคู่ emp_code แล้ว) → { totals, issues }
-// ประเภทเงินได้ใน ภ.ง.ด.1: 1 = 40(1) ทั่วไป · 2 = 40(1) จ่ายครั้งเดียวเพราะออกจากงาน · 3/4/5 = 40(2) (อยู่/ไม่อยู่ในไทย)
-const pndType = t => t === "2" ? "2" : ["3", "4", "5"].includes(String(t)) ? "3" : "1";
-const regByType = x => ({ 1: num(x.inc401), 2: num(x.sev), 3: num(x.inc402) });
-export const PND_TYPE_TH = { 1: "เงินเดือน 40(1)", 2: "ออกจากงาน", 3: "40(2)" };
+// ประเภทเงินได้ใน ภ.ง.ด.1 (ตามแบบ/ใบแนบ): 1 = 40(1) ทั่วไป · 2 = 40(1) อัตรา 3% ที่ได้รับอนุมัติ · 3 = 40(1)(2) จ่ายครั้งเดียวเพราะออกจากงาน
+//   4 = 40(2) ผู้อยู่ในไทย · 5 = 40(2) ผู้ไม่อยู่ในไทย · ไฟล์ Excel แบบใหม่ใช้รหัส 401N/401S/402I/402E (user 2026-11-16: ทั้งชุดพนักงานและกรรมการ = 401N)
+export const PND_TYPE = { 1: "40(1) ทั่วไป", 2: "40(1) อัตรา 3%", 3: "ออกจากงาน", 4: "40(2) อยู่ในไทย", 5: "40(2) ไม่อยู่ในไทย" };
+const PND_CODE = { "401N": "1", "401S": "2", "402I": "4", "402E": "5" };
+// รหัสในไฟล์ → { type: "1".."5", known }
+export function pndCode(raw) {
+  const c = norm(raw).toUpperCase();
+  if (/^[1-5]$/.test(c)) return { type: c, known: true };
+  if (PND_CODE[c]) return { type: PND_CODE[c], known: true };
+  return { type: /^402/.test(c) ? "4" : "1", known: false };
+}
+// ประเภทใน ภ.ง.ด.1 → ช่องในทะเบียน
+export const pndField = t => t === "3" ? "sev" : t === "4" || t === "5" ? "inc402" : "inc401";
+const FIELD_TH_SHORT = { inc401: "เงินเดือน 40(1)", sev: "ออกจากงาน", inc402: "40(2)" };
 export function reconcileMonth(reg, pnd) {
   const R = new Map(reg.map(x => [x.emp_code, x])), P = new Map(), unmatched = [];
   for (const p of pnd) {
     if (!p.emp_code) { unmatched.push(p); continue; }
-    const o = P.get(p.emp_code) || (P.set(p.emp_code, { income: 0, tax: 0, tax_id: p.tax_id, by: { 1: 0, 2: 0, 3: 0 } }), P.get(p.emp_code));
-    o.income = r2(o.income + num(p.income)); o.tax = r2(o.tax + num(p.tax)); o.by[pndType(p.type)] = r2(o.by[pndType(p.type)] + num(p.income));
+    const o = P.get(p.emp_code) || (P.set(p.emp_code, { income: 0, tax: 0, tax_id: p.tax_id, by: { inc401: 0, sev: 0, inc402: 0 } }), P.get(p.emp_code));
+    const f = pndField(pndCode(p.type).type);
+    o.income = r2(o.income + num(p.income)); o.tax = r2(o.tax + num(p.tax)); o.by[f] = r2(o.by[f] + num(p.income));
   }
   const issues = [];
   for (const [c, x] of R) {
@@ -232,9 +278,9 @@ export function reconcileMonth(reg, pnd) {
     if (!p) { if (ri || rt) issues.push({ emp_code: c, kind: "not_in_pnd", reg: { income: ri, tax: rt }, pnd: null }); continue; }
     if (Math.abs(ri - p.income) >= 0.01 || Math.abs(rt - p.tax) >= 0.01) { issues.push({ emp_code: c, kind: "diff", reg: { income: ri, tax: rt }, pnd: { income: p.income, tax: p.tax } }); continue; }
     // ยอดรวมตรง แต่ลงคนละประเภท (เช่น ทะเบียนเป็นเงินเดือน แต่ยื่นเป็นเงินออกจากงาน)
-    const rb = regByType(x), bad = ["1", "2", "3"].filter(t => Math.abs(rb[t] - p.by[t]) >= 0.01);
+    const rb = { inc401: num(x.inc401), sev: num(x.sev), inc402: num(x.inc402) }, bad = Object.keys(rb).filter(t => Math.abs(rb[t] - p.by[t]) >= 0.01);
     if (bad.length) issues.push({ emp_code: c, kind: "type", reg: { income: ri, tax: rt }, pnd: { income: p.income, tax: p.tax },
-      detail: bad.map(t => `${PND_TYPE_TH[t]}: ทะเบียน ${rb[t].toLocaleString("en-US", { minimumFractionDigits: 2 })} · ภ.ง.ด.1 ${p.by[t].toLocaleString("en-US", { minimumFractionDigits: 2 })}`).join(" · ") });
+      detail: bad.map(t => `${FIELD_TH_SHORT[t]}: ทะเบียน ${rb[t].toLocaleString("en-US", { minimumFractionDigits: 2 })} · ภ.ง.ด.1 ${p.by[t].toLocaleString("en-US", { minimumFractionDigits: 2 })}`).join(" · ") });
   }
   for (const [c, p] of P) if (!R.has(c)) issues.push({ emp_code: c, kind: "not_in_reg", reg: null, pnd: { income: p.income, tax: p.tax } });
   for (const p of unmatched) issues.push({ emp_code: null, kind: "unmatched", name: norm(`${p.title}${p.first} ${p.last}`), tax_id: p.tax_id, reg: null, pnd: { income: p.income, tax: p.tax } });

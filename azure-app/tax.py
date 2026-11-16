@@ -34,7 +34,8 @@ _M = ", ".join(f"{f} DECIMAL(14,2) NULL" for f in MONEY)
 _CM = ", ".join(f"{f} DECIMAL(14,2) NULL" for f in CERT_MONEY)
 _DDL = {
     "tax_income": f"""ym NVARCHAR(7) NOT NULL, emp_code NVARCHAR(40) NOT NULL, name NVARCHAR(200) NULL, {_M},
-        edited_note NVARCHAR(500) NULL, items NVARCHAR(MAX) NULL, PRIMARY KEY (ym, emp_code)""",
+        edited_note NVARCHAR(500) NULL, items NVARCHAR(MAX) NULL, src NVARCHAR(60) NOT NULL DEFAULT 'payroll',
+        PRIMARY KEY (ym, emp_code, src)""",
     "tax_months": """ym NVARCHAR(7) NOT NULL PRIMARY KEY, format NVARCHAR(20) NULL, file_name NVARCHAR(300) NULL, people INT NULL,
         income DECIMAL(16,2) NULL, tax DECIMAL(16,2) NULL, saved_at DATETIMEOFFSET NULL, saved_by_name NVARCHAR(200) NULL,
         cols NVARCHAR(MAX) NULL""",
@@ -42,11 +43,12 @@ _DDL = {
     "tax_people": """emp_code NVARCHAR(40) NOT NULL PRIMARY KEY, tax_id NVARCHAR(13) NULL, title NVARCHAR(40) NULL, first_th NVARCHAR(100) NULL,
         last_th NVARCHAR(150) NULL, address NVARCHAR(400) NULL, zip NVARCHAR(10) NULL, source NVARCHAR(20) NULL,
         updated_at DATETIMEOFFSET NULL, updated_by_name NVARCHAR(200) NULL""",
-    "tax_pnd": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, k NVARCHAR(10) NOT NULL, tax_id NVARCHAR(13) NULL, emp_code NVARCHAR(40) NULL,
+    "tax_pnd": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, k NVARCHAR(10) NOT NULL, part NVARCHAR(40) NOT NULL DEFAULT '', tax_id NVARCHAR(13) NULL, emp_code NVARCHAR(40) NULL,
         title NVARCHAR(40) NULL, first_th NVARCHAR(100) NULL, last_th NVARCHAR(150) NULL, type NVARCHAR(4) NULL,
         income DECIMAL(14,2) NULL, tax DECIMAL(14,2) NULL""",
-    "tax_pnd_files": """k NVARCHAR(10) NOT NULL PRIMARY KEY, file_name NVARCHAR(300) NULL, rows_n INT NULL, income DECIMAL(16,2) NULL,
-        tax DECIMAL(16,2) NULL, saved_at DATETIMEOFFSET NULL, saved_by_name NVARCHAR(200) NULL""",
+    "tax_pnd_files": """k NVARCHAR(10) NOT NULL, part NVARCHAR(40) NOT NULL DEFAULT '', file_name NVARCHAR(300) NULL, rows_n INT NULL,
+        income DECIMAL(16,2) NULL, tax DECIMAL(16,2) NULL, saved_at DATETIMEOFFSET NULL, saved_by_name NVARCHAR(200) NULL,
+        adopted BIT NOT NULL DEFAULT 0, PRIMARY KEY (k, part)""",
     "tax_certs": f"""year INT NOT NULL, emp_code NVARCHAR(40) NOT NULL, [no] INT NULL, version INT NOT NULL, status NVARCHAR(12) NOT NULL,
         payer NVARCHAR(2) NULL, {_CM}, months NVARCHAR(200) NULL,
         person NVARCHAR(MAX) NULL, signer_id NVARCHAR(64) NULL, signer NVARCHAR(MAX) NULL, requested_by_name NVARCHAR(200) NULL,
@@ -75,6 +77,21 @@ def ensure(r):
     # ยอดแยกรายการ (คอลัมน์ของไฟล์) — เพิ่ม 2026-11-16 ให้ตั้ง "ไม่นับเป็นเงินได้" ได้
     for t, c in (("tax_income", "items"), ("tax_months", "cols")):
         r.cur.execute(f"IF COL_LENGTH('dbo.{t}', '{c}') IS NULL ALTER TABLE dbo.{t} ADD {c} NVARCHAR(MAX) NULL")
+    # 2026-11-16: เงินได้นอกไฟล์เงินเดือน (เช่น ค่ากรรมการ) รับเข้าจาก ภ.ง.ด.1 → tax_income แยกแถวตามแหล่ง (src)
+    #             ภ.ง.ด.1 ยื่นได้หลายชุดต่อเดือน (พนักงาน / กรรมการ / ยื่นเพิ่มเติม) → part
+    for t, c, pk in (("tax_income", "src NVARCHAR(60) NOT NULL CONSTRAINT df_tax_income_src DEFAULT 'payroll'", "ym, emp_code, src"),
+                     ("tax_pnd_files", "part NVARCHAR(40) NOT NULL CONSTRAINT df_tax_pnd_files_part DEFAULT ''", "k, part")):
+        col = c.split()[0]
+        if r.val(f"SELECT COL_LENGTH('dbo.{t}', '{col}')") is None:
+            r.cur.execute(f"ALTER TABLE dbo.{t} ADD {c}")
+            name = r.val(f"SELECT name FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID('dbo.{t}') AND type = 'PK'")
+            if name:
+                r.cur.execute(f"ALTER TABLE dbo.{t} DROP CONSTRAINT [{name}]")
+            r.cur.execute(f"ALTER TABLE dbo.{t} ADD CONSTRAINT pk_{t} PRIMARY KEY ({pk})")
+    if r.val("SELECT COL_LENGTH('dbo.tax_pnd', 'part')") is None:
+        r.cur.execute("ALTER TABLE dbo.tax_pnd ADD part NVARCHAR(40) NOT NULL CONSTRAINT df_tax_pnd_part DEFAULT ''")
+    if r.val("SELECT COL_LENGTH('dbo.tax_pnd_files', 'adopted')") is None:
+        r.cur.execute("ALTER TABLE dbo.tax_pnd_files ADD adopted BIT NOT NULL CONSTRAINT df_tax_pnd_files_adopted DEFAULT 0")
     try:
         r.cur.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_tax_pnd_k') CREATE INDEX ix_tax_pnd_k ON dbo.tax_pnd (k)")
     except Exception:
@@ -246,7 +263,7 @@ def tax_data(r, p_year=None):
         out["months"] = r.rows(None, "SELECT * FROM dbo.tax_months WHERE ym LIKE ? ORDER BY ym", f"{y}-%")
         for m in out["months"]:
             m["cols"] = _j(m.get("cols")) if money else None
-        out["pnd"] = r.rows(None, "SELECT * FROM dbo.tax_pnd_files WHERE k LIKE ? ORDER BY k", f"{y}-%")
+        out["pnd"] = r.rows(None, "SELECT * FROM dbo.tax_pnd_files WHERE k LIKE ? ORDER BY k, part", f"{y}-%")
         out["years"] = [x["y"] for x in r.rows(None, "SELECT DISTINCT LEFT(ym, 4) AS y FROM dbo.tax_months ORDER BY y DESC")]
         people = r.rows(None, "SELECT * FROM dbo.tax_people")
         if not write:
@@ -266,23 +283,37 @@ def tax_data(r, p_year=None):
 def tax_year(r, p_year):
     """ยอดรายคนรายเดือนของทั้งปี"""
     _need(r, "page.tax", "field.salary.read")
-    return r.rows(None, f"SELECT ym, emp_code, name, {', '.join(MONEY)}, edited_note FROM dbo.tax_income WHERE ym LIKE ? ORDER BY ym, emp_code",
+    # แถวเดียวต่อคนต่อเดือน (รวมเงินเดือน + เงินได้ที่รับเข้าจาก ภ.ง.ด.1) · srcs บอกแหล่ง
+    rows = r.rows(None, f"""SELECT ym, emp_code, MAX(name) AS name, {', '.join(f'SUM({f}) AS {f}' for f in MONEY)}, MAX(edited_note) AS edited_note,
+                              STRING_AGG(src, ',') AS srcs,
+                              SUM(CASE WHEN src = 'payroll' THEN COALESCE(inc401, 0) + COALESCE(inc402, 0) + COALESCE(sev, 0) END) AS pay_inc FROM dbo.tax_income WHERE ym LIKE ? GROUP BY ym, emp_code ORDER BY ym, emp_code""",
                   f"{_year(p_year)}-%")
+    for x in rows:
+        x["srcs"] = [v for v in (x.get("srcs") or "").split(",") if v]
+    return rows
 
 
 @fn
 def tax_items(r, p_year, p_emp_code):
     """ยอดแยกรายการของคนเดียวทั้งปี (แผงรายคน)"""
     _need(r, "page.tax", "field.salary.read")
-    rows = r.rows(None, "SELECT ym, items FROM dbo.tax_income WHERE ym LIKE ? AND emp_code = ? ORDER BY ym",
+    rows = r.rows(None, "SELECT ym, src, items, inc401, inc402, sev FROM dbo.tax_income WHERE ym LIKE ? AND emp_code = ? ORDER BY ym",
                   f"{_year(p_year)}-%", (_s(p_emp_code, 40) or "").upper())
-    return [{"ym": x["ym"], "items": _j(x["items"]) or {}} for x in rows]
+    out = {}
+    for x in rows:
+        it = out.setdefault(x["ym"], {})
+        if x["src"] == "payroll":
+            for k, v in (_j(x["items"]) or {}).items():
+                it[k] = round(it.get(k, 0) + float(v or 0), 2)
+        else:                                        # เงินได้ที่รับเข้าจาก ภ.ง.ด.1 ชุดอื่น (เช่น กรรมการ)
+            it[f"ภ.ง.ด.1 · {x['src'][4:] or 'ชุดอื่น'}"] = round(sum(float(x[f] or 0) for f in ("inc401", "inc402", "sev")), 2)
+    return [{"ym": k, "items": v} for k, v in sorted(out.items())]
 
 
 @fn
 def tax_pnd_rows(r, p_year):
     _need(r, "page.tax", "field.salary.read")
-    rows = r.rows(None, "SELECT k, tax_id, emp_code, title, first_th, last_th, type, income, tax FROM dbo.tax_pnd WHERE k LIKE ?", f"{_year(p_year)}-%")
+    rows = r.rows(None, "SELECT k, part, tax_id, emp_code, title, first_th, last_th, type, income, tax FROM dbo.tax_pnd WHERE k LIKE ?", f"{_year(p_year)}-%")
     if not r.has_perm("data.tax.write"):
         for x in rows:
             x["tax_id"] = _mask(x["tax_id"])
@@ -324,8 +355,8 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
         batch.append((ym, code, _s(x.get("name"), 200), *vals, json.dumps(items, ensure_ascii=False) if items else None))
     if not batch:
         raise E("ไม่มีรายการในไฟล์")
-    old = r.val("SELECT COUNT(*) FROM dbo.tax_income WHERE ym = ?", ym)
-    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ?", ym)
+    old = r.val("SELECT COUNT(*) FROM dbo.tax_income WHERE ym = ? AND src = 'payroll'", ym)
+    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ? AND src = 'payroll'", ym)
     r.cur.executemany(f"INSERT INTO dbo.tax_income (ym, emp_code, name, {', '.join(MONEY)}, items) VALUES (?, ?, ?, {', '.join('?' * len(MONEY))}, ?)", batch)
     cols = {}
     for k, c in (p_cols or {}).items() if isinstance(p_cols, dict) else []:
@@ -383,7 +414,7 @@ def tax_recalc(r, p_year):
     r.lock("tax_month")
     types = _types(r)
     changed, edited, noitems, months = 0, [], 0, set()
-    for x in r.rows(None, "SELECT ym, emp_code, inc401, inc402, sev, items, edited_note FROM dbo.tax_income WHERE ym LIKE ?", f"{y}-%"):
+    for x in r.rows(None, "SELECT ym, emp_code, inc401, inc402, sev, items, edited_note FROM dbo.tax_income WHERE ym LIKE ? AND src = 'payroll'", f"{y}-%"):
         items = _j(x["items"])
         if not isinstance(items, dict) or not items:
             noitems += 1
@@ -394,12 +425,12 @@ def tax_recalc(r, p_year):
         if x["edited_note"]:
             edited.append(f"{x['emp_code']} {x['ym']}")
             continue
-        r.cur.execute("UPDATE dbo.tax_income SET inc401 = ?, sev = ?, inc402 = ? WHERE ym = ? AND emp_code = ?",
+        r.cur.execute("UPDATE dbo.tax_income SET inc401 = ?, sev = ?, inc402 = ? WHERE ym = ? AND emp_code = ? AND src = 'payroll'",
                       sp["inc401"], sp["sev"], sp["inc402"], x["ym"], x["emp_code"])
         changed += 1
         months.add(x["ym"])
     for ym in months:
-        r.cur.execute("""UPDATE m SET income = (SELECT SUM(COALESCE(inc401, 0) + COALESCE(inc402, 0) + COALESCE(sev, 0)) FROM dbo.tax_income i WHERE i.ym = m.ym)
+        r.cur.execute("""UPDATE m SET income = (SELECT SUM(COALESCE(inc401, 0) + COALESCE(inc402, 0) + COALESCE(sev, 0)) FROM dbo.tax_income i WHERE i.ym = m.ym AND i.src = 'payroll')
                          FROM dbo.tax_months m WHERE m.ym = ?""", ym)
     if changed or edited:
         _log(r, None, "recalc", f"คิดเงินได้ใหม่ปี {y}: เปลี่ยน {changed} แถว ({', '.join(sorted(months)) or '-'})"
@@ -411,7 +442,7 @@ def tax_recalc(r, p_year):
 def tax_month_delete(r, p_ym, p_reason=None):
     _need(r, "page.tax", "data.tax.write", "field.salary.read")
     ym = _ym(p_ym)
-    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ?", ym)
+    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ? AND src = 'payroll'", ym)
     r.cur.execute("DELETE FROM dbo.tax_months WHERE ym = ?", ym)
     _log(r, None, "month_delete", f"ลบยอดเดือน {ym}" + (f" · {p_reason}" if p_reason else ""))
     return True
@@ -424,14 +455,16 @@ def tax_income_edit(r, p_ym, p_emp_code, p_row, p_reason):
     ym, code, why = _ym(p_ym), (_s(p_emp_code, 40) or "").upper(), _s(p_reason, 500)
     if not code or not why:
         raise E("ต้องระบุรหัสพนักงานและเหตุผล")
-    old = r.rows(None, "SELECT * FROM dbo.tax_income WHERE ym = ? AND emp_code = ?", ym, code)
-    new = {f: _n((p_row or {}).get(f)) for f in MONEY}
+    # หน้าเว็บส่งยอดรวมของเดือน → แก้แถวเงินเดือน = ยอดรวม − เงินได้ที่รับเข้าจาก ภ.ง.ด.1 ชุดอื่น
+    other = r.rows(None, f"SELECT {', '.join(f'COALESCE(SUM({f}), 0) AS {f}' for f in MONEY)} FROM dbo.tax_income WHERE ym = ? AND emp_code = ? AND src <> 'payroll'", ym, code)[0]
+    old = r.rows(None, "SELECT * FROM dbo.tax_income WHERE ym = ? AND emp_code = ? AND src = 'payroll'", ym, code)
+    new = {f: round(_n((p_row or {}).get(f)) - float(other.get(f) or 0), 2) for f in MONEY}
     if old:
         o = old[0]
         ch = [f for f in MONEY if abs(float(o.get(f) or 0) - new[f]) >= 0.005]
         if not ch:
             return {"changed": []}
-        r.cur.execute(f"UPDATE dbo.tax_income SET {', '.join(f'{f} = ?' for f in MONEY)}, edited_note = ? WHERE ym = ? AND emp_code = ?",
+        r.cur.execute(f"UPDATE dbo.tax_income SET {', '.join(f'{f} = ?' for f in MONEY)}, edited_note = ? WHERE ym = ? AND emp_code = ? AND src = 'payroll'",
                       *[new[f] for f in MONEY], why, ym, code)
         detail = "; ".join(f"{f}: {float(o.get(f) or 0):,.2f} → {new[f]:,.2f}" for f in ch)
     else:
@@ -446,11 +479,12 @@ def tax_income_edit(r, p_ym, p_emp_code, p_row, p_reason):
 
 # ---------------------------------------------------------------- ภ.ง.ด.1 / ภ.ง.ด.1ก
 @fn
-def tax_pnd_save(r, p_key, p_file, p_rows):
-    """เก็บไฟล์ที่ยื่นจริง: k = YYYY-MM (ภ.ง.ด.1 รายเดือน) หรือ YYYY-1K (ภ.ง.ด.1ก) · เลขผู้เสียภาษี/ที่อยู่ของคนที่จับคู่ได้
-    ใช้เติมข้อมูลผู้เสียภาษี (ไม่ทับที่ HR แก้เอง)"""
+def tax_pnd_save(r, p_key, p_file, p_rows, p_part=""):
+    """เก็บไฟล์ที่ยื่นจริง: k = YYYY-MM (ภ.ง.ด.1 รายเดือน) หรือ YYYY-1K (ภ.ง.ด.1ก) · part = ชุดที่ยื่น (พนักงาน / กรรมการ / ยื่นเพิ่มเติม)
+    — อัปชุดเดิมซ้ำ = แทนเฉพาะชุดนั้น · เลขผู้เสียภาษี/ที่อยู่ของคนที่จับคู่ได้ใช้เติมข้อมูลผู้เสียภาษี (ไม่ทับที่ HR แก้เอง)
+    · ชุดที่ "รับเข้าทะเบียน" แล้ว (เช่น ค่ากรรมการ) อัปใหม่ = รับเข้าใหม่ให้อัตโนมัติ"""
     _need(r, "page.tax", "data.tax.write", "field.salary.read")
-    k = _s(p_key, 10) or ""
+    k, part = _s(p_key, 10) or "", (_s(p_part, 40) or "").strip()
     if not re.fullmatch(r"\d{4}-((0[1-9]|1[0-2])|1K)", k):
         raise E("รอบไม่ถูกต้อง")
     r.lock("tax_pnd")
@@ -465,7 +499,7 @@ def tax_pnd_save(r, p_key, p_file, p_rows):
         inc, tax = _n(x.get("income")), _n(x.get("tax"))
         inc_t += inc
         tax_t += tax
-        batch.append((k, tid, code, _s(x.get("title"), 40), _s(x.get("first"), 100), _s(x.get("last"), 150), _s(x.get("type"), 4), inc, tax))
+        batch.append((k, part, tid, code, _s(x.get("title"), 40), _s(x.get("first"), 100), _s(x.get("last"), 150), _s(x.get("type"), 4), inc, tax))
         if not code:
             continue
         p = people.get(code)
@@ -477,21 +511,100 @@ def tax_pnd_save(r, p_key, p_file, p_rows):
             people[code] = {"emp_code": code, "tax_id": tid, "source": "pnd"}
             filled += 1
         elif p.get("source") != "manual" and (p.get("tax_id") != tid or p.get("source") != "pnd"):
-            r.cur.execute("""UPDATE dbo.tax_people SET tax_id = ?, title = ?, first_th = ?, last_th = ?, address = ?, zip = ?, source = 'pnd',
-                             updated_at = ?, updated_by_name = ? WHERE emp_code = ?""", *vals, code)
+            # ไฟล์ Excel ไม่มีที่อยู่ → เก็บที่อยู่เดิมไว้
+            r.cur.execute("""UPDATE dbo.tax_people SET tax_id = ?, title = ?, first_th = ?, last_th = ?, address = COALESCE(?, address), zip = COALESCE(?, zip),
+                             source = 'pnd', updated_at = ?, updated_by_name = ? WHERE emp_code = ?""", *vals, code)
             p.update(tax_id=tid, source="pnd")
             filled += 1
     if not batch:
         raise E("ไม่มีรายการในไฟล์")
-    r.cur.execute("DELETE FROM dbo.tax_pnd WHERE k = ?", k)
-    r.cur.executemany("INSERT INTO dbo.tax_pnd (k, tax_id, emp_code, title, first_th, last_th, type, income, tax) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", batch)
+    r.cur.execute("DELETE FROM dbo.tax_pnd WHERE k = ? AND part = ?", k, part)
+    r.cur.executemany("INSERT INTO dbo.tax_pnd (k, part, tax_id, emp_code, title, first_th, last_th, type, income, tax) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", batch)
     vals = (_s(p_file, 300), len(batch), round(inc_t, 2), round(tax_t, 2), _now(), who)
-    if r.val("SELECT COUNT(*) FROM dbo.tax_pnd_files WHERE k = ?", k):
-        r.cur.execute("UPDATE dbo.tax_pnd_files SET file_name = ?, rows_n = ?, income = ?, tax = ?, saved_at = ?, saved_by_name = ? WHERE k = ?", *vals, k)
+    adopted = bool(r.val("SELECT adopted FROM dbo.tax_pnd_files WHERE k = ? AND part = ?", k, part))
+    if r.val("SELECT COUNT(*) FROM dbo.tax_pnd_files WHERE k = ? AND part = ?", k, part):
+        r.cur.execute("UPDATE dbo.tax_pnd_files SET file_name = ?, rows_n = ?, income = ?, tax = ?, saved_at = ?, saved_by_name = ? WHERE k = ? AND part = ?", *vals, k, part)
     else:
-        r.cur.execute("INSERT INTO dbo.tax_pnd_files (file_name, rows_n, income, tax, saved_at, saved_by_name, k) VALUES (?, ?, ?, ?, ?, ?, ?)", *vals, k)
-    _log(r, None, "pnd", f"บันทึก {'ภ.ง.ด.1ก ' + k[:4] if k.endswith('1K') else 'ภ.ง.ด.1 ' + k}: {len(batch)} รายการ · ไฟล์ {p_file or '-'} · เติมข้อมูลผู้เสียภาษี {filled} คน", who)
-    return {"rows": len(batch), "filled": filled}
+        r.cur.execute("INSERT INTO dbo.tax_pnd_files (file_name, rows_n, income, tax, saved_at, saved_by_name, k, part) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", *vals, k, part)
+    label = ("ภ.ง.ด.1ก " + k[:4] if k.endswith("1K") else "ภ.ง.ด.1 " + k) + (f" ชุด{part}" if part else "")
+    _log(r, None, "pnd", f"บันทึก {label}: {len(batch)} รายการ · ไฟล์ {p_file or '-'} · เติมข้อมูลผู้เสียภาษี {filled} คน", who)
+    out = {"rows": len(batch), "filled": filled}
+    if adopted:
+        out["adopted"] = _adopt(r, k, part, who)
+    return out
+
+
+def _ext_code(r):
+    """รหัสสำหรับผู้มีเงินได้ที่ไม่ใช่พนักงาน (เช่น กรรมการ) — EXT0001, EXT0002 …"""
+    n = r.val("SELECT MAX(TRY_CAST(SUBSTRING(emp_code, 4, 10) AS INT)) FROM dbo.tax_people WHERE emp_code LIKE 'EXT%'") or 0
+    return f"EXT{int(n) + 1:04d}"
+
+
+def _adopt(r, k, part, who):
+    """รับยอดของ ภ.ง.ด.1 ชุดนี้เข้าทะเบียนเป็นเงินได้นอกไฟล์เงินเดือน (src = pnd:<ชุด>) · คนที่ไม่มีรหัส → หาจากเลขผู้เสียภาษี
+    หรือสร้างรหัส EXT#### · ประเภทเงินได้ตามที่ยื่น (1/2 = 40(1) · 3 = ออกจากงาน · 4/5 = 40(2))"""
+    src = f"pnd:{part}"[:60]
+    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ? AND src = ?", k, src)
+    byid = {x["tax_id"]: x["emp_code"] for x in r.rows(None, "SELECT emp_code, tax_id FROM dbo.tax_people WHERE tax_id IS NOT NULL")}
+    rows, new = {}, 0
+    for x in r.rows(None, "SELECT id, tax_id, emp_code, title, first_th, last_th, type, income, tax FROM dbo.tax_pnd WHERE k = ? AND part = ?", k, part):
+        code = x["emp_code"] or byid.get(x["tax_id"])
+        if not code:
+            code = _ext_code(r)
+            r.cur.execute("""INSERT INTO dbo.tax_people (emp_code, tax_id, title, first_th, last_th, source, updated_at, updated_by_name)
+                             VALUES (?, ?, ?, ?, ?, 'pnd', ?, ?)""", code, x["tax_id"], x["title"], x["first_th"], x["last_th"], _now(), who)
+            byid[x["tax_id"]] = code
+            new += 1
+        if not x["emp_code"]:
+            r.cur.execute("UPDATE dbo.tax_pnd SET emp_code = ? WHERE id = ?", code, x["id"])
+        o = rows.setdefault(code, {**{f: 0.0 for f in MONEY}, "name": f"{x['first_th'] or ''} {x['last_th'] or ''}".strip()})
+        t = str(x["type"] or "1")
+        inc, tax = float(x["income"] or 0), float(x["tax"] or 0)
+        if t == "3":
+            o["sev"] += inc
+            o["sev_tax"] += tax
+        else:
+            o["inc402" if t in ("4", "5") else "inc401"] += inc
+            o["tax"] += tax
+    for code, o in rows.items():
+        r.cur.execute(f"INSERT INTO dbo.tax_income (ym, emp_code, name, {', '.join(MONEY)}, src) VALUES (?, ?, ?, {', '.join('?' * len(MONEY))}, ?)",
+                      k, code, o["name"][:200], *[round(o[f], 2) for f in MONEY], src)
+    r.cur.execute("UPDATE dbo.tax_pnd_files SET adopted = 1 WHERE k = ? AND part = ?", k, part)
+    return {"people": len(rows), "new": new}
+
+
+@fn
+def tax_pnd_adopt(r, p_key, p_part="", p_on=True):
+    """เปิด/ปิด "รับเข้าทะเบียน" ของ ภ.ง.ด.1 ชุดหนึ่ง — ใช้กับเงินได้ที่จ่ายนอกไฟล์เงินเดือน เช่น ค่าตอบแทนกรรมการ"""
+    _need(r, "page.tax", "data.tax.write", "field.salary.read")
+    k, part = _s(p_key, 10) or "", (_s(p_part, 40) or "").strip()
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", k):
+        raise E("รับเข้าได้เฉพาะ ภ.ง.ด.1 รายเดือน")
+    if not r.val("SELECT COUNT(*) FROM dbo.tax_pnd_files WHERE k = ? AND part = ?", k, part):
+        raise E("ไม่พบไฟล์ชุดนี้")
+    r.lock("tax_pnd")
+    who = _me(r)
+    if p_on:
+        res = _adopt(r, k, part, who)
+        _log(r, None, "pnd_adopt", f"รับ ภ.ง.ด.1 {k} ชุด{part or 'หลัก'} เข้าทะเบียน: {res['people']} คน" + (f" · สร้างรหัสใหม่ {res['new']} คน" if res["new"] else ""), who)
+        return res
+    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ? AND src = ?", k, f"pnd:{part}"[:60])
+    r.cur.execute("UPDATE dbo.tax_pnd_files SET adopted = 0 WHERE k = ? AND part = ?", k, part)
+    _log(r, None, "pnd_adopt", f"เลิกรับ ภ.ง.ด.1 {k} ชุด{part or 'หลัก'} เข้าทะเบียน", who)
+    return {"people": 0}
+
+
+@fn
+def tax_pnd_delete(r, p_key, p_part="", p_reason=None):
+    """ลบไฟล์ ภ.ง.ด.1 ชุดหนึ่ง (และยอดที่รับเข้าทะเบียนจากชุดนั้น)"""
+    _need(r, "page.tax", "data.tax.write", "field.salary.read")
+    k, part = _s(p_key, 10) or "", (_s(p_part, 40) or "").strip()
+    r.lock("tax_pnd")
+    r.cur.execute("DELETE FROM dbo.tax_income WHERE ym = ? AND src = ?", k, f"pnd:{part}"[:60])
+    r.cur.execute("DELETE FROM dbo.tax_pnd WHERE k = ? AND part = ?", k, part)
+    r.cur.execute("DELETE FROM dbo.tax_pnd_files WHERE k = ? AND part = ?", k, part)
+    _log(r, None, "pnd_delete", f"ลบ ภ.ง.ด.1 {k} ชุด{part or 'หลัก'}" + (f" · {_s(p_reason, 300)}" if p_reason else ""))
+    return True
 
 
 @fn
@@ -529,8 +642,9 @@ def tax_person_save(r, p_emp_code, p_row, p_reason=None):
 def _totals(r, y, code):
     rows = r.rows(None, f"SELECT ym, {', '.join(CERT_MONEY)} FROM dbo.tax_income WHERE ym LIKE ? AND emp_code = ? ORDER BY ym", f"{y}-%", code)
     t = {f: round(sum(float(x.get(f) or 0) for x in rows), 2) for f in CERT_MONEY}
-    t["months"] = ",".join(x["ym"][5:] for x in rows)
-    return t, len(rows)
+    ms = sorted({x["ym"] for x in rows})
+    t["months"] = ",".join(m[5:] for m in ms)
+    return t, len(ms)
 
 
 @fn

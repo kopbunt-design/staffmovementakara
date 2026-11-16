@@ -206,6 +206,16 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   Join Date and Total Income, skipping the "Income" subtotal; Excel's "Severance Pay/Advance Notice" → line 6 (Apr 2026 then equals
   the ไม่sum file), but Excel WHT can't split severance tax. `reconcileMonth` also flags "ประเภทเงินได้ไม่ตรง" when the per-person
   total matches ภ.ง.ด.1 but the split by type doesn't. Months saved before 2026-11-16 have no items — re-import them.
+- **ภ.ง.ด.1 files and income outside payroll** (user, 2026-11-16: directors' fees for people not in the system). HR's real files
+  are the RD Excel template (ลำดับ | บัตร ปชช | คำหน้า | ชื่อ | สกุล | เงินได้ตามมาตรา 401N/401S/402I/402E | วันเดือนปีที่จ่าย with a
+  BE year | เงินได้ | ภาษี | เงื่อนไข) → `parsePndSheet`; ภ.ง.ด.1 income types are 1 = 40(1), 2 = 40(1) at 3%, 3 = paid once on
+  leaving, 4/5 = 40(2) (`pndCode`, `pndField`). A month can have several filings (`part`: พนักงาน / กรรมการ / ยื่นเพิ่มเติม, guessed
+  from the file name; `tax_pnd_files` PK (k, part)). A part can be **adopted** (`tax_pnd_adopt`): its amounts become register rows
+  with `tax_income.src = 'pnd:<part>'` (payroll rows are `src = 'payroll'`; PK (ym, emp_code, src); `tax_year` sums per person-month
+  and returns `srcs` + `pay_inc`); people without a code get `EXT####` in `tax_people`; re-uploading an adopted part re-adopts.
+  The page suggests adopting when a part's per-person amounts don't match payroll (directors part, or ≥ half the rows) — this
+  also catches employees who are directors (จำรัส: salary in the staff part + fee in the directors part). Feb 2026 directors
+  were filed as 401N (40(1)). Payroll import/recalc/edit touch only `src = 'payroll'` (edit = new total − adopted rows).
 - ภ.ง.ด.1 file = pipe text from the RD program (`Pnd1_YYYY-MM.txt`, fields: 6 tax id, 8–10 name, 11–13 address/zip, 14 month,
   15 BE year, 19 income, 20 tax). Uploading it fills `tax_people` (tax id + address, never over HR's manual edits) and
   reconciles per person (`reconcileMonth`). A file with no month per line = ภ.ง.ด.1ก (`YYYY-1K`). The "ใบงาน ภ.ง.ด.1ก" Excel
