@@ -65,7 +65,11 @@ async function loadYear() {
     S.rows = rows || []; S.pnd = pnd || [];
   } else { S.rows = []; S.pnd = []; }
   S.tot = T.yearTotals(S.rows);
+  // ผู้มีเงินได้นอกเงินเดือน (กรรมการภายนอก ฯลฯ) = ไม่มีแถวเงินเดือนเลยทั้งปี — ไม่นับรวมในจำนวนพนักงาน
+  const pay = new Set(S.rows.filter(x => !x.srcs || x.srcs.includes("payroll")).map(x => x.emp_code));
+  S.out = new Set([...S.tot.keys()].filter(c => !pay.has(c)));
 }
+const isOut = c => S.out?.has(c);
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) { $("#fxMain").innerHTML = `<div class="card card-b" style="max-width:460px;margin:60px auto;text-align:center"><div class="card-t" style="justify-content:center">กรุณาเข้าสู่ระบบ</div>
@@ -149,7 +153,7 @@ function overview() {
       S.D.can_write ? `<a class="btn btn-g" href="#/months">${I.file}นำเข้าเงินเดือน</a>` : "")}
   <div class="hero">
     <div class="hero-top"><div><div class="hero-l">เงินได้พึงประเมินรวมทั้งปี (ถึงเดือนที่นำเข้า)</div><div class="hero-v">฿${bahtK(inc)}</div>
-      <div class="hero-l">${S.tot.size.toLocaleString()} คนที่มีเงินได้ในปี ${yr + 543}</div></div>
+      <div class="hero-l">พนักงานที่มีเงินได้ในปี ${yr + 543}: ${(S.tot.size - S.out.size).toLocaleString()} คน${S.out.size ? ` · ผู้มีเงินได้นอกเงินเดือน (เช่น กรรมการ) ${S.out.size} คน แยกต่างหาก` : ""}</div></div>
       <div><span class="hero-badge">${I.check}50 ทวิ ลงนามแล้ว ${cnt("signed")} / ${S.tot.size}</span></div></div>
     <div class="hero-split">
       <div class="hero-tile"><div class="l">ภาษีหัก ณ ที่จ่าย</div><div class="v gold">฿${bahtK(tax)}</div></div>
@@ -174,15 +178,17 @@ function people() {
   const sub = location.hash.split("/")[2]; if (sub && !S.fPeople) S.fPeople = sub;
   const q = S.q.trim().toLowerCase(), yr = String(S.year);
   const F = {
-    "": ["ทุกคน", () => true],
+    "": ["พนักงาน", c => !isOut(c)],
     noid: ["ไม่มี/เลขผิด", c => { const p = S.P.get(c); return !p?.tax_id || (S.D.can_write && !T.validTaxId(p.tax_id)); }],
     left: ["ลาออกในปี", c => (S.E.get(c)?.end_date || "").slice(0, 4) === yr],
     sev: ["มีเงินชดเชย", c => S.tot.get(c).sev > 0],
-    noemp: ["ไม่อยู่ในทะเบียนพนักงาน", c => !S.E.has(c)],
+    noemp: ["ไม่อยู่ในทะเบียนพนักงาน", c => !S.E.has(c) && !isOut(c)],
+    out: ["นอกเงินเดือน (กรรมการ ฯลฯ)", c => isOut(c)],
   };
+  if (!S.out.size) delete F.out;
   const list = [...S.tot.keys()].filter(c => (F[S.fPeople] || F[""])[1](c))
     .filter(c => !q || [c, nameOf(c), S.E.get(c)?.department, S.P.get(c)?.tax_id].join(" ").toLowerCase().includes(q)).sort();
-  render(`${head(`ปีภาษี ${S.year + 543}`, "รายได้รายคน", `${S.tot.size} คน · รวมทุกเดือนที่นำเข้า · กดแถวเพื่อดูรายเดือน แก้ข้อมูลผู้เสียภาษี และออก 50 ทวิ`,
+  render(`${head(`ปีภาษี ${S.year + 543}`, "รายได้รายคน", `พนักงาน ${S.tot.size - S.out.size} คน${S.out.size ? ` · นอกเงินเดือน ${S.out.size} คน (ไม่นับรวม)` : ""} · รวมทุกเดือนที่นำเข้า · กดแถวเพื่อดูรายเดือน แก้ข้อมูลผู้เสียภาษี และออก 50 ทวิ`,
       `<button class="btn" id="btnXl">${I.dl}Excel ทะเบียนทั้งปี</button>`)}
   <div class="card"><div class="card-h">
     <div class="seg" id="segP">${Object.entries(F).map(([k, [t, f]]) => `<button data-s="${k}" class="${S.fPeople === k ? "on" : ""}">${t} ${[...S.tot.keys()].filter(f).length}</button>`).join("")}</div>
@@ -468,7 +474,7 @@ function pndPage() {
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>เดือน</th><th class="r">ทะเบียน (คน / เงินได้ / ภาษี)</th><th class="r">ภ.ง.ด.1 ที่ยื่น</th><th class="r">ผลต่างเงินได้</th><th class="r">ผลต่างภาษี</th><th>ผล</th></tr></thead><tbody>
     ${Array.from({ length: 12 }, (_, i) => `${yr}-${String(i + 1).padStart(2, "0")}`).filter(m => byYM[m] || R[m]).map(m => { const rc = R[m], reg = byYM[m] || [];
       const ri = T.sumBy(reg, T.income), rt = T.sumBy(reg, T.taxAll);
-      return `<tr class="${rc?.issues.length ? "click" : ""}" data-pm="${m}"><td><b>${ymTH(m)}</b></td><td class="r money">${reg.length} · ${baht(ri)} · ${baht(rt)}</td>
+      return `<tr class="${rc?.issues.length ? "click" : ""}" data-pm="${m}"><td><b>${ymTH(m)}</b></td><td class="r money">${(o => o ? `${reg.length - o} <span class="small muted">+ นอกเงินเดือน ${o}</span>` : reg.length)(reg.filter(x => isOut(x.emp_code)).length)} · ${baht(ri)} · ${baht(rt)}</td>
         <td class="r money">${rc ? `${rc.totals.pnd.n} · ${baht(rc.totals.pnd.income)} · ${baht(rc.totals.pnd.tax)}` : "<span class='muted'>ยังไม่อัป</span>"}</td>
         <td class="r money ${rc && Math.abs(ri - rc.totals.pnd.income) >= .01 ? "neg" : ""}">${rc ? baht(ri - rc.totals.pnd.income) : ""}</td><td class="r money ${rc && Math.abs(rt - rc.totals.pnd.tax) >= .01 ? "neg" : ""}">${rc ? baht(rt - rc.totals.pnd.tax) : ""}</td>
         <td>${!rc ? "" : rc.issues.length ? `<span class="chip chip-red">ไม่ตรง ${rc.issues.length} คน</span>` : `<span class="chip chip-em">ตรงทุกคน</span>`}</td></tr>
