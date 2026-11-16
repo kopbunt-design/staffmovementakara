@@ -465,12 +465,13 @@ function pndPage() {
       <div><b>ลากไฟล์ ภ.ง.ด.1 / ภ.ง.ด.1ก มาวาง (หลายไฟล์ได้)</b><span class="small muted">Excel (บัตร ปชช · เงินได้ตามมาตรา · วันที่จ่าย · เงินได้ · ภาษี) หรือไฟล์ข้อความคั่นด้วย | · ชุดพนักงาน / กรรมการ / ยื่นเพิ่มเติม แยกไฟล์ได้ · ไม่มีเดือนในไฟล์ = ภ.ง.ด.1ก</span></div></label></div></div>` : ""}
   ${S.pimp.length ? `<div class="card mt"><div class="card-h"><div class="card-t">ตรวจก่อนบันทึก</div><div class="fx-actions"><button class="btn" id="pClear">ล้าง</button><button class="btn btn-p" id="pSave">${I.save}บันทึกทั้งหมด</button></div></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>ไฟล์</th><th>รอบ</th><th>ชุดที่ยื่น</th><th class="r">รายการ</th><th class="r">เงินได้</th><th class="r">ภาษี</th><th>ระบบตรวจพบ</th></tr></thead><tbody>
-    ${S.pimp.map((x, i) => { const o = x.rows && !x.k.endsWith("1K") ? outside(x.k, x.rows) : null, old = F.find(f => f.k === x.k && (f.part || "") === x.part);
-      return `<tr><td class="small">${esc(x.file)}</td><td>${x.error ? `<span class="neg">${esc(x.error)}</span>` : x.k.endsWith("1K") ? `ภ.ง.ด.1ก ${+x.k.slice(0, 4) + 543}` : `ภ.ง.ด.1 ${ymTH(x.k)}`}</td>
+    ${S.pimp.map((x, i) => { const wait = x.ymPick && !x.ymOk, o = x.rows && !x.k.endsWith("1K") && !wait ? outside(x.k, x.rows) : null, old = !wait && F.find(f => f.k === x.k && (f.part || "") === x.part);
+      return `<tr><td class="small">${esc(x.file)}</td><td>${x.error ? `<span class="neg">${esc(x.error)}</span>` : x.k.endsWith("1K") ? `ภ.ง.ด.1ก ${+x.k.slice(0, 4) + 543}` : x.ymPick ? `<select class="inp" data-ympick="${i}" style="width:190px">
+        <option value="">— เลือกรอบ —</option>${x.ymPick.map(([m, t]) => `<option value="${m}" ${x.ymOk && x.k === m ? "selected" : ""}>${ymTH(m)} (${t})</option>`).join("")}</select>` : `ภ.ง.ด.1 ${ymTH(x.k)}`}</td>
       <td>${x.error ? "" : `<input class="inp" list="partList" data-part="${i}" value="${esc(x.part)}" style="width:130px">`}</td>
       <td class="r">${x.rows?.length ?? ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "income")) : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "tax")) : ""}</td>
       <td class="small">${x.error ? "" : [old ? `แทนชุดเดิม (${old.rows_n} รายการ)` : "",
-        x.wrongYM ? `<span class="neg"><b>ชื่อไฟล์เป็น ${ymTH(x.wrongYM)} แต่วันที่จ่ายในไฟล์เป็น ${ymTH(x.k)}</b> — อาจเป็นไฟล์ที่คัดลอกมาแล้วยังไม่ได้แก้ ตรวจไฟล์ก่อน</span>` : "",
+        x.ymPick && !x.ymOk ? `<span class="neg"><b>ชื่อไฟล์เป็น ${ymTH(x.ymPick[0][0])} แต่วันที่จ่ายในไฟล์เป็น ${ymTH(x.ymPick[1][0])}</b> — เลือกรอบที่ยื่นจริงทางซ้าย (เช่น ยื่น เม.ย. แต่วันที่ในไฟล์ยังไม่ได้แก้)</span>` : "",
         x.unknown?.length ? `<span class="neg">รหัสเงินได้ที่ไม่รู้จัก: ${esc(x.unknown.join(", "))} — ถือเป็น 40(1)</span>` : "",
         o && o.n && !(x.part === "กรรมการ" || o.n >= o.all / 2) ? `${o.n} คนยอดไม่ตรงกับเงินเดือน — ดูในตารางกระทบยอดหลังบันทึก` :
         o && o.n ? `<div class="pn-hint"><b>${o.n} คน · ${baht(o.income)}</b> ไม่มีในไฟล์เงินเดือน ${ymTH(x.k)}${o.emp ? ` (เป็นพนักงาน ${o.emp} คน)` : ""}
@@ -506,6 +507,11 @@ function pndPage() {
   $("#pClear") && ($("#pClear").onclick = () => { S.pimp = []; pndPage(); });
   document.querySelectorAll("[data-part]").forEach(i => i.onchange = () => { S.pimp[+i.dataset.part].part = i.value.trim(); pndPage(); });
   document.querySelectorAll("[data-adopt]").forEach(c => c.onchange = () => { S.pimp[+c.dataset.adopt].adopt = c.checked; });
+  // ชื่อไฟล์กับวันที่จ่ายคนละเดือน → HR เลือกรอบ แล้วจับคู่/ตรวจเงินได้นอกเงินเดือนใหม่ตามเดือนนั้น
+  document.querySelectorAll("[data-ympick]").forEach(sel => sel.onchange = () => { const x = S.pimp[+sel.dataset.ympick];
+    if (!sel.value) { x.ymOk = false; pndPage(); return; }
+    x.k = sel.value; x.ymOk = true; x.rows = T.matchPnd(x.raw, [...S.P.values()], S.emps, S.rows.filter(y => y.ym === x.k));
+    const o = outside(x.k, x.rows); x.adopt = !!o?.n && (x.part === "กรรมการ" || o.n >= x.rows.length / 2); pndPage(); });
   document.querySelectorAll("[data-padopt]").forEach(b => b.onclick = async () => {
     const [k, part] = b.dataset.padopt.split("|"), on = b.dataset.on === "1";
     if (on && part !== "กรรมการ" && !confirm(`รับ ภ.ง.ด.1 ${ymTH(k)} ชุด${part || "หลัก"} เข้าทะเบียน = ยอดของชุดนี้จะถูก “บวกเพิ่ม” จากเงินเดือน — ใช้กับเงินได้ที่จ่ายนอกไฟล์เงินเดือนเท่านั้น (ชุดพนักงานที่ตรงกับเงินเดือนห้ามรับ ยอดจะซ้ำ) ต่อไหม?`)) return;
@@ -565,15 +571,15 @@ async function readPnd(files) {
       if (!k.startsWith(String(S.year))) throw new Error(`เป็นไฟล์ปี ${+k.slice(0, 4) + 543} — เลือกปีภาษีนั้นก่อน`);
       const rows = T.matchPnd(r.rows, people, S.emps, k.endsWith("1K") ? [] : S.rows.filter(x => x.ym === k)), part = T.guessPart(f.name), o = k.endsWith("1K") ? null : outside(k, rows);
       // ชุดกรรมการ หรือคนส่วนใหญ่ไม่มีในไฟล์เงินเดือนเดือนนั้น → เสนอให้รับเข้าทะเบียน
-      const ny = guessYM(f.name), wrongYM = ny && !k.endsWith("1K") && ny !== k ? ny : "";
-      S.pimp.push({ file: f.name, k, part, rows, unknown: r.unknown || [], wrongYM, adopt: !wrongYM && !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
+      const ny = guessYM(f.name), ymPick = ny && !k.endsWith("1K") && ny !== k && ny.startsWith(String(S.year)) ? [[ny, "ตามชื่อไฟล์"], [k, "ตามวันที่จ่ายในไฟล์"]] : null;
+      S.pimp.push({ file: f.name, k, part, rows, raw: r.rows, unknown: r.unknown || [], ymPick, adopt: !ymPick && !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
     } catch (e) { S.pimp.push({ file: f.name, error: e.message }); }
   }
   pndPage();
 }
 async function savePnd() {
-  const bad = S.pimp.filter(x => !x.error && x.wrongYM);
-  if (bad.length && !confirm(`${bad.map(x => `${x.file}: ชื่อไฟล์ ${ymTH(x.wrongYM)} แต่วันที่จ่าย ${ymTH(x.k)}`).join("\n")}\n\nจะบันทึกเป็นเดือนตามวันที่จ่าย (${bad.map(x => ymTH(x.k)).join(", ")}) และแทนชุดเดิมของเดือนนั้น — แน่ใจไหม`)) return;
+  const bad = S.pimp.filter(x => !x.error && x.ymPick && !x.ymOk);
+  if (bad.length) { toast(`เลือกรอบที่ยื่นจริงก่อน: ${bad.map(x => x.file).join(", ")}`, "error"); return; }
   for (const x of S.pimp.filter(x => !x.error)) {
     try {
       const r = await rpc("tax_pnd_save", { p_key: x.k, p_file: x.file, p_rows: x.rows, p_part: x.part || "" });
