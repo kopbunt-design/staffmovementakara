@@ -26,28 +26,47 @@ const idxOf = h => { const m = {}; h.forEach((k, i) => { const n = norm(k); if (
 const has = (o, ...ks) => ks.every(k => k in o);
 
 // ---------------------------------------------------------------- อ่านไฟล์เงินเดือน
-// เงินได้ 40(1) เก็บเป็น "รายการ" ทีละคอลัมน์ของไฟล์ (items: { คอลัมน์: ยอด } · ขาด/ลา/… เป็นค่าลบ) แล้ว inc401 = ผลรวมของรายการ
-// ที่ไม่อยู่ใน "รายการไม่นับเป็นเงินได้" (ตั้งค่าในหน้าเว็บ · user 2026-11-16) · ยอดรวมในไฟล์ที่อธิบายด้วยคอลัมน์ไม่ได้ → UNEXPLAINED
+// เงินได้เก็บเป็น "รายการ" ทีละคอลัมน์ของไฟล์ (items: { คอลัมน์: ยอด } · ขาด/ลา/… เป็นค่าลบ · ยอดรวมที่อธิบายด้วยคอลัมน์ไม่ได้ → UNEXPLAINED)
+// แล้วแยกเป็น 40(1) / ออกจากงาน / 40(2) / ไม่นับ ตาม "ประเภทเงินได้" ของแต่ละคอลัมน์ (HR ยืนยันในหน้าเว็บ · user 2026-11-16)
+// คอลัมน์ที่ยังไม่เคยยืนยัน → ระบบเสนอประเภทจากชื่อ (suggestType) และต้องยืนยันก่อนบันทึก
 // ตรวจแล้ว: YDP เงินเดือน…(ก่อน ขาด) = รวมรายได้ ทุกคน ก.ค.–ต.ค. 2569 · Excel (Join Date…Total Income ไม่นับ "Income" ที่เป็นยอดย่อย) = Total Income ม.ค.–ก.ค.
 export const UNEXPLAINED = "(ส่วนต่างที่ไม่ระบุคอลัมน์)";
-export const KIND_TH = { inc: "เงินได้ 40(1)", less: "หักขาด/ลา", sev: "เงินชดเชย", inc402: "เงินได้ 40(2)", off: "ไม่นับเป็นเงินได้" };
-const exSet = ex => ex instanceof Set ? ex : new Set(ex || []);
-export function incFrom(items, exclude) {
-  const ex = exSet(exclude); let s = 0;
-  for (const [k, v] of Object.entries(items || {})) if (!ex.has(k)) s += v;
-  return r2(s);
+export const LESS = ["ขาด", "ลา", "มาสาย", "ออกก่อน", "พักงาน"];
+// ประเภทเงินได้ → บรรทัดใน 50 ทวิ และประเภทใน ภ.ง.ด.1
+export const TYPES = {
+  inc: { th: "เงินเดือน ค่าจ้าง", law: "40(1)", line: "ข้อ 1", pnd: "1", field: "inc401" },
+  sev: { th: "ออกจากงาน (จ่ายครั้งเดียว)", law: "40(1)", line: "ข้อ 6", pnd: "2", field: "sev" },
+  inc402: { th: "ค่าตอบแทน / ค่านายหน้า", law: "40(2)", line: "ข้อ 2", pnd: "3", field: "inc402" },
+  off: { th: "ไม่ใช่เงินได้", law: "—", line: "ไม่ลง 50 ทวิ", pnd: null, field: null },
+};
+export const TYPE_KEYS = Object.keys(TYPES);
+const SUGGEST = [
+  [/ชดเชย|severance|บอกกล่าว|advance notice/i, "sev", "จ่ายเพราะออกจากงาน — ชื่อมีคำว่า “$&”"],
+  [/กรรมการ|director|ที่ปรึกษา|consult|นายหน้า|commission/i, "inc402", "ค่าตอบแทนที่ไม่ใช่ค่าจ้างพนักงาน — ชื่อมีคำว่า “$&”"],
+  [/เบิกเงินล่วงหน้า|เงินยืม|\bloan\b|reimburs|เงินคืนค่า|คืนค่าใช้จ่าย|ตามจริง/i, "off", "เงินยืม/เงินคืนค่าใช้จ่าย ไม่ใช่เงินได้ — ชื่อมีคำว่า “$&”"],
+];
+// ระบบเสนอประเภทจากชื่อคอลัมน์ → { type, why }
+export function suggestType(col) {
+  for (const [re, type, why] of SUGGEST) { const m = String(col).match(re); if (m) return { type, why: why.replace("$&", m[0]) }; }
+  return { type: "inc", why: "เงินที่ได้จากการจ้างงาน (เงินเดือน ค่าล่วงเวลา เบี้ยเลี้ยง สวัสดิการที่จ่ายเป็นเงิน)" };
 }
-// สรุปทีละคอลัมน์ไว้โชว์ก่อนบันทึก: { คอลัมน์: { kind, total, n } }
-function colAdd(cols, k, kind, v) { if (!v) return; const c = cols[k] ||= { kind, total: 0, n: 0 }; c.total = r2(c.total + v); c.n++; }
+const fixed = k => LESS.includes(k) || k === UNEXPLAINED;
+export const typeOf = (col, types = {}) => fixed(col) ? "inc" : types[col] || suggestType(col).type;
+// รายการ → { inc401, sev, inc402 } ตามประเภทของแต่ละคอลัมน์
+export function split(items, types = {}) {
+  const o = { inc401: 0, sev: 0, inc402: 0 };
+  for (const [k, v] of Object.entries(items || {})) { const f = TYPES[typeOf(k, types)].field; if (f) o[f] += v; }
+  return { inc401: r2(o.inc401), sev: r2(o.sev), inc402: r2(o.inc402) };
+}
+// สรุปทีละคอลัมน์ไว้โชว์ก่อนบันทึก: { คอลัมน์: { kind: inc|less, total, n } }
 function item(x, cols, k, kind, v) {
   if (!v) return;
-  colAdd(cols, k, kind, v);
-  if (kind === "sev") x.sev += v; else if (kind === "inc402") x.inc402 += v; else x.items[k] = r2((x.items[k] || 0) + v);
+  const c = cols[k] ||= { kind, total: 0, n: 0 }; c.total = r2(c.total + v); c.n++;
+  x.items[k] = r2((x.items[k] || 0) + v);
 }
-const kindOf = k => k === "เงินชดเชย1" || k === "เงินชดเชย2" ? "sev" : k === "ค่าตอบแทนกรรมการ" ? "inc402" : "inc";
-function finish(x, ex) { x.sev = r2(x.sev); x.inc402 = r2(x.inc402); x.inc401 = incFrom(x.items, ex); return x; }
+function finish(x, types) { Object.assign(x, split(x.items, types)); return x; }
 
-// sheets = { ชื่อแผ่น: aoa } · opts.exclude = ชื่อคอลัมน์ที่ไม่นับเป็นเงินได้
+// sheets = { ชื่อแผ่น: aoa } · opts.types = { คอลัมน์: inc|sev|inc402|off } ที่ HR ยืนยันแล้ว
 // → { format, rows: Map(code → {name, items, ...FIELDS}), skipped, cols }
 export function readPayroll(sheets, opts = {}) {
   for (const aoa of Object.values(sheets)) {
@@ -62,31 +81,30 @@ export function readPayroll(sheets, opts = {}) {
   throw new Error("ไม่รู้จักรูปแบบไฟล์ — ใช้ BeforeProcessYDP (TigerSoft), Payroll - <เดือน>.xlsx (แผ่น Salary Final) หรือ Payroll-Tigersoft_…-ไม่sum.xlsx");
 }
 
-const LESS = ["ขาด", "ลา", "มาสาย", "ออกก่อน", "พักงาน"];
 export function parseYDP(aoa, opts = {}) {
-  const ix = idxOf(aoa[0]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
+  const ix = idxOf(aoa[0]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, types = opts.types || {}; let skipped = 0;
   const h = (aoa[0] || []).map(norm);
   // คอลัมน์รายได้ = ตั้งแต่ "เงินเดือน" จนก่อน "ขาด" (ในไฟล์รวมกันได้ "รวมรายได้")
   const a = ix["เงินเดือน"] ?? -1, b = ix["ขาด"] ?? -1;
-  const incCols = a >= 0 && b > a ? h.map((k, i) => [k, i]).filter(([k, i]) => i >= a && i < b && k) : [];
+  const incCols = a >= 0 && b > a ? h.map((k, i) => [k, i]).filter(([k, i]) => i >= a && i < b && k)
+    : ["เงินชดเชย1", "เงินชดเชย2", "ค่าตอบแทนกรรมการ"].filter(k => k in ix).map(k => [k, ix[k]]);
   for (const r of aoa.slice(1)) {
     const c = code(r?.[ix["รหัสพนักงาน"]]); if (!isEmp(c)) continue;
     const x = { name: norm(r[ix["ชื่อ-นามสกุล"]]), items: {}, ...empty(),
       tax: r2(g(r, "ภาษี")), sev_tax: r2(g(r, "ภาษีเงินชดเชย")), sso: r2(g(r, "ประกันสังคม")), pvd: r2(g(r, "กองทุนสำรองเลี้ยงชีพ")),
       co_tax: r2(g(r, "ภาษีบริษัทจ่ายให้")), wef: r2(g(r, "กองทุนสงเคราะห์ลูกจ้าง")) };
     const pc = {}; let sum = 0;
-    for (const [k, i] of incCols) { const v = num(r[i]); sum += v; item(x, pc, k, kindOf(k), v); }
-    if (!incCols.length) { item(x, pc, "เงินชดเชย1", "sev", g(r, "เงินชดเชย1")); item(x, pc, "เงินชดเชย2", "sev", g(r, "เงินชดเชย2")); item(x, pc, "ค่าตอบแทนกรรมการ", "inc402", g(r, "ค่าตอบแทนกรรมการ")); sum = x.sev + x.inc402; }
+    for (const [k, i] of incCols) { const v = num(r[i]); sum += v; item(x, pc, k, "inc", v); }
     item(x, pc, UNEXPLAINED, "inc", r2(g(r, "รวมรายได้") - sum));
     for (const k of LESS) item(x, pc, k, "less", -g(r, k));
-    finish(x, ex);
+    finish(x, types);
     if (FIELDS.every(f => !x[f])) { skipped++; continue; }          // TigerSoft ใส่คนลาออกแล้วมาด้วย ยอดศูนย์ทั้งแถว
-    merge(cols, pc); add(rows, c, x, ex);
+    merge(cols, pc); add(rows, c, x, types);
   }
   return { rows, skipped, cols };
 }
 export function parseExcel(aoa, hi, opts = {}) {
-  const ix = idxOf(aoa[hi]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
+  const ix = idxOf(aoa[hi]), g = (r, k) => k in ix ? num(r[ix[k]]) : 0, rows = new Map(), cols = {}, types = opts.types || {}; let skipped = 0;
   const h = (aoa[hi] || []).map(norm), a = ix["Join Date"] ?? -1, t = ix["Total Income"];
   // คอลัมน์รายได้ = ระหว่าง Join Date กับ Total Income · "Income" = เงินเดือน + ค่ากะ (ยอดย่อย) ไม่นับซ้ำ
   const incCols = a >= 0 && t > a ? h.map((k, i) => [k, i]).filter(([k, i]) => i > a && i < t && k && !(k === "Income" && "Salary" in ix)) : [];
@@ -97,41 +115,46 @@ export function parseExcel(aoa, hi, opts = {}) {
     const pc = {}; let sum = 0;
     for (const [k, i] of incCols) { const v = num(r[i]); sum += v; item(x, pc, k, "inc", v); }
     item(x, pc, UNEXPLAINED, "inc", r2(g(r, "Total Income") - sum));
-    finish(x, ex);
+    finish(x, types);
     if (FIELDS.every(f => !x[f])) { skipped++; continue; }
-    merge(cols, pc); add(rows, c, x, ex);
+    merge(cols, pc); add(rows, c, x, types);
   }
   return { rows, skipped, cols };
 }
 export function parseTsHist(inc, ded, opts = {}) {
-  const rows = new Map(), cols = {}, ex = exSet(opts.exclude); let skipped = 0;
+  const rows = new Map(), cols = {}, types = opts.types || {}; let skipped = 0;
   const walk = (aoa, fn) => { const ix = idxOf(aoa[0] || []); if (!("รหัสพนักงาน" in ix)) return 0; let n = 0;
     for (const r of aoa.slice(1)) { const c = code(r?.[ix["รหัสพนักงาน"]]); if (!isEmp(c)) continue; n++; fn(c, r, ix); } return n; };
   const get = c => rows.get(c) || (rows.set(c, { name: "", items: {}, ...empty() }), rows.get(c));
   const SKIP = new Set(["CGM", "รหัสพนักงาน", "ชื่อ-นามสกุล", "ชื่อ"]);
   const nInc = walk(inc, (c, r, ix) => { const x = get(c);
-    for (const [k, i] of Object.entries(ix)) if (!SKIP.has(k)) item(x, cols, k, kindOf(k), num(r[i]));
+    for (const [k, i] of Object.entries(ix)) if (!SKIP.has(k)) item(x, cols, k, "inc", num(r[i]));
   });
   const nDed = walk(ded, (c, r, ix) => { const x = get(c), g = k => k in ix ? num(r[ix[k]]) : 0;
     for (const k of LESS) item(x, cols, k, "less", -g(k));
     x.tax += g("ภาษี"); x.sev_tax += g("ภาษีชดเชย") + g("ภาษีเงินชดเชย"); x.sso += g("ประกันสังคม"); x.pvd += g("กองทุนสำรองเลี้ยงชีพ"); });
   if (!nInc && !nDed) throw new Error("ไฟล์ รายได้/รายหัก ไม่มีคอลัมน์ “รหัสพนักงาน” ที่เป็นรหัส AKR — หัวตารางอาจเลื่อน (เช่น ไฟล์ ม.ค. 2569) ใช้ไฟล์ Excel เงินเดือนแทน");
-  for (const [c, x] of rows) { finish(x, ex); FIELDS.forEach(f => { x[f] = r2(x[f]); }); if (FIELDS.every(f => !x[f])) { rows.delete(c); skipped++; } }
+  for (const [c, x] of rows) { finish(x, types); FIELDS.forEach(f => { x[f] = r2(x[f]); }); if (FIELDS.every(f => !x[f])) { rows.delete(c); skipped++; } }
   return { rows, skipped, cols };
 }
 function merge(cols, pc) { for (const [k, c] of Object.entries(pc)) { const o = cols[k] ||= { kind: c.kind, total: 0, n: 0 }; o.total = r2(o.total + c.total); o.n += c.n; } }
 // คนเดียวมีหลายแถวในไฟล์ (เช่น จ่ายสองรอบ) → รวมกัน
-function add(rows, c, x, ex) {
+function add(rows, c, x, types) {
   const o = rows.get(c);
   if (!o) { rows.set(c, x); return; }
   for (const [k, v] of Object.entries(x.items || {})) o.items[k] = r2((o.items[k] || 0) + v);
-  FIELDS.forEach(f => { o[f] = r2(o[f] + x[f]); }); o.inc401 = incFrom(o.items, ex); o.name ||= x.name;
+  FIELDS.forEach(f => { o[f] = r2(o[f] + x[f]); }); Object.assign(o, split(o.items, types)); o.name ||= x.name;
 }
-// รายการไม่นับ → ทำเครื่องหมาย kind = off ในสรุปคอลัมน์ (คอลัมน์รายได้เท่านั้น)
-export function colList(cols, exclude) {
-  const ex = exSet(exclude);
-  return Object.entries(cols || {}).map(([k, c]) => ({ col: k, ...c, kind: c.kind === "inc" && ex.has(k) ? "off" : c.kind }))
-    .filter(c => c.total || c.n);
+// ประเภทเปลี่ยน → คิดแถวที่อ่านแล้วใหม่ (ไม่ต้องอ่านไฟล์ซ้ำ)
+export function reType(rows, types) { for (const x of rows.values()) Object.assign(x, split(x.items, types)); }
+// สรุปทีละคอลัมน์สำหรับหน้าจัดประเภท: { col, kind: less|fixed|col, type, isNew, why, total, n }
+export function colList(cols, types = {}) {
+  return Object.entries(cols || {}).filter(([, c]) => c.total || c.n).map(([k, c]) => {
+    if (c.kind === "less") return { col: k, ...c, kind: "less", type: "inc" };
+    if (k === UNEXPLAINED) return { col: k, ...c, kind: "fixed", type: "inc" };
+    const sg = suggestType(k);
+    return { col: k, ...c, kind: "col", type: types[k] || sg.type, isNew: !types[k], suggest: sg.type, why: sg.why };
+  });
 }
 
 // ---------------------------------------------------------------- ไฟล์ ภ.ง.ด.1 / ภ.ง.ด.1ก (ข้อความคั่นด้วย | จากโปรแกรมยื่นแบบ)
@@ -192,18 +215,26 @@ export const sumBy = (rows, f) => r2(rows.reduce((s, x) => s + num(typeof f === 
 
 // ---------------------------------------------------------------- กระทบยอดกับ ภ.ง.ด.1 รายเดือน
 // reg = แถว tax_income ของเดือน · pnd = แถว tax_pnd ของเดือน (จับคู่ emp_code แล้ว) → { totals, issues }
+// ประเภทเงินได้ใน ภ.ง.ด.1: 1 = 40(1) ทั่วไป · 2 = 40(1) จ่ายครั้งเดียวเพราะออกจากงาน · 3/4/5 = 40(2) (อยู่/ไม่อยู่ในไทย)
+const pndType = t => t === "2" ? "2" : ["3", "4", "5"].includes(String(t)) ? "3" : "1";
+const regByType = x => ({ 1: num(x.inc401), 2: num(x.sev), 3: num(x.inc402) });
+export const PND_TYPE_TH = { 1: "เงินเดือน 40(1)", 2: "ออกจากงาน", 3: "40(2)" };
 export function reconcileMonth(reg, pnd) {
   const R = new Map(reg.map(x => [x.emp_code, x])), P = new Map(), unmatched = [];
   for (const p of pnd) {
     if (!p.emp_code) { unmatched.push(p); continue; }
-    const o = P.get(p.emp_code) || (P.set(p.emp_code, { income: 0, tax: 0, tax_id: p.tax_id }), P.get(p.emp_code));
-    o.income = r2(o.income + num(p.income)); o.tax = r2(o.tax + num(p.tax));
+    const o = P.get(p.emp_code) || (P.set(p.emp_code, { income: 0, tax: 0, tax_id: p.tax_id, by: { 1: 0, 2: 0, 3: 0 } }), P.get(p.emp_code));
+    o.income = r2(o.income + num(p.income)); o.tax = r2(o.tax + num(p.tax)); o.by[pndType(p.type)] = r2(o.by[pndType(p.type)] + num(p.income));
   }
   const issues = [];
   for (const [c, x] of R) {
     const p = P.get(c), ri = income(x), rt = taxAll(x);
     if (!p) { if (ri || rt) issues.push({ emp_code: c, kind: "not_in_pnd", reg: { income: ri, tax: rt }, pnd: null }); continue; }
-    if (Math.abs(ri - p.income) >= 0.01 || Math.abs(rt - p.tax) >= 0.01) issues.push({ emp_code: c, kind: "diff", reg: { income: ri, tax: rt }, pnd: { income: p.income, tax: p.tax } });
+    if (Math.abs(ri - p.income) >= 0.01 || Math.abs(rt - p.tax) >= 0.01) { issues.push({ emp_code: c, kind: "diff", reg: { income: ri, tax: rt }, pnd: { income: p.income, tax: p.tax } }); continue; }
+    // ยอดรวมตรง แต่ลงคนละประเภท (เช่น ทะเบียนเป็นเงินเดือน แต่ยื่นเป็นเงินออกจากงาน)
+    const rb = regByType(x), bad = ["1", "2", "3"].filter(t => Math.abs(rb[t] - p.by[t]) >= 0.01);
+    if (bad.length) issues.push({ emp_code: c, kind: "type", reg: { income: ri, tax: rt }, pnd: { income: p.income, tax: p.tax },
+      detail: bad.map(t => `${PND_TYPE_TH[t]}: ทะเบียน ${rb[t].toLocaleString("en-US", { minimumFractionDigits: 2 })} · ภ.ง.ด.1 ${p.by[t].toLocaleString("en-US", { minimumFractionDigits: 2 })}`).join(" · ") });
   }
   for (const [c, p] of P) if (!R.has(c)) issues.push({ emp_code: c, kind: "not_in_reg", reg: null, pnd: { income: p.income, tax: p.tax } });
   for (const p of unmatched) issues.push({ emp_code: null, kind: "unmatched", name: norm(`${p.title}${p.first} ${p.last}`), tax_id: p.tax_id, reg: null, pnd: { income: p.income, tax: p.tax } });

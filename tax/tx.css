@@ -34,3 +34,31 @@
 .modal .mh { padding: 18px 22px; font-weight: 700; font-size: 16px; border-bottom: 1px solid var(--line-2); }
 .modal .mb { padding: 18px 22px; display: grid; gap: 12px; }
 .modal .mf { padding: 14px 22px; display: flex; justify-content: flex-end; gap: 10px; background: #F8FAFD; }
+
+/* จัดประเภทเงินได้ทีละคอลัมน์ของไฟล์ (user 2026-11-16) */
+.ty-sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 16px 20px 4px; }
+@media (max-width: 900px) { .ty-sum { grid-template-columns: repeat(2, 1fr); } }
+.ty-tile { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; position: relative; overflow: hidden; }
+.ty-tile::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--c); }
+.ty-tile .l { font-size: 11.5px; color: var(--ink-3); letter-spacing: .02em; display: flex; justify-content: space-between; gap: 6px; }
+.ty-tile .l b { color: var(--c); font-weight: 700; }
+.ty-tile .v { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.ty-tile .s { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.t-inc { --c: var(--em-600); } .t-sev { --c: #B57F00; } .t-inc402 { --c: var(--navy-600); } .t-off { --c: var(--red-600); }
+.ty-new { margin: 12px 20px 4px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(90deg, #FFF7E0, #FFFBEF); border: 1px solid #F1DFA8;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.ty-new .ic { width: 30px; height: 30px; border-radius: 9px; background: var(--gold-500); color: var(--navy-950); display: grid; place-items: center; font-weight: 800; flex: none; }
+.ty-new .tx { flex: 1; min-width: 220px; }
+.tseg { display: inline-flex; background: var(--line-2); border-radius: 11px; padding: 3px; gap: 2px; }
+.tseg button { border: 0; background: transparent; padding: 4px 10px; border-radius: 8px; font: inherit; font-size: 12px; line-height: 1.25; color: var(--ink-2);
+  cursor: pointer; white-space: nowrap; text-align: center; transition: background .15s, color .15s; }
+.tseg button small { display: block; font-size: 10px; opacity: .75; }
+.tseg button:hover:not(.on) { background: #fff; }
+.tseg button.on { background: var(--c); color: #fff; box-shadow: 0 2px 6px -2px var(--c); }
+.tseg.pending { box-shadow: 0 0 0 2px #F1DFA8; }
+.tseg.pending button.sug:not(.on) { outline: 1.5px dashed var(--c); outline-offset: -2px; color: var(--c); }
+.tseg[disabled] button { cursor: default; }
+.ty-name { font-weight: 600; } .ty-why { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.chip-new { background: var(--gold-500); color: var(--navy-950); font-weight: 700; }
+.ty-row.off td { color: var(--ink-3); } .ty-row.off .money { text-decoration: line-through; }
+.ty-fixed { font-size: 12px; color: var(--ink-3); }

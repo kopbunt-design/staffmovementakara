@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/tax-calc.js`).replace(/^export /gm, "");
-const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, incFrom, colList, UNEXPLAINED };`)();
+const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const pick = (x, ...k) => Object.fromEntries(k.map(f => [f, x[f]]));
@@ -69,18 +69,26 @@ eq(T.pnd1kRows([{ seq: 1, emp_code: "A", person: { tax_id: "1" }, tot: { inc401:
    [["40(1) เงินเดือน ค่าจ้าง", 10, 1], ["40(1) จ่ายครั้งเดียวเพราะเหตุออกจากงาน", 5, 0]], "ใบงาน ภ.ง.ด.1ก แยกประเภทเงินได้");
 eq([T.bahtText(1234.5), T.bahtText(21), T.bahtText(11000000), T.bahtText(0.25)], ["หนึ่งพันสองร้อยสามสิบสี่บาทห้าสิบสตางค์", "ยี่สิบเอ็ดบาทถ้วน", "สิบเอ็ดล้านบาทถ้วน", "ยี่สิบห้าสตางค์"], "จำนวนเงินตัวอักษร");
 
-// รายการไม่นับเป็นเงินได้ (user 2026-11-16): เงินได้ 40(1) = ผลรวมรายการที่นับ · ขาด/ลาเป็นค่าลบ · ส่วนต่างที่ไม่มีคอลัมน์แยกบรรทัด
+// ประเภทเงินได้ทีละคอลัมน์ (user 2026-11-16): ข้อ 1 เงินเดือน / ข้อ 6 ออกจากงาน / ข้อ 2 40(2) / ไม่นับ · ขาด/ลาเป็นค่าลบ
 const yx = [["รหัสพนักงาน", "ชื่อ-นามสกุล", "เงินเดือน", "เบิกเงินล่วงหน้า", "เงินชดเชย1", "ค่าตอบแทนกรรมการ", "ค่าเดินทางตามจริง", "ขาด", "ลา", "ภาษี", "รวมรายได้"],
   ["AKR1", "ก ข", 30000, 5000, 0, 0, 1200, 0, 500, 800, 36200], ["AKR2", "ค ง", 20000, 0, 100000, 0, 0, 0, 0, 0, 120100]];
-const y0 = T.readPayroll({ S: yx }), y1 = T.readPayroll({ S: yx }, { exclude: ["เบิกเงินล่วงหน้า", "ค่าเดินทางตามจริง"] });
-eq([y0.rows.get("AKR1").inc401, y1.rows.get("AKR1").inc401], [35700, 29500], "ไม่นับเบิกเงินล่วงหน้า + ค่าเดินทางตามจริง");
+const y0 = T.readPayroll({ S: yx });
+eq(pick(y0.rows.get("AKR1"), "inc401", "sev"), { inc401: 29500, sev: 0 }, "ไม่ยืนยัน = ใช้ที่ระบบเสนอ (เบิกเงินล่วงหน้า/ตามจริง = ไม่นับ)");
 eq(y0.rows.get("AKR1").items, { "เงินเดือน": 30000, "เบิกเงินล่วงหน้า": 5000, "ค่าเดินทางตามจริง": 1200, "ลา": -500 }, "เก็บยอดทีละคอลัมน์ · ลาเป็นค่าลบ");
-eq([y0.rows.get("AKR2").inc401, y0.rows.get("AKR2").sev, y0.rows.get("AKR2").items[T.UNEXPLAINED]], [20100, 100000, 100], "รวมรายได้ไม่ตรงคอลัมน์ → ส่วนต่างแยกบรรทัด (ยังนับ)");
-eq(T.colList(y0.cols, ["ค่าเดินทางตามจริง"]).map(c => [c.col, c.kind, c.total]).sort(),
-   [["เงินเดือน", "inc", 50000], ["เบิกเงินล่วงหน้า", "inc", 5000], ["เงินชดเชย1", "sev", 100000], ["ค่าเดินทางตามจริง", "off", 1200], [T.UNEXPLAINED, "inc", 100], ["ลา", "less", -500]].sort(), "สรุปทีละคอลัมน์ · รายการไม่นับ = off");
-eq(T.incFrom({ a: 10, b: 5, c: -2 }, new Set(["b"])), 8, "incFrom");
+eq([y0.rows.get("AKR2").inc401, y0.rows.get("AKR2").sev, y0.rows.get("AKR2").items[T.UNEXPLAINED]], [20100, 100000, 100], "เงินชดเชย → ข้อ 6 · ส่วนต่างแยกบรรทัด");
+const y1 = T.readPayroll({ S: yx }, { types: { "เบิกเงินล่วงหน้า": "inc", "เงินชดเชย1": "inc", "ค่าเดินทางตามจริง": "inc402" } });
+eq(pick(y1.rows.get("AKR1"), "inc401", "inc402"), { inc401: 34500, inc402: 1200 }, "HR ยืนยันประเภทเอง ทับที่ระบบเสนอ");
+eq(pick(y1.rows.get("AKR2"), "inc401", "sev"), { inc401: 120100, sev: 0 }, "เงินชดเชยตั้งเป็นข้อ 1 ได้");
+T.reType(y1.rows, {}); eq(y1.rows.get("AKR2").sev, 100000, "reType คิดใหม่ไม่ต้องอ่านไฟล์ซ้ำ");
+eq(T.colList(y0.cols, { "เงินเดือน": "inc" }).filter(c => c.kind === "col").map(c => [c.col, c.type, c.isNew]).sort(),
+   [["ค่าเดินทางตามจริง", "off", true], ["เงินชดเชย1", "sev", true], ["เงินเดือน", "inc", false], ["เบิกเงินล่วงหน้า", "off", true]].sort(), "คอลัมน์ที่ยังไม่ยืนยัน = ใหม่");
+eq(["Severance Pay/Advance Notice", "AL & Compensate (Resigned)", "ค่าตอบแทนเลขานุการบริษัท", "ค่าตอบแทนกรรมการ", "เงินจ่ายคืนวันลา", "เบี้ยขยัน"].map(c => T.suggestType(c).type),
+   ["sev", "inc", "inc", "inc402", "inc", "inc"], "ระบบเสนอประเภทจากชื่อ");
 const xx = [["x"], ["CGM", "Employee No.", "ชื่อ", "นามสกุล", "Join Date", "Salary", "Shift Allowance", "Income", "ERT Training", "Total Income", "PVD", "SSO", "WHT"],
   ["C1", "AKR1", "ก", "ข", 1, 30000, 1000, 31000, 500, 31500, 0, 750, 100]];
-const xr = T.readPayroll({ "Salary Final": xx }, { exclude: ["ERT Training"] });
+const xr = T.readPayroll({ "Salary Final": xx }, { types: { "ERT Training": "off" } });
 eq([xr.rows.get("AKR1").inc401, xr.rows.get("AKR1").items], [31000, { Salary: 30000, "Shift Allowance": 1000, "ERT Training": 500 }], "Excel: ไม่นับคอลัมน์ Income (ยอดย่อย) ซ้ำ");
+// กระทบยอดแยกประเภท: ยอดรวมตรงแต่ยื่นเป็นเงินออกจากงาน
+const rcT = T.reconcileMonth([{ emp_code: "A", inc401: 100, sev: 0, inc402: 0, tax: 1, sev_tax: 0 }], [{ emp_code: "A", type: "2", income: 100, tax: 1 }]);
+eq(rcT.issues.map(i => i.kind), ["type"], "ภ.ง.ด.1 ประเภทเงินได้ไม่ตรง");
 console.log(F ? `ไม่ผ่าน ${F} / ${P + F}` : `ผ่านทั้งหมด ${P} เคส`);

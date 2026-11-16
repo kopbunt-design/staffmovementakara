@@ -195,13 +195,17 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   severance − ค่าตอบแทนกรรมการ; tax = ภาษี + ภาษีเงินชดเชย. Checked: Aug 2026 PND1 file vs TigerSoft 489/489 people identical
   (incl. DAY… daily workers — every code prefix is kept, not only AKR); Feb/Jun Excel = tshist for every person.
   ค่าตอบแทนกรรมการ = 40(2) (line 2 of the form); severance = line 6 "อื่น ๆ — จ่ายครั้งเดียวเพราะเหตุออกจากงาน".
-- **Income is kept per file column** (user, 2026-11-16: "what if some items aren't taxable income?"): parsers store `items`
-  {column: amount} per person (ขาด/ลา… negative; total not explained by columns → `UNEXPLAINED`), and 40(1) = sum of items
-  not in the exclude list (`incFrom`). YDP income columns = เงินเดือน … before ขาด (= รวมรายได้ for everyone Jul–Oct 2026);
-  Excel = between Join Date and Total Income, skipping the "Income" subtotal (= Total Income Jan–Jul). The exclude list
-  (`tax_settings` k=exclude, RPC `tax_exclude_save`) is set with "ไม่นับ" on the import page's column table; `tax_recalc`
-  re-applies it to saved months (`tax_income.items`), skipping rows HR edited by hand. The server recomputes 40(1) from items
-  on save. Months saved before 2026-11-16 have no items — re-import them.
+- **Income is kept per file column and every column has an income type** (user, 2026-11-16): parsers store `items`
+  {column: amount} per person (ขาด/ลา… negative → line 1; total not explained by columns → `UNEXPLAINED`, line 1). Each income
+  column has a type — `inc` 40(1) line 1 (ภ.ง.ด.1 type 1) · `sev` termination lump sum line 6 (type 2) · `inc402` 40(2) line 2
+  (type 3) · `off` not income — and `split(items, types)` gives inc401/sev/inc402. HR confirms types on the import page
+  ("จัดประเภทเงินได้", `tax_settings` k=types, RPC `tax_types_save`); unconfirmed columns show "ใหม่" with a suggestion from the
+  name (`suggestType`: ชดเชย/severance/บอกกล่าว → sev, กรรมการ/ที่ปรึกษา/นายหน้า → inc402, เบิกเงินล่วงหน้า/เงินยืม/ตามจริง → off) and
+  `tax_month_save` refuses rows with unconfirmed columns. The server recomputes the split on save; `tax_recalc` re-applies types to
+  saved months (skips rows edited by hand). YDP income columns = เงินเดือน … before ขาด (= รวมรายได้ Jul–Oct 2026); Excel = between
+  Join Date and Total Income, skipping the "Income" subtotal; Excel's "Severance Pay/Advance Notice" → line 6 (Apr 2026 then equals
+  the ไม่sum file), but Excel WHT can't split severance tax. `reconcileMonth` also flags "ประเภทเงินได้ไม่ตรง" when the per-person
+  total matches ภ.ง.ด.1 but the split by type doesn't. Months saved before 2026-11-16 have no items — re-import them.
 - ภ.ง.ด.1 file = pipe text from the RD program (`Pnd1_YYYY-MM.txt`, fields: 6 tax id, 8–10 name, 11–13 address/zip, 14 month,
   15 BE year, 19 income, 20 tax). Uploading it fills `tax_people` (tax id + address, never over HR's manual edits) and
   reconciles per person (`reconcileMonth`). A file with no month per line = ภ.ง.ด.1ก (`YYYY-1K`). The "ใบงาน ภ.ง.ด.1ก" Excel

@@ -169,12 +169,19 @@ def _j(v):
 
 
 UNEXPLAINED = "(ส่วนต่างที่ไม่ระบุคอลัมน์)"     # ตรงกับ js/tax-calc.js
+LESS = ("ขาด", "ลา", "มาสาย", "ออกก่อน", "พักงาน")
+TYPE_FIELD = {"inc": "inc401", "sev": "sev", "inc402": "inc402", "off": None}
 
 
-def _exclude(r):
-    """ชื่อคอลัมน์ในไฟล์เงินเดือนที่ไม่นับเป็นเงินได้ 40(1) (ตั้งในหน้าเว็บ)"""
-    v = _j(r.val("SELECT v FROM dbo.tax_settings WHERE k = 'exclude'"))
-    return [str(x) for x in v] if isinstance(v, list) else []
+def _types(r):
+    """ประเภทเงินได้ของแต่ละคอลัมน์ในไฟล์เงินเดือน { คอลัมน์: inc|sev|inc402|off } ที่ HR ยืนยันแล้ว
+    (รายการ "ไม่นับ" แบบเดิม k=exclude ถูกรวมเป็น off)"""
+    v = _j(r.val("SELECT v FROM dbo.tax_settings WHERE k = 'types'"))
+    out = {str(k): t for k, t in v.items() if t in TYPE_FIELD} if isinstance(v, dict) else {}
+    old = _j(r.val("SELECT v FROM dbo.tax_settings WHERE k = 'exclude'"))
+    for k in old if isinstance(old, list) else []:
+        out.setdefault(str(k), "off")
+    return out
 
 
 def _items(v):
@@ -188,8 +195,18 @@ def _items(v):
     return out
 
 
-def _inc_from(items, ex):
-    return round(sum(v for k, v in items.items() if k not in ex), 2)
+def _fixed(k):
+    return k in LESS or k == UNEXPLAINED
+
+
+def _split(items, types):
+    """รายการ → inc401 / sev / inc402 ตามประเภท (คอลัมน์ที่ยังไม่ยืนยัน = เงินเดือน แต่ tax_month_save ไม่รับ)"""
+    o = {"inc401": 0.0, "sev": 0.0, "inc402": 0.0}
+    for k, v in items.items():
+        f = "inc401" if _fixed(k) else TYPE_FIELD.get(types.get(k, "inc"))
+        if f:
+            o[f] += float(v or 0)
+    return {k: round(v, 2) for k, v in o.items()}
 
 
 def _cert_out(c, money):
@@ -224,7 +241,7 @@ def tax_data(r, p_year=None):
     y = _year(p_year or _today_bkk()[:4])
     page, write, money = r.has_perm("page.tax"), r.has_perm("data.tax.write"), r.has_perm("field.salary.read")
     out = {"year": y, "can_write": write and money, "can_sign": sign, "can_money": money and page, "page": page,
-           "settings": _settings(r), "me": r.uid, "exclude": _exclude(r)}
+           "settings": _settings(r), "me": r.uid, "types": _types(r)}
     if page:
         out["months"] = r.rows(None, "SELECT * FROM dbo.tax_months WHERE ym LIKE ? ORDER BY ym", f"{y}-%")
         for m in out["months"]:
@@ -287,8 +304,11 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
     ym = _ym(p_ym)
     r.lock("tax_month")
     who = _me(r)
-    ex = set(_exclude(r))
+    types = _types(r)
     seen, batch, inc_t, tax_t = set(), [], 0.0, 0.0
+    new = sorted({k for x in p_rows or [] for k in _items(x.get("items")) if not _fixed(k) and k not in types})
+    if new:
+        raise E("มีรายการที่ยังไม่ได้ยืนยันประเภทเงินได้: " + ", ".join(new[:10]))
     for x in p_rows or []:
         code = (_s(x.get("emp_code"), 40) or "").upper()
         if not code or code in seen:
@@ -296,8 +316,9 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
         seen.add(code)
         items = _items(x.get("items"))
         vals = [_n(x.get(f)) for f in MONEY]
-        if items:                                    # เงินได้ 40(1) คิดจากรายการ ตามรายการไม่นับปัจจุบัน
-            vals[0] = _inc_from(items, ex)
+        if items:                                    # 40(1) / ออกจากงาน / 40(2) คิดจากรายการ ตามประเภทที่ยืนยันแล้ว
+            sp = _split(items, types)
+            vals[0], vals[1], vals[2] = sp["inc401"], sp["inc402"], sp["sev"]
         inc_t += vals[0] + vals[1] + vals[2]
         tax_t += vals[3] + vals[4]
         batch.append((ym, code, _s(x.get("name"), 200), *vals, json.dumps(items, ensure_ascii=False) if items else None))
@@ -329,44 +350,52 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
 
 
 @fn
-def tax_exclude_save(r, p_items, p_reason=None):
-    """รายการ (ชื่อคอลัมน์) ที่ไม่นับเป็นเงินได้ 40(1) — ใช้กับไฟล์ที่นำเข้าหลังจากนี้ · เดือนที่บันทึกแล้วใช้ tax_recalc"""
+def tax_types_save(r, p_types, p_reason=None):
+    """ยืนยัน/เปลี่ยนประเภทเงินได้ของคอลัมน์ { คอลัมน์: inc|sev|inc402|off } (รวมกับของเดิม) — เดือนที่บันทึกแล้วใช้ tax_recalc"""
     _need(r, "page.tax", "data.tax.write", "field.salary.read")
-    new = sorted({str(x).strip()[:100] for x in (p_items or []) if str(x).strip()} - {UNEXPLAINED})
-    old = _exclude(r)
-    if new == old:
-        return {"exclude": new}
-    v = json.dumps(new, ensure_ascii=False)
-    if r.val("SELECT COUNT(*) FROM dbo.tax_settings WHERE k = 'exclude'"):
-        r.cur.execute("UPDATE dbo.tax_settings SET v = ?, updated_at = ?, updated_by_name = ? WHERE k = 'exclude'", v, _now(), _me(r))
+    cur = _types(r)
+    ch = []
+    for k, t in (p_types or {}).items() if isinstance(p_types, dict) else []:
+        k = str(k).strip()[:100]
+        if not k or _fixed(k):
+            continue
+        if t not in TYPE_FIELD:
+            raise E(f"ประเภทไม่ถูกต้อง: {t}")
+        if cur.get(k) != t:
+            ch.append(f"{k}: {cur.get(k) or 'ใหม่'} → {t}")
+            cur[k] = t
+    if not ch:
+        return {"types": cur}
+    v = json.dumps(cur, ensure_ascii=False)
+    if r.val("SELECT COUNT(*) FROM dbo.tax_settings WHERE k = 'types'"):
+        r.cur.execute("UPDATE dbo.tax_settings SET v = ?, updated_at = ?, updated_by_name = ? WHERE k = 'types'", v, _now(), _me(r))
     else:
-        r.cur.execute("INSERT INTO dbo.tax_settings (k, v, updated_at, updated_by_name) VALUES ('exclude', ?, ?, ?)", v, _now(), _me(r))
-    add, rem = [x for x in new if x not in old], [x for x in old if x not in new]
-    _log(r, None, "exclude", "รายการไม่นับเป็นเงินได้: " + "; ".join(([f"เพิ่ม {', '.join(add)}"] if add else []) + ([f"เอาออก {', '.join(rem)}"] if rem else []))
-         + (f" · {_s(p_reason, 300)}" if p_reason else ""))
-    return {"exclude": new}
+        r.cur.execute("INSERT INTO dbo.tax_settings (k, v, updated_at, updated_by_name) VALUES ('types', ?, ?, ?)", v, _now(), _me(r))
+    _log(r, None, "types", "ประเภทเงินได้: " + "; ".join(ch)[:1800] + (f" · {_s(p_reason, 200)}" if p_reason else ""))
+    return {"types": cur}
 
 
 @fn
 def tax_recalc(r, p_year):
-    """คิดเงินได้ 40(1) ของเดือนที่บันทึกแล้วใหม่ตามรายการไม่นับปัจจุบัน · แถวที่ HR แก้มือ (edited_note) ไม่แตะ"""
+    """คิดเงินได้ (40(1) / ออกจากงาน / 40(2)) ของเดือนที่บันทึกแล้วใหม่ตามประเภทปัจจุบัน · แถวที่ HR แก้มือ (edited_note) ไม่แตะ"""
     _need(r, "page.tax", "data.tax.write", "field.salary.read")
     y = _year(p_year)
     r.lock("tax_month")
-    ex = set(_exclude(r))
+    types = _types(r)
     changed, edited, noitems, months = 0, [], 0, set()
-    for x in r.rows(None, "SELECT ym, emp_code, inc401, items, edited_note FROM dbo.tax_income WHERE ym LIKE ?", f"{y}-%"):
+    for x in r.rows(None, "SELECT ym, emp_code, inc401, inc402, sev, items, edited_note FROM dbo.tax_income WHERE ym LIKE ?", f"{y}-%"):
         items = _j(x["items"])
         if not isinstance(items, dict) or not items:
             noitems += 1
             continue
-        v = _inc_from({k: float(n or 0) for k, n in items.items()}, ex)
-        if abs(v - float(x["inc401"] or 0)) < 0.005:
+        sp = _split({k: float(n or 0) for k, n in items.items()}, types)
+        if all(abs(sp[f] - float(x[f] or 0)) < 0.005 for f in sp):
             continue
         if x["edited_note"]:
             edited.append(f"{x['emp_code']} {x['ym']}")
             continue
-        r.cur.execute("UPDATE dbo.tax_income SET inc401 = ? WHERE ym = ? AND emp_code = ?", v, x["ym"], x["emp_code"])
+        r.cur.execute("UPDATE dbo.tax_income SET inc401 = ?, sev = ?, inc402 = ? WHERE ym = ? AND emp_code = ?",
+                      sp["inc401"], sp["sev"], sp["inc402"], x["ym"], x["emp_code"])
         changed += 1
         months.add(x["ym"])
     for ym in months:
