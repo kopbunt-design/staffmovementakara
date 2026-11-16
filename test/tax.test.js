@@ -50,6 +50,15 @@ const m = T.matchPnd(pnd.rows, [{ emp_code: "AKR9", tax_id: "3100600123459" }], 
 eq(m.map(x => x.emp_code), ["AKR1", "AKR9"], "จับคู่ด้วยชื่อ / เลขที่รู้แล้ว");
 const dup = T.matchPnd(pnd.rows.slice(0, 1), [], [{ emp_code: "A", firstname_th: "ก", lastname_th: "ข" }, { emp_code: "B", firstname_th: "ก", lastname_th: "ข" }]);
 eq(dup[0].emp_code, null, "ชื่อซ้ำสองคน → ไม่เดา");
+{ // ชื่อซ้ำ (กลับเข้าทำงานใหม่) → คนที่มียอดเดือนนั้น · เปลี่ยนนามสกุล → ชื่อ + ยอดตรง · ชื่อจากไฟล์เงินเดือนของพนักงานที่เปลี่ยนนามสกุลในทะเบียน
+  const emps = [{ emp_code: "OLD", firstname_th: "นิคม", lastname_th: "คันทอง" }, { emp_code: "NEW", firstname_th: "นิคม", lastname_th: "คันทอง" },
+    { emp_code: "R", firstname_th: "รวิวรรณ", lastname_th: "สาดี" }, { emp_code: "W", firstname_th: "วัชระ", lastname_th: "จันทร์แจ่ม" }, { emp_code: "X", firstname_th: "สมชาย", lastname_th: "ใจดี" }];
+  const ppl = [{ emp_code: "W", first_th: "วัชระ", last_th: "ดอกแก้ว" }];
+  const rg = [{ emp_code: "NEW", inc401: 16313 }, { emp_code: "R", inc401: 39900 }, { emp_code: "W", inc401: 24463 }, { emp_code: "X", inc401: 39900 }];
+  const rows = [{ title: "นาย", first: "นิคม", last: "คันทอง", income: 16313, tax: 0 }, { title: "นาง", first: "รวิวรรณ", last: "บุหงางาม", income: 39900, tax: 0 },
+    { title: "นาย", first: "วัชระ", last: "ดอกแก้ว", income: 24463, tax: 0 }, { title: "", first: "นายสมศรี", last: "มีสุข", income: 39900, tax: 0 }];
+  eq(T.matchPnd(rows, ppl, emps, rg).map(x => x.emp_code), ["NEW", "R", "W", null], "จับคู่ชื่อซ้ำ / เปลี่ยนนามสกุล / ชื่อจากไฟล์เงินเดือน · ยอดตรงแต่ชื่อไม่ตรง → ไม่เดา");
+}
 
 // กระทบยอด
 const reg = [{ emp_code: "AKR1", inc401: 30500, inc402: 0, sev: 0, tax: 800, sev_tax: 0 }, { emp_code: "AKR2", inc401: 100, inc402: 0, sev: 0, tax: 0, sev_tax: 0 }];

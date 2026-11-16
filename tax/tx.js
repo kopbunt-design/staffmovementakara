@@ -112,6 +112,12 @@ function recon() {
   const byYM = {}, pByK = {};
   for (const r of S.rows) (byYM[r.ym] ||= []).push(r);
   for (const p of S.pnd) (pByK[p.k] ||= []).push({ ...p, first: p.first_th, last: p.last_th });
+  // แถวที่บันทึกไว้โดยจับคู่ไม่ได้ → ลองจับใหม่ด้วยกฎล่าสุด (ชื่อซ้ำ / เปลี่ยนนามสกุล)
+  const ppl = [...S.P.values()];
+  for (const [k, list] of Object.entries(pByK)) if (list.some(p => !p.emp_code)) {
+    const m = T.matchPnd(list.filter(p => !p.emp_code), ppl, S.emps || [], k.endsWith("1K") ? [] : (byYM[k] || []).filter(x => !list.some(p => p.emp_code === x.emp_code)));
+    pByK[k] = [...list.filter(p => p.emp_code), ...m];
+  }
   const out = {};
   for (const f of S.D.pnd || []) if (!f.k.endsWith("1K")) out[f.k] = T.reconcileMonth(byYM[f.k] || [], pByK[f.k] || []);
   return { out, byYM, pByK };
@@ -544,8 +550,6 @@ function filesCard(F) {
 }
 async function readPnd(files) {
   const people = [...S.P.values()];
-  // คนที่ไม่อยู่ในทะเบียนพนักงาน (รายวัน DAY… / กรรมการ) จับคู่ด้วยชื่อที่เก็บจากไฟล์เงินเดือน
-  const names = [...S.emps, ...people.filter(p => !S.E.has(p.emp_code) && p.first_th).map(p => ({ emp_code: p.emp_code, firstname_th: p.first_th, lastname_th: p.last_th }))];
   for (const f of files) {
     try {
       let r;
@@ -558,7 +562,7 @@ async function readPnd(files) {
       if (r.months.length > 1) throw new Error(`มีหลายเดือนในไฟล์เดียว (${r.months.join(", ")})`);
       const k = r.months[0] || `${S.year}-1K`;
       if (!k.startsWith(String(S.year))) throw new Error(`เป็นไฟล์ปี ${+k.slice(0, 4) + 543} — เลือกปีภาษีนั้นก่อน`);
-      const rows = T.matchPnd(r.rows, people, names), part = T.guessPart(f.name), o = k.endsWith("1K") ? null : outside(k, rows);
+      const rows = T.matchPnd(r.rows, people, S.emps, k.endsWith("1K") ? [] : S.rows.filter(x => x.ym === k)), part = T.guessPart(f.name), o = k.endsWith("1K") ? null : outside(k, rows);
       // ชุดกรรมการ หรือคนส่วนใหญ่ไม่มีในไฟล์เงินเดือนเดือนนั้น → เสนอให้รับเข้าทะเบียน
       S.pimp.push({ file: f.name, k, part, rows, unknown: r.unknown || [], adopt: !!o?.n && (part === "กรรมการ" || o.n >= rows.length / 2) });
     } catch (e) { S.pimp.push({ file: f.name, error: e.message }); }

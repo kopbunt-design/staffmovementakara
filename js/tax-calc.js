@@ -225,11 +225,35 @@ export function validTaxId(id) {
 }
 
 // จับคู่แถว ภ.ง.ด. กับรหัสพนักงาน: เลขผู้เสียภาษีที่รู้แล้ว → ชื่อ-สกุลตรงกับทะเบียนพนักงาน (ต้องตรงคนเดียว)
-export function matchPnd(rows, people, emps) {
+export function matchPnd(rows, people, emps, reg = []) {
+  // ลำดับ: เลขผู้เสียภาษี → ชื่อ-สกุล (ทะเบียนพนักงาน + ชื่อจากไฟล์เงินเดือน, ไม่สนคำนำหน้า) ·
+  // ชื่อซ้ำ (เช่น กลับเข้าทำงานใหม่ได้รหัสใหม่) → เลือกคนที่มียอดในเดือนนั้น / ยอดตรง ·
+  // ไม่เจอ (เช่น เปลี่ยนนามสกุล) → ยอดเงินได้+ภาษีตรงกับคนในทะเบียนเดือนนั้นที่ชื่อหรือนามสกุลตรง และมีคนเดียว
   const byId = new Map(people.filter(p => p.tax_id).map(p => [p.tax_id, p.emp_code]));
-  const byName = new Map();
-  for (const e of emps) { const k = norm(`${e.firstname_th || ""} ${e.lastname_th || ""}`); if (k) byName.set(k, byName.has(k) ? null : e.emp_code); }
-  return rows.map(x => ({ ...x, emp_code: byId.get(x.tax_id) || byName.get(norm(`${x.first} ${x.last}`)) || null }));
+  const nm = s => norm(s).replace(/^(นาย|นางสาว|นาง|น\.ส\.|ด\.ช\.|ด\.ญ\.)\s*/, "");
+  const byName = new Map(), names = new Map();
+  const addN = (c, f, l) => { f = nm(f); l = norm(l); if (!c || !f) return; const k = `${f} ${l}`;
+    (byName.get(k) || (byName.set(k, new Set()), byName.get(k))).add(c);
+    (names.get(c) || (names.set(c, []), names.get(c))).push({ f, l }); };
+  for (const e of emps) addN(e.emp_code, e.firstname_th, e.lastname_th);
+  for (const p of people) addN(p.emp_code, p.first_th, p.last_th);
+  const amt = (i, t) => `${r2(num(i)).toFixed(2)}|${r2(num(t)).toFixed(2)}`;
+  const R = new Map(reg.map(x => [x.emp_code, amt(income(x), taxAll(x))]));
+  const one = s => s.length === 1 ? s[0] : null;
+  const out = rows.map(x => {
+    let c = byId.get(x.tax_id) || null;
+    if (!c) { const set = [...(byName.get(`${nm(x.first)} ${norm(x.last)}`) || [])];
+      c = one(set) || (set.length > 1 ? one(set.filter(k => R.has(k))) || one(set.filter(k => R.get(k) === amt(x.income, x.tax))) : null); }
+    return { ...x, emp_code: c };
+  });
+  const used = new Set(out.map(x => x.emp_code).filter(Boolean));
+  for (const x of out) {
+    if (x.emp_code || !R.size) continue;
+    const a = amt(x.income, x.tax), f = nm(x.first), l = norm(x.last);
+    const c = one([...R].filter(([k, v]) => v === a && !used.has(k) && (names.get(k) || []).some(n => n.f === f || (l && n.l === l))).map(([k]) => k));
+    if (c) { x.emp_code = c; used.add(c); }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- รวมทั้งปี
