@@ -129,6 +129,17 @@ function recon() {
   }
   return { out, byYM, pByK };
 }
+// ภ.ง.ด.1 รายเดือนที่ยื่นผิดประเภท (ยอดรวมตรง แต่แยกประเภทต่างจากทะเบียน) — รายการที่ต้องแก้ตอนยื่น ภ.ง.ด.1ก
+const TF = [["inc401", "40(1) เงินเดือน (ประเภท 1)"], ["sev", "ออกจากงาน (ประเภท 3)"], ["inc402", "40(2) (ประเภท 4/5)"]];
+function typeFixes() {
+  const { out, byYM, pByK } = recon(), list = [];
+  for (const [m, rc] of Object.entries(out)) for (const i of [...rc.issues, ...rc.acked].filter(i => i.kind === "type")) {
+    const r = (byYM[m] || []).find(x => x.emp_code === i.emp_code) || {}, filed = { inc401: 0, sev: 0, inc402: 0 };
+    for (const p of pByK[m] || []) if (p.emp_code === i.emp_code) filed[T.pndField(T.pndCode(p.type).type)] += +p.income || 0;
+    list.push({ m, code: i.emp_code, reg: { inc401: +r.inc401 || 0, sev: +r.sev || 0, inc402: +r.inc402 || 0 }, filed, ack: i.ack });
+  }
+  return list.sort((a, b) => a.code.localeCompare(b.code) || a.m.localeCompare(b.m));
+}
 function alertData() {
   const yr = String(S.year), certs = S.D.certs || [];
   const leavers = T.leaverAlerts(S.emps.filter(e => S.tot.has(e.emp_code)), certs, S.year, today());
@@ -503,6 +514,11 @@ function pndPage() {
     </tbody></table></div></div>
   <div class="card mt"><div class="card-h"><div><div class="card-t">ภ.ง.ด.1ก ปี ${yr + 543}</div><div class="card-s">${f1k ? `อัปแล้ว ${f1k.rows_n} รายการ · ${esc(f1k.file_name || "")}` : "ยื่นภายในสิ้นเดือน ก.พ. ปีถัดไป — อัปไฟล์ที่ยื่นแล้วเพื่อเทียบกับทะเบียนทั้งปีรายคน"}</div></div>
       <div class="fx-actions"><button class="btn btn-g" id="b1k">${I.xl}ใบงาน ภ.ง.ด.1ก จากทะเบียน (Excel)</button></div></div>
+    ${(fx => fx.length ? `<div class="card-b"><div class="ty-new"><div class="ic">!</div><div class="tx"><b>ต้องแก้ประเภทเงินได้ใน ภ.ง.ด.1ก ${new Set(fx.map(f => f.code)).size} คน</b> — ภ.ง.ด.1 รายเดือนยื่นผิดประเภท ใบงาน ภ.ง.ด.1ก ด้านขวาใช้ประเภทที่ถูกตามทะเบียนแล้ว (มีแผ่น "แก้ประเภท" ในไฟล์ด้วย) ยื่นตามใบงานได้เลย</div></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>คน</th><th>เดือน</th><th>ประเภท</th><th class="r">ยื่นรายเดือนไว้</th><th class="r">ที่ถูก (ทะเบียน / ใบงาน 1ก)</th><th>หมายเหตุ</th></tr></thead><tbody>
+      ${fx.map(f => TF.filter(([t]) => Math.abs(f.reg[t] - f.filed[t]) >= .01).map(([t, th], j) => `<tr ${j ? "" : `class="click" data-open="${esc(f.code)}"`}><td>${j ? "" : who(f.code)}</td><td>${j ? "" : ymTH(f.m)}</td><td>${th}</td>
+        <td class="r money">${baht(f.filed[t])}</td><td class="r money"><b>${baht(f.reg[t])}</b></td><td class="small">${j ? "" : f.ack ? esc(f.ack.note) : `<span class="muted">ยังไม่ได้บันทึก</span>`}</td></tr>`).join("")).join("")}
+      </tbody></table></div></div>` : "")(typeFixes())}
     ${annual ? annual.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>คน</th><th class="r">ทะเบียน เงินได้ / ภาษี</th><th class="r">ภ.ง.ด.1ก เงินได้ / ภาษี</th></tr></thead><tbody>
       ${annual.map(a => `<tr ${a.c.startsWith("?") ? "" : `class="click" data-open="${esc(a.c)}"`}><td>${a.c.startsWith("?") ? `${esc(a.p.p.first + " " + a.p.p.last)}<div class="small muted">จับคู่ไม่ได้ ${esc(a.p.p.tax_id)}</div>` : who(a.c)}</td>
         <td class="r money">${a.t ? `${baht(T.income(a.t))} / ${baht(T.taxAll(a.t))}` : "-"}</td><td class="r money neg">${a.p ? `${baht(a.p.income)} / ${baht(a.p.tax)}` : "ไม่มีในไฟล์"}</td></tr>`).join("")}</tbody></table></div>`
@@ -619,6 +635,9 @@ function export1k() {
   const ws = XLSX.utils.aoa_to_sheet([T.PND1K_HEAD, ...T.pnd1kRows(list)]);
   for (let r = 1; r <= list.length * 3; r++) { const a = XLSX.utils.encode_cell({ r, c: 1 }); if (ws[a]) { ws[a].t = "s"; ws[a].z = "@"; } }
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "PND1K");
+  const fx = typeFixes();
+  if (fx.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["รหัส", "ชื่อ", "เลขผู้เสียภาษี", "เดือน", "ประเภท", "ยื่นรายเดือนไว้", "ที่ถูก (ใช้ใน ภ.ง.ด.1ก)", "หมายเหตุ"],
+    ...fx.flatMap(f => TF.filter(([t]) => Math.abs(f.reg[t] - f.filed[t]) >= .01).map(([t, th]) => [f.code, nameOf(f.code), S.P.get(f.code)?.tax_id || "", ymTH(f.m), th, f.filed[t], f.reg[t], f.ack?.note || ""]))]), "แก้ประเภท");
   XLSX.writeFile(wb, `ใบงาน ภงด1ก ${S.year + 543} (${today()}).xlsx`);
 }
 
