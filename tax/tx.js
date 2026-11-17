@@ -451,7 +451,7 @@ async function setTypes(map, ask = true) {
 async function recalcSaved(ask) {
   if (ask && !confirm("เดือนที่บันทึกแล้วมีรายการนี้ — คิดยอดของเดือนเหล่านั้นใหม่ตามประเภทใหม่เลยไหม? (แถวที่แก้มือไว้จะไม่ถูกแตะ)")) { months(); return; }
   let r; try { r = await rpc("tax_recalc", { p_year: S.year }); } catch (e) { toast(e.message, "error"); return; }
-  toast(r.changed ? `คิดใหม่ ${r.changed} แถว (${r.months.map(ymTH).join(", ")})` : "ยอดเดือนที่บันทึกแล้วตรงกับประเภทปัจจุบันอยู่แล้ว", "success");
+  toast(r.changed || r.sev_tax ? [r.changed ? `คิดใหม่ ${r.changed} แถว (${r.months.map(ymTH).join(", ")})` : "", r.sev_tax ? `แยกภาษีเงินชดเชยตาม ภ.ง.ด.1 ${r.sev_tax} คน` : ""].filter(Boolean).join(" · ") : "ยอดเดือนที่บันทึกแล้วตรงกับประเภทปัจจุบันอยู่แล้ว", "success");
   if (r.edited.length) toast(`ข้ามแถวที่แก้มือ ${r.edited.length}: ${r.edited.slice(0, 5).join(", ")}${r.edited.length > 5 ? " …" : ""} — ตรวจในแผงรายคน`, "info");
   if (r.noitems) toast(`${r.noitems} แถวบันทึกก่อนมีการแยกรายการ — นำเข้าไฟล์เดือนนั้นใหม่ถ้าต้องการให้คิดตามประเภท`, "info");
   await loadYear(); badge(); months();

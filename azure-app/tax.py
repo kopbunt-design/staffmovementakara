@@ -328,6 +328,27 @@ def tax_log(r, p_emp_code=None):
 
 
 # ---------------------------------------------------------------- บันทึกยอดรายเดือน
+def _sev_tax_from_pnd(r, ym):
+    """ไฟล์ Excel เดิม (ม.ค.–ก.ค. 2569) มีคอลัมน์ภาษีคอลัมน์เดียว → ภาษีเงินชดเชยไปรวมอยู่ใน "ภาษี" (user 2026-11-17: ภาษีเงินชดเชยเป็น 0 หมด)
+    แยกตามที่ยื่น ภ.ง.ด.1 ประเภท 3 (เงินได้ครั้งเดียวเพราะออกจากงาน) ของคนนั้นเดือนนั้น: ภาษีเงินชดเชย = ภาษีแถวประเภท 3 · ภาษี = ยอดรวมเดิม − ส่วนนั้น
+    ยอดภาษีรวมไม่เปลี่ยน · ข้ามแถวที่แก้มือ / ไม่ได้ยื่นแยกประเภท 3 (ยื่นรวมเป็นเงินเดือน แยกไม่ได้) / ภาษีประเภท 3 มากกว่ายอดในทะเบียน"""
+    if r.val("SELECT format FROM dbo.tax_months WHERE ym = ?", ym) != "excel":
+        return 0
+    n = 0
+    for x in r.rows(None, """SELECT i.emp_code, i.tax, i.sev_tax, i.edited_note,
+                               (SELECT COUNT(*) FROM dbo.tax_pnd p WHERE p.k = i.ym AND p.emp_code = i.emp_code AND p.type = '3') n3,
+                               (SELECT SUM(p.tax) FROM dbo.tax_pnd p WHERE p.k = i.ym AND p.emp_code = i.emp_code AND p.type = '3') t3
+                             FROM dbo.tax_income i WHERE i.ym = ? AND i.src = 'payroll' AND i.sev <> 0""", ym):
+        if not x["n3"] or x["edited_note"]:
+            continue
+        tot, t3 = float(x["tax"] or 0) + float(x["sev_tax"] or 0), round(float(x["t3"] or 0), 2)
+        if t3 > tot + 0.005 or abs(float(x["sev_tax"] or 0) - t3) < 0.005:
+            continue
+        r.cur.execute("UPDATE dbo.tax_income SET tax = ?, sev_tax = ? WHERE ym = ? AND emp_code = ? AND src = 'payroll'", round(tot - t3, 2), t3, ym, x["emp_code"])
+        n += 1
+    return n
+
+
 @fn
 def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
     """แทนยอดทั้งเดือนด้วยไฟล์ที่อัป (ไฟล์ใหม่ของเดือนเดิม = แทนทั้งหมด) · ชื่อคนที่ยังไม่มีในข้อมูลผู้เสียภาษีถูกเพิ่มให้"""
@@ -376,8 +397,10 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
         first, _, last = name.partition(" ")
         r.cur.execute("INSERT INTO dbo.tax_people (emp_code, first_th, last_th, source, updated_at, updated_by_name) VALUES (?, ?, ?, 'payroll', ?, ?)",
                       code, first, last or None, _now(), who)
-    _log(r, None, "month", f"{'แทน' if old else 'บันทึก'}ยอด {ym}: {len(batch)} คน · ไฟล์ {p_file or '-'} ({p_format or '-'})", who)
-    return {"people": len(batch), "replaced": bool(old)}
+    sv = _sev_tax_from_pnd(r, ym)
+    _log(r, None, "month", f"{'แทน' if old else 'บันทึก'}ยอด {ym}: {len(batch)} คน · ไฟล์ {p_file or '-'} ({p_format or '-'})"
+         + (f" · แยกภาษีเงินชดเชยตาม ภ.ง.ด.1 {sv} คน" if sv else ""), who)
+    return {"people": len(batch), "replaced": bool(old), "sev_tax": sv}
 
 
 def _acks(r):
@@ -463,10 +486,12 @@ def tax_recalc(r, p_year):
     for ym in months:
         r.cur.execute("""UPDATE m SET income = (SELECT SUM(COALESCE(inc401, 0) + COALESCE(inc402, 0) + COALESCE(sev, 0)) FROM dbo.tax_income i WHERE i.ym = m.ym AND i.src = 'payroll')
                          FROM dbo.tax_months m WHERE m.ym = ?""", ym)
-    if changed or edited:
+    sv = sum(_sev_tax_from_pnd(r, m["ym"]) for m in r.rows(None, "SELECT ym FROM dbo.tax_months WHERE ym LIKE ?", f"{y}-%"))
+    if changed or edited or sv:
         _log(r, None, "recalc", f"คิดเงินได้ใหม่ปี {y}: เปลี่ยน {changed} แถว ({', '.join(sorted(months)) or '-'})"
-             + (f" · ข้ามแถวที่แก้มือ {len(edited)}: {', '.join(edited[:20])}" if edited else ""))
-    return {"changed": changed, "months": sorted(months), "edited": edited, "noitems": noitems}
+             + (f" · ข้ามแถวที่แก้มือ {len(edited)}: {', '.join(edited[:20])}" if edited else "")
+             + (f" · แยกภาษีเงินชดเชยตาม ภ.ง.ด.1 {sv} คน" if sv else ""))
+    return {"changed": changed, "months": sorted(months), "edited": edited, "noitems": noitems, "sev_tax": sv}
 
 
 @fn
@@ -521,7 +546,7 @@ def tax_pnd_save(r, p_key, p_file, p_rows, p_part=""):
     r.lock("tax_pnd")
     who = _me(r)
     batch, inc_t, tax_t, filled = [], 0.0, 0.0, 0
-    people = {x["emp_code"]: x for x in r.rows(None, "SELECT emp_code, tax_id, source FROM dbo.tax_people")}
+    people = {x["emp_code"]: x for x in r.rows(None, "SELECT emp_code, tax_id, source, address, zip FROM dbo.tax_people")}
     for x in p_rows or []:
         tid = _s(x.get("tax_id"), 13)
         if not tid:
@@ -541,11 +566,13 @@ def tax_pnd_save(r, p_key, p_file, p_rows, p_part=""):
                              VALUES (?, ?, ?, ?, ?, ?, 'pnd', ?, ?, ?)""", *vals, code)
             people[code] = {"emp_code": code, "tax_id": tid, "source": "pnd"}
             filled += 1
-        elif p.get("source") != "manual" and (p.get("tax_id") != tid or p.get("source") != "pnd"):
+        elif p.get("source") != "manual" and (p.get("tax_id") != tid or p.get("source") != "pnd"
+                                              or (addr and (addr != p.get("address") or (_s(x.get("zip"), 10) or p.get("zip")) != p.get("zip")))):
+            # เดิมเติมเฉพาะคนที่เลขผู้เสียภาษีเปลี่ยน → อัป .txt ทีหลังไฟล์ Excel แล้วที่อยู่ไม่เข้า (user 2026-11-17: ไม่มีที่อยู่ 507/537 คน)
             # ไฟล์ Excel ไม่มีที่อยู่ → เก็บที่อยู่เดิมไว้
             r.cur.execute("""UPDATE dbo.tax_people SET tax_id = ?, title = ?, first_th = ?, last_th = ?, address = COALESCE(?, address), zip = COALESCE(?, zip),
                              source = 'pnd', updated_at = ?, updated_by_name = ? WHERE emp_code = ?""", *vals, code)
-            p.update(tax_id=tid, source="pnd")
+            p.update(tax_id=tid, source="pnd", address=addr or p.get("address"), zip=_s(x.get("zip"), 10) or p.get("zip"))
             filled += 1
     if not batch:
         raise E("ไม่มีรายการในไฟล์")
@@ -560,6 +587,8 @@ def tax_pnd_save(r, p_key, p_file, p_rows, p_part=""):
     label = ("ภ.ง.ด.1ก " + k[:4] if k.endswith("1K") else "ภ.ง.ด.1 " + k) + (f" ชุด{part}" if part else "")
     _log(r, None, "pnd", f"บันทึก {label}: {len(batch)} รายการ · ไฟล์ {p_file or '-'} · เติมข้อมูลผู้เสียภาษี {filled} คน", who)
     out = {"rows": len(batch), "filled": filled}
+    if re.fullmatch(r"\d{4}-\d{2}", k):
+        out["sev_tax"] = _sev_tax_from_pnd(r, k)
     if adopted:
         out["adopted"] = _adopt(r, k, part, who)
     return out

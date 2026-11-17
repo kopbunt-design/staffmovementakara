@@ -206,7 +206,7 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   (Excel English vs TigerSoft Thai, OT split by rate) into one row via `ITEM_GROUPS`/`groupOf` (user 2026-11-17); types are
   still stored per column name and a click on a merged row sets all of them ("ประเภทไม่ตรงกัน" if they differ). YDP income columns = เงินเดือน … before ขาด (= รวมรายได้ Jul–Oct 2026); Excel = between
   Join Date and Total Income, skipping the "Income" subtotal; Excel's "Severance Pay/Advance Notice" → line 6 (Apr 2026 then equals
-  the ไม่sum file), but Excel WHT can't split severance tax. `reconcileMonth` also flags "ประเภทเงินได้ไม่ตรง" when the per-person
+  the ไม่sum file), but Excel WHT can't split severance tax — so for Excel months `_sev_tax_from_pnd` (tax.py) moves the tax of that person's ภ.ง.ด.1 type-3 rows into `sev_tax` (total unchanged; runs on month save, PND save and "คิดเดือนที่บันทึกแล้วใหม่"; user 2026-11-17: Jun 2026 วรงค์ 475,675). Most severance in 2026 was filed with 0 tax (exempt), so 0 is often correct. `reconcileMonth` also flags "ประเภทเงินได้ไม่ตรง" when the per-person
   total matches ภ.ง.ด.1 but the split by type doesn't. Months saved before 2026-11-16 have no items — re-import them.
 - **ภ.ง.ด.1 files and income outside payroll** (user, 2026-11-16: directors' fees for people not in the system). HR's real files
   are the RD Excel template (ลำดับ | บัตร ปชช | คำหน้า | ชื่อ | สกุล | เงินได้ตามมาตรา 401N/401S/402I/402E | วันเดือนปีที่จ่าย with a
