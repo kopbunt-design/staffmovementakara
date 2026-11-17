@@ -258,7 +258,7 @@ def tax_data(r, p_year=None):
     y = _year(p_year or _today_bkk()[:4])
     page, write, money = r.has_perm("page.tax"), r.has_perm("data.tax.write"), r.has_perm("field.salary.read")
     out = {"year": y, "can_write": write and money, "can_sign": sign, "can_money": money and page, "page": page,
-           "settings": _settings(r), "me": r.uid, "types": _types(r)}
+           "settings": _settings(r), "me": r.uid, "types": _types(r), "acks": _acks(r)}
     if page:
         out["months"] = r.rows(None, "SELECT * FROM dbo.tax_months WHERE ym LIKE ? ORDER BY ym", f"{y}-%")
         for m in out["months"]:
@@ -378,6 +378,37 @@ def tax_month_save(r, p_ym, p_format, p_file, p_rows, p_cols=None):
                       code, first, last or None, _now(), who)
     _log(r, None, "month", f"{'แทน' if old else 'บันทึก'}ยอด {ym}: {len(batch)} คน · ไฟล์ {p_file or '-'} ({p_format or '-'})", who)
     return {"people": len(batch), "replaced": bool(old)}
+
+
+def _acks(r):
+    """ภ.ง.ด.1 ที่ยื่นผิดประเภทแต่ทะเบียนถูก (HR บันทึกไว้) { "YYYY-MM|รหัส": {sig, note, by, at} }"""
+    v = _j(r.val("SELECT v FROM dbo.tax_settings WHERE k = 'pnd_ack'"))
+    return v if isinstance(v, dict) else {}
+
+
+@fn
+def tax_pnd_ack(r, p_key, p_emp_code, p_on=True, p_sig=None, p_note=None):
+    """บันทึก/ยกเลิก "ยื่น ภ.ง.ด.1 ผิดประเภท — ทะเบียนถูก" ของคนหนึ่งในเดือนหนึ่ง · sig = รายละเอียดผลต่าง ณ ตอนบันทึก
+    (ยอดเปลี่ยน → บันทึกนี้ไม่ใช้แล้ว ระบบเตือนใหม่) · ทะเบียน / 50 ทวิ / ใบงาน ภ.ง.ด.1ก ใช้ประเภทตามทะเบียน"""
+    _need(r, "page.tax", "data.tax.write", "field.salary.read")
+    k, code = _s(p_key, 10) or "", (_s(p_emp_code, 40) or "").upper()
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", k) or not code:
+        raise E("ข้อมูลไม่ครบ")
+    note = (_s(p_note, 300) or "").strip()
+    if p_on and not note:
+        raise E("ใส่หมายเหตุ เช่น ยื่นเงินชดเชยรวมเป็นเงินเดือน — แก้ใน ภ.ง.ด.1ก")
+    cur, key = _acks(r), f"{k}|{code}"
+    if p_on:
+        cur[key] = {"sig": _s(p_sig, 500) or "", "note": note, "by": _me(r), "at": _now()}
+    else:
+        cur.pop(key, None)
+    v = json.dumps(cur, ensure_ascii=False)
+    if r.val("SELECT COUNT(*) FROM dbo.tax_settings WHERE k = 'pnd_ack'"):
+        r.cur.execute("UPDATE dbo.tax_settings SET v = ?, updated_at = ?, updated_by_name = ? WHERE k = 'pnd_ack'", v, _now(), _me(r))
+    else:
+        r.cur.execute("INSERT INTO dbo.tax_settings (k, v, updated_at, updated_by_name) VALUES ('pnd_ack', ?, ?, ?)", v, _now(), _me(r))
+    _log(r, code, "pnd_ack", (f"ภ.ง.ด.1 {k} ยื่นผิดประเภท — ทะเบียนถูก: {note}" if p_on else f"ยกเลิกบันทึกยื่นผิดประเภท ภ.ง.ด.1 {k}")[:1000])
+    return {"acks": cur}
 
 
 @fn

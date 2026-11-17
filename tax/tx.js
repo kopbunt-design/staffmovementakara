@@ -119,7 +119,14 @@ function recon() {
     pByK[k] = [...list.filter(p => p.emp_code), ...m];
   }
   const out = {};
-  for (const f of S.D.pnd || []) if (!f.k.endsWith("1K")) out[f.k] = T.reconcileMonth(byYM[f.k] || [], pByK[f.k] || []);
+  const ack = S.D.acks || {};
+  for (const f of S.D.pnd || []) if (!f.k.endsWith("1K")) {
+    const rc = T.reconcileMonth(byYM[f.k] || [], pByK[f.k] || []);
+    // ยื่นผิดประเภทที่ HR บันทึกแล้ว (ยอดยังเหมือนตอนบันทึก) → ไม่นับเป็นเรื่องค้าง
+    const isAck = i => i.kind === "type" && ack[`${f.k}|${i.emp_code}`]?.sig === i.detail;
+    rc.acked = rc.issues.filter(isAck).map(i => ({ ...i, ack: ack[`${f.k}|${i.emp_code}`] })); rc.issues = rc.issues.filter(i => !isAck(i));
+    out[f.k] = rc;
+  }
   return { out, byYM, pByK };
 }
 function alertData() {
@@ -130,7 +137,8 @@ function alertData() {
   const stale = certs.filter(c => c.status === "signed" && T.certStale(c, S.tot.get(c.emp_code)));
   const months = (S.D.months || []).map(m => m.ym), last = yr === today().slice(0, 4) ? +today().slice(5, 7) - 1 : 12;
   const missing = Array.from({ length: last }, (_, i) => `${yr}-${String(i + 1).padStart(2, "0")}`).filter(m => !months.includes(m));
-  return { leavers, noId, pndBad, stale, missing, R, count: leavers.length + stale.length + (pndBad ? 1 : 0) };
+  const acked = Object.values(R).reduce((s, x) => s + x.acked.length, 0);
+  return { leavers, noId, pndBad, acked, stale, missing, R, count: leavers.length + stale.length + (pndBad ? 1 : 0) };
 }
 
 // ---------------------------------------------------------------- ภาพรวม
@@ -152,6 +160,7 @@ function overview() {
     A.leavers.length && item(A.leavers.some(x => x.overdue) ? "red" : "", `<b>ลาออกในปีนี้ ยังไม่ได้ 50 ทวิ ${A.leavers.length} คน</b><div class="small muted">ต้องออกให้ภายใน 1 เดือนนับจากวันออกจากงาน${A.leavers.some(x => x.overdue) ? ` · เกินกำหนดแล้ว ${A.leavers.filter(x => x.overdue).length} คน` : ""}</div>`, "#/certs/leavers"),
     A.missing.length && item("", `<b>ยังไม่นำเข้าเงินเดือน ${A.missing.length} เดือน</b><div class="small muted">${A.missing.map(ymTH).join(", ")}</div>`, "#/months"),
     A.pndBad && item("red", `<b>ยอดไม่ตรงกับ ภ.ง.ด.1 ${A.pndBad} รายการ</b><div class="small muted">ดูรายคนที่หน้ากระทบยอด</div>`, "#/pnd"),
+    A.acked && item("", `<b>ยื่น ภ.ง.ด.1 ผิดประเภท ${A.acked} รายการ (ทะเบียนถูก)</b><div class="small muted">แก้ให้ถูกตอนยื่น ภ.ง.ด.1ก — ใบงาน ภ.ง.ด.1ก และ 50 ทวิ ใช้ประเภทตามทะเบียน</div>`, "#/pnd"),
     A.noId.length && item("", `<b>ไม่มี/เลขผู้เสียภาษีไม่ถูกต้อง ${A.noId.length} คน</b><div class="small muted">อัปไฟล์ ภ.ง.ด.1 ระบบเติมให้เอง หรือแก้ในแผงรายคน</div>`, "#/people/noid"),
     A.stale.length && item("red", `<b>ลงนามแล้วแต่ยอดเปลี่ยน ${A.stale.length} ใบ</b><div class="small muted">ยกเลิกแล้วออกใหม่</div>`, "#/certs/stale"),
   ].filter(Boolean).join("");
@@ -482,12 +491,14 @@ function pndPage() {
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>เดือน</th><th class="r">ทะเบียน (คน / เงินได้ / ภาษี)</th><th class="r">ภ.ง.ด.1 ที่ยื่น</th><th class="r">ผลต่างเงินได้</th><th class="r">ผลต่างภาษี</th><th>ผล</th></tr></thead><tbody>
     ${Array.from({ length: 12 }, (_, i) => `${yr}-${String(i + 1).padStart(2, "0")}`).filter(m => byYM[m] || R[m]).map(m => { const rc = R[m], reg = byYM[m] || [];
       const ri = T.sumBy(reg, T.income), rt = T.sumBy(reg, T.taxAll);
-      return `<tr class="${rc?.issues.length ? "click" : ""}" data-pm="${m}"><td><b>${ymTH(m)}</b></td><td class="r money">${(o => o ? `${reg.length - o} <span class="small muted">+ นอกเงินเดือน ${o}</span>` : reg.length)(reg.filter(x => isOut(x.emp_code)).length)} · ${baht(ri)} · ${baht(rt)}</td>
+      return `<tr class="${rc?.issues.length || rc?.acked.length ? "click" : ""}" data-pm="${m}"><td><b>${ymTH(m)}</b></td><td class="r money">${(o => o ? `${reg.length - o} <span class="small muted">+ นอกเงินเดือน ${o}</span>` : reg.length)(reg.filter(x => isOut(x.emp_code)).length)} · ${baht(ri)} · ${baht(rt)}</td>
         <td class="r money">${rc ? `${rc.totals.pnd.n} · ${baht(rc.totals.pnd.income)} · ${baht(rc.totals.pnd.tax)}` : "<span class='muted'>ยังไม่อัป</span>"}</td>
         <td class="r money ${rc && Math.abs(ri - rc.totals.pnd.income) >= .01 ? "neg" : ""}">${rc ? baht(ri - rc.totals.pnd.income) : ""}</td><td class="r money ${rc && Math.abs(rt - rc.totals.pnd.tax) >= .01 ? "neg" : ""}">${rc ? baht(rt - rc.totals.pnd.tax) : ""}</td>
-        <td>${!rc ? "" : rc.issues.length ? `<span class="chip chip-red">ไม่ตรง ${rc.issues.length} คน</span>` : `<span class="chip chip-em">ตรงทุกคน</span>`}</td></tr>
-        ${rc?.issues.length && S.pOpen === m ? `<tr><td colspan="6" style="background:#FAFBFD"><table class="tbl"><thead><tr><th>คน</th><th>เรื่อง</th><th class="r">ทะเบียน เงินได้ / ภาษี</th><th class="r">ภ.ง.ด.1 เงินได้ / ภาษี</th></tr></thead><tbody>
-          ${rc.issues.map(i => `<tr ${i.emp_code ? `class="click" data-open="${esc(i.emp_code)}"` : ""}><td>${i.emp_code ? who(i.emp_code) : `${esc(i.name)}<div class="small muted">${esc(i.tax_id)}</div>`}</td><td><span class="chip ${KIND[i.kind][1]}">${KIND[i.kind][0]}</span>${i.detail ? `<div class="small muted">${esc(i.detail)}</div>` : ""}</td>
+        <td>${!rc ? "" : rc.issues.length ? `<span class="chip chip-red">ไม่ตรง ${rc.issues.length} คน</span>` : `<span class="chip chip-em">ตรงทุกคน</span>`}${rc?.acked.length ? `<div class="small muted">ยื่นผิดประเภท ${rc.acked.length} (บันทึกแล้ว)</div>` : ""}</td></tr>
+        ${(rc?.issues.length || rc?.acked.length) && S.pOpen === m ? `<tr><td colspan="6" style="background:#FAFBFD"><table class="tbl"><thead><tr><th>คน</th><th>เรื่อง</th><th class="r">ทะเบียน เงินได้ / ภาษี</th><th class="r">ภ.ง.ด.1 เงินได้ / ภาษี</th></tr></thead><tbody>
+          ${[...rc.issues, ...rc.acked].map(i => `<tr ${i.emp_code ? `class="click" data-open="${esc(i.emp_code)}"` : ""}><td>${i.emp_code ? who(i.emp_code) : `${esc(i.name)}<div class="small muted">${esc(i.tax_id)}</div>`}</td>
+            <td>${i.ack ? `<span class="chip chip-gray">ยื่นผิดประเภท — ทะเบียนถูก</span><div class="small muted">${esc(i.detail)}</div><div class="small">📝 ${esc(i.ack.note)} <span class="muted">· ${esc(i.ack.by || "")} ${dTH(String(i.ack.at || "").slice(0, 10))}</span></div>${w ? `<button class="btn btn-sm mt" data-unack="${m}|${esc(i.emp_code)}">ยกเลิกบันทึก</button>` : ""}`
+              : `<span class="chip ${KIND[i.kind][1]}">${KIND[i.kind][0]}</span>${i.detail ? `<div class="small muted">${esc(i.detail)}</div>` : ""}${i.kind === "type" && w ? `<button class="btn btn-sm mt" data-ack="${m}|${esc(i.emp_code)}" data-sig="${esc(i.detail)}">ยื่นผิดประเภท · ทะเบียนถูก</button>` : ""}`}</td>
             <td class="r money">${i.reg ? `${baht(i.reg.income)} / ${baht(i.reg.tax)}` : "-"}</td><td class="r money">${i.pnd ? `${baht(i.pnd.income)} / ${baht(i.pnd.tax)}` : "-"}</td></tr>`).join("")}</tbody></table></td></tr>` : ""}`; }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีข้อมูล</td></tr>`}
     </tbody></table></div></div>
   <div class="card mt"><div class="card-h"><div><div class="card-t">ภ.ง.ด.1ก ปี ${yr + 543}</div><div class="card-s">${f1k ? `อัปแล้ว ${f1k.rows_n} รายการ · ${esc(f1k.file_name || "")}` : "ยื่นภายในสิ้นเดือน ก.พ. ปีถัดไป — อัปไฟล์ที่ยื่นแล้วเพื่อเทียบกับทะเบียนทั้งปีรายคน"}</div></div>
@@ -504,6 +515,15 @@ function pndPage() {
     drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); readPnd([...(e.dataTransfer.files || [])]); };
   }
   document.querySelectorAll("[data-pm]").forEach(tr => tr.onclick = () => { S.pOpen = S.pOpen === tr.dataset.pm ? null : tr.dataset.pm; pndPage(); });
+  // ยื่นผิดประเภท: ทะเบียน (ตามไฟล์เงินเดือน) ถูก → บันทึกไว้ ไม่เตือนซ้ำ · ไปแก้ตอนยื่น ภ.ง.ด.1ก
+  const ackSave = async (key, on, sig) => { const [k, code] = key.split("|");
+    let note = "";
+    if (on) { note = prompt(`${nameOf(code)} · ภ.ง.ด.1 ${ymTH(k)}\n${sig}\n\nทะเบียนถูก แต่ยื่นผิดประเภท — ใส่หมายเหตุ (เช่น ยื่นเงินชดเชยรวมเป็นเงินเดือน · แก้ใน ภ.ง.ด.1ก)`, "ยื่นเงินชดเชยรวมเป็นเงินเดือน — แก้ใน ภ.ง.ด.1ก"); if (note == null) return; if (!note.trim()) { toast("ใส่หมายเหตุก่อน", "error"); return; } }
+    else if (!confirm(`ยกเลิกบันทึกยื่นผิดประเภทของ ${nameOf(code)} (${ymTH(k)}) — กลับไปแจ้งเตือนเหมือนเดิม`)) return;
+    try { const r = await rpc("tax_pnd_ack", { p_key: k, p_emp_code: code, p_on: on, p_sig: sig || null, p_note: note || null }); S.D.acks = r.acks; toast(on ? "บันทึกแล้ว — ทะเบียนและ 50 ทวิ ใช้ประเภทตามทะเบียน" : "ยกเลิกแล้ว", "success"); badge(); pndPage(); }
+    catch (e) { toast(e.message, "error"); } };
+  document.querySelectorAll("[data-ack]").forEach(b => b.onclick = ev => { ev.stopPropagation(); ackSave(b.dataset.ack, true, b.dataset.sig); });
+  document.querySelectorAll("[data-unack]").forEach(b => b.onclick = ev => { ev.stopPropagation(); ackSave(b.dataset.unack, false); });
   $("#pClear") && ($("#pClear").onclick = () => { S.pimp = []; pndPage(); });
   document.querySelectorAll("[data-part]").forEach(i => i.onchange = () => { S.pimp[+i.dataset.part].part = i.value.trim(); pndPage(); });
   document.querySelectorAll("[data-adopt]").forEach(c => c.onchange = () => { S.pimp[+c.dataset.adopt].adopt = c.checked; });
