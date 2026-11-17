@@ -114,4 +114,9 @@ eq(["PND1 February 2026 Directors 1.xlsx", "PND1 January 2026 Staff.xlsx", "ย�
 eq(["Salary","เงินเดือน","OT","โอที 1.5","โอที 3","Transportion Allowance","เงินทดแทนการจัดรถรับส่ง","Shift Allowance","ค่ากะ","ERT Training","ค่าฝึกอบรม ERT","AL & Compensate (Resigned)","เงินจ่ายคืนวันลา","Severance Pay/Advance Notice","เงินชดเชย1","ค่าตอบแทนเลขานุการบริษัท","รายได้อื่นๆ"].map(T.groupOf),
   ["เงินเดือน / Salary","เงินเดือน / Salary","ค่าล่วงเวลา / OT","ค่าล่วงเวลา / OT","ค่าล่วงเวลา / OT","ค่ารถรับส่ง / Transportation","ค่ารถรับส่ง / Transportation","ค่ากะ / Shift Allowance","ค่ากะ / Shift Allowance","ค่าฝึกอบรม ERT / ERT Training","ค่าฝึกอบรม ERT / ERT Training","เงินคืนวันลา / AL & Compensate","เงินคืนวันลา / AL & Compensate","เงินชดเชย ค่าบอกกล่าว / Severance Pay","เงินชดเชย ค่าบอกกล่าว / Severance Pay","ค่าตอบแทนเลขานุการบริษัท","รายได้อื่นๆ"], "groupOf");
 
+// ภ.ง.ด.1 แบบ CSV (ค่าเป็นข้อความทั้งหมด · วันที่ พ.ศ.)
+{ const r = T.parsePndSheet([["ลำดับ","บัตร ปชช","คำหน้า","ชื่อ ","สกุล","เงินได้ตามมาตรา","วันเดือนปีที่จ่าย","เงินได้","ภาษี","เงื่อนไข",""],
+    ["1","1234567890121","นาย","ก","ข","401N","14/08/2569","320000","43000","1",""]]);
+  eq([r.months, r.rows.map(x => [x.tax_id, x.first, x.type, x.income, x.tax])], [["2026-08"], [["1234567890121","ก","1",320000,43000]]], "parsePndSheet csv"); }
+
 console.log(F ? `ไม่ผ่าน ${F} / ${P + F}` : `ผ่านทั้งหมด ${P} เคส`);

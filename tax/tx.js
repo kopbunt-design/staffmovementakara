@@ -612,8 +612,10 @@ async function readPnd(files) {
   for (const f of files) {
     try {
       let r;
-      if (/\.xlsx?$/i.test(f.name)) {
-        const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array" });
+      // .csv = แบบฟอร์มนำเข้า RD บันทึกเป็น CSV (ลำดับ,บัตร ปชช,…) · raw: เก็บเลขบัตร/วันที่ พ.ศ. เป็นข้อความ ไม่ให้แปลงเป็นวันที่/ตัวเลข
+      const csv = /\.csv$/i.test(f.name) ? await f.text() : null;
+      if (/\.xlsx?$/i.test(f.name) || (csv && !csv.includes("|"))) {
+        const wb = csv ? XLSX.read(csv.replace(/^\uFEFF/, ""), { type: "string", raw: true }) : XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array" });
         for (const n of wb.SheetNames) { r = T.parsePndSheet(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null })); if (r?.rows.length) break; }
         if (!r) throw new Error("ไม่พบหัวตาราง ภ.ง.ด.1 (บัตร ปชช / เงินได้ / ภาษี)");
       } else r = T.parsePnd(await f.text(), S.D.settings?.company_tax_id || "");
