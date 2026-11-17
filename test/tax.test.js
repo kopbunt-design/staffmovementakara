@@ -108,7 +108,7 @@ const px = [["ลำดับ", "บัตร ปชช", "คำหน้า", 
   [2, 3529900306155, "นาง", "ณุชรีย์", "ไศละสูต", "402I", "13/02/2569", 160000, 1600, 1], [null, "รวม", null, null, null, null, null, 480000, 44600]];
 const pr = T.parsePndSheet(px);
 eq([pr.months, pr.rows.map(r => [r.tax_id, r.type, r.ym, r.income])], [["2026-02"], [["0991007801192", "1", "2026-02", 320000], ["3529900306155", "4", "2026-02", 160000]]], "อ่าน ภ.ง.ด.1 Excel");
-eq([T.pndCode("401N").type, T.pndCode("402E").type, T.pndCode("3").type, T.pndCode("401X").known, T.pndCode("4012").type], ["1", "5", "3", false, "3"], "รหัสประเภทเงินได้");
+eq([T.pndCode("401N").type, T.pndCode("402E").type, T.pndCode("3").type, T.pndCode("401X").known, T.pndCode("4012").type, T.pndCode("402R").type, T.pndCode("402N").type], ["1", "5", "3", false, "3", "4", "5"], "รหัสประเภทเงินได้");
 eq(["PND1 February 2026 Directors 1.xlsx", "PND1 January 2026 Staff.xlsx", "ยื่นเพิ่มเติม ก.พ.xlsx"].map(T.guessPart), ["กรรมการ", "พนักงาน", "ยื่นเพิ่มเติม"], "เดาชุดที่ยื่นจากชื่อไฟล์");
 // ชื่อคอลัมน์ต่างแหล่งที่เป็นรายการเดียวกัน → บรรทัดเดียวในหน้าจัดประเภท
 eq(["Salary","เงินเดือน","OT","โอที 1.5","โอที 3","Transportion Allowance","เงินทดแทนการจัดรถรับส่ง","Shift Allowance","ค่ากะ","ERT Training","ค่าฝึกอบรม ERT","AL & Compensate (Resigned)","เงินจ่ายคืนวันลา","Severance Pay/Advance Notice","เงินชดเชย1","ค่าตอบแทนเลขานุการบริษัท","รายได้อื่นๆ"].map(T.groupOf),

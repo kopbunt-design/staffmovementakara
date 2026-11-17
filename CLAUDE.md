@@ -210,7 +210,7 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   total matches ภ.ง.ด.1 but the split by type doesn't. Months saved before 2026-11-16 have no items — re-import them.
 - **ภ.ง.ด.1 files and income outside payroll** (user, 2026-11-16: directors' fees for people not in the system). HR's real files
   are the RD Excel template (ลำดับ | บัตร ปชช | คำหน้า | ชื่อ | สกุล | เงินได้ตามมาตรา 401N/401S/402I/402E | วันเดือนปีที่จ่าย with a
-  BE year | เงินได้ | ภาษี | เงื่อนไข) → `parsePndSheet`; ภ.ง.ด.1 income types (RD codes 401N→1, 401S→2, 4012→3 — Apr 2026 severance, 402I→4, 402E→5) are 1 = 40(1), 2 = 40(1) at 3%, 3 = paid once on
+  BE year | เงินได้ | ภาษี | เงื่อนไข) → `parsePndSheet`; ภ.ง.ด.1 income types (RD codes 401N→1, 401S→2, 4012→3 — Apr 2026 severance, 402I/402R→4, 402E/402N→5 — R/N used from Oct 2026 directors file) are 1 = 40(1), 2 = 40(1) at 3%, 3 = paid once on
   leaving, 4/5 = 40(2) (`pndCode`, `pndField`). A month can have several filings (`part`: พนักงาน / กรรมการ / ยื่นเพิ่มเติม, guessed
   from the file name; `tax_pnd_files` PK (k, part)). A part can be **adopted** (`tax_pnd_adopt`): its amounts become register rows
   with `tax_income.src = 'pnd:<part>'` (payroll rows are `src = 'payroll'`; PK (ym, emp_code, src); `tax_year` sums per person-month

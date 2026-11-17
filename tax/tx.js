@@ -513,7 +513,7 @@ function pndPage() {
       <td class="r">${x.rows?.length ?? ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "income")) : ""}</td><td class="r money">${x.rows ? baht(T.sumBy(x.rows, "tax")) : ""}</td>
       <td class="small">${x.error ? "" : [old ? `แทนชุดเดิม (${old.rows_n} รายการ)` : "",
         x.ymPick && !x.ymOk ? `<span class="neg"><b>ชื่อไฟล์เป็น ${ymTH(x.ymPick[0][0])} แต่วันที่จ่ายในไฟล์เป็น ${ymTH(x.ymPick[1][0])}</b> — เลือกรอบที่ยื่นจริงทางซ้าย (เช่น ยื่น เม.ย. แต่วันที่ในไฟล์ยังไม่ได้แก้)</span>` : "",
-        x.unknown?.length ? `<span class="neg">รหัสเงินได้ที่ไม่รู้จัก: ${esc(x.unknown.join(", "))} — ถือเป็น 40(1)</span>` : "",
+        x.unknown?.length ? `<span class="neg">รหัสเงินได้ที่ไม่รู้จัก: ${esc(x.unknown.join(", "))} — ขึ้นต้น 402 ถือเป็น 40(2) อื่น ๆ ถือเป็น 40(1)</span>` : "",
         o && o.n && !(x.part === "กรรมการ" || o.n >= o.all / 2) ? `${o.n} คนยอดไม่ตรงกับเงินเดือน — ดูในตารางกระทบยอดหลังบันทึก` :
         o && o.n ? `<div class="pn-hint"><b>${o.n} คน · ${baht(o.income)}</b> ไม่มีในไฟล์เงินเดือน ${ymTH(x.k)}${o.emp ? ` (เป็นพนักงาน ${o.emp} คน)` : ""}
           <label class="pn-adopt"><input type="checkbox" data-adopt="${i}" ${x.adopt ? "checked" : ""}> รับเข้าทะเบียนเป็นเงินได้นอกเงินเดือน</label></div>` : o ? `<span class="diff-ok">ทุกคนมีในไฟล์เงินเดือน</span>` : ""].filter(Boolean).join(" ")}</td></tr>`; }).join("")}
