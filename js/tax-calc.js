@@ -157,7 +157,7 @@ export const ITEM_GROUPS = [
   ["ค่ากะ / Shift Allowance", /^(ค่ากะ|shift allowance)$/i],
   ["ค่าฝึกอบรม ERT / ERT Training", /\bert\b|ERT/],
   ["เงินคืนวันลา / AL & Compensate", /คืนวันลา|^al & compensate/i],
-  ["เงินชดเชย ค่าบอกกล่าว / Severance Pay", /ชดเชย|severance|บอกกล่าว|advance notice/i],
+  ["เงินชดเชย / Severance Pay", /ชดเชย|severance/i], // คอลัมน์ Excel "Severance Pay/Advance Notice" = เงินชดเชยอย่างเดียว (user 2026-11-17)
 ];
 export const groupOf = col => (ITEM_GROUPS.find(([, re]) => re.test(String(col).trim())) || [col])[0];
 
