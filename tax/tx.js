@@ -43,6 +43,11 @@ function toast(msg, type = "") {
 const rpc = async (name, args) => { const { data, error } = await supabase.rpc(name, args); if (error) throw new Error(error.message); return data; };
 const nameOf = code => { const p = S.P.get(code), e = S.E.get(code);
   return (p?.first_th ? `${p.title || ""}${p.first_th} ${p.last_th || ""}` : [e?.firstname_th, e?.lastname_th].filter(Boolean).join(" ")) || S.rows.find(r => r.emp_code === code)?.name || code; };
+// ชื่อเทียบได้: ไม่สนคำนำหน้าและช่องว่าง (ไฟล์เงินเดือนแบ่งชื่อ/สกุลคนละแบบกับ ภ.ง.ด.1 เช่น "รอส | อเล็กซานเดอร์ คอยล์")
+const flatName = code => nameOf(code).replace(/^(นาย|นางสาว|นาง|น\.ส\.|Mr\.?|Mrs\.?|Ms\.?|Miss)\s*/i, "").replace(/\s+/g, "");
+// EXT#### ที่ไม่มีในทะเบียนเดือนนี้ + รหัสในไฟล์เงินเดือนชื่อเดียวกันที่ไม่มีใน ภ.ง.ด.1 → น่าจะคนเดียวกัน (user 2026-11-17)
+const twinOf = (i, issues) => i.kind === "not_in_reg" && /^EXT/.test(i.emp_code || "")
+  ? issues.find(j => j.kind === "not_in_pnd" && !/^EXT/.test(j.emp_code) && flatName(j.emp_code) === flatName(i.emp_code))?.emp_code : null;
 const who = (code, sub) => { const n = nameOf(code), e = S.E.get(code);
   return `<div class="who"><div class="a">${esc(ini(n.replace(/^(นาย|นางสาว|นาง)/, "")))}</div><div><b>${esc(n)}</b><span>${esc(code)}${sub ?? (e?.department ? " · " + esc(e.department) : "")}</span></div></div>`; };
 const head = (eyebrow, title, sub, actions = "") => `<div class="fx-head"><div><div class="fx-eyebrow">${eyebrow}</div><div class="fx-title">${title}</div>
@@ -525,7 +530,7 @@ function pndPage() {
         ${(rc?.issues.length || rc?.acked.length) && S.pOpen === m ? `<tr><td colspan="6" style="background:#FAFBFD"><table class="tbl"><thead><tr><th>คน</th><th>เรื่อง</th><th class="r">ทะเบียน เงินได้ / ภาษี</th><th class="r">ภ.ง.ด.1 เงินได้ / ภาษี</th></tr></thead><tbody>
           ${[...rc.issues, ...rc.acked].map(i => `<tr ${i.emp_code ? `class="click" data-open="${esc(i.emp_code)}"` : ""}><td>${i.emp_code ? who(i.emp_code) : `${esc(i.name)}<div class="small muted">${esc(i.tax_id)}</div>`}</td>
             <td>${i.ack ? `<span class="chip chip-gray">ยื่นผิดประเภท — ทะเบียนถูก</span><div class="small muted">${esc(i.detail)}</div><div class="small">📝 ${esc(i.ack.note)} <span class="muted">· ${esc(i.ack.by || "")} ${dTH(String(i.ack.at || "").slice(0, 10))}</span></div>${w ? `<button class="btn btn-sm mt" data-unack="${m}|${esc(i.emp_code)}">ยกเลิกบันทึก</button>` : ""}`
-              : `<span class="chip ${KIND[i.kind][1]}">${KIND[i.kind][0]}</span>${i.detail ? `<div class="small muted">${esc(i.detail)}</div>` : ""}${i.kind === "type" && w ? `<button class="btn btn-sm mt" data-ack="${m}|${esc(i.emp_code)}" data-sig="${esc(i.detail)}">ยื่นผิดประเภท · ทะเบียนถูก</button>` : ""}`}</td>
+              : `<span class="chip ${KIND[i.kind][1]}">${KIND[i.kind][0]}</span>${i.detail ? `<div class="small muted">${esc(i.detail)}</div>` : ""}${i.kind === "type" && w ? `<button class="btn btn-sm mt" data-ack="${m}|${esc(i.emp_code)}" data-sig="${esc(i.detail)}">ยื่นผิดประเภท · ทะเบียนถูก</button>` : ""}${(t => t ? `<div class="small">ชื่อตรงกับ ${esc(t)} ในไฟล์เงินเดือน — น่าจะเป็นคนเดียวกัน</div>${w ? `<button class="btn btn-sm mt" data-merge="${esc(i.emp_code)}|${esc(t)}">คนเดียวกัน · รวมรหัสเข้ากับ ${esc(t)}</button>` : ""}` : "")(twinOf(i, rc.issues))}`}</td>
             <td class="r money">${i.reg ? `${baht(i.reg.income)} / ${baht(i.reg.tax)}` : "-"}</td><td class="r money">${i.pnd ? `${baht(i.pnd.income)} / ${baht(i.pnd.tax)}` : "-"}</td></tr>`).join("")}</tbody></table></td></tr>` : ""}`; }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีข้อมูล</td></tr>`}
     </tbody></table></div></div>
   <div class="card mt"><div class="card-h"><div><div class="card-t">ภ.ง.ด.1ก ปี ${yr + 543}</div><div class="card-s">${f1k ? `อัปแล้ว ${f1k.rows_n} รายการ · ${esc(f1k.file_name || "")}` : "ยื่นภายในสิ้นเดือน ก.พ. ปีถัดไป — อัปไฟล์ที่ยื่นแล้วเพื่อเทียบกับทะเบียนทั้งปีรายคน"}</div></div>
@@ -555,6 +560,13 @@ function pndPage() {
     try { const r = await rpc("tax_pnd_ack", { p_key: k, p_emp_code: code, p_on: on, p_sig: sig || null, p_note: note || null }); S.D.acks = r.acks; toast(on ? "บันทึกแล้ว — ทะเบียนและ 50 ทวิ ใช้ประเภทตามทะเบียน" : "ยกเลิกแล้ว", "success"); badge(); pndPage(); }
     catch (e) { toast(e.message, "error"); } };
   document.querySelectorAll("[data-ack]").forEach(b => b.onclick = ev => { ev.stopPropagation(); ackSave(b.dataset.ack, true, b.dataset.sig); });
+  // รวมรหัส EXT เข้ากับรหัสในไฟล์เงินเดือน → ทั้งปีเป็นคนเดียว 50 ทวิ ใบเดียว
+  document.querySelectorAll("[data-merge]").forEach(b => b.onclick = async ev => { ev.stopPropagation();
+    const [a, t] = b.dataset.merge.split("|");
+    if (!confirm(`รวม ${a} (${nameOf(a)}) เข้ากับ ${t} (${nameOf(t)})\n\nยอดทุกเดือนของ ${a} (เช่น ค่าตอบแทนกรรมการที่รับจาก ภ.ง.ด.1) จะย้ายไปอยู่ที่ ${t} · เลขผู้เสียภาษีของ ${a} ใช้กับ ${t} · ทั้งปีออก 50 ทวิ ใบเดียว · รหัส ${a} ถูกลบ`)) return;
+    try { const r = await rpc("tax_person_merge", { p_from: a, p_to: t, p_reason: "คนเดียวกัน (ชื่อตรง · กดจากหน้ากระทบยอด)" }); toast(`รวมแล้ว · ย้ายยอด ${r.moved} เดือน`, "success"); }
+    catch (e) { toast(e.message, "error"); return; }
+    await loadYear(); pndPage(); });
   document.querySelectorAll("[data-unack]").forEach(b => b.onclick = ev => { ev.stopPropagation(); ackSave(b.dataset.unack, false); });
   $("#pClear") && ($("#pClear").onclick = () => { S.pimp = []; pndPage(); });
   document.querySelectorAll("[data-part]").forEach(i => i.onchange = () => { S.pimp[+i.dataset.part].part = i.value.trim(); pndPage(); });

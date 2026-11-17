@@ -669,6 +669,48 @@ def tax_person_save(r, p_emp_code, p_row, p_reason=None):
     return {"changed": ch}
 
 
+@fn
+def tax_person_merge(r, p_from, p_to, p_reason=None):
+    """รวมรหัส EXT#### (สร้างตอนรับ ภ.ง.ด.1 เข้าทะเบียน) เข้ากับรหัสในไฟล์เงินเดือนของคนเดียวกัน — user 2026-11-17:
+    กรรมการที่เคยรับจาก ภ.ง.ด.1 ชุดกรรมการ แล้วต่อมาจ่ายผ่าน TigerSoft (KCN010) → ปีนี้ต้องเป็นคนเดียว 50 ทวิ ใบเดียว
+    ย้ายยอด (tax_income) + แถว ภ.ง.ด.1 + เลขผู้เสียภาษี/ที่อยู่ ไปที่รหัสใหม่ แล้วลบรหัส EXT"""
+    _need(r, "page.tax", "data.tax.write", "field.salary.read")
+    a, b = (_s(p_from, 40) or "").upper(), (_s(p_to, 40) or "").upper()
+    if not a.startswith("EXT"):
+        raise E("รวมได้เฉพาะรหัส EXT (ผู้มีเงินได้นอกเงินเดือน) เข้ากับรหัสอื่น")
+    if not b or a == b:
+        raise E("ไม่มีรหัสปลายทาง")
+    r.lock("tax_pnd")
+    if r.val("SELECT COUNT(*) FROM dbo.tax_certs WHERE emp_code IN (?, ?) AND status <> 'void'", a, b):
+        raise E("มี 50 ทวิ ของรหัสนี้แล้ว — ยกเลิก (void) ก่อนรวมรหัส")
+    if r.val("SELECT COUNT(*) FROM dbo.tax_income x JOIN dbo.tax_income y ON y.ym = x.ym AND y.src = x.src WHERE x.emp_code = ? AND y.emp_code = ?", a, b):
+        raise E("สองรหัสมียอดเดือนเดียวกันจากแหล่งเดียวกัน — รวมไม่ได้")
+    pa = r.rows(None, "SELECT * FROM dbo.tax_people WHERE emp_code = ?", a)
+    if not pa:
+        raise E(f"ไม่พบ {a}")
+    pa = pa[0]
+    n = r.val("SELECT COUNT(*) FROM dbo.tax_income WHERE emp_code = ?", a) or 0
+    r.cur.execute("UPDATE dbo.tax_income SET emp_code = ? WHERE emp_code = ?", b, a)
+    r.cur.execute("UPDATE dbo.tax_pnd SET emp_code = ? WHERE emp_code = ?", b, a)
+    who = _me(r)
+    if r.val("SELECT COUNT(*) FROM dbo.tax_people WHERE emp_code = ?", b):
+        # เลขผู้เสียภาษีจาก ภ.ง.ด.1 ใช้แทน (ไฟล์เงินเดือนไม่มี) · ชื่อ/ที่อยู่ที่ HR แก้เองไม่ทับ
+        r.cur.execute("""UPDATE dbo.tax_people SET tax_id = COALESCE(NULLIF(tax_id, ''), ?),
+                           title = CASE WHEN source = 'manual' THEN title ELSE COALESCE(NULLIF(?, ''), title) END,
+                           first_th = CASE WHEN source = 'manual' THEN first_th ELSE COALESCE(NULLIF(?, ''), first_th) END,
+                           last_th = CASE WHEN source = 'manual' THEN last_th ELSE COALESCE(NULLIF(?, ''), last_th) END,
+                           address = COALESCE(NULLIF(address, ''), ?), zip = COALESCE(NULLIF(zip, ''), ?),
+                           source = CASE WHEN source = 'manual' THEN source ELSE 'pnd' END, updated_at = ?, updated_by_name = ? WHERE emp_code = ?""",
+                      pa.get("tax_id"), pa.get("title"), pa.get("first_th"), pa.get("last_th"), pa.get("address"), pa.get("zip"), _now(), who, b)
+        r.cur.execute("DELETE FROM dbo.tax_people WHERE emp_code = ?", a)
+    else:
+        r.cur.execute("UPDATE dbo.tax_people SET emp_code = ?, updated_at = ?, updated_by_name = ? WHERE emp_code = ?", b, _now(), who, a)
+    why = f" · {_s(p_reason, 300)}" if p_reason else ""
+    _log(r, b, "merge", f"รวมรหัส {a} เข้ากับ {b} (ย้ายยอด {n} แถว){why}", who)
+    _log(r, a, "merge", f"รวมเข้ากับ {b} แล้ว{why}", who)
+    return {"moved": n}
+
+
 # ---------------------------------------------------------------- 50 ทวิ
 def _totals(r, y, code):
     rows = r.rows(None, f"SELECT ym, {', '.join(CERT_MONEY)} FROM dbo.tax_income WHERE ym LIKE ? AND emp_code = ? ORDER BY ym", f"{y}-%", code)
