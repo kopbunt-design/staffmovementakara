@@ -148,6 +148,19 @@ function add(rows, c, x, types) {
 // ประเภทเปลี่ยน → คิดแถวที่อ่านแล้วใหม่ (ไม่ต้องอ่านไฟล์ซ้ำ)
 export function reType(rows, types) { for (const x of rows.values()) Object.assign(x, split(x.items, types)); }
 // สรุปทีละคอลัมน์สำหรับหน้าจัดประเภท: { col, kind: less|fixed|col, type, isNew, why, total, n }
+// รายการเดียวกันที่แต่ละแหล่งตั้งชื่อต่างกัน (Excel อังกฤษ · TigerSoft ไทย · TigerSoft แยกโอทีตามอัตรา) — ใช้รวมบรรทัดในหน้าจัดประเภท
+// ประเภทยังเก็บทีละชื่อคอลัมน์ · กดเลือกที่บรรทัดรวม = ตั้งให้ทุกชื่อในกลุ่ม (user 2026-11-17)
+export const ITEM_GROUPS = [
+  ["เงินเดือน / Salary", /^(เงินเดือน|salary)$/i],
+  ["ค่าล่วงเวลา / OT", /^(ot|โอที.*|ค่าล่วงเวลา.*|overtime.*)$/i],
+  ["ค่ารถรับส่ง / Transportation", /รถรับส่ง|^transport/i],
+  ["ค่ากะ / Shift Allowance", /^(ค่ากะ|shift allowance)$/i],
+  ["ค่าฝึกอบรม ERT / ERT Training", /\bert\b|ERT/],
+  ["เงินคืนวันลา / AL & Compensate", /คืนวันลา|^al & compensate/i],
+  ["เงินชดเชย ค่าบอกกล่าว / Severance Pay", /ชดเชย|severance|บอกกล่าว|advance notice/i],
+];
+export const groupOf = col => (ITEM_GROUPS.find(([, re]) => re.test(String(col).trim())) || [col])[0];
+
 export function colList(cols, types = {}) {
   return Object.entries(cols || {}).filter(([, c]) => c.total || c.n).map(([k, c]) => {
     if (c.kind === "less") return { col: k, ...c, kind: "less", type: "inc" };

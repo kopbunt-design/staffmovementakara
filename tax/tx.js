@@ -369,8 +369,9 @@ function months() {
   $("#impClear") && ($("#impClear").onclick = () => { S.imp = []; months(); });
   $("#impSave") && ($("#impSave").onclick = saveImports);
   document.querySelectorAll("[data-ty]").forEach(b => b.onclick = () => {
-    const cur = (S.D.types || {})[b.dataset.ty]; if (cur === b.dataset.t) return;
-    setTypes({ [b.dataset.ty]: b.dataset.t });
+    const ty = S.D.types || {}, cols = (S.tyCols || {})[b.dataset.ty] || [b.dataset.ty];
+    const map = Object.fromEntries(cols.filter(c => ty[c] !== b.dataset.t).map(c => [c, b.dataset.t]));
+    if (Object.keys(map).length) setTypes(map);
   });
   $("#tyAll") && ($("#tyAll").onclick = () => setTypes(S.tyNew || {}, true));
   $("#reCalc") && ($("#reCalc").onclick = () => recalcSaved());
@@ -393,17 +394,31 @@ const newCols = () => { const types = S.D.types || {}, out = new Map();
 function itemsCard(M) {
   const types = S.D.types || {}, w = S.D.can_write, srcs = tySources(M);
   if (!srcs.length) return "";
+  // รวมชื่อคอลัมน์ที่เป็นรายการเดียวกัน (Salary = เงินเดือน, OT = โอที 1/1.5/3 …) ไว้บรรทัดเดียว
   const rows = new Map();
-  srcs.forEach((src, i) => T.colList(src.cols, types).forEach(c => { const o = rows.get(c.col) || { ...c, v: [] }; o.v[i] = c; rows.set(c.col, o); }));
+  srcs.forEach((src, i) => T.colList(src.cols, types).forEach(c => {
+    const g = c.kind === "col" ? T.groupOf(c.col) : c.col;
+    const o = rows.get(g) || { ...c, col: g, cols: [], v: [] };
+    if (!o.cols.includes(c.col)) o.cols.push(c.col);
+    if (c.kind === "col") { o.isNew = o.isNew || c.isNew; if (c.isNew && !o.newSet) { o.suggest = c.suggest; o.why = c.why; o.newSet = 1; } }
+    const cell = o.v[i] ||= { total: 0, n: 0, k: 0 }; cell.total += c.total; cell.n = Math.max(cell.n, c.n); cell.k++;
+    rows.set(g, o);
+  }));
+  for (const r of rows.values()) if (r.kind === "col") {
+    const ts = new Set(r.cols.filter(c => types[c]).map(c => types[c]));
+    r.mixed = ts.size > 1; if (ts.size === 1) r.type = [...ts][0];
+  }
   const ord = r => r.kind === "less" ? 5 : r.kind === "fixed" ? 6 : { inc: 1, sev: 2, inc402: 3, off: 4 }[r.type];
   const list = [...rows.values()].sort((a, b) => (b.isNew - a.isNew) || ord(a) - ord(b) || Math.abs(b.v.find(Boolean)?.total || 0) - Math.abs(a.v.find(Boolean)?.total || 0));
   // ยอดรวมแต่ละประเภท (ทุกแหล่งที่แสดง) · ขาด/ลา และส่วนต่าง ลงข้อ 1
   const sum = { inc: 0, sev: 0, inc402: 0, off: 0 }, ncol = { inc: 0, sev: 0, inc402: 0, off: 0 };
-  for (const r of list) { const t = r.type; sum[t] += r.v.reduce((s, c) => s + (c?.total || 0), 0); if (r.kind === "col") ncol[t]++; }
+  for (const src of srcs) for (const c of T.colList(src.cols, types)) sum[c.type] += c.total;
+  for (const r of list) if (r.kind === "col" && !r.mixed) ncol[r.type]++;
   const nNew = list.filter(r => r.isNew).length;
-  S.tyNew = Object.fromEntries(list.filter(r => r.isNew).map(r => [r.col, r.suggest]));
+  S.tyNew = Object.fromEntries(list.flatMap(r => r.isNew ? r.cols.filter(c => !types[c]).map(c => [c, r.suggest]) : []));
+  S.tyCols = Object.fromEntries(list.map(r => [r.col, r.cols]));
   const seg = r => `<div class="tseg${r.isNew ? " pending" : ""}" ${w ? "" : "disabled"}>${T.TYPE_KEYS.map(t =>
-    `<button class="t-${t}${!r.isNew && r.type === t ? " on" : ""}${r.isNew && r.suggest === t ? " sug" : ""}" ${w ? `data-ty="${esc(r.col)}" data-t="${t}"` : ""} title="${esc(T.TYPES[t].th)} · ${T.TYPES[t].law} · ${T.TYPES[t].line}">${TY_SHORT[t][0]}<small>${TY_SHORT[t][1]}</small></button>`).join("")}</div>`;
+    `<button class="t-${t}${!r.isNew && !r.mixed && r.type === t ? " on" : ""}${r.isNew && r.suggest === t ? " sug" : ""}" ${w ? `data-ty="${esc(r.col)}" data-t="${t}"` : ""} title="${esc(T.TYPES[t].th)} · ${T.TYPES[t].law} · ${T.TYPES[t].line}">${TY_SHORT[t][0]}<small>${TY_SHORT[t][1]}</small></button>`).join("")}</div>`;
   return `<div class="card mt" id="tyCard"><div class="card-h"><div><div class="card-t">จัดประเภทเงินได้</div>
       <div class="card-s">ทุกคอลัมน์รายได้ในไฟล์ลงบรรทัดไหนของ 50 ทวิ / ประเภทไหนใน ภ.ง.ด.1 — ตั้งครั้งเดียวใช้ทุกเดือนทุกไฟล์</div></div>
       ${w && M.size ? `<button class="btn btn-sm" id="reCalc">คิดเดือนที่บันทึกแล้วใหม่</button>` : ""}</div>
@@ -412,11 +427,12 @@ function itemsCard(M) {
     ${nNew ? `<div class="ty-new"><div class="ic">!</div><div class="tx"><b>พบ ${nNew} รายการที่ยังไม่เคยจัดประเภท</b> — ระบบเสนอให้แล้วจากชื่อคอลัมน์ (กรอบประ) ตรวจแล้วกดเลือก หรือยืนยันทั้งหมดตามที่เสนอ · ต้องยืนยันก่อนบันทึก</div>
       ${w ? `<button class="btn btn-sm btn-p" id="tyAll">ยืนยันตามที่เสนอทั้งหมด</button>` : ""}</div>` : ""}
     <div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>รายการในไฟล์</th><th>ลงเป็น</th>${srcs.map(x => `<th class="r small">${x.label}<div class="muted" style="font-weight:400">${x.sub}</div></th>`).join("")}</tr></thead><tbody>
-    ${list.map(r => `<tr class="ty-row${r.type === "off" && r.kind === "col" ? " off" : ""}"><td><div class="ty-name">${esc(r.col)} ${r.isNew ? `<span class="chip chip-new">ใหม่</span>` : ""}</div>
+    ${list.map(r => `<tr class="ty-row${r.type === "off" && r.kind === "col" ? " off" : ""}"><td><div class="ty-name">${esc(r.col)} ${r.isNew ? `<span class="chip chip-new">ใหม่</span>` : ""}${r.mixed ? ` <span class="chip chip-red">ประเภทไม่ตรงกัน</span>` : ""}</div>
+        ${r.cols.length > 1 || r.cols[0] !== r.col ? `<div class="ty-why">ชื่อในไฟล์: ${r.cols.map(c => esc(c) + (r.mixed && types[c] ? ` (${TY_SHORT[types[c]][0]})` : "")).join(" · ")}</div>` : ""}
         <div class="ty-why">${r.kind === "less" ? "หักออกจากเงินเดือน (ขาด/ลาไม่รับค่าจ้าง/พักงาน)" : r.kind === "fixed" ? "ยอดรวมในไฟล์ที่ไม่มีคอลัมน์รองรับ — ปกติเป็น 0" :
           r.isNew ? `💡 ระบบเสนอ ${TY_SHORT[r.suggest].join(" ")}: ${esc(r.why)}` : r.type !== r.suggest ? `ยืนยันแล้ว · ระบบเคยเสนอ ${TY_SHORT[r.suggest].join(" ")}` : "ยืนยันแล้ว"}</div></td>
       <td>${r.kind === "col" ? seg(r) : `<span class="ty-fixed">${r.kind === "less" ? "− ข้อ 1 เงินเดือน" : "ข้อ 1 เงินเดือน"}</span>`}</td>
-      ${srcs.map((_, i) => `<td class="r money">${r.v[i] ? baht(r.v[i].total) + `<div class="small muted" style="text-decoration:none">${r.v[i].n} คน</div>` : ""}</td>`).join("")}</tr>`).join("")}
+      ${srcs.map((_, i) => `<td class="r money">${r.v[i] ? baht(r.v[i].total) + `<div class="small muted" style="text-decoration:none">${r.v[i].n} คน${r.v[i].k > 1 ? ` · ${r.v[i].k} คอลัมน์` : ""}</div>` : ""}</td>`).join("")}</tr>`).join("")}
     </tbody></table></div></div>`;
 }
 async function setTypes(map, ask = true) {

@@ -202,7 +202,9 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   ("จัดประเภทเงินได้", `tax_settings` k=types, RPC `tax_types_save`); unconfirmed columns show "ใหม่" with a suggestion from the
   name (`suggestType`: ชดเชย/severance/บอกกล่าว → sev, กรรมการ/ที่ปรึกษา/นายหน้า → inc402, เบิกเงินล่วงหน้า/เงินยืม/ตามจริง → off) and
   `tax_month_save` refuses rows with unconfirmed columns. The server recomputes the split on save; `tax_recalc` re-applies types to
-  saved months (skips rows edited by hand). YDP income columns = เงินเดือน … before ขาด (= รวมรายได้ Jul–Oct 2026); Excel = between
+  saved months (skips rows edited by hand). The type card merges columns that are the same item under different names
+  (Excel English vs TigerSoft Thai, OT split by rate) into one row via `ITEM_GROUPS`/`groupOf` (user 2026-11-17); types are
+  still stored per column name and a click on a merged row sets all of them ("ประเภทไม่ตรงกัน" if they differ). YDP income columns = เงินเดือน … before ขาด (= รวมรายได้ Jul–Oct 2026); Excel = between
   Join Date and Total Income, skipping the "Income" subtotal; Excel's "Severance Pay/Advance Notice" → line 6 (Apr 2026 then equals
   the ไม่sum file), but Excel WHT can't split severance tax. `reconcileMonth` also flags "ประเภทเงินได้ไม่ตรง" when the per-person
   total matches ภ.ง.ด.1 but the split by type doesn't. Months saved before 2026-11-16 have no items — re-import them.

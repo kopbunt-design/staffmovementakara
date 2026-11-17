@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/tax-calc.js`).replace(/^export /gm, "");
-const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED, parsePndSheet, pndCode, guessPart };`)();
+const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED, parsePndSheet, pndCode, guessPart, groupOf };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const pick = (x, ...k) => Object.fromEntries(k.map(f => [f, x[f]]));
@@ -110,4 +110,8 @@ const pr = T.parsePndSheet(px);
 eq([pr.months, pr.rows.map(r => [r.tax_id, r.type, r.ym, r.income])], [["2026-02"], [["0991007801192", "1", "2026-02", 320000], ["3529900306155", "4", "2026-02", 160000]]], "อ่าน ภ.ง.ด.1 Excel");
 eq([T.pndCode("401N").type, T.pndCode("402E").type, T.pndCode("3").type, T.pndCode("401X").known, T.pndCode("4012").type], ["1", "5", "3", false, "3"], "รหัสประเภทเงินได้");
 eq(["PND1 February 2026 Directors 1.xlsx", "PND1 January 2026 Staff.xlsx", "ยื่นเพิ่มเติม ก.พ.xlsx"].map(T.guessPart), ["กรรมการ", "พนักงาน", "ยื่นเพิ่มเติม"], "เดาชุดที่ยื่นจากชื่อไฟล์");
+// ชื่อคอลัมน์ต่างแหล่งที่เป็นรายการเดียวกัน → บรรทัดเดียวในหน้าจัดประเภท
+eq(["Salary","เงินเดือน","OT","โอที 1.5","โอที 3","Transportion Allowance","เงินทดแทนการจัดรถรับส่ง","Shift Allowance","ค่ากะ","ERT Training","ค่าฝึกอบรม ERT","AL & Compensate (Resigned)","เงินจ่ายคืนวันลา","Severance Pay/Advance Notice","เงินชดเชย1","ค่าตอบแทนเลขานุการบริษัท","รายได้อื่นๆ"].map(T.groupOf),
+  ["เงินเดือน / Salary","เงินเดือน / Salary","ค่าล่วงเวลา / OT","ค่าล่วงเวลา / OT","ค่าล่วงเวลา / OT","ค่ารถรับส่ง / Transportation","ค่ารถรับส่ง / Transportation","ค่ากะ / Shift Allowance","ค่ากะ / Shift Allowance","ค่าฝึกอบรม ERT / ERT Training","ค่าฝึกอบรม ERT / ERT Training","เงินคืนวันลา / AL & Compensate","เงินคืนวันลา / AL & Compensate","เงินชดเชย ค่าบอกกล่าว / Severance Pay","เงินชดเชย ค่าบอกกล่าว / Severance Pay","ค่าตอบแทนเลขานุการบริษัท","รายได้อื่นๆ"], "groupOf");
+
 console.log(F ? `ไม่ผ่าน ${F} / ${P + F}` : `ผ่านทั้งหมด ${P} เคส`);
