@@ -749,7 +749,7 @@ function certsPage() {
   const list = all.filter((F[S.fCert] || F[""])[1]).filter(c => !S.q || [c, nameOf(c)].join(" ").toLowerCase().includes(S.q.toLowerCase()));
   const sel = [...S.sel].filter(c => list.includes(c));
   render(`${head(`ปีภาษี ${+yr + 543} · 50 ทวิ ภ.ง.ด.1ก`, "ออก 50 ทวิ พนักงาน", "เตรียมร่างจากยอดทั้งปี → ส่งให้ผู้ลงนาม (ได้เลขที่) → ผู้ลงนามเลือกลงทีละใบหรือทั้งหมด → พิมพ์ หรือให้พนักงานโหลดเองที่หน้าพนักงาน",
-      `<button class="btn" id="bLink">${I.link}ลิงก์หน้าพนักงาน</button>`)}
+      `${w ? `<button class="btn" id="bMail">✉️ แบบอีเมล</button>${(S.D.certs || []).some(c => c.status === "pending") ? `<button class="btn" id="bSign">${I.pen}ลิงก์ลงนาม</button>` : ""}` : ""}<button class="btn" id="bLink">${I.link}ลิงก์หน้าพนักงาน</button>`)}
   ${S.year === +today().slice(0, 4) ? `<div class="card al" style="margin-bottom:14px"><div class="card-b small">ปี ${+yr + 543} ยังไม่จบ — ใบของคนที่ยังทำงานอยู่ควรออกหลังนำเข้าเงินเดือน ธ.ค. แล้ว · คนที่ลาออกระหว่างปีออกได้เลย (ภายใน 1 เดือนหลังออก)</div></div>` : ""}
   <div class="card"><div class="card-h">
     <div class="seg" id="segC">${Object.entries(F).map(([k, [t, f]]) => `<button data-s="${k}" class="${S.fCert === k ? "on" : ""}">${t} ${all.filter(f).length}</button>`).join("")}</div>
@@ -774,6 +774,8 @@ function certsPage() {
   $("#sSend") && ($("#sSend").onclick = () => send(sel));
   $("#sVoid") && ($("#sVoid").onclick = () => voidCerts(sel));
   $("#sPrint") && ($("#sPrint").onclick = () => printCerts(sel.filter(c => cert(c))));
+  $("#bMail") && ($("#bMail").onclick = () => mailTpl());
+  $("#bSign") && ($("#bSign").onclick = signLinks);
   $("#bLink").onclick = () => { const u = `${location.origin}/tax/my.html`; navigator.clipboard?.writeText(u); toast("คัดลอกลิงก์แล้ว: " + u, "success"); };
 }
 async function prepare(codes) {
@@ -790,12 +792,13 @@ async function send(codes) {
   let signers; try { signers = await rpc("tax_signers"); } catch (e) { toast(e.message, "error"); return; }
   if (!signers.length) { toast("ยังไม่มีผู้ลงนาม — ให้ Admin เพิ่มสิทธิ์ “ลงนาม 50 ทวิ พนักงาน” และผู้ลงนามอัปโหลดลายเซ็นในระบบ HR", "error"); return; }
   modal(`ส่ง 50 ทวิ ${drafts.length} ใบให้ลงนาม`, `<label class="fld"><span>ผู้ลงนาม (ผู้จ่ายเงิน)</span><select class="inp" id="sg">${signers.map(s => `<option value="${esc(s.user_id)}">${esc(s.name)}${s.title ? " · " + esc(s.title) : ""}</option>`).join("")}</select></label>
-    <div class="small muted">ใบจะได้เลขที่เรียงตามรหัสพนักงาน ต่อจากเลขสุดท้ายของปี · ผู้ลงนามเลือกลงทีละใบหรือทั้งหมดได้ที่เมนู “รอฉันลงนาม”</div>
+    <div class="small muted">ใบจะได้เลขที่เรียงตามรหัสพนักงาน ต่อจากเลขสุดท้ายของปี · ระบบส่งอีเมลพร้อมลิงก์ให้ผู้ลงนามเปิดดูและลงนามได้โดยไม่ต้องเข้าสู่ระบบ (หรือลงในเมนู “รอฉันลงนาม”)</div>
     ${stale.length ? `<div class="small neg">${stale.length} ใบยอดในร่างไม่ตรงกับทะเบียนล่าสุด — กด “เตรียม / อัปเดตร่าง” ก่อนส่ง</div>` : ""}`, "ส่ง", async m => {
     if (stale.length && !confirm("มีร่างที่ยอดไม่ตรงทะเบียนล่าสุด ส่งต่อไหม")) return false;
-    try { const r = await rpc("tax_certs_send", { p_year: S.year, p_codes: drafts, p_signer: m.querySelector("#sg").value }); toast(`ส่งแล้ว ${r.sent.length} ใบ`, "success"); }
+    const sg = m.querySelector("#sg"), who = sg.options[sg.selectedIndex]?.text.split(" · ")[0];
+    let r; try { r = await rpc("tax_certs_send", { p_year: S.year, p_codes: drafts, p_signer: sg.value }); toast(`ส่งแล้ว ${r.sent.length} ใบ`, "success"); }
     catch (e) { toast(e.message, "error"); return false; }
-    S.sel.clear(); await loadYear(); route();
+    S.sel.clear(); await loadYear(); route(); mailResult(r.mail, r.link, who);
   });
 }
 function voidCerts(codes) {
@@ -815,6 +818,60 @@ async function printCerts(codes, preview = false) {
     if (preview) { const w = window.open("", "_blank"); if (!w) { toast("เบราว์เซอร์บล็อกหน้าต่าง — อนุญาต pop-up", "error"); return; } w.document.open(); w.document.write(html); w.document.close(); }
     else printHTML(html);
   } catch (e) { toast(e.message, "error"); }
+}
+
+// ---------------------------------------------------------------- อีเมล + ลิงก์ลงนามไม่ต้อง login (user 2026-11-18)
+const MAIL_WHY = { outlook_mode: "ระบบตั้งให้ HR ส่งเมลเอง (โหมด Outlook)", test_mode: "ระบบยังไม่เปิดส่งเมลจริง (MAIL_LIVE)", not_configured: "ยังไม่ได้ตั้งค่าการส่งเมล",
+  no_recipient: "ผู้ลงนามไม่มีอีเมลในระบบ", auth_error: "ล็อกอินเข้าระบบเมลไม่ได้", graph_error: "ระบบเมลปฏิเสธ", server_error: "ส่งเมลไม่สำเร็จ" };
+const copy = t => { navigator.clipboard?.writeText(t); toast("คัดลอกแล้ว", "success"); };
+// ผลส่งเมล — ส่งได้ = toast · ไม่ได้ = กล่องให้คัดลอกลิงก์ไปส่งเอง
+function mailResult(res, link, who) {
+  if (res?.sent) { toast(`ส่งอีเมลขอลงนามถึง ${res.to} แล้ว`, "success"); return; }
+  const m = modal("ส่งลิงก์ลงนามให้ผู้ลงนามเอง", `<div class="small muted" style="margin-bottom:8px">ระบบไม่ได้ส่งอีเมล: ${esc(MAIL_WHY[res?.reason] || res?.reason || "-")}${res?.detail ? ` · ${esc(res.detail)}` : ""}</div>
+    <div>คัดลอกลิงก์นี้ส่งให้ <b>${esc(who || "ผู้ลงนาม")}</b> — เปิดดูและลงนามได้โดยไม่ต้องเข้าสู่ระบบ ใช้ได้ 14 วัน</div>
+    <input class="inp" readonly value="${esc(link)}" style="margin-top:8px" onclick="this.select()">`, "คัดลอกลิงก์", () => { copy(link); return false; });
+  m.querySelector("[data-c]").textContent = "ปิด";
+}
+async function signLinks() {
+  let list; try { list = await rpc("tax_sign_links", { p_year: S.year }); } catch (e) { toast(e.message, "error"); return; }
+  if (!list.length) { toast("ไม่มีใบที่รอลงนาม", "info"); return; }
+  const m = modal(`ลิงก์ลงนาม 50 ทวิ ปี ${S.year + 543}`, `<div class="small muted" style="margin-bottom:8px">ลิงก์ละ 1 ผู้ลงนาม เปิดเห็นทุกใบที่รอคนนั้น · ใช้ได้ 14 วันหรือจนลงนามครบ · ส่งอีกครั้ง = ต่ออายุลิงก์เดิม</div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>ผู้ลงนาม</th><th class="r">รอ</th><th>ลิงก์</th><th></th></tr></thead><tbody>
+    ${list.map((x, i) => `<tr><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.email || "ไม่มีอีเมล")}</div></td><td class="r">${x.pending}</td>
+      <td class="small">${x.link ? `ถึง ${dTH(x.expires_at.slice(0, 10))}` : `<span class="neg">หมดอายุ</span>`}</td>
+      <td style="white-space:nowrap">${x.link ? `<button class="btn btn-sm" data-cp="${i}">คัดลอก</button> ` : ""}<button class="btn btn-sm btn-p" data-rm="${i}">ส่งเมลอีกครั้ง</button></td></tr>`).join("")}</tbody></table></div>`,
+    "ปิด", () => true);
+  m.querySelector("[data-c]").style.display = "none";
+  m.querySelectorAll("[data-cp]").forEach(b => b.onclick = () => copy(list[+b.dataset.cp].link));
+  m.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const x = list[+b.dataset.rm]; b.disabled = true;
+    try { const r = await rpc("tax_sign_remind", { p_year: S.year, p_signer: x.signer_id }); m.remove(); mailResult(r.mail, r.link, x.name); }
+    catch (e) { toast(e.message, "error"); b.disabled = false; } });
+}
+async function mailTpl(key) {
+  let d; try { d = await rpc("tax_mail_get"); } catch (e) { toast(e.message, "error"); return; }
+  key = key && d.tpl[key] ? key : "tax_sign";
+  const t = d.tpl[key], sample = { year: S.year + 543, count: 12, left: 0, signer: "คุณผู้ลงนาม ตัวอย่าง", requester: "HR ผู้ส่ง", reason: "ยอดเดือน ธ.ค. ยังไม่ครบ", link: `${location.origin}/tax/sign.html?t=…` };
+  const fill = (s, html) => String(s || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => html ? esc(sample[k] ?? "") : String(sample[k] ?? ""));
+  const m = modal("แบบอีเมล 50 ทวิ", `<div class="small muted" style="margin-bottom:8px">${d.mode === "auto" ? "ระบบส่งเมลอัตโนมัติ" : "ตอนนี้ระบบตั้งเป็นโหมด Outlook — ไม่ส่งเมลเอง ส่งให้ลงนามแล้วจะได้ลิงก์ไปคัดลอก"} · ตัวแปร ${d.vars.map(v => `<code>{{${v}}}</code>`).join(" ")}</div>
+    <div class="tx-mail"><div>
+      <label class="fld"><span>แบบ</span><select class="inp" id="mk">${Object.entries(d.tpl).map(([k, x]) => `<option value="${k}" ${k === key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
+      <div class="small muted" style="margin:-4px 0 8px">ผู้รับหลักใส่ให้อัตโนมัติ: ${esc(t.to)}</div>
+      <label class="fld"><span>ส่งถึงเพิ่มเติม (To)</span><input class="inp" id="mto" value="${esc(t.to_extra || "")}" placeholder="คั่นด้วยจุลภาค"></label>
+      <label class="fld"><span>สำเนาถึง (CC)</span><input class="inp" id="mcc" value="${esc(t.cc || "")}"></label>
+      <label class="fld"><span>หัวเรื่อง</span><input class="inp" id="msu" value="${esc(t.subject)}"></label>
+      <label class="fld"><span>เนื้อหา (HTML)</span><textarea class="inp" id="mht" rows="12" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;height:auto">${esc(t.html)}</textarea></label>
+    </div><div><div class="small muted">ตัวอย่าง</div><div class="tx-mail-subj" id="mps"></div><iframe id="mpv" title="ตัวอย่างอีเมล"></iframe></div></div>`,
+    "บันทึกแบบอีเมล", async m => {
+      try { await rpc("tax_mail_save", { p_key: key, p_row: { subject: m.querySelector("#msu").value, html: m.querySelector("#mht").value, to_extra: m.querySelector("#mto").value, cc: m.querySelector("#mcc").value } }); }
+      catch (e) { toast(e.message, "error"); return false; }
+      toast("บันทึกแบบอีเมลแล้ว", "success");
+    });
+  m.querySelector(".modal").style.maxWidth = "1100px"; m.querySelector(".modal").style.width = "calc(100vw - 32px)";
+  const pv = () => { m.querySelector("#mps").textContent = fill(m.querySelector("#msu").value, false);
+    m.querySelector("#mpv").srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:12px">${fill(m.querySelector("#mht").value, true)}</body></html>`; };
+  pv(); m.querySelector("#msu").oninput = pv; m.querySelector("#mht").oninput = pv;
+  m.querySelector("#mk").onchange = e => { m.remove(); mailTpl(e.target.value); };
+  if (!S.D.can_write) { m.querySelector("[data-ok]").style.display = "none"; m.querySelectorAll("input,textarea").forEach(x => { x.readOnly = true; }); }
 }
 
 // ---------------------------------------------------------------- รอฉันลงนาม

@@ -112,11 +112,7 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
         return {"sig": {str(s["step"]): sign("letter-assets", s.get("signature_path")) for s in r.get("steps") or []}}
 
     ms = one(A, "mail_settings", "id = 1") or {}
-    env = lambda k: (os.environ.get(k) or "").strip().strip('"').strip("'").strip() or None   # pasted values often carry spaces/quotes
-    cfg = {"tenant": env("GRAPH_TENANT_ID") or ms.get("tenant_id"),
-           "client": env("GRAPH_CLIENT_ID") or ms.get("client_id"),
-           "secret": env("GRAPH_CLIENT_SECRET"),
-           "sender": env("MAIL_SENDER") or ms.get("sender")}
+    cfg = config(ms)
     if action != "test" and ms.get("mode") != "auto":
         return {"sent": False, "reason": "outlook_mode"}
     if not all(cfg.values()):
@@ -354,6 +350,32 @@ def handle(admin_cn, user_cn, uid, email, body, app_url):
     if failed:
         return failed
     return {"sent": True, "to": ", ".join(to_all) + (f" (cc {', '.join(cc)})" if cc else "")}
+
+
+def config(ms):
+    env = lambda k: (os.environ.get(k) or "").strip().strip('"').strip("'").strip() or None   # pasted values often carry spaces/quotes
+    return {"tenant": env("GRAPH_TENANT_ID") or ms.get("tenant_id"),
+            "client": env("GRAPH_CLIENT_ID") or ms.get("client_id"),
+            "secret": env("GRAPH_CLIENT_SECRET"),
+            "sender": env("MAIL_SENDER") or ms.get("sender")}
+
+
+def deliver(ms, to, cc, subject, html):
+    """send one mail from server code (e.g. tax.py) with the same rules as handle():
+    outlook mode → not sent · MAIL_LIVE != 1 → not sent (test copy) · returns {sent, to | reason, detail}"""
+    if (ms or {}).get("mode") != "auto":
+        return {"sent": False, "reason": "outlook_mode"}
+    cfg = config(ms or {})
+    if not all(cfg.values()):
+        return {"sent": False, "reason": "not_configured", "detail": "ขาด " + ", ".join(k for k, v in cfg.items() if not v)}
+    to_all = list(dict.fromkeys(lst(",".join(to or []))))
+    if not to_all:
+        return {"sent": False, "reason": "no_recipient"}
+    if os.environ.get("MAIL_LIVE") != "1":
+        return {"sent": False, "reason": "test_mode", "would_send_to": ", ".join(to_all)}
+    cc = [x for x in lst(",".join(cc or [])) if x not in to_all]
+    failed = send(cfg, to_all, cc, subject, html)
+    return failed or {"sent": True, "to": ", ".join(to_all) + (f" (cc {', '.join(cc)})" if cc else "")}
 
 
 def send(cfg, to, cc, subject, html):

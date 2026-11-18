@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>ลงนาม 50 ทวิ · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --navy: #0A1A33; --navy-2: #17386A; --em: #10A877; --gold: #C9A227; --ink: #0E1A2B; --ink-2: #44526A; --ink-3: #7A869A; --line: #E3E8F0; --bg: #F3F5F9; --red: #C2362B; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "IBM Plex Sans Thai", system-ui, sans-serif; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55; }
+.top { background: radial-gradient(100% 120% at 100% 0%, rgba(201,162,39,.25), transparent 60%), var(--navy); color: #fff; padding: 22px 16px 74px; }
+.top .in { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+.top img { height: 38px; background: #fff; border-radius: 10px; padding: 4px 8px; }
+.top h1 { margin: 0; font-size: 20px; } .top p { margin: 2px 0 0; color: #B9C7DD; font-size: 14px; }
+.wrap { max-width: 980px; margin: -52px auto 40px; padding: 0 16px; }
+.card { background: #fff; border-radius: 18px; box-shadow: 0 10px 30px -12px rgba(10,26,51,.25); overflow: hidden; }
+.hd { padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.hd .k { font-size: 13px; color: var(--ink-3); } .hd b { font-size: 22px; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { height: 40px; padding: 0 16px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 10px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn-p { background: linear-gradient(180deg, var(--navy-2), var(--navy)); color: #fff; border: 0; }
+.btn-g { background: var(--em); color: #fff; border: 0; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.sel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 22px; background: #EEF3FB; font-size: 14px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 14px; }
+th { text-align: left; font-weight: 600; font-size: 12.5px; color: var(--ink-2); background: #F7F9FC; padding: 9px 12px; }
+td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; } .cb { width: 36px; }
+td small { display: block; color: var(--ink-3); font-size: 12px; }
+input[type=checkbox] { width: 18px; height: 18px; }
+.done { text-align: center; padding: 46px 24px; } .done .ic { font-size: 44px; } .done h2 { margin: 8px 0 4px; font-size: 20px; } .done p { color: var(--ink-2); margin: 0; }
+.ret { padding: 14px 22px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+textarea { width: 100%; min-height: 70px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; resize: vertical; }
+.msg { padding: 10px 22px; font-size: 14px; } .msg.ok { background: #E8F7F1; color: #0B6E4F; } .msg.err { background: #FDECEA; color: var(--red); }
+.note { color: var(--ink-3); font-size: 12.5px; padding: 12px 22px 18px; }
+@media (max-width: 560px) { .hd .acts { width: 100%; } .hd .acts .btn { flex: 1; } }
+</style>
+</head>
+<body>
+<!-- ลงนาม 50 ทวิ จากลิงก์อีเมล (ไม่ต้อง login) — tax/sign.js → rpc tax_link_get / tax_link_decide (azure-app/tax.py) · user 2026-11-18
+     ห้าม import js/app.js -->
+<div class="top"><div class="in"><img src="/assets/logo.png" alt="Akara"><div><h1 id="ttl">ลงนามหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)</h1><p id="sub">กำลังโหลด…</p></div></div></div>
+<div class="wrap"><div class="card" id="box"><div class="done"><p>กำลังโหลด…</p></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module" src="/tax/sign.js?v=1"></script>
+</body>
+</html>

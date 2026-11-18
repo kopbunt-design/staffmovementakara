@@ -8,19 +8,22 @@
          ยอดเงินรายคน = เงินเดือน → ต้องมี field.salary.read ด้วย (ผู้ลงนามเห็นเฉพาะใบที่ส่งถึงตัวเอง)
 ลงนาม: HR เตรียมใบ (draft) → ส่งให้ผู้ลงนาม (pending · ได้เลขที่) → ผู้ลงนามเลือกลงทีละใบหรือทั้งหมดในครั้งเดียว (signed)
         หรือส่งกลับ (draft) · ตัวเลขเปลี่ยนหลังลงนาม → HR ยกเลิก (void) แล้วเตรียมใหม่ (version + 1 · เลขที่เดิม)
+        ส่งให้ลงนาม = อีเมลพร้อมลิงก์ /tax/sign.html?t= ลงนามได้ไม่ต้อง login (tax_link_get / tax_link_decide) · ผลแจ้ง HR ทางอีเมล
+        แบบอีเมล 3 แบบแก้ได้ในหน้า 50 ทวิ (tax_settings k=mail · ค่าเริ่มต้น MAIL_DEFAULT)
 พนักงานโหลดใบของตัวเองที่ /tax/my.html ด้วยรหัสพนักงาน + เลขประจำตัวผู้เสียภาษี 13 หลัก (ผิด 8 ครั้งใน 30 นาที ล็อกรหัสนั้น)
 """
 from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 
-from hooks import HookError as E
+from hooks import HookError as E, new_token
 
 FUNCS = {}
-PUBLIC = {"tax_my_certs"}
+PUBLIC = {"tax_my_certs", "tax_link_get", "tax_link_decide"}
 
 
 def fn(f):
@@ -57,6 +60,8 @@ _DDL = {
     "tax_log": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, at DATETIMEOFFSET NOT NULL, by_name NVARCHAR(200) NULL,
         emp_code NVARCHAR(40) NULL, action NVARCHAR(40) NOT NULL, detail NVARCHAR(2000) NULL""",
     "tax_my_attempt": "id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, emp_code NVARCHAR(40) NOT NULL, at DATETIMEOFFSET NOT NULL",
+    "tax_sign_tokens": """token NVARCHAR(80) NOT NULL PRIMARY KEY, year INT NOT NULL, signer_id NVARCHAR(64) NOT NULL, created_at DATETIMEOFFSET NOT NULL,
+        expires_at DATETIMEOFFSET NOT NULL, used_at DATETIMEOFFSET NULL, created_by_name NVARCHAR(200) NULL""",
 }
 PERMS = [("page.tax", "page", "ทะเบียนรายได้และภาษี", "เว็บ /tax: รายได้และภาษีรายคน กระทบยอด ภ.ง.ด.1 / 1ก และ 50 ทวิ", "page.payroll"),
          ("data.tax.write", "data", "จัดการทะเบียนรายได้และภาษี", "นำเข้าไฟล์เงินเดือน/ภ.ง.ด. แก้ยอด เตรียมและส่ง 50 ทวิ เห็นเลขผู้เสียภาษีเต็ม", "data.payroll.write"),
@@ -77,6 +82,8 @@ def ensure(r):
     # ยอดแยกรายการ (คอลัมน์ของไฟล์) — เพิ่ม 2026-11-16 ให้ตั้ง "ไม่นับเป็นเงินได้" ได้
     for t, c in (("tax_income", "items"), ("tax_months", "cols")):
         r.cur.execute(f"IF COL_LENGTH('dbo.{t}', '{c}') IS NULL ALTER TABLE dbo.{t} ADD {c} NVARCHAR(MAX) NULL")
+    # 2026-11-18: คนที่กดส่งให้ลงนาม (แจ้งผลทางอีเมล)
+    r.cur.execute("IF COL_LENGTH('dbo.tax_certs', 'requested_by') IS NULL ALTER TABLE dbo.tax_certs ADD requested_by NVARCHAR(64) NULL")
     # 2026-11-16: เงินได้นอกไฟล์เงินเดือน (เช่น ค่ากรรมการ) รับเข้าจาก ภ.ง.ด.1 → tax_income แยกแถวตามแหล่ง (src)
     #             ภ.ง.ด.1 ยื่นได้หลายชุดต่อเดือน (พนักงาน / กรรมการ / ยื่นเพิ่มเติม) → part
     for t, c, pk in (("tax_income", "src NVARCHAR(60) NOT NULL CONSTRAINT df_tax_income_src DEFAULT 'payroll'", "ym, emp_code, src"),
@@ -909,9 +916,126 @@ def tax_certs_prepare(r, p_year, p_codes, p_payer=None):
     return {"prepared": done, "skipped": skipped}
 
 
+# ---------------------------------------------------------------- อีเมล + ลิงก์ลงนามไม่ต้อง login (user 2026-11-18)
+# ลิงก์ = ผู้ลงนาม 1 คน ต่อปีภาษี (tax_sign_tokens) · เปิดเห็นทุกใบที่รอคนนั้นลงนามในปีนั้น · ลงทีละใบ/บางใบ/ทั้งหมด หรือส่งกลับ
+# ใช้ได้หลายครั้งจนไม่มีใบค้าง หรือครบ 14 วัน · ส่งใบเพิ่มให้คนเดิม = ลิงก์เดิม (ต่ออายุ) · แบบอีเมลเก็บใน tax_settings k=mail
+PUBLIC_URL = (os.environ.get("PUBLIC_URL") or "https://ep-akarahr2-dwh8h3axhdbharbt.a01.azurefd.net").rstrip("/")
+MAIL_VARS = ["year", "count", "left", "signer", "requester", "reason", "link"]
+_BTN = 'style="display:inline-block;background:#17386A;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none"'
+_FOOT = '<p style="color:#667085;font-size:12px;margin-top:18px">ส่งอัตโนมัติจากระบบ HR (Akara Tax) · อีเมลนี้ไม่มีตัวเลขเงินได้</p>'
+_WRAP = '<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.6;color:#101828">{}' + _FOOT + "</div>"
+MAIL_DEFAULT = {
+    "tax_sign": {"label": "ขอให้ลงนาม (ถึงผู้ลงนาม)", "to": "ผู้ลงนามที่เลือกตอนส่ง",
+                 "subject": "[ขอลงนาม] หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ปีภาษี {{year}} — {{count}} ใบ",
+                 "html": _WRAP.format("""<p>เรียน {{signer}}</p>
+<p>ฝ่ายบุคคลขอให้ท่านลงนามหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ของพนักงาน ปีภาษี <b>{{year}}</b> ที่รอท่านลงนามอยู่ <b>{{count}} ใบ</b></p>
+<p>เปิดดูใบก่อนลงนามได้ และเลือกลงนามทีละใบ บางใบ หรือทั้งหมดในครั้งเดียว — ไม่ต้องเข้าสู่ระบบ</p>
+<p><a href="{{link}}" """ + _BTN + """>เปิดดูและลงนาม</a></p>
+<p style="font-size:12px;color:#667085">ลิงก์นี้สำหรับท่านคนเดียว ใช้ได้ 14 วัน หรือจนกว่าจะลงนามครบ · ส่งโดย {{requester}}</p>""")},
+    "tax_signed": {"label": "แจ้งลงนามแล้ว (ถึง HR ผู้ส่ง)", "to": "HR ที่กดส่งใบนั้นให้ลงนาม",
+                   "subject": "[ลงนามแล้ว] 50 ทวิ ปีภาษี {{year}} — {{count}} ใบ",
+                   "html": _WRAP.format("""<p>{{signer}} ลงนาม 50 ทวิ ปีภาษี <b>{{year}}</b> แล้ว <b>{{count}} ใบ</b> · ยังรอลงนาม {{left}} ใบ</p>
+<p>พนักงานโหลดใบที่ลงนามแล้วเองได้ที่หน้าพนักงาน หรือพิมพ์จากระบบ</p>
+<p><a href="{{link}}" """ + _BTN + """>เปิด Akara Tax</a></p>""")},
+    "tax_returned": {"label": "แจ้งส่งกลับแก้ไข (ถึง HR ผู้ส่ง)", "to": "HR ที่กดส่งใบนั้นให้ลงนาม",
+                     "subject": "[ส่งกลับ] 50 ทวิ ปีภาษี {{year}} — {{count}} ใบ",
+                     "html": _WRAP.format("""<p>{{signer}} ส่ง 50 ทวิ ปีภาษี <b>{{year}}</b> กลับมาแก้ไข <b>{{count}} ใบ</b></p>
+<p>เหตุผล: <b>{{reason}}</b></p>
+<p><a href="{{link}}" """ + _BTN + """>เปิด Akara Tax</a></p>""")},
+}
+
+
+def _mail_tpl(r):
+    st = r.rows(None, "SELECT v FROM dbo.tax_settings WHERE k = 'mail'")
+    own = _j(st[0]["v"]) if st else {}
+    return {k: {**d, **{f: (own.get(k) or {}).get(f) for f in ("subject", "html", "to_extra", "cc") if (own.get(k) or {}).get(f) is not None}}
+            for k, d in MAIL_DEFAULT.items()}
+
+
+def _fill(tpl, v, html):
+    import html as H
+    return re.sub(r"\{\{\s*(\w+)\s*\}\}", lambda m: H.escape(str(v.get(m.group(1), "")), quote=True) if html else str(v.get(m.group(1), "")), tpl or "")
+
+
+def _mail(r, key, to, v):
+    """ส่งเมลตามแบบ key → ผลแบบเดียวกับ letter-notify ({sent, to} / {sent: False, reason})"""
+    import mail
+    try:
+        t = _mail_tpl(r)[key]
+        ms = r.rows(None, "SELECT * FROM dbo.mail_settings WHERE id = 1")
+        lst = lambda s: [x for x in re.split(r"[,;\s]+", s or "") if x]
+        return mail.deliver(ms[0] if ms else {}, [x for x in to if x] + lst(t.get("to_extra")), lst(t.get("cc")),
+                            _fill(t["subject"], v, False), _fill(t["html"], v, True))
+    except Exception as e:                       # เมลไม่ผ่านไม่ทำให้การลงนามล้ม
+        return {"sent": False, "reason": "server_error", "detail": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
+@fn
+def tax_mail_get(r):
+    _need(r, "page.tax")
+    ms = r.rows(None, "SELECT mode FROM dbo.mail_settings WHERE id = 1")
+    return {"tpl": _mail_tpl(r), "vars": MAIL_VARS, "mode": ms[0]["mode"] if ms else None}
+
+
+@fn
+def tax_mail_save(r, p_key, p_row):
+    _need(r, "page.tax", "data.tax.write")
+    if p_key not in MAIL_DEFAULT:
+        raise E("ไม่มีแบบอีเมลนี้")
+    p_row = p_row or {}
+    st = r.rows(None, "SELECT v FROM dbo.tax_settings WHERE k = 'mail'")
+    own = _j(st[0]["v"]) if st else {}
+    own[p_key] = {f: (_s(p_row.get(f), 20000) or "") for f in ("subject", "html", "to_extra", "cc")}
+    if not own[p_key]["subject"].strip() or not own[p_key]["html"].strip():
+        raise E("ใส่หัวเรื่องและเนื้อหา")
+    v = json.dumps(own, ensure_ascii=False)
+    if st:
+        r.cur.execute("UPDATE dbo.tax_settings SET v = ?, updated_at = ?, updated_by_name = ? WHERE k = 'mail'", v, _now(), _me(r))
+    else:
+        r.cur.execute("INSERT INTO dbo.tax_settings (k, v, updated_at, updated_by_name) VALUES ('mail', ?, ?, ?)", v, _now(), _me(r))
+    _log(r, None, "mail_tpl", f"แก้แบบอีเมล {MAIL_DEFAULT[p_key]['label']}")
+    return True
+
+
+def _signer_name(r, uid):
+    s = r.signer(uid) or {}
+    return s.get("name_th") or s.get("name_en") or r.val("SELECT TOP 1 COALESCE(NULLIF(name, N''), email) FROM dbo.user_roles WHERE user_id = ?", uid) or ""
+
+
+def _signer_email(r, uid):
+    s = r.signer(uid) or {}
+    return (s.get("email") or "").strip() or r.email_of(uid)
+
+
+def _token_for(r, y, signer_id, who):
+    """ลิงก์ของผู้ลงนามคนนี้ในปีนี้ — มีอยู่และยังไม่หมดอายุ = ใช้ต่อ (ต่ออายุ 14 วัน) · ไม่มี = ออกใหม่"""
+    exp = (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(timespec="seconds")
+    t = r.rows(None, "SELECT token FROM dbo.tax_sign_tokens WHERE year = ? AND signer_id = ? AND expires_at > SYSDATETIMEOFFSET()", y, signer_id)
+    if t:
+        r.cur.execute("UPDATE dbo.tax_sign_tokens SET expires_at = ? WHERE token = ?", exp, t[0]["token"])
+        return t[0]["token"]
+    r.cur.execute("DELETE FROM dbo.tax_sign_tokens WHERE year = ? AND signer_id = ?", y, signer_id)
+    tok = new_token()
+    r.cur.execute("INSERT INTO dbo.tax_sign_tokens (token, year, signer_id, created_at, expires_at, created_by_name) VALUES (?, ?, ?, ?, ?, ?)",
+                  tok, y, signer_id, _now(), exp, who)
+    return tok
+
+
+def _ask_sign(r, y, signer_id, who):
+    """ออก/ต่ออายุลิงก์ แล้วส่งเมลขอลงนาม (commit ก่อนส่ง — เมลไปแล้วลิงก์ต้องใช้ได้)"""
+    tok = _token_for(r, y, signer_id, who)
+    left = r.val("SELECT COUNT(*) FROM dbo.tax_certs WHERE year = ? AND signer_id = ? AND status = 'pending'", y, signer_id)
+    link = f"{PUBLIC_URL}/tax/sign.html?t={tok}"
+    r.cn.commit()
+    res = _mail(r, "tax_sign", [_signer_email(r, signer_id)],
+                {"year": y + 543, "count": left, "left": left, "signer": _signer_name(r, signer_id), "requester": who, "link": link, "reason": ""})
+    return link, res
+
+
 @fn
 def tax_certs_send(r, p_year, p_codes, p_signer):
-    """ส่งร่างให้ผู้ลงนาม — ได้เลขที่ตอนส่งครั้งแรก (เรียงรหัสพนักงาน ต่อจากเลขสุดท้ายของปี) · ส่งใหม่หลังยกเลิกใช้เลขเดิม"""
+    """ส่งร่างให้ผู้ลงนาม — ได้เลขที่ตอนส่งครั้งแรก (เรียงรหัสพนักงาน ต่อจากเลขสุดท้ายของปี) · ส่งใหม่หลังยกเลิกใช้เลขเดิม
+    แล้วส่งเมลพร้อมลิงก์ลงนามไม่ต้อง login (โหมด Outlook / ส่งไม่ได้ → คืนลิงก์ให้ HR คัดลอกไปส่งเอง)"""
     _need(r, "page.tax", "data.tax.write", "field.salary.read")
     y = _year(p_year)
     sid = _s(p_signer, 64)
@@ -930,8 +1054,8 @@ def tax_certs_send(r, p_year, p_codes, p_signer):
         no = c[0]["no"]
         if not no:
             no, nxt = nxt, nxt + 1
-        r.cur.execute("""UPDATE dbo.tax_certs SET status = 'pending', [no] = ?, signer_id = ?, requested_by_name = ?, requested_at = ?, reason = NULL,
-                         updated_at = ? WHERE year = ? AND emp_code = ?""", no, sid, who, _now(), _now(), y, code)
+        r.cur.execute("""UPDATE dbo.tax_certs SET status = 'pending', [no] = ?, signer_id = ?, requested_by = ?, requested_by_name = ?, requested_at = ?, reason = NULL,
+                         updated_at = ? WHERE year = ? AND emp_code = ?""", no, sid, r.uid, who, _now(), _now(), y, code)
         sent.append(code)
     if not sent:
         raise E("ไม่มีร่างที่ส่งได้")
@@ -940,16 +1064,86 @@ def tax_certs_send(r, p_year, p_codes, p_signer):
         r.notify(f"50 ทวิ ปี {y + 543} รอลงนาม {len(sent)} ใบ", f"ส่งโดย {who}", r.uid, "/tax/#/sign")
     except Exception:
         pass
-    return {"sent": sent}
+    link, res = _ask_sign(r, y, sid, who)
+    return {"sent": sent, "link": link, "mail": res}
 
 
-def _mine_pending(r, y, codes):
+@fn
+def tax_sign_links(r, p_year):
+    """HR: ลิงก์ลงนามที่ยังค้าง (ผู้ลงนาม · จำนวนใบรอ · หมดอายุ) — คัดลอกส่งเอง หรือส่งเมลซ้ำ"""
+    _need(r, "page.tax", "data.tax.write")
+    y = _year(p_year)
+    out = []
+    for x in r.rows(None, """SELECT signer_id, COUNT(*) n FROM dbo.tax_certs WHERE year = ? AND status = 'pending' AND signer_id IS NOT NULL
+                             GROUP BY signer_id""", y):
+        t = r.rows(None, "SELECT token, expires_at FROM dbo.tax_sign_tokens WHERE year = ? AND signer_id = ? AND expires_at > SYSDATETIMEOFFSET()", y, x["signer_id"])
+        out.append({"signer_id": x["signer_id"], "name": _signer_name(r, x["signer_id"]), "email": _signer_email(r, x["signer_id"]), "pending": x["n"],
+                    "link": f"{PUBLIC_URL}/tax/sign.html?t={t[0]['token']}" if t else None, "expires_at": str(t[0]["expires_at"]) if t else None})
+    return sorted(out, key=lambda x: x["name"])
+
+
+@fn
+def tax_sign_remind(r, p_year, p_signer):
+    """HR: ส่งเมลขอลงนามอีกครั้ง (ลิงก์เดิม ต่ออายุ 14 วัน · หมดอายุแล้ว = ลิงก์ใหม่)"""
+    _need(r, "page.tax", "data.tax.write")
+    y, sid = _year(p_year), _s(p_signer, 64)
+    if not sid or not r.val("SELECT COUNT(*) FROM dbo.tax_certs WHERE year = ? AND signer_id = ? AND status = 'pending'", y, sid):
+        raise E("ไม่มีใบที่รอคนนี้ลงนาม")
+    who = _me(r)
+    _log(r, None, "remind", f"ส่งลิงก์ลงนาม 50 ทวิ ปี {y} ถึง {_signer_name(r, sid)} อีกครั้ง", who)
+    link, res = _ask_sign(r, y, sid, who)
+    return {"link": link, "mail": res}
+
+
+def _mine_pending(r, y, codes, uid):
     out = []
     for code in sorted({(_s(c, 40) or "").upper() for c in (codes or [])} - {""}):
         c = r.rows(None, "SELECT * FROM dbo.tax_certs WITH (UPDLOCK, ROWLOCK) WHERE year = ? AND emp_code = ?", y, code)
-        if c and c[0]["status"] == "pending" and str(c[0]["signer_id"]) == str(r.uid):
+        if c and c[0]["status"] == "pending" and str(c[0]["signer_id"]) == str(uid):
             out.append(c[0])
     return out
+
+
+def _do_sign(r, y, uid, certs, who, via=""):
+    s = r.signer(uid) or {}
+    if not s.get("signature_path"):
+        raise E("ยังไม่ได้อัปโหลดลายเซ็น — ตั้งค่าที่ “ลายเซ็นของฉัน” ในระบบ HR ก่อน")
+    st = r.rows(None, "SELECT seal_path FROM dbo.letter_settings WHERE id = 1")
+    snap = json.dumps({"name_th": s.get("name_th") or s.get("name_en"), "title_th": s.get("title_th") or s.get("title_en"),
+                       "signature_path": s["signature_path"], "seal_path": st[0]["seal_path"] if st else None}, ensure_ascii=False)
+    day = _today_bkk()
+    for c in certs:
+        r.cur.execute("UPDATE dbo.tax_certs SET status = 'signed', signer = ?, signed_at = ?, issue_date = ?, updated_at = ? WHERE year = ? AND emp_code = ?",
+                      snap, _now(), day, _now(), y, c["emp_code"])
+    _log(r, None, "sign", f"ลงนาม 50 ทวิ ปี {y}: {len(certs)} ใบ{via} (" + ", ".join(f"#{c['no']}" for c in certs[:30]) + (" …" if len(certs) > 30 else "") + ")", who)
+    return day
+
+
+def _do_return(r, y, certs, why, who, via=""):
+    for c in certs:
+        r.cur.execute("UPDATE dbo.tax_certs SET status = 'draft', reason = ?, updated_at = ? WHERE year = ? AND emp_code = ?", why, _now(), y, c["emp_code"])
+    _log(r, None, "return", f"ส่งกลับ 50 ทวิ ปี {y}: {len(certs)} ใบ{via} · {why}", who)
+
+
+def _tell_hr(r, y, uid, certs, ok, why=""):
+    """แจ้ง HR ที่ส่งใบ (แยกตามคนส่ง) — กระดิ่ง + อีเมล · commit ก่อนส่งเมล"""
+    r.cn.commit()
+    left = r.val("SELECT COUNT(*) FROM dbo.tax_certs WHERE year = ? AND signer_id = ? AND status = 'pending'", y, uid)
+    name, res = _signer_name(r, uid), []
+    by = {}
+    for c in certs:
+        by.setdefault(c.get("requested_by") or "", []).append(c)
+    for req, cs in by.items():
+        try:
+            r.notify(f"50 ทวิ ปี {y + 543} {'ลงนามแล้ว' if ok else 'ถูกส่งกลับ'} {len(cs)} ใบ", f"โดย {name}" + ("" if ok else f" · {why}"), req or None, "/tax/#/certs")
+            r.cn.commit()
+        except Exception:
+            pass
+        if req:
+            res.append(_mail(r, "tax_signed" if ok else "tax_returned", [r.email_of(req)],
+                             {"year": y + 543, "count": len(cs), "left": left, "signer": name, "requester": cs[0].get("requested_by_name") or "",
+                              "reason": why, "link": f"{PUBLIC_URL}/tax/#/certs"}))
+    return {"left": left, "mail": res}
 
 
 @fn
@@ -957,20 +1151,11 @@ def tax_certs_sign(r, p_year, p_codes):
     """ผู้ลงนามลงทีละใบหรือหลายใบในครั้งเดียว — เฉพาะใบที่ส่งถึงตัวเอง · วันที่ออก = วันนี้ (เวลาไทย)"""
     _need(r, "data.tax.sign")
     y = _year(p_year)
-    s = r.signer(r.uid) or {}
-    if not s.get("signature_path"):
-        raise E("ยังไม่ได้อัปโหลดลายเซ็น — ตั้งค่าที่ “ลายเซ็นของฉัน” ในระบบ HR ก่อน")
-    st = r.rows(None, "SELECT seal_path FROM dbo.letter_settings WHERE id = 1")
-    snap = json.dumps({"name_th": s.get("name_th") or s.get("name_en"), "title_th": s.get("title_th") or s.get("title_en"),
-                       "signature_path": s["signature_path"], "seal_path": st[0]["seal_path"] if st else None}, ensure_ascii=False)
-    certs = _mine_pending(r, y, p_codes)
+    certs = _mine_pending(r, y, p_codes, r.uid)
     if not certs:
         raise E("ไม่มีใบที่รอคุณลงนาม")
-    day = _today_bkk()
-    for c in certs:
-        r.cur.execute("UPDATE dbo.tax_certs SET status = 'signed', signer = ?, signed_at = ?, issue_date = ?, updated_at = ? WHERE year = ? AND emp_code = ?",
-                      snap, _now(), day, _now(), y, c["emp_code"])
-    _log(r, None, "sign", f"ลงนาม 50 ทวิ ปี {y}: {len(certs)} ใบ (" + ", ".join(f"#{c['no']}" for c in certs[:30]) + (" …" if len(certs) > 30 else "") + ")")
+    day = _do_sign(r, y, r.uid, certs, _me(r))
+    _tell_hr(r, y, r.uid, certs, True)
     return {"signed": [c["emp_code"] for c in certs], "date": day}
 
 
@@ -980,11 +1165,66 @@ def tax_certs_return(r, p_year, p_codes, p_reason):
     y, why = _year(p_year), _s(p_reason, 500)
     if not why:
         raise E("ระบุเหตุผลที่ส่งกลับ")
-    certs = _mine_pending(r, y, p_codes)
-    for c in certs:
-        r.cur.execute("UPDATE dbo.tax_certs SET status = 'draft', reason = ?, updated_at = ? WHERE year = ? AND emp_code = ?", why, _now(), y, c["emp_code"])
-    _log(r, None, "return", f"ส่งกลับ 50 ทวิ ปี {y}: {len(certs)} ใบ · {why}")
+    certs = _mine_pending(r, y, p_codes, r.uid)
+    _do_return(r, y, certs, why, _me(r))
+    if certs:
+        _tell_hr(r, y, r.uid, certs, False, why)
     return {"returned": [c["emp_code"] for c in certs]}
+
+
+def _link(r, token, lock=False):
+    ensure(r)
+    if len(token or "") < 40:
+        return None
+    t = r.rows(None, "SELECT * FROM dbo.tax_sign_tokens" + (" WITH (UPDLOCK, ROWLOCK)" if lock else "") + " WHERE token = ?", token)
+    return t[0] if t else None
+
+
+@fn
+def tax_link_get(r, p_token):
+    """หน้าลงนามจากลิงก์อีเมล (ไม่ต้อง login): ใบที่รอผู้ลงนามคนนี้ในปีนั้น พร้อมตัวเลข (ผู้ลงนามมีสิทธิ์เห็นอยู่แล้ว)"""
+    t = _link(r, p_token)
+    if not t:
+        return {"error": "ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว"}
+    y, uid = t["year"], t["signer_id"]
+    s = r.signer(uid) or {}
+    certs = [_cert_out(c, True) for c in r.rows(None, "SELECT * FROM dbo.tax_certs WHERE year = ? AND signer_id = ? AND status = 'pending' ORDER BY [no]", y, uid)]
+    for c in certs:
+        for k in ("signer_id", "requested_by", "reason"):
+            c.pop(k, None)
+    expired = datetime.fromisoformat(str(t["expires_at"])) <= datetime.now(timezone.utc)
+    can = bool(s.get("signature_path")) and r.user_has_perm(uid, "data.tax.sign")
+    signed = r.val("SELECT COUNT(*) FROM dbo.tax_certs WHERE year = ? AND signer_id = ? AND status = 'signed'", y, uid)
+    return {"year": y, "signer": {"name": s.get("name_th") or s.get("name_en") or _signer_name(r, uid), "title": s.get("title_th") or s.get("title_en")},
+            "state": "expired" if expired else ("noperm" if not can else ("open" if certs else "done")),
+            "certs": [] if expired else certs, "signed": signed, "settings": _settings(r), "expires_at": str(t["expires_at"])}
+
+
+@fn
+def tax_link_decide(r, p_token, p_codes, p_ok, p_reason=None):
+    t = _link(r, p_token, lock=True)
+    if not t:
+        raise E("ลิงก์ไม่ถูกต้อง หรือมีการส่งลิงก์ใหม่แทนแล้ว")
+    if datetime.fromisoformat(str(t["expires_at"])) <= datetime.now(timezone.utc):
+        raise E("ลิงก์หมดอายุแล้ว — ติดต่อฝ่ายบุคคลให้ส่งลิงก์ใหม่")
+    y, uid = t["year"], t["signer_id"]
+    if not r.user_has_perm(uid, "data.tax.sign"):
+        raise E("บัญชีของท่านไม่มีสิทธิ์ลงนาม 50 ทวิ แล้ว — ติดต่อฝ่ายบุคคล")
+    why = _s(p_reason, 500)
+    if not p_ok and not why:
+        raise E("ระบุเหตุผลที่ส่งกลับ")
+    r.lock("tax_certs")
+    certs = _mine_pending(r, y, p_codes, uid)
+    if not certs:
+        raise E("ใบที่เลือกไม่ได้รอท่านลงนามแล้ว — โหลดหน้าใหม่")
+    who = _signer_name(r, uid)
+    if p_ok:
+        _do_sign(r, y, uid, certs, who, " ผ่านลิงก์อีเมล")
+    else:
+        _do_return(r, y, certs, why, who, " ผ่านลิงก์อีเมล")
+    r.cur.execute("UPDATE dbo.tax_sign_tokens SET used_at = ? WHERE token = ?", _now(), t["token"])
+    out = _tell_hr(r, y, uid, certs, bool(p_ok), why or "")
+    return {"done": [c["emp_code"] for c in certs], "left": out["left"], "date": _today_bkk()}
 
 
 @fn

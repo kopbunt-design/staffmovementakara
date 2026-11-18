@@ -237,6 +237,15 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   one, some, or all at once** (user's choice) on `#/sign`, or returns with a reason → signed (date = signing day, Bangkok).
   Figures changed after signing → "ยอดเปลี่ยน" → HR voids and prepares again (same number, version + 1). Leavers must get
   theirs within 1 month of leaving (`leaverAlerts`). Form = `tax/doc.js` reusing `CSS50`/`INC` from `contract/doc.js`.
+- **Signer signs from the e-mail without logging in** (user, 2026-11-18): sending mails the signer a link
+  `tax/sign.html?t=` (`tax/sign.js`, no `js/app.js`). One token per signer + tax year (`tax_sign_tokens`, Azure-only), showing
+  every cert pending for that signer that year; usable repeatedly until nothing is pending or 14 days pass (sending more to
+  the same signer reuses and extends it). Public RPCs `tax_link_get` / `tax_link_decide` (sign some/all or return with a
+  reason); results are mailed to the HR who sent each cert (`tax_certs.requested_by`) — in-app sign/return too. Mail is sent
+  server-side by `mail.deliver` (same rules as letter-notify: outlook mode / MAIL_LIVE ≠ 1 → not sent, HR gets the link to
+  copy). Templates `tax_sign` / `tax_signed` / `tax_returned` live in `tax_settings` k=mail (defaults `MAIL_DEFAULT` in tax.py,
+  not `mail_templates` — its CHECK/policies are shared), edited from the 50 ทวิ page ("✉️ แบบอีเมล"); "ลิงก์ลงนาม" lists
+  pending links to copy or re-send. No amounts in the e-mails.
 - Employees download their own signed 50 ทวิ at `/tax/my.html` (user: both HR print and self-service): emp code + full
   13-digit tax id must match `tax_people`; public RPC `tax_my_certs` (8 wrong tries / 30 min locks the code; guard bans
   IPs). Signature/seal images are returned as data URLs by the server (`_art`). `tax_my_certs` is sent without the login
