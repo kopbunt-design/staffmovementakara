@@ -740,6 +740,116 @@ def tax_person_merge(r, p_from, p_to, p_reason=None):
     return {"moved": n}
 
 
+# ---------------------------------------------------------------- ที่อยู่ผู้มีเงินได้ (user 2026-11-18)
+
+
+def _area(addr):
+    """ตำบล|อำเภอ|จังหวัด จากท้ายที่อยู่ (ไฟล์ .txt: "… เขาเจ็ดลูก ทับคล้อ พิจิตร" · สัญญาจ้าง: "… ต.หนองหาร อ.สันทราย จ.เชียงใหม่")"""
+    t = re.sub(r"\b\d{5}\b", " ", str(addr or ""))
+    t = re.sub(r"(ต\.|ตำบล|แขวง|อ\.|อำเภอ|เขต|จ\.|จังหวัด)\s*", " ", t)
+    w = [x for x in t.split() if not re.fullmatch(r"[\d/\-.,]+|หมู่(ที่)?|ม\.|ถ\.|ถนน|ซ\.|ซอย", x)]
+    if len(w) < 3:
+        return None
+    a = "|".join(w[-3:]).replace("กทม.", "กรุงเทพมหานคร").replace("กรุงเทพฯ", "กรุงเทพมหานคร")
+    return a
+
+
+def _zip_of(addr):
+    m = re.findall(r"(?<!\d)(\d{5})(?!\d)", str(addr or ""))
+    return m[-1] if m else None
+
+
+def _flat(s):
+    return re.sub(r"\s+", "", re.sub(r"^(นาย|นางสาว|นาง|น\.ส\.)", "", str(s or "").strip()))
+
+
+@fn
+def tax_addr_fill(r, p_apply=False):
+    """เติมที่อยู่ให้อัตโนมัติ — ไม่ทับที่อยู่ที่มีอยู่แล้ว
+    1) จากสัญญาจ้าง (emp_contracts.address · จับคู่ เลขบัตร 13 หลัก = เลขผู้เสียภาษี หรือชื่อ-สกุลตรงกันคนเดียว)
+    2) รหัสไปรษณีย์ที่ขาด: เดาจากคนอื่นที่อยู่ตำบล/อำเภอ/จังหวัดเดียวกันและมีรหัสไปรษณีย์ (ใช้เมื่อได้ค่าเดียว)
+    p_apply = False → คืนรายการที่จะเติมให้ดูก่อน · True → บันทึก"""
+    _need(r, "page.tax", "data.tax.write")
+    if p_apply:
+        r.lock("tax_pnd")
+    ppl = r.rows(None, "SELECT emp_code, tax_id, first_th, last_th, address, zip, source FROM dbo.tax_people")
+    by_id = {p["tax_id"]: p for p in ppl if p.get("tax_id")}
+    by_nm = {}
+    for p in ppl:
+        by_nm.setdefault(_flat(f"{p.get('first_th') or ''}{p.get('last_th') or ''}"), []).append(p)
+    out = []
+    for c in r.rows(None, "SELECT id, name_th, id_card, address, contract_date FROM dbo.emp_contracts WHERE status <> 'cancelled' AND address IS NOT NULL ORDER BY contract_date"):
+        p = by_id.get(c.get("id_card") or "")
+        how = "เลขบัตรตรงกับสัญญาจ้าง"
+        if not p:
+            m = by_nm.get(_flat(c.get("name_th")), [])
+            p, how = (m[0], "ชื่อตรงกับสัญญาจ้าง") if len(m) == 1 else (None, "")
+        if not p or (p.get("address") or "").strip():
+            continue
+        a = re.sub(r"\s+", " ", str(c["address"])).strip()[:400]
+        p["address"], p["zip"] = a, p.get("zip") or _zip_of(a)
+        out.append({"emp_code": p["emp_code"], "address": a, "zip": p["zip"], "from": how, "kind": "contract"})
+    # ตำบล|อำเภอ|จังหวัด → รหัสไปรษณีย์ จากที่อยู่ที่ครบ
+    zips = {}
+    for p in ppl:
+        z = p.get("zip") if re.fullmatch(r"\d{5}", str(p.get("zip") or "")) else _zip_of(p.get("address"))
+        k = _area(p.get("address"))
+        if z and k:
+            zips.setdefault(k, set()).add(z)
+    done = {o["emp_code"]: o for o in out}
+    for p in ppl:
+        if not (p.get("address") or "").strip() or re.fullmatch(r"\d{5}", str(p.get("zip") or "")) or _zip_of(p.get("address")):
+            continue
+        z = zips.get(_area(p["address"]) or "", set())
+        if len(z) != 1:
+            continue
+        z = next(iter(z))
+        if p["emp_code"] in done:
+            done[p["emp_code"]]["zip"] = z
+            done[p["emp_code"]]["from"] += " · รหัสไปรษณีย์จากตำบลเดียวกัน"
+        else:
+            out.append({"emp_code": p["emp_code"], "address": p["address"], "zip": z, "from": "รหัสไปรษณีย์จากคนอื่นในตำบลเดียวกัน", "kind": "zip"})
+    if p_apply and out:
+        who = _me(r)
+        for o in out:
+            r.cur.execute("""UPDATE dbo.tax_people SET address = ?, zip = ?, source = CASE WHEN source = 'manual' THEN source ELSE 'auto' END,
+                             updated_at = ?, updated_by_name = ? WHERE emp_code = ?""", o["address"], o["zip"], _now(), who, o["emp_code"])
+        _log(r, None, "addr", f"เติมที่อยู่อัตโนมัติ: จากสัญญาจ้าง {sum(o['kind'] == 'contract' for o in out)} คน · "
+             f"รหัสไปรษณีย์ {sum(bool(o['zip']) for o in out)} คน", who)
+    return {"rows": out, "applied": bool(p_apply)}
+
+
+@fn
+def tax_addr_import(r, p_rows, p_file=None):
+    """อัป Excel ที่อยู่ที่กรอกแล้วกลับ: [{emp_code, tax_id, address, zip}] · ช่องว่าง = ไม่แก้ · ที่อยู่ที่กรอกเองถือเป็นข้อมูลที่ HR แก้ (manual)"""
+    _need(r, "page.tax", "data.tax.write")
+    r.lock("tax_pnd")
+    who = _me(r)
+    have = {p["emp_code"]: p for p in r.rows(None, "SELECT emp_code, tax_id, address, zip FROM dbo.tax_people")}
+    upd, skip = 0, []
+    for x in p_rows or []:
+        code = (_s(x.get("emp_code"), 40) or "").upper()
+        p = have.get(code)
+        if not p:
+            skip.append(f"{code or '-'}: ไม่พบรหัส")
+            continue
+        a = re.sub(r"\s+", " ", _s(x.get("address"), 400) or "").strip() or None
+        z = re.sub(r"\D", "", str(x.get("zip") or "")) or (_zip_of(a) if a else None)
+        if z and len(z) != 5:
+            skip.append(f"{code}: รหัสไปรษณีย์ {z} ไม่ใช่ 5 หลัก")
+            z = None
+        t = re.sub(r"\D", "", str(x.get("tax_id") or ""))
+        t = t if not p.get("tax_id") and re.fullmatch(r"\d{13}", t) and valid_tax_id(t) else None
+        ch = {k: v for k, v in (("address", a), ("zip", z), ("tax_id", t)) if v and v != p.get(k)}
+        if not ch:
+            continue
+        r.cur.execute(f"UPDATE dbo.tax_people SET {', '.join(f'{k} = ?' for k in ch)}, source = 'manual', updated_at = ?, updated_by_name = ? WHERE emp_code = ?",
+                      *ch.values(), _now(), who, code)
+        upd += 1
+    _log(r, None, "addr", f"นำเข้าที่อยู่จาก Excel {_s(p_file, 200) or ''}: แก้ {upd} คน" + (f" · ข้าม {len(skip)}" if skip else ""), who)
+    return {"updated": upd, "skipped": skip}
+
+
 # ---------------------------------------------------------------- 50 ทวิ
 def _totals(r, y, code):
     rows = r.rows(None, f"SELECT ym, {', '.join(CERT_MONEY)} FROM dbo.tax_income WHERE ym LIKE ? AND emp_code = ? ORDER BY ym", f"{y}-%", code)

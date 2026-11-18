@@ -332,11 +332,37 @@ export const CERT_FIELDS = ["inc401", "inc402", "sev", "tax", "sev_tax", "sso", 
 export const certStale = (cert, tot) => !tot || CERT_FIELDS.some(f => Math.abs(num(cert[f]) - num(tot[f])) >= 0.01);
 
 // สิ่งที่ต้องดูก่อนออกใบของคนหนึ่ง: level warn = ออกไม่ได้ · info = ให้ HR ดู
+// ---------------------------------------------------------------- ที่อยู่ผู้มีเงินได้ (50 ทวิ / ภ.ง.ด.1ก ต้องมีที่อยู่ + รหัสไปรษณีย์ · user 2026-11-18)
+const PROVINCES = ("กรุงเทพมหานคร กระบี่ กาญจนบุรี กาฬสินธุ์ กำแพงเพชร ขอนแก่น จันทบุรี ฉะเชิงเทรา ชลบุรี ชัยนาท ชัยภูมิ ชุมพร เชียงราย เชียงใหม่ ตรัง ตราด ตาก " +
+  "นครนายก นครปฐม นครพนม นครราชสีมา นครศรีธรรมราช นครสวรรค์ นนทบุรี นราธิวาส น่าน บึงกาฬ บุรีรัมย์ ปทุมธานี ประจวบคีรีขันธ์ ปราจีนบุรี ปัตตานี " +
+  "พระนครศรีอยุธยา พะเยา พังงา พัทลุง พิจิตร พิษณุโลก เพชรบุรี เพชรบูรณ์ แพร่ ภูเก็ต มหาสารคาม มุกดาหาร แม่ฮ่องสอน ยโสธร ยะลา ร้อยเอ็ด ระนอง ระยอง " +
+  "ราชบุรี ลพบุรี ลำปาง ลำพูน เลย ศรีสะเกษ สกลนคร สงขลา สตูล สมุทรปราการ สมุทรสงคราม สมุทรสาคร สระแก้ว สระบุรี สิงห์บุรี สุโขทัย สุพรรณบุรี " +
+  "สุราษฎร์ธานี สุรินทร์ หนองคาย หนองบัวลำภู อ่างทอง อำนาจเจริญ อุดรธานี อุตรดิตถ์ อุทัยธานี อุบลราชธานี").split(" ");
+const zipIn = s => (String(s || "").match(/(?<!\d)\d{5}(?!\d)/g) || []).pop() || null;
+// ที่อยู่ครบไหม → null = ครบ · { level, key: none|zip|prov, text }
+export function addrCheck(p) {
+  const a = norm(p?.address);
+  if (!a) return { level: "warn", key: "none", text: "ไม่มีที่อยู่" };
+  if (!/^\d{5}$/.test(norm(p?.zip)) && !zipIn(a)) return { level: "warn", key: "zip", text: "ที่อยู่ไม่มีรหัสไปรษณีย์" };
+  if (!/กรุงเทพ|กทม/.test(a) && !PROVINCES.some(x => a.includes(x))) return { level: "info", key: "prov", text: "ที่อยู่ไม่มีชื่อจังหวัด" };
+  return null;
+}
+// Excel ที่อยู่ที่กรอกแล้ว (จากปุ่ม "Excel ไปกรอก") → [{ emp_code, tax_id, address, zip }] · หาแถวหัวจาก "รหัส" + "ที่อยู่"
+export function parseAddrSheet(aoa) {
+  const hi = aoa.slice(0, 10).findIndex(r => (r || []).some(c => /รหัส/.test(norm(c))) && (r || []).some(c => /ที่อยู่/.test(norm(c))));
+  if (hi < 0) return null;
+  const h = aoa[hi].map(norm), col = re => h.findIndex(x => re.test(x));
+  const C = { code: col(/^รหัส(พนักงาน)?$/), id: col(/เลข(ผู้เสียภาษี|ประจำตัว|บัตร)/), addr: col(/^ที่อยู่/), zip: col(/ไปรษณีย์/) };
+  if (C.code < 0 || C.addr < 0) return null;
+  return aoa.slice(hi + 1).map(r => ({ emp_code: norm(r?.[C.code]).toUpperCase(), tax_id: C.id >= 0 ? norm(r?.[C.id]).replace(/\D/g, "") : "",
+    address: norm(r?.[C.addr]), zip: C.zip >= 0 ? norm(r?.[C.zip]).replace(/\D/g, "") : "" })).filter(x => x.emp_code && (x.address || x.zip || x.tax_id));
+}
+
 export function certChecks(p, tot, emp) {
   const out = [];
   if (!p?.tax_id) out.push({ level: "warn", text: "ไม่มีเลขประจำตัวผู้เสียภาษี" });
   else if (!validTaxId(p.tax_id)) out.push({ level: "warn", text: "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (เลขตรวจสอบไม่ผ่าน)" });
-  if (!p?.address) out.push({ level: "info", text: "ไม่มีที่อยู่" });
+  const ad = addrCheck(p); if (ad) out.push({ level: ad.level, text: ad.text });
   if (tot && num(tot.inc402)) out.push({ level: "info", text: "มีเงินได้ 40(2) (ค่าตอบแทนกรรมการ) แยกบรรทัด" });
   if (tot && num(tot.sev)) out.push({ level: "info", text: "มีเงินชดเชยออกจากงาน — แสดงในข้อ 6 อื่น ๆ" });
   if (tot && num(tot.co_tax)) out.push({ level: "info", text: "มีภาษีที่บริษัทออกให้ — ตรวจช่องผู้จ่ายเงิน (2)/(3)" });

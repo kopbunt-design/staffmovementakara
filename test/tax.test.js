@@ -4,7 +4,7 @@ ObjC.import('Foundation');
 const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null).js;
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const src = read(`${ROOT}/js/tax-calc.js`).replace(/^export /gm, "");
-const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED, parsePndSheet, pndCode, guessPart, groupOf };`)();
+const T = new Function(`${src}; return { readPayroll, parsePnd, validTaxId, matchPnd, yearTotals, reconcileMonth, certStale, certChecks, leaverAlerts, pnd1kRows, bahtText, income, taxAll, split, colList, suggestType, reType, UNEXPLAINED, parsePndSheet, pndCode, guessPart, groupOf, addrCheck, parseAddrSheet };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const pick = (x, ...k) => Object.fromEntries(k.map(f => [f, x[f]]));
@@ -70,7 +70,7 @@ eq(rc.totals, { reg: { n: 2, income: 30600, tax: 800 }, pnd: { n: 2, income: 315
 const yt = T.yearTotals([{ ym: "2026-02", emp_code: "A", inc401: 100.1, tax: 1, sso: 875 }, { ym: "2026-01", emp_code: "A", inc401: 200.2, tax: 2, sso: 875 }]);
 eq(pick(yt.get("A"), "inc401", "tax", "sso", "months", "last"), { inc401: 300.3, tax: 3, sso: 1750, months: ["2026-01", "2026-02"], last: "2026-02" }, "รวมทั้งปี");
 eq([T.certStale({ inc401: 300.3, tax: 3, sso: 1750 }, yt.get("A")), T.certStale({ inc401: 300, tax: 3, sso: 1750 }, yt.get("A"))], [false, true], "ใบเก่าเมื่อยอดเปลี่ยน");
-eq(T.certChecks({ tax_id: "1101700203452", address: "" }, { inc401: 1, sev: 5 }).map(c => c.level), ["warn", "info", "info"], "ตรวจก่อนออกใบ");
+eq(T.certChecks({ tax_id: "1101700203452", address: "" }, { inc401: 1, sev: 5 }).map(c => c.level), ["warn", "warn", "info"], "ตรวจก่อนออกใบ (ไม่มีที่อยู่ = ต้องแก้)");
 const la = T.leaverAlerts([{ emp_code: "A", end_date: "2026-10-01" }, { emp_code: "B", end_date: "2026-11-10" }, { emp_code: "C", end_date: "2026-12-31" }, { emp_code: "D", end_date: "2026-03-01" }],
   [{ emp_code: "D", status: "signed" }], 2026, "2026-11-13");
 eq(la.map(x => [x.emp_code, x.due, x.overdue]), [["A", "2026-11-01", true], ["B", "2026-12-10", false]], "คนลาออกต้องได้ใบภายใน 1 เดือน");
@@ -118,5 +118,12 @@ eq(["Salary","เงินเดือน","OT","โอที 1.5","โอที
 { const r = T.parsePndSheet([["ลำดับ","บัตร ปชช","คำหน้า","ชื่อ ","สกุล","เงินได้ตามมาตรา","วันเดือนปีที่จ่าย","เงินได้","ภาษี","เงื่อนไข",""],
     ["1","1234567890121","นาย","ก","ข","401N","14/08/2569","320000","43000","1",""]]);
   eq([r.months, r.rows.map(x => [x.tax_id, x.first, x.type, x.income, x.tax])], [["2026-08"], [["1234567890121","ก","1",320000,43000]]], "parsePndSheet csv"); }
+
+// ที่อยู่ครบไหม + Excel ที่อยู่ที่กรอกกลับมา
+eq([{}, { address: "12 ต.หนองหาร อ.สันทราย จ.เชียงใหม่" }, { address: "12 ต.หนองหาร อ.สันทราย จ.เชียงใหม่", zip: "50290" }, { address: "12 หมู่ 3 เขาทราย 66230" }, { address: "1 ถ.สุขุมวิท กทม. 10110" }].map(p => T.addrCheck(p)?.key || null),
+  ["none", "zip", null, "prov", null], "addrCheck");
+eq(T.parseAddrSheet([["ที่อยู่ผู้มีเงินได้ — กรอกช่องสีเหลือง"], ["รหัสพนักงาน", "ชื่อ-สกุล", "เลขผู้เสียภาษี", "ที่อยู่ (เลขที่ หมู่ ถนน ตำบล อำเภอ จังหวัด)", "รหัสไปรษณีย์", "สถานะ"],
+  ["akr1", "ก ข", "1-1017-00203-45-2", "  12  ต.หนองหาร ", 50290, "ลาออก"], ["AKR2", "ค", "", "", "", ""]]),
+  [{ emp_code: "AKR1", tax_id: "1101700203452", address: "12 ต.หนองหาร", zip: "50290" }], "parseAddrSheet");
 
 console.log(F ? `ไม่ผ่าน ${F} / ${P + F}` : `ผ่านทั้งหมด ${P} เคส`);

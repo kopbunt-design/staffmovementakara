@@ -215,8 +215,10 @@ function people() {
     sev: ["มีเงินชดเชย", c => S.tot.get(c).sev > 0],
     noemp: ["ไม่อยู่ในทะเบียนพนักงาน", c => !S.E.has(c) && !isOut(c)],
     out: ["นอกเงินเดือน (กรรมการ ฯลฯ)", c => isOut(c)],
+    addr: ["ที่อยู่ไม่ครบ", c => !!T.addrCheck(S.P.get(c))],
   };
   if (!S.out.size) delete F.out;
+  if (S.fPeople !== "addr" && ![...S.tot.keys()].some(F.addr[1])) delete F.addr;
   const list = [...S.tot.keys()].filter(c => (F[S.fPeople] || F[""])[1](c))
     .filter(c => !q || [c, nameOf(c), S.E.get(c)?.department, S.P.get(c)?.tax_id].join(" ").toLowerCase().includes(q)).sort();
   render(`${head(`ปีภาษี ${S.year + 543}`, "รายได้รายคน", `พนักงาน ${S.tot.size - S.out.size} คน${S.out.size ? ` · นอกเงินเดือน ${S.out.size} คน (ไม่นับรวม)` : ""} · รวมทุกเดือนที่นำเข้า · กดแถวเพื่อดูรายเดือน แก้ข้อมูลผู้เสียภาษี และออก 50 ทวิ`,
@@ -224,17 +226,81 @@ function people() {
   <div class="card"><div class="card-h">
     <div class="seg" id="segP">${Object.entries(F).map(([k, [t, f]]) => `<button data-s="${k}" class="${S.fPeople === k ? "on" : ""}">${t} ${[...S.tot.keys()].filter(f).length}</button>`).join("")}</div>
     <div class="search">${I.search}<input class="inp" id="q" placeholder="ค้นหา ชื่อ / รหัส / แผนก / เลขผู้เสียภาษี" value="${esc(S.q)}"></div></div>
+    ${S.fPeople === "addr" ? addrBar() : ""}
     <div class="tbl-wrap" style="max-height:calc(100vh - 290px)"><table class="tbl"><thead><tr><th>พนักงาน</th><th>เลขผู้เสียภาษี</th><th class="r">เดือน</th><th class="r">เงินได้</th><th class="r">ภาษี</th><th class="r">ประกันสังคม</th><th class="r">PVD</th><th>50 ทวิ</th></tr></thead><tbody>
     ${list.map(c => { const t = S.tot.get(c), p = S.P.get(c), e = S.E.get(c);
       return `<tr class="click" data-open="${esc(c)}"><td>${who(c, e?.end_date && e.end_date.slice(0, 4) === yr ? ` · ออก ${dTH(e.end_date.slice(0, 10))}` : undefined)}</td>
-        <td class="num small">${p?.tax_id ? (S.D.can_write && !T.validTaxId(p.tax_id) ? `<span class="chip chip-red">${esc(p.tax_id)}</span>` : esc(p.tax_id)) : `<span class="chip chip-red">ไม่มี</span>`}</td>
+        <td class="num small">${p?.tax_id ? (S.D.can_write && !T.validTaxId(p.tax_id) ? `<span class="chip chip-red">${esc(p.tax_id)}</span>` : esc(p.tax_id)) : `<span class="chip chip-red">ไม่มี</span>`}${S.fPeople === "addr" ? (a => a ? `<div class="small" style="color:var(--amber-600)">${esc(a.text)}</div>` : "")(T.addrCheck(p)) : ""}${S.fPeople === "addr" && p?.address ? `<div class="small muted" style="font-family:inherit;white-space:normal;max-width:340px">${esc(p.address)}${p.zip ? " " + esc(p.zip) : ""}</div>` : ""}</td>
         <td class="r">${t.months.length}</td><td class="r money">${baht(T.income(t))}${t.sev ? `<div class="small muted">ชดเชย ${baht(t.sev)}</div>` : ""}</td><td class="r money">${baht(T.taxAll(t))}</td>
         <td class="r money">${baht(t.sso)}</td><td class="r money">${baht(t.pvd)}</td><td>${certChip(cert(c))}</td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">ไม่พบ</td></tr>`}
     </tbody></table></div></div>`);
   document.querySelectorAll("#segP button").forEach(b => b.onclick = () => { S.fPeople = b.dataset.s; history.replaceState(null, "", "#/people"); people(); });
   const qi = $("#q"); qi.oninput = () => { S.q = qi.value; const p = qi.selectionStart; people(); const n = $("#q"); n.focus(); n.setSelectionRange(p, p); };
   $("#btnXl").onclick = exportYear;
+  wireAddr();
 }
+// ---------------------------------------------------------------- ที่อยู่ผู้มีเงินได้ (แท็บ "ที่อยู่ไม่ครบ" ในหน้ารายได้รายคน · user 2026-11-18)
+//   เติมอัตโนมัติ (สัญญาจ้าง + รหัสไปรษณีย์จากตำบลเดียวกัน) · Excel ไปกรอก → อัปกลับ · ที่อยู่ครบ = มีที่อยู่ + รหัสไปรษณีย์ 5 หลัก + จังหวัด
+function addrBar() {
+  const all = [...S.tot.keys()], ck = all.map(c => T.addrCheck(S.P.get(c))), bad = ck.filter(Boolean), n = k => bad.filter(x => x.key === k).length;
+  const pct = all.length ? Math.round((all.length - bad.length) / all.length * 100) : 100, w = S.D.can_write;
+  return `<div class="ty-new" style="margin:12px 20px 0"><div class="ic">!</div><div class="tx"><b>ที่อยู่ครบ ${all.length - bad.length}/${all.length} คน (${pct}%)</b> — 50 ทวิ และ ภ.ง.ด.1ก ต้องมีที่อยู่และรหัสไปรษณีย์
+      <div class="small muted">${[n("none") && `ไม่มีที่อยู่ ${n("none")}`, n("zip") && `ไม่มีรหัสไปรษณีย์ ${n("zip")}`, n("prov") && `ไม่มีจังหวัด ${n("prov")}`].filter(Boolean).join(" · ")}
+      · อัปไฟล์ ภ.ง.ด.1 แบบ .txt ในหน้ากระทบยอดก็ได้ที่อยู่ทุกคนในเดือนนั้น</div></div>
+    ${w ? `<div class="fx-actions"><button class="btn btn-sm btn-p" id="adAuto">✨ เติมให้อัตโนมัติ</button><button class="btn btn-sm" id="adXl">${I.dl}Excel ไปกรอก</button>
+      <label class="btn btn-sm">${I.file}อัป Excel ที่กรอกแล้ว<input type="file" id="adFile" accept=".xlsx,.xls" hidden></label></div>` : ""}</div>`;
+}
+function wireAddr() {
+  $("#adAuto") && ($("#adAuto").onclick = addrAuto);
+  $("#adXl") && ($("#adXl").onclick = addrExport);
+  $("#adFile") && ($("#adFile").onchange = e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) addrImport(f); });
+}
+async function addrAuto() {
+  let r; try { r = await rpc("tax_addr_fill", { p_apply: false }); } catch (e) { toast(e.message, "error"); return; }
+  if (!r.rows.length) { toast("ไม่มีอะไรเติมได้อัตโนมัติ — ใช้ Excel ไปกรอก หรืออัปไฟล์ ภ.ง.ด.1 .txt", "info"); return; }
+  const nc = r.rows.filter(x => x.kind === "contract").length, nz = r.rows.filter(x => x.zip).length;
+  modal(`เติมที่อยู่อัตโนมัติ ${r.rows.length} คน`, `<div class="small muted" style="margin-bottom:8px">จากสัญญาจ้าง ${nc} คน · ได้รหัสไปรษณีย์ ${nz} คน — ไม่ทับที่อยู่ที่มีอยู่แล้ว ตรวจก่อนกดบันทึก</div>
+    <div class="tbl-wrap" style="max-height:50vh"><table class="tbl"><thead><tr><th>คน</th><th>ที่อยู่</th><th>รหัสไปรษณีย์</th><th>มาจาก</th></tr></thead><tbody>
+    ${r.rows.map(x => `<tr><td>${who(x.emp_code)}</td><td class="small">${esc(x.address)}</td><td class="num">${x.zip ? esc(x.zip) : `<span class="muted">—</span>`}</td><td class="small muted">${esc(x.from)}</td></tr>`).join("")}</tbody></table></div>`,
+    "บันทึกที่อยู่", async () => {
+      try { await rpc("tax_addr_fill", { p_apply: true }); } catch (e) { toast(e.message, "error"); return false; }
+      toast(`เติมที่อยู่แล้ว ${r.rows.length} คน`, "success"); await loadYear(); people();
+    });
+}
+function addrExport() {
+  const yr = String(S.year);
+  const rows = [...S.tot.keys()].filter(c => T.addrCheck(S.P.get(c))).sort().map(c => { const p = S.P.get(c) || {}, e = S.E.get(c);
+    return { "รหัสพนักงาน": c, "ชื่อ-สกุล": nameOf(c), "เลขผู้เสียภาษี": p.tax_id || "", "ที่อยู่ (เลขที่ หมู่ ถนน ตำบล อำเภอ จังหวัด)": p.address || "", "รหัสไปรษณีย์": p.zip || "",
+      "สถานะ": isOut(c) ? "นอกเงินเดือน (กรรมการ ฯลฯ)" : e?.end_date && e.end_date.slice(0, 4) <= yr ? `ลาออก ${dTH(e.end_date.slice(0, 10))}` : "พนักงาน",
+      "ต้องแก้": T.addrCheck(p).text }; });
+  if (!rows.length) { toast("ที่อยู่ครบทุกคนแล้ว", "success"); return; }
+  const ws = XLSX.utils.json_to_sheet(rows); ws["!cols"] = [14, 28, 16, 60, 12, 24, 22].map(wch => ({ wch }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "ที่อยู่");
+  XLSX.writeFile(wb, `ที่อยู่ผู้มีเงินได้ที่ต้องกรอก ${S.year + 543} (${today()}).xlsx`);
+  toast(`ส่งออก ${rows.length} คน — กรอกช่องที่อยู่/รหัสไปรษณีย์ แล้วกด "อัป Excel ที่กรอกแล้ว"`, "info");
+}
+async function addrImport(f) {
+  let rows;
+  try { const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array" });
+    for (const n of wb.SheetNames) { rows = T.parseAddrSheet(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: null })); if (rows?.length) break; }
+  } catch (e) { toast("อ่านไฟล์ไม่ได้: " + e.message, "error"); return; }
+  if (!rows?.length) { toast("ไม่พบคอลัมน์ รหัสพนักงาน + ที่อยู่ ในไฟล์ (ใช้ไฟล์จากปุ่ม Excel ไปกรอก)", "error"); return; }
+  const ch = rows.map(x => { const p = S.P.get(x.emp_code); return { ...x, p, known: !!p, diff: !!p && ((x.address && x.address !== (p.address || "")) || (x.zip && x.zip !== (p.zip || ""))) }; });
+  const use = ch.filter(x => x.diff), unk = ch.filter(x => !x.known);
+  if (!use.length) { toast(`ไม่มีที่อยู่ใหม่ในไฟล์${unk.length ? ` · ไม่พบรหัส ${unk.length}` : ""}`, "info"); return; }
+  modal(`นำเข้าที่อยู่ ${use.length} คน`, `<div class="small muted" style="margin-bottom:8px">${esc(f.name)}${unk.length ? ` · ไม่พบรหัส ${unk.length}: ${esc(unk.slice(0, 5).map(x => x.emp_code).join(", "))}` : ""} — ที่อยู่ที่นำเข้าถือว่า HR แก้เอง ไฟล์ ภ.ง.ด.1 ที่อัปทีหลังจะไม่ทับ</div>
+    <div class="tbl-wrap" style="max-height:50vh"><table class="tbl"><thead><tr><th>คน</th><th>ที่อยู่ใหม่</th><th>รหัสไปรษณีย์</th><th>ผลตรวจ</th></tr></thead><tbody>
+    ${use.map(x => { const a = T.addrCheck({ address: x.address || x.p.address, zip: x.zip || x.p.zip });
+      return `<tr><td>${who(x.emp_code)}</td><td class="small">${esc(x.address || x.p.address || "")}</td><td class="num">${esc(x.zip || x.p.zip || "")}</td>
+        <td>${a ? `<span class="chip ${a.level === "warn" ? "chip-red" : "chip-amb"}">${esc(a.text)}</span>` : `<span class="chip chip-em">ครบ</span>`}</td></tr>`; }).join("")}</tbody></table></div>`,
+    "บันทึกที่อยู่", async () => {
+      let r; try { r = await rpc("tax_addr_import", { p_rows: use.map(({ emp_code, tax_id, address, zip }) => ({ emp_code, tax_id, address, zip })), p_file: f.name }); }
+      catch (e) { toast(e.message, "error"); return false; }
+      toast(`บันทึกที่อยู่ ${r.updated} คน`, "success"); if (r.skipped.length) toast(`ข้าม: ${r.skipped.slice(0, 4).join(" · ")}`, "info");
+      await loadYear(); people();
+    });
+}
+
 function exportYear() {
   const months = Array.from({ length: 12 }, (_, i) => `${S.year}-${String(i + 1).padStart(2, "0")}`);
   const by = new Map(); for (const r of S.rows) by.set(r.emp_code + r.ym, r);
