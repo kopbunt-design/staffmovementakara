@@ -307,6 +307,24 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fx-legacy .modal-close { background: rgba(255,255,255,.1); border: 0; color: #fff; width: 34px; height: 34px; border-radius: 10px; cursor: pointer; font-size: 18px; }
 .fx-legacy .modal-body { padding: 20px 24px; }
 .fx-legacy .modal-footer { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: #fff; }
+/* ส่งให้กรรมการลงนาม / ตั้งค่ากรรมการ (เดิมอยู่ใน css/style.css ของเว็บ HR — ไม่ได้ตามมา ลายเซ็นพยานเลยขยายเต็มจอ · 2026-11-19) */
+.fx-legacy .ff-appr { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.fx-legacy .ff-appr-o { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; background: #fff; }
+.fx-legacy .ff-appr-o:has(input:checked) { border-color: var(--navy-600); background: var(--blue-100); }
+.fx-legacy .ff-appr-o input { margin-top: 4px; width: auto; }
+.fx-legacy .ff-appr-o > span { display: flex; flex-direction: column; gap: 1px; font-size: 13.5px; }
+.fx-legacy .ff-appr-o .text-muted { font-size: 12px; }
+.fx-legacy .ff-witness { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 12px; margin-top: 4px; background: #fff; }
+.fx-legacy .ff-witness img { height: 44px; max-width: 150px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
+.fx-legacy .ff-witness .btn { margin-left: auto; }
+.fx-legacy .ff-signnote { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: #F1ECFB; color: #4c1d95; font-size: 13px; line-height: 1.6; }
+.fx-legacy .fc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.fx-legacy .fc-add { display: flex; gap: 8px; align-items: center; } .fx-legacy .fc-add select { min-width: 280px; } .fx-legacy .fc-add .btn { white-space: nowrap; }
+.fx-legacy .fc-tbl td { vertical-align: middle; }
+.fx-legacy .fc-sub { font-size: 14px; font-weight: 700; margin: 22px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fx-legacy .fc-sub .text-muted { font-weight: 400; font-size: 12.5px; }
+.fx-legacy .cp-warn { background: var(--amber-100); color: #92400e; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; }
+.fx-legacy .empty-sub { font-size: 12px; }
 @media (max-width: 860px) { .fx-legacy .lt-mail-ed, .fx-legacy .form-grid { grid-template-columns: 1fr; } .fx-legacy .col-span-2 { grid-column: auto; } }
 
 /* ---------------------------------------------------------------- สะพานใบสมัคร ↔ ทะเบียน */
