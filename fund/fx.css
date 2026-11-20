@@ -247,7 +247,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   --green: var(--em-600); --green-light: var(--em-100); --red: var(--red-600); --red-light: var(--red-100);
   --amber: var(--amber-600); --amber-light: var(--amber-100); --gold: var(--gold-500); --gold-light: var(--gold-100); --gold-dark: #8A6500;
   --purple: #6D3FC0; --purple-light: #EFE8FC; --muted: var(--ink-3); --muted2: var(--ink-3); --text: var(--ink);
-  --border: var(--line); --border2: var(--line); --bg: var(--bg); --radius-sm: 10px;
+  --border: var(--line); --border2: var(--line); --radius-sm: 10px;
 }
 .fx-legacy .section { padding: 0; }
 .fx-legacy .mt-4 { margin-top: 18px; } .fx-legacy .pb-4 { padding-bottom: 18px; } .fx-legacy .mt { margin-top: 12px; }
@@ -298,7 +298,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fx-legacy .lt-mail-subj { font-weight: 700; font-size: 13.5px; margin: 4px 0 6px; }
 /* modal ของหน้าเดิม → การ์ดลอยดีไซน์เดียวกับลิ้นชัก */
 .fx-legacy .modal-overlay { position: fixed; inset: 0; background: rgba(6,18,36,.45); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; animation: fade .15s; }
-.fx-legacy .modal { background: var(--bg); border-radius: 22px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 30px 80px -20px rgba(6,18,36,.5); animation: slide .2s; }
+.fx-legacy .modal { background: var(--card); border-radius: 22px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 30px 80px -20px rgba(6,18,36,.5); animation: slide .2s; }
 .fx-legacy .modal-lg { max-width: 900px; }
 .fx-legacy .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px; position: sticky; top: 0; z-index: 2; color: #fff;
   background: radial-gradient(80% 140% at 100% 0%, rgba(245,184,0,.3), transparent 60%), linear-gradient(135deg, var(--navy-800), var(--navy-950)); }
