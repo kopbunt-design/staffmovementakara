@@ -7,8 +7,9 @@
 //      แต่ถ้าทำครบทุกวันของเดือน ได้เต็ม monthly_rate เสมอ — ก.พ. 28 วันทำครบ ก็ได้เท่า ก.ค. 31 วันทำครบ
 // ตัดวันนอกช่วงการจ้าง (ก่อน join_date / ตั้งแต่ end_date) ออกก่อนคำนวณเสมอ
 // เกณฑ์เพิ่ม: จ่ายเฉพาะพนักงานระดับ O (O1/O2/O3) — เช็คจาก job_level ในตาราง employees
+//   ใช้ระดับ ณ สิ้นเดือนของข้อมูลเวลา (levelAt): เลื่อนระดับมีผลหลังเดือนนั้น → ย้อนกลับไปใช้ระดับเดิม (user 2026-11-20)
 // กติกาทั้งหมดนี้ผู้ใช้ยืนยัน 2026-08-18 หลังเทียบกับเฉลยที่คิดมือของ ก.ค. 2026
-import { esc, toast, can, allEmployees, currentUser } from "./app.js";
+import { esc, toast, can, allEmployees, allMovements, currentUser } from "./app.js";
 import { supabase } from "./supabase-config.js";
 
 // shift code (upper-case) -> ตระกูลกะ
@@ -252,6 +253,27 @@ function dayStatus(row, cols) {
   return "CHECK_NOTE";                                   // ไม่มีข้อมูล → ต้อง review
 }
 
+// ระดับ ณ สิ้นเดือน ym — employees เก็บแค่ระดับปัจจุบัน · ย้อน movement ที่มีผลหลังสิ้นเดือนนั้น (วันที่มีผล = วันแรกในตำแหน่งใหม่)
+// ใช้ org_from.job_level ของรายการแรกหลังสิ้นเดือน · รายการที่ยังรอปรับทะเบียน (_pending) ไม่ได้เปลี่ยน employees จึงไม่ย้อน
+// user 2026-11-20: AKR25011257 เป็น S1 ตั้งแต่ 2/11 — ค่ากะของข้อมูล ต.ค. ยังต้องคิดแบบ O1
+const _json = v => { if (!v) return null; if (typeof v === "object") return v; try { return JSON.parse(v); } catch { return null; } };
+export function levelAt(emp, moves, ym) {
+  const cur = emp?.job_level || "";
+  if (!moves?.length || !ym) return cur;
+  const [y, m] = ym.split("-").map(Number);
+  const end = `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  const later = moves.map(mv => ({ d: String(mv.date || "").slice(0, 10), f: _json(mv.org_from), t: _json(mv.org_to) }))
+    .filter(x => x.d > end && x.f?.job_level && !x.t?._pending)
+    .sort((a, b) => a.d.localeCompare(b.d));
+  return later.length ? later[0].f.job_level : cur;
+}
+
+function movesByEmp() {
+  const m = new Map();
+  for (const mv of allMovements || []) { const k = String(mv.emp_code || "").trim(); if (k) (m.get(k) || m.set(k, []).get(k)).push(mv); }
+  return m;
+}
+
 // คำนวณจาก rows ทั้งหมด + map พนักงาน (emp_code -> {job_level}) -> { summary:[], detail:[] }
 // famMap: รหัสกะ (ตัวใหญ่) -> ตระกูล — ปกติมาจากตาราง master_shift_codes ใน DB
 // ส่งไม่มา = ใช้ค่าเริ่มต้นในโค้ด (เผื่อยังไม่ได้สร้างตาราง)
@@ -285,7 +307,8 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 
     // เช็คสิทธิ์จากระดับตำแหน่ง (DB) — ระดับ O ได้อัตโนมัติ, ระดับอื่นต้อง HR ติ๊ก override รายคน
     const emp = empMap.get(empId);
-    const jobLevel = emp?.job_level || "";
+    const jobLevel = levelAt(emp, opts.moves?.get(empId), g.ym);
+    const levelNow = emp?.job_level || "";
     const found = !!emp;
     const override = emp?.shift_allowance_override === true;
     const levelOk = ELIGIBLE_LEVELS.has(jobLevel);
@@ -469,7 +492,7 @@ export function computeShiftAllowance(rows, empMap, famMap = FAMILY_MAP, soloMap
 
     summary.push({
       Employee_ID: empId, Employee_Name: first.Employee_Name, Department: first.Department,
-      month: g.ym, job_level: jobLevel, eligible, granted, reason,
+      month: g.ym, job_level: jobLevel, level_now: levelNow !== jobLevel ? levelNow : "", eligible, granted, reason,
       joinDate: emp?.join_date || "", endDate: emp?.end_date || "",
       families: [...famUsed].map(f => FAMILY_TH[f] || f).join("+") || "-",
       familyCount: famUsed.size, monthlyRate, solo, soloCode: solo ? soloCode : "", capped,
@@ -658,7 +681,7 @@ export function renderShiftAllowance() {
         const empMap = new Map();
         for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
         lastRows = rows; lastKey = null; approvedNoWork = new Set(); // ไฟล์ใหม่ = เริ่มอนุมัติใหม่
-        lastResult = computeShiftAllowance(rows, empMap, famMap, shiftSoloMap, approvedNoWork);
+        lastResult = computeShiftAllowance(rows, empMap, famMap, shiftSoloMap, approvedNoWork, { moves: movesByEmp() });
         const notFound = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
         const ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
         lastMeta = { sheetName, rowCount: rows.length, notFound, ineligible };
@@ -694,7 +717,7 @@ export function renderShiftAllowance() {
     const famMap = await ensureShiftCodes();
     const empMap = new Map();
     for (const e of allEmployees) empMap.set(String(e.emp_code||"").trim(), e);
-    lastResult = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork);
+    lastResult = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork, { moves: movesByEmp() });
     lastMeta.notFound   = lastResult.summary.filter(r=>r.reason==="ไม่พบใน DB").length;
     lastMeta.ineligible = lastResult.summary.filter(r=>!r.eligible && r.reason!=="ไม่พบใน DB").length;
     if (lastKey) {
@@ -814,7 +837,7 @@ export function renderShiftAllowance() {
     if (!lastRows) { toast("อัปโหลดไฟล์ลงเวลาก่อน","error"); return; }
     const famMap = await ensureShiftCodes();
     const empMap = new Map(allEmployees.map(e => [String(e.emp_code||"").trim(), e]));
-    const oldRes = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork, { legacy:true });
+    const oldRes = computeShiftAllowance(lastRows, empMap, famMap, shiftSoloMap, approvedNoWork, { legacy:true, moves: movesByEmp() });
     const oldBy = new Map(oldRes.summary.map(r => [r.Employee_ID + "||" + r.month, r]));
     const months = [...new Set(lastResult.summary.map(r => r.month))];
     const { data: saved } = await supabase.from("shift_allowance").select("emp_code,month,total,manual_total").in("month", months);
@@ -1057,7 +1080,7 @@ function renderResults() {
             <td>${esc(r.Employee_Name||"-")}</td>
             <td class="text-muted">${esc(r.Department||"-")}</td>
             <td>${esc(r.month)}</td>
-            <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}</td>
+            <td>${r.eligible ? (r.granted ? `<span class="badge badge-gold">${esc(r.job_level||"-")} · พิเศษ</span>` : esc(r.job_level)) : `<span class="badge badge-gray">${esc(r.reason||r.job_level||"-")}</span>`}${r.level_now ? `<div class="text-muted" style="font-size:11px;" title="ระดับ ณ สิ้นเดือน ${esc(r.month)} — ปรับระดับหลังเดือนนั้น">ปัจจุบัน ${esc(r.level_now)}</div>` : ""}</td>
             <td>${esc(r.families)} <span class="text-muted">(${r.familyCount})</span>${r.solo?` <span class="badge badge-gold" title="ทำกะเดียวทั้งเดือน แต่กะนี้จ่าย">กะเดี่ยว ${esc(r.soloCode)}</span>`:""}${r.shiftOnly?` <span class="badge badge-blue" title="ทำกะเช้า/NOR สลับ ${esc(r.shiftPayCode)} — จ่ายเฉพาะวันที่เข้า ${esc(r.shiftPayCode)}">เฉพาะวัน ${esc(r.shiftPayCode)}</span>`:""}${r.shiftOnlyFull?` <span class="badge badge-blue" title="อยู่ ${esc(r.shiftPayCode)} เกิน ${N03_FULL_THRESHOLD} วัน (รวมวันหยุด) — จ่ายเต็มอัตรา">${esc(r.shiftPayCode)} เต็มเดือน</span>`:""}${r.approvedNoWork?` <span class="badge badge-green" title="HR อนุมัติจ่ายทั้งที่ไม่มีวันทำงานจริง">อนุมัติแล้ว</span>`:""}${r.codeMix?`<div class="text-muted" style="font-size:11px;margin-top:2px;" title="รหัสกะในวันที่มาทำงานจริง × จำนวนวัน (ใช้นับตระกูลกะ)">${esc(r.codeMix)}</div>`:""}</td>
             <td class="text-right">${r.monthlyRate.toLocaleString("th-TH")}</td>
             <td class="text-right">${r.payDays}</td>

@@ -13,7 +13,7 @@ const logic = SRC
 const M = new Function(`${logic}
   return { computeShiftAllowance, dayStatus, MATCH_TOL, num, FAMILY_MAP, PAYABLE, ELIGIBLE_LEVELS,
            parseKeyFile, applyKeyFile, toYM, findCol, classifyDiff, detectExtraCols,
-           isSuspendRow, isSickRow, isUnpaidNote };`)();
+           isSuspendRow, isSickRow, isUnpaidNote, levelAt };`)();
 
 let P = 0, F = 0;
 const eq = (a,b,m) => { if(JSON.stringify(a)===JSON.stringify(b)) P++; else { F++; console.log("FAIL "+m+"\n  got ="+JSON.stringify(a)+"\n  want="+JSON.stringify(b)); } };
@@ -746,6 +746,21 @@ eq(cd(1200, 31, 1200, 0).key, "zero-key",   "AKR24061198: เฉลยไม่�
 
 // ยอดที่ถอดกลับเป็นจำนวนวันเต็มไม่ได้ -> ต้องไม่มั่วสาเหตุ
 eq(cd(1800, 31, 1800, 777.77).key, "other", "ยอดแปลก ๆ -> บอกตรง ๆ ว่ายังไม่รู้สาเหตุ");
+
+// ---------- ระดับ ณ สิ้นเดือนของข้อมูลเวลา (user 2026-11-20: AKR25011257 O1 → S1 มีผล 2/11) ----------
+{
+  const mv = [{ emp_code:"E2", date:"2026-11-02", org_from:{ job_level:"O1" }, org_to:{ job_level:"S1" } }];
+  eq(M.levelAt({ job_level:"S1" }, mv, "2026-10"), "O1", "ปรับระดับหลังสิ้นเดือน → ใช้ระดับเดิม");
+  eq(M.levelAt({ job_level:"S1" }, mv, "2026-11"), "S1", "เดือนที่ปรับแล้ว → ระดับใหม่");
+  eq(M.levelAt({ job_level:"S1" }, [{ date:"2026-11-01", org_from:'{"job_level":"O1"}', org_to:'{"job_level":"S1"}' }], "2026-10"), "O1", "มีผลวันที่ 1 → เดือนก่อนยังเป็นระดับเดิม (JSON เป็นข้อความก็อ่านได้)");
+  eq(M.levelAt({ job_level:"O1" }, [{ date:"2026-11-02", org_from:{ job_level:"O1" }, org_to:{ job_level:"S1", _pending:true } }], "2026-10"), "O1", "ยังรอปรับทะเบียน → ไม่ย้อน");
+  eq(M.levelAt({ job_level:"S1" }, [{ date:"2026-11-02", org_from:{ department:"Mining" } }], "2026-10"), "S1", "ไม่มีระดับเดิมใน org_from → ใช้ระดับปัจจุบัน");
+  const two = [{ date:"2026-12-01", org_from:{ job_level:"S1" } }, { date:"2026-11-02", org_from:{ job_level:"O1" } }];
+  eq(M.levelAt({ job_level:"S2" }, two, "2026-10"), "O1", "หลายรายการ → ใช้รายการแรกหลังสิ้นเดือน");
+  const shifts = Array.from({ length:31 }, (_, i) => ["D01","A01","N01"][i % 3]);
+  const r = M.computeShiftAllowance(month("E2", 2026, 10, shifts), empMap, undefined, undefined, new Set(), { moves: new Map([["E2", mv]]) }).summary[0];
+  eq([r.job_level, r.level_now, r.eligible], ["O1", "S2", true], "คนที่ปรับเป็น S หลังเดือนนั้น ยังได้ค่ากะของเดือนนั้น");
+}
 
 console.log(`\n${P} passed, ${F} failed`);
 if (F > 0) throw new Error(F + " test(s) failed");
