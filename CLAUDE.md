@@ -15,7 +15,7 @@ Static SPA, no build step: vanilla JS with ES modules, HTML, CSS. No `package.js
 
 The live system runs on Azure App Service **akarahr2** (Python/FastAPI) + Azure SQL + Blob Storage. Since 2026-11-03 users
 reach it only through **Azure Front Door** (IT: Thailand only) at `https://ep-akarahr2-dwh8h3axhdbharbt.a01.azurefd.net`;
-the origin `https://akarahr2-a0dqcaa5fxb0cbcd.southeastasia-01.azurewebsites.net` is being closed. E-mail links use
+the origin `https://akarahr2-a0dqcaa5fxb0cbcd.southeastasia-01.azurewebsites.net` is closed (403 "Web App - Unavailable", checked 2026-11-20). E-mail links use
 `PUBLIC_URL` in app.py (App Setting overrides); `guard.client_ip` takes `X-Azure-ClientIP` when `X-Azure-FDID` is present
 (must match App Setting `AFD_ID` if set) — otherwise every user would share a Front Door edge IP and one ban would lock
 everyone out. Easy Auth behind Front Door needs forward-proxy convention "Standard" and the redirect URI
