@@ -881,8 +881,11 @@ def fund_request_approval(r, p_id, p_approver):
         raise E("ส่งลงนามได้เฉพาะแบบฟอร์มกองทุนสำรองเลี้ยงชีพ")
     if s["status"] not in ("accepted", "received"):
         raise E("ต้องรับเรื่องก่อน จึงส่งให้กรรมการลงนามได้")
-    if r.val("SELECT COUNT(*) FROM dbo.fund_form_submission WHERE emp_code = ? AND status <> N'cancelled' AND submitted_at > ?",
-             s["emp_code"], s["submitted_at"]):
+    # compare inside SQL against the row itself (by id): passing submitted_at back as a parameter loses sub-ms precision,
+    # so the form counted itself as "newer" (user 2026-11-23, #65 AKR26011336)
+    if r.val("SELECT COUNT(*) FROM dbo.fund_form_submission f WHERE f.emp_code = ? AND f.id <> ? AND f.status <> N'cancelled' "
+             "AND f.submitted_at > (SELECT x.submitted_at FROM dbo.fund_form_submission x WHERE x.id = ?)",
+             s["emp_code"], s["id"], s["id"]):
         raise E("มีฉบับใหม่กว่านี้ — ส่งฉบับล่าสุดแทน")
     if not p_approver or not r.val("SELECT COUNT(*) FROM dbo.fund_committee WHERE user_id = ?", p_approver):
         raise E("ผู้ที่เลือกไม่อยู่ในรายชื่อคณะกรรมการ")
