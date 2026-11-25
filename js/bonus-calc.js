@@ -44,13 +44,16 @@ export const ABSENT = "ขาดงาน", NOSCAN = "ไม่ได้รู�
 export const WORK_INJURY = "ลาเนื่องจากเจ็บป่วย/อุบัติเหตุจากการทำงาน (HR ยืนยัน)";
 // ใบลงเวลากระดาษ (ช่วงที่ TigerSoft ยังไม่ตั้งกะ) แสดงว่าวันนั้นมาทำงาน → HR บันทึกทับวันที่ TigerSoft ขึ้นขาดงาน = ไม่นับ (user 2026-11-25)
 export const WORKED = "มาทำงาน (ลงเวลากระดาษ)";
+// วันหยุดตามรอบกะ — ช่วงที่ TigerSoft ยังไม่ตั้งกะ วันหยุดของคนกะขึ้นเป็นขาดงาน (user 2026-11-25) → ไม่นับเหมือนกัน
+export const DAYOFF = "วันหยุดตามกะ";
+export const NOT_LEAVE = k => k === WORKED || k === DAYOFF;
 export const injuryHint = kind => kind !== WORK_INJURY && /อุบัติเหตุ|ตกจากที่สูง|บาดเจ็บ|ประสบอันตราย|จากการทำงาน|จากงาน|ในงาน/.test(str(kind).replace(/\s+/g, ""));
 // เดาจากชื่อ — HR ยืนยันทีละประเภทในหน้า "ประเภทการลา" (ที่ยังไม่ยืนยัน = นับตามที่เดา และขึ้นป้าย "ใหม่")
 export function suggestClass(kind) {
   const k = str(kind).replace(/\s+/g, "");
   if (!k) return "full";
   if (kind === WORK_INJURY) return "none";
-  if (kind === WORKED) return "ignore";
+  if (NOT_LEAVE(kind)) return "ignore";
   if (injuryHint(kind)) return "sick";      // ต้องให้ HR ยืนยันรายคนก่อนจึงไม่หัก
   if (/พักร้อน|พักผ่อน|หยุดชดเชย|ฌาปน|ฌาปณ|งานศพ|ศพ/.test(k)) return "none";
   if (/ปฏิบัติงานนอก|ปฎิบัติงานนอก|นอกสถานที่|ราชการบริษัท|อบรม.*บริษัท|บริษัทส่ง/.test(k)) return "none";
@@ -59,7 +62,7 @@ export function suggestClass(kind) {
   if (/ป่วย/.test(k)) return "sick";
   return "full";                       // ขาดงาน ลากิจ ไม่รับค่าจ้าง พักงาน บวช ทำหมัน อบรมตามความประสงค์ และ "ประเภทอื่นที่ไม่ระบุ"
 }
-export const classOf = (kind, types = {}) => kind === WORK_INJURY ? "none" : kind === WORKED ? "ignore" : types[kind] || suggestClass(kind);
+export const classOf = (kind, types = {}) => kind === WORK_INJURY ? "none" : NOT_LEAVE(kind) ? "ignore" : types[kind] || suggestClass(kind);
 
 // ---------------------------------------------------------------- ไฟล์ TigerSoft → วันต่อคน
 // "1-00:00" = 1 วัน · ชั่วโมงหาร "ชั่วโมงทำงานต่อวัน" ของกะ แล้วปัดทศนิยม 2 ตำแหน่ง (ลาเป็นชั่วโมงได้)
