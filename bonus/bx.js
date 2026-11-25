@@ -303,7 +303,7 @@ function adjForm(code, a = null, pre = null) {
     <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : pre?.d_from || ""}"></label>
       <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : pre?.d_to || ""}"></label>
       <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.01" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
-    <div class="grid-f"><label class="fld"><span>ลาเป็นชั่วโมง (ไม่บังคับ)</span><input class="inp" type="number" step="0.25" min="0" id="aHr" placeholder="เช่น 2 หรือ 4.25"></label>
+    <div class="grid-f"><label class="fld"><span>ลาเป็นชั่วโมง (ไม่บังคับ)</span><input class="inp" inputmode="numeric" id="aHr" placeholder="ชม:นาที เช่น 2 หรือ 4:15"><small class="muted" id="hrHint"></small></label>
       <label class="fld"><span>ชั่วโมงทำงานต่อวัน</span><select class="inp" id="aBase"><option value="8.5">8.5 ชม. · หน้างาน</option><option value="8">8 ชม. · ออฟฟิศกรุงเทพ (BKK)</option></select></label></div>
     <label class="fld"><span>ประเภทการลา</span><input class="inp" list="kl" data-a="kind" value="${esc(a?.kind || "")}" placeholder="เลือกหรือพิมพ์"><datalist id="kl">${kinds.map(k => `<option value="${esc(k)}">`).join("")}</datalist></label>
     <div id="kHint" class="small muted"></div>
@@ -321,7 +321,10 @@ function adjForm(code, a = null, pre = null) {
   f.onchange = auto; t.onchange = auto; dd.oninput = () => { dd.dataset.touched = 1; };
   const hr = m.querySelector("#aHr"), base = m.querySelector("#aBase");
   if (S.calOf?.code === code && S.calOf.cal.some(c => (c.days || []).some(x => B.dayHours(x[1]) === 8))) base.value = "8";   // มีกะ BKK ในปีนี้ = ออฟฟิศกรุงเทพ
-  const toDays = () => { const h = +hr.value; if (h > 0) { dd.value = B.round2(h / +base.value); dd.dataset.touched = 1; } };
+  // ใส่แบบเวลา 4:15 หรือ 4.15 = 4 ชม. 15 นาที (ไม่ใช่ทศนิยม) → แสดงผลแปลงให้เห็นใต้ช่อง
+  const toDays = () => { const t = hr.value.trim().replace(/[.,]/, ":"), mm = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(t), h = mm && +(mm[2] || 0) < 60 ? +mm[1] + (+mm[2] || 0) / 60 : 0;
+    m.querySelector("#hrHint").textContent = !t ? "" : h > 0 ? `= ${mm[1]} ชม.${+mm[2] ? ` ${+mm[2]} นาที` : ""} ÷ ${base.value} = ${B.round2(h / +base.value)} วัน` : "ใส่แบบ ชม:นาที เช่น 2 หรือ 4:15";
+    if (h > 0) { dd.value = B.round2(h / +base.value); dd.dataset.touched = 1; } };
   hr.oninput = toDays; base.onchange = toDays;
 }
 function override(code, v) {
