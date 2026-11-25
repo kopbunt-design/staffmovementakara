@@ -258,15 +258,19 @@ async function drawer(code) {
 }
 // day = [dd, shift, dayType, in, out, lateMin, earlyMin, kind, days, note]
 function drawCal(code, cal, adj) {
-  const by = new Map(cal.map(c => [c.ym, c.days])), inAdj = d => adj.some(a => d >= a.d_from.slice(0, 10) && d <= a.d_to.slice(0, 10));
+  // ช่วงที่ HR บันทึก ใช้แทนข้อมูล TigerSoft (เหมือนตอนคำนวณ) — สีของวันจึงตามรายการ HR ไม่ใช่ "ขาดงาน" เดิม
+  const by = new Map(cal.map(c => [c.ym, c.days])), adjOf = d => adj.find(a => d >= a.d_from.slice(0, 10) && d <= a.d_to.slice(0, 10));
+  const dayCls = (x, a) => { const hol = /^HD/i.test(x[2]) ? "hd" : /^H/i.test(x[2]) ? "h" : "";
+    if (a) return a.kind === B.WORKED ? (hol || "w") : hol && !x[7] ? hol : `ev c-${B.classOf(a.kind, S.D.types)}`;
+    return x[7] ? `ev c-${B.classOf(x[7], S.D.types)}` : hol || ((x[3] || x[4]) ? "w" : ""); };
   const cell = (ym, i) => {
     const days = by.get(ym), dd = String(i + 1).padStart(2, "0"), date = `${ym}-${dd}`;
     const [y, m] = ym.split("-").map(Number); if (i + 1 > new Date(Date.UTC(y, m, 0)).getUTCDate()) return `<div class="cd x"></div>`;
     const x = days?.find(z => z[0] === dd);
-    const ad = inAdj(date) ? " adj" : "";
+    const a = adjOf(date), ad = a ? " adj" : "";
     if (!x) return `<div class="cd${ad}" title="${dS(date)} — ไม่มีข้อมูล"></div>`;
-    const cls = x[7] ? ` ev c-${B.classOf(x[7], S.D.types)}` : /^HD/i.test(x[2]) ? " hd" : /^H/i.test(x[2]) ? " h" : (x[3] || x[4]) ? " w" : "";
-    const tip = `${dS(date)} ${x[1]} ${x[2]}${x[3] ? " เข้า " + x[3] : ""}${x[4] ? " ออก " + x[4] : ""}${x[5] ? " สาย " + x[5] + " น." : ""}${x[6] ? " ออกก่อน " + x[6] + " น." : ""}${x[7] ? ` · ${x[7]} ${x[8]} วัน` : ""}${x[9] ? " · " + x[9] : ""}`;
+    const cls = " " + dayCls(x, a);
+    const tip = `${dS(date)} ${x[1]} ${x[2]}${x[3] ? " เข้า " + x[3] : ""}${x[4] ? " ออก " + x[4] : ""}${x[5] ? " สาย " + x[5] + " น." : ""}${x[6] ? " ออกก่อน " + x[6] + " น." : ""}${x[7] ? ` · ${x[7]} ${x[8]} วัน` : ""}${x[9] ? " · " + x[9] : ""}${a ? ` · HR: ${a.kind}` : ""}`;
     return `<div class="cd${cls}${x[5] || x[6] ? " late" : ""}${ad}" title="${esc(tip)}"></div>`;
   };
   $("#drCal").innerHTML = `<div class="cal"><div class="cal-h"><span></span>${Array.from({ length: 31 }, (_, i) => `<span>${i % 5 === 0 ? i + 1 : ""}</span>`).join("")}</div>
@@ -278,8 +282,8 @@ function drawCal(code, cal, adj) {
     const ym = b.dataset.m, days = by.get(ym) || [];
     $("#calDay").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">${ymTH(ym)}</div><button class="btn btn-sm btn-ghost" id="calX">ปิด</button></div>
       <div class="tbl-wrap" style="max-height:420px"><table class="tbl dtbl"><thead><tr><th>วันที่</th><th>กะ</th><th>เข้า</th><th>ออก</th><th class="r">สาย</th><th class="r">ออกก่อน</th><th>ลา/ขาด</th><th>หมายเหตุ</th></tr></thead><tbody>
-      ${days.map(x => `<tr class="${x[7] ? "ev c-" + B.classOf(x[7], S.D.types) : /^HD/i.test(x[2]) ? "hd" : /^H/i.test(x[2]) ? "h" : ""}"><td>${+x[0]}</td><td>${esc(x[1])} <span class="muted small">${esc(x[2])}</span></td><td>${esc(x[3])}</td><td>${esc(x[4])}</td>
-        <td class="r">${x[5] || ""}</td><td class="r">${x[6] || ""}</td><td>${x[7] ? kchip(x[7], ` ${num(x[8])}`) : ""}</td><td class="small">${esc(x[9])}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีข้อมูลเดือนนี้</td></tr>`}</tbody></table></div></div>`;
+      ${days.map(x => { const a = adjOf(`${ym}-${x[0]}`); return `<tr class="${dayCls(x, a)}"><td>${+x[0]}</td><td>${esc(x[1])} <span class="muted small">${esc(x[2])}</span></td><td>${esc(x[3])}</td><td>${esc(x[4])}</td>
+        <td class="r">${x[5] || ""}</td><td class="r">${x[6] || ""}</td><td>${a ? `${kchip(a.kind)} <span class="small muted">HR</span>${x[7] ? `<div class="small muted"><s>${esc(x[7])} ${num(x[8])}</s></div>` : ""}` : x[7] ? kchip(x[7], ` ${num(x[8])}`) : ""}</td><td class="small">${esc(x[9])}</td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">ไม่มีข้อมูลเดือนนี้</td></tr>`}</tbody></table></div></div>`;
     $("#calX").onclick = () => { $("#calDay").innerHTML = ""; };
     $("#calDay").scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
