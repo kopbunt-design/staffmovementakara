@@ -38,11 +38,17 @@ export const CLS = {
   none: { th: "ไม่หัก", w: 0, tone: "em" }, ignore: { th: "ไม่ใช่การลา", w: 0, tone: "gray" },
 };
 export const ABSENT = "ขาดงาน", NOSCAN = "ไม่ได้รูดบัตร (หักวัน)", SUSPEND = "พักงาน", LEAVE_NA = "ลา (ไม่ระบุประเภท)";
+// เจ็บป่วย/อุบัติเหตุจากการทำงาน = ไม่หัก — แต่พนักงานคีย์ประเภทลาเองใน TigerSoft อาจคีย์ผิด (user 2026-11-25)
+// → ประเภทจาก TigerSoft ที่ชื่อชวนให้คิดว่าเจ็บจากงาน นับเป็นลาป่วยไว้ก่อน (injuryHint) จนกว่า HR ยืนยันรายคน
+//   = บันทึกใบลาประเภท WORK_INJURY ทับช่วงนั้น (ประเภทนี้มาจาก HR เท่านั้น จึงไม่หักเสมอ)
+export const WORK_INJURY = "ลาเนื่องจากเจ็บป่วย/อุบัติเหตุจากการทำงาน (HR ยืนยัน)";
+export const injuryHint = kind => kind !== WORK_INJURY && /อุบัติเหตุ|ตกจากที่สูง|บาดเจ็บ|ประสบอันตราย|จากการทำงาน|จากงาน|ในงาน/.test(str(kind).replace(/\s+/g, ""));
 // เดาจากชื่อ — HR ยืนยันทีละประเภทในหน้า "ประเภทการลา" (ที่ยังไม่ยืนยัน = นับตามที่เดา และขึ้นป้าย "ใหม่")
 export function suggestClass(kind) {
   const k = str(kind).replace(/\s+/g, "");
   if (!k) return "full";
-  if (/อุบัติเหตุ.*งาน|เจ็บป่วยจากการทำงาน|ประสบอันตราย|บาดเจ็บจากงาน/.test(k)) return "none";
+  if (kind === WORK_INJURY) return "none";
+  if (injuryHint(kind)) return "sick";      // ต้องให้ HR ยืนยันรายคนก่อนจึงไม่หัก
   if (/พักร้อน|พักผ่อน|หยุดชดเชย|ฌาปน|ฌาปณ|งานศพ|ศพ/.test(k)) return "none";
   if (/ปฏิบัติงานนอก|ปฎิบัติงานนอก|นอกสถานที่|ราชการบริษัท|อบรม.*บริษัท|บริษัทส่ง/.test(k)) return "none";
   if (/ช่วย.*คลอด|ภริยา.*คลอด|คู่สมรส.*คลอด|เลี้ยงดูบุตร|เลี้ยงบุตร|ดูแลบุตร|ทหาร|ระดมพล/.test(k)) return "half";
@@ -50,7 +56,7 @@ export function suggestClass(kind) {
   if (/ป่วย/.test(k)) return "sick";
   return "full";                       // ขาดงาน ลากิจ ไม่รับค่าจ้าง พักงาน บวช ทำหมัน อบรมตามความประสงค์ และ "ประเภทอื่นที่ไม่ระบุ"
 }
-export const classOf = (kind, types = {}) => types[kind] || suggestClass(kind);
+export const classOf = (kind, types = {}) => kind === WORK_INJURY ? "none" : types[kind] || suggestClass(kind);
 
 // ---------------------------------------------------------------- ไฟล์ TigerSoft → วันต่อคน
 // "1-00:00" = 1 วัน · "0-04:15" = ครึ่งวัน · ชั่วโมงอื่นปัดเป็น 1/4 วัน (8 ชม. = 1 วัน)

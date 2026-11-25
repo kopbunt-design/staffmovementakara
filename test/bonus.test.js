@@ -5,7 +5,7 @@ const read = p => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8St
 const ROOT = $.NSFileManager.defaultManager.currentDirectoryPath.js;
 const strip = s => s.replace(/^import .*$/gm, "").replace(/^export \{[^}]*\};?$/gm, "").replace(/^export /gm, "");
 const src = `const { parseProcessed, leaveKinds, durMin, serialToISO } = (() => { ${strip(read(`${ROOT}/js/diligence-calc.js`))}; return { parseProcessed, leaveKinds, durMin, serialToISO }; })();\n` + strip(read(`${ROOT}/js/bonus-calc.js`));
-const M = new Function(`${src}; return { PARAMS_2026, round2, suggestClass, durDays, dayEvent, eligibility, workedDays, deductions, money, compute, explain, readTime };`)();
+const M = new Function(`${src}; return { PARAMS_2026, WORK_INJURY, injuryHint, round2, suggestClass, durDays, dayEvent, eligibility, workedDays, deductions, money, compute, explain, readTime };`)();
 let P = 0, F = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) === JSON.stringify(b)) P++; else { F++; console.log("FAIL " + m + "\n  got =" + JSON.stringify(a) + "\n  want=" + JSON.stringify(b)); } };
 const ev = (kind, d0, n, days = 1) => Array.from({ length: n }, (_, i) => { const t = new Date(Date.parse(d0 + "T00:00:00Z") + i * 864e5).toISOString().slice(0, 10); return { d: t, kind, days }; });
@@ -71,7 +71,11 @@ eq(M.deductions({ events: ev("ขาดงาน", "2026-03-02", 2), offMonths: 
 eq(M.deductions({ events: ev("ลากิจ", "2026-03-02", 2), join: "2026-03-03" }).total, 1, "ก่อนวันเริ่มงานไม่นับ");
 eq(D(ev("ลาคลอด", "2026-01-05", 70).concat(ev("ลาคลอด", "2026-10-01", 50))).total, 5, "ลาคลอด 2 ครั้ง สิทธิ 60 วันต่อครั้ง");
 eq(D(ev("ลาบวช", "2026-05-01", 15)).total, 15, "ลาบวช หักเต็ม");
-eq(D(ev("ลาเนื่องจากอุบัติเหตุจากการทำงาน", "2026-05-01", 5)).total, 0, "เจ็บจากงาน ไม่หัก");
+eq(M.suggestClass("ลาป่วยเนื่องจากตกจากที่สูง"), "sick", "TigerSoft คีย์ว่าเจ็บจากงาน = ลาป่วยไว้ก่อน (ต้องยืนยันรายคน)");
+eq([M.injuryHint("ลาป่วยเนื่องจากตกจากที่สูง"), M.injuryHint("ลาป่วย"), M.injuryHint(M.WORK_INJURY)], [true, false, false], "ป้ายให้ตรวจเจ็บจากงาน");
+eq(D(ev("ลาป่วยเนื่องจากตกจากที่สูง", "2026-05-01", 14)).total, 2, "ยังไม่ยืนยัน = ลาป่วย (10 วันแรกฟรี)");
+eq(D(ev("ลาป่วยเนื่องจากตกจากที่สูง", "2026-05-01", 14), [{ d_from: "2026-05-01", d_to: "2026-05-14", kind: M.WORK_INJURY, days: 14 }]).total, 0, "HR ยืนยันเจ็บจากงาน = ไม่หัก");
+eq(M.deductions({ events: ev("ลาป่วยเนื่องจากตกจากที่สูง", "2026-05-01", 14), types: { [M.WORK_INJURY]: "full" } }).total, 2, "ประเภท HR ยืนยัน ตั้งน้ำหนักทับไม่ได้");
 eq(D(ev("ลาสิ่งที่ไม่รู้จัก", "2026-05-01", 2)).total, 2, "ประเภทอื่นที่ไม่ระบุ = หักเต็ม");
 
 // ---- อ่านค่าเวลาจาก TigerSoft

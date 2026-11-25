@@ -82,7 +82,7 @@ function kindsSeen() {
   for (const a of S.D.adj) { const o = m.get(a.kind) || m.set(a.kind, { kind: a.kind, days: 0, n: new Set() }).get(a.kind); o.days += +a.days; o.n.add(a.emp_code); }
   return [...m.values()].sort((a, b) => b.days - a.days);
 }
-const unconfirmed = () => kindsSeen().filter(k => !S.D.types[k.kind]);
+const unconfirmed = () => kindsSeen().filter(k => !S.D.types[k.kind] && k.kind !== B.WORK_INJURY);
 function alerts() {
   const imp = new Set(S.D.months.map(m => m.ym)), miss = statYMs().filter(m => m <= today().slice(0, 7) && !imp.has(m));
   const notReg = [...new Set(S.D.agg.map(a => a.emp_code))].filter(c => !S.E.has(c));
@@ -125,7 +125,8 @@ function badge() {
   const a = alerts();
   $("#navAl").textContent = a.count ? String(a.count) : "";
   $("#navImp").textContent = a.miss.length ? String(a.miss.length) : "";
-  $("#navTy").textContent = a.unc.length ? String(a.unc.length) : "";
+  const inj = kindsSeen().filter(k => B.injuryHint(k.kind)).flatMap(k => kindRuns(k.kind)).filter(r => !r.adj).length;
+  $("#navTy").textContent = a.unc.length + inj ? String(a.unc.length + inj) : "";
   const ab = absRuns().filter(x => !x.done).length; $("#navAb").textContent = ab ? String(ab) : "";
 }
 async function reload(keepDrawer = true) { await loadYear(); badge(); route(); if (keepDrawer && S.open) drawer(S.open); }
@@ -291,7 +292,7 @@ function modal(title, body, okText, onOk) {
   return m;
 }
 function adjForm(code, a = null, pre = null) {
-  const kinds = [...new Set(["ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย", "ขาดงาน", "พักงาน", "ลาไม่รับค่าจ้าง", "ลาคลอด", "ลาเพื่อช่วยเหลือคู่สมรสในการคลอดบุตร", "ลาอุปสมบท", "ลาฌาปนกิจ", "ลาเนื่องจากอุบัติเหตุจากการทำงาน", "ลารับราชการทหาร", "ลาทำหมัน", ...kindsSeen().map(k => k.kind)])];
+  const kinds = [...new Set(["ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย", "ขาดงาน", "พักงาน", "ลาไม่รับค่าจ้าง", "ลาคลอด", "ลาเพื่อช่วยเหลือคู่สมรสในการคลอดบุตร", "ลาอุปสมบท", "ลาฌาปนกิจ", B.WORK_INJURY, "ลารับราชการทหาร", "ลาทำหมัน", ...kindsSeen().map(k => k.kind)])];
   const m = modal(`${a ? "แก้" : "บันทึก"}ใบลา · ${esc(nameOf(code))}`, `
     <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : pre?.d_from || ""}"></label>
       <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : pre?.d_to || ""}"></label>
@@ -510,21 +511,56 @@ function drawImp() {
 }
 
 // ---------------------------------------------------------------- ประเภทการลา
+// ช่วงการลาของประเภทหนึ่ง รายคน (วันติดกัน ห่างไม่เกิน 3 วัน = ช่วงเดียว) + ใบลา HR ที่ครอบช่วงนั้น — ใช้รีเช็คในหน้าประเภทการลา
+function kindRuns(kind) {
+  const by = new Map();
+  for (const e of S.D.events) if (e.kind === kind) (by.get(e.emp_code) || by.set(e.emp_code, []).get(e.emp_code)).push({ d: e.d.slice(0, 10), days: +e.days });
+  const out = [];
+  for (const [c, list] of by) {
+    list.sort((a, b) => a.d.localeCompare(b.d)); let cur = null;
+    for (const x of list) { if (cur && B.daysBetween(cur.d2, x.d) <= 3) { cur.d2 = x.d; cur.days += x.days; } else { cur = { c, d1: x.d, d2: x.d, days: x.days }; out.push(cur); } }
+  }
+  for (const r of out) r.adj = S.D.adj.find(z => z.emp_code === r.c && z.d_from.slice(0, 10) <= r.d1 && z.d_to.slice(0, 10) >= r.d2) || null;
+  if (!by.size) for (const a of S.D.adj.filter(z => z.kind === kind)) out.push({ c: a.emp_code, d1: a.d_from.slice(0, 10), d2: a.d_to.slice(0, 10), days: +a.days, adj: a, own: true });
+  return out.sort((a, b) => a.d1.localeCompare(b.d1));
+}
 function typesPage() {
-  const ks = kindsSeen(), w = S.D.can_write, unc = ks.filter(k => !S.D.types[k.kind]);
-  render(`${head("ข้อมูล", "ประเภทการลา · น้ำหนักการหัก", "ทุกประเภทที่พบในไฟล์ TigerSoft และใบลาที่ HR บันทึก — ตามตาราง 4.1 ของเอกสารแนบท้ายประกาศ · ประเภทที่ไม่ได้ระบุในประกาศ = หักเต็มวัน")}
+  const ks = kindsSeen(), w = S.D.can_write, unc = ks.filter(k => !S.D.types[k.kind] && k.kind !== B.WORK_INJURY);
+  S.tyOpen ||= new Set();
+  const inj = ks.filter(k => B.injuryHint(k.kind)), injTodo = inj.flatMap(k => kindRuns(k.kind)).filter(r => !r.adj).length;
+  const detail = k => { const runs = kindRuns(k.kind), hint = B.injuryHint(k.kind);
+    return `<tr><td colspan="4" style="background:#F8FAFD;padding:8px 14px 14px">
+      ${hint ? `<div class="small" style="margin:4px 0 8px;color:var(--amber-600)">พนักงานคีย์ประเภทนี้เองใน TigerSoft — เทียบกับรายงานอุบัติเหตุ/ความปลอดภัย แล้วกด “ยืนยันเจ็บจากงาน” รายคน (ไม่หัก) · ที่ไม่ยืนยันนับเป็นลาป่วย</div>` : ""}
+      <table class="tbl dtbl"><tbody>${runs.map(r => `<tr><td class="click" data-open="${esc(r.c)}" style="cursor:pointer">${who(r.c)}</td>
+        <td><b>${dTH(r.d1)}</b>${r.d2 !== r.d1 ? ` – ${dTH(r.d2)}` : ""}</td><td class="r">${num(r.days)} วัน</td>
+        <td>${r.adj && !r.own ? `${kchip(r.adj.kind, ` ${num(r.adj.days)}`)} <span class="small muted">${esc(r.adj.by_name || "")}</span>${w ? ` <button class="btn btn-sm btn-ghost" data-undo="${r.adj.id}">เลิกทำ</button>` : ""}`
+          : hint && w ? `<button class="btn btn-sm btn-g" data-inj="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">ยืนยันเจ็บจากงาน</button>` : `<span class="small muted">${r.own ? esc(r.adj?.note || "") : "ตามข้อมูล TigerSoft"}</span>`}</td></tr>`).join("") || `<tr><td class="empty">ไม่มี</td></tr>`}</tbody></table></td></tr>`; };
+  render(`${head("ข้อมูล", "ประเภทการลา · น้ำหนักการหัก", "ทุกประเภทที่พบในไฟล์ TigerSoft และใบลาที่ HR บันทึก — ตามตาราง 4.1 ของเอกสารแนบท้ายประกาศ · ประเภทที่ไม่ได้ระบุในประกาศ = หักเต็มวัน · กดชื่อประเภทเพื่อดูรายชื่อ")}
+    ${injTodo ? `<div class="notice gold">${I.warn}<div><b>อาจเป็นเจ็บป่วย/อุบัติเหตุจากการทำงาน ${injTodo} ช่วงที่ยังไม่ยืนยัน</b> — ระบบนับเป็นลาป่วยไว้ก่อน (กันพนักงานคีย์ผิด) กดชื่อประเภทที่มีป้าย ⚠ แล้วยืนยันรายคน</div></div>` : ""}
     ${unc.length ? `<div class="ty-new"><div class="ic">${unc.length}</div><div class="tx"><b>ประเภทใหม่ที่ยังไม่ยืนยัน</b> — ระบบเดาน้ำหนักจากชื่อให้แล้ว (เส้นประ) กดเลือกเพื่อยืนยัน หรือกดปุ่มขวาเพื่อยืนยันตามที่เดาทั้งหมด</div>
       ${w ? `<button class="btn btn-sm btn-g" id="tyAll">ยืนยันตามที่เดาทั้งหมด</button>` : ""}</div>` : ""}
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>ประเภท (ตามที่เขียนใน TigerSoft)</th><th class="r">วัน</th><th class="r">คน</th><th>น้ำหนัก</th></tr></thead><tbody>
-    ${ks.map(k => { const cur = S.D.types[k.kind], sug = B.suggestClass(k.kind);
-      return `<tr><td><b>${esc(k.kind)}</b>${cur ? "" : ` <span class="chip chip-gold">ใหม่</span>`}</td><td class="r">${num(k.days)}</td><td class="r">${k.n.size}</td>
-        <td><div class="tseg ${cur ? "" : "pending"}" data-k="${esc(k.kind)}" ${w ? "" : "disabled"}>${CLS_ORDER.map(c => `<button class="c-${c} ${cur === c ? "on" : ""} ${!cur && sug === c ? "sug" : ""}" data-c="${c}">${CLS_SHORT[c][0]}<small>${CLS_SHORT[c][1]}</small></button>`).join("")}</div></td></tr>`; }).join("") || `<tr><td colspan="4" class="empty">ยังไม่มี — นำเข้าไฟล์เวลาก่อน</td></tr>`}
+    ${ks.map(k => { const cur = S.D.types[k.kind], sug = B.suggestClass(k.kind), fixed = k.kind === B.WORK_INJURY, open = S.tyOpen.has(k.kind);
+      return `<tr><td><a href="#" data-tk="${esc(k.kind)}"><b>${open ? "▾" : "▸"} ${esc(k.kind)}</b></a>${cur || fixed ? "" : ` <span class="chip chip-gold">ใหม่</span>`}${B.injuryHint(k.kind) ? ` <span class="chip chip-amb">⚠ ตรวจรายคน</span>` : ""}</td>
+        <td class="r">${num(k.days)}</td><td class="r">${k.n.size}</td>
+        <td>${fixed ? `<span class="kchip c-none"><i></i>ไม่หัก · HR ยืนยันรายคนแล้ว</span>` : `<div class="tseg ${cur ? "" : "pending"}" data-k="${esc(k.kind)}" ${w ? "" : "disabled"}>${CLS_ORDER.map(c => `<button class="c-${c} ${cur === c ? "on" : ""} ${!cur && sug === c ? "sug" : ""}" data-c="${c}">${CLS_SHORT[c][0]}<small>${CLS_SHORT[c][1]}</small></button>`).join("")}</div>`}</td></tr>
+        ${open ? detail(k) : ""}`; }).join("") || `<tr><td colspan="4" class="empty">ยังไม่มี — นำเข้าไฟล์เวลาก่อน</td></tr>`}
     </tbody></table></div></div>`);
+  document.querySelectorAll("[data-tk]").forEach(a => a.onclick = ev => { ev.preventDefault(); const k = a.dataset.tk; S.tyOpen.has(k) ? S.tyOpen.delete(k) : S.tyOpen.add(k); typesPage(); });
   if (!w) return;
   document.querySelectorAll(".tseg[data-k]").forEach(sg => sg.onclick = async e => { const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.c === "none" && B.injuryHint(sg.dataset.k) && !confirm("ตั้งทั้งประเภทเป็น “ไม่หัก” = เชื่อทุกคนที่คีย์ประเภทนี้\nแนะนำให้ยืนยันรายคนแทน — ยังจะตั้งทั้งประเภทไหม?")) return;
     try { S.D.types = await rpc("bonus_types_save", { p_types: { [sg.dataset.k]: b.dataset.c } }); recalc(); badge(); typesPage(); } catch (err) { toast(err.message, "error"); } });
   $("#tyAll") && ($("#tyAll").onclick = async () => {
     try { S.D.types = await rpc("bonus_types_save", { p_types: Object.fromEntries(unc.map(k => [k.kind, B.suggestClass(k.kind)])) }); recalc(); badge(); typesPage(); toast("ยืนยันแล้ว", "success"); } catch (err) { toast(err.message, "error"); } });
+  document.querySelectorAll("[data-inj]").forEach(b => b.onclick = () => { const [c, d1, d2, days] = b.dataset.inj.split("|");
+    modal(`ยืนยันเจ็บป่วย/อุบัติเหตุจากการทำงาน · ${esc(nameOf(c))}`, `<div>${dTH(d1)}${d2 !== d1 ? " – " + dTH(d2) : ""} · ${num(+days)} วัน → <b>ไม่หัก</b></div>
+      <label class="fld"><span>อ้างอิง (ต้องมี)</span><input class="inp" data-r placeholder="เช่น รายงานอุบัติเหตุ SHE เลขที่ … / ใบรับรองแพทย์ กท.16"></label>`, "ยืนยัน", async m => {
+      const note = m.querySelector("[data-r]").value.trim(); if (!note) { toast("ใส่อ้างอิง", "error"); return false; }
+      try { await rpc("bonus_adj_save", { p_row: { emp_code: c, d_from: d1, d_to: d2, kind: B.WORK_INJURY, days, note } }); } catch (err) { toast(err.message, "error"); return false; }
+      toast("ยืนยันแล้ว", "success"); await reload(false); });
+  });
+  document.querySelectorAll("[data-undo]").forEach(b => b.onclick = async () => { if (!confirm("ยกเลิกการยืนยันนี้?")) return; try { await rpc("bonus_adj_delete", { p_id: +b.dataset.undo }); await reload(false); } catch (err) { toast(err.message, "error"); } });
 }
 
 // ---------------------------------------------------------------- ประกาศ / ตัวเลข
