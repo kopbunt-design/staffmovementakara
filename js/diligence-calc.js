@@ -79,7 +79,7 @@ export function parseProcessed(rows) {
     if (!cur || !isDateSerial(r[1])) continue;
     cur.days.push({ date: serialToISO(r[1]), shift: str(r[3]), dayType: str(r[5]),
       late: nonZero(r[C.late]) ? str(r[C.late]) : "", early: nonZero(r[C.early]) ? str(r[C.early]) : "",
-      leaveOk: nonZero(r[C.leaveOk]), leaveDed: nonZero(r[C.leaveDed]), deduct: nonZero(r[C.deduct]) ? str(r[C.deduct]) : "",
+      leaveOk: nonZero(r[C.leaveOk]), leaveDed: nonZero(r[C.leaveDed]), leaveOkV: str(r[C.leaveOk]), leaveDedV: str(r[C.leaveDed]), deduct: nonZero(r[C.deduct]) ? str(r[C.deduct]) : "",
       note: str(r[C.note]).replace(/\s+/g, " "),
       inMin: isDateSerial(r[C.in]) ? serialMinute(r[C.in]) : null, outMin: isDateSerial(r[C.out]) ? serialMinute(r[C.out]) : null,
       ot: Object.fromEntries(OT_RATES.map(([k, i]) => [k, durMin(r[i])])) });

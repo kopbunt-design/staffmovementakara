@@ -251,6 +251,35 @@ import `js/app.js`. HR app `navigate("tax")` redirects there (menu under เง�
   IPs). Signature/seal images are returned as data URLs by the server (`_art`). `tax_my_certs` is sent without the login
   cookie (`LINK_RPC` in `azure-app/web/js/supabase-config.js`).
 
+## Akara Bonus (`bonus/`) — separate app at `/bonus` (leave/time summary + annual bonus)
+
+User, 2026-11-25: announcement HR-152-2026 (bonus 2569) — summarise leave and time from TigerSoft and compute the bonus
+("เขียนเว็บแยก … เริ่ดๆปังๆ"). Same design family as Akara Fund/Tax (`/fund/fx.css` + `/tax/tx.css` + `bonus/bx.css`). Must NOT
+import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เงินเดือน · ค่าตอบแทน).
+- Rules in `js/bonus-calc.js` (pure, `test/bonus.test.js` reproduces the announcement's examples 1–9): bonus = salary (as of
+  1 Dec) × 2.58 × eligible days ÷ 365, special = 12,000 × eligible ÷ 365, both rounded to 2 dp; eligible = calendar days worked
+  in the year (joined before 1 Jan = 365, else join → 31 Dec incl.) − deducted days counted 1 Jan–30 Nov. Weights (4.1): full
+  (absence, personal, unpaid, suspension, ordination, sterilisation, own-wish training, any unlisted type), half (assist-wife
+  birth, child care, military), sick (first 10 days/year free then 0.5), maternity (first 60 per birth free then 0.5), none
+  (annual, compensatory, work injury, funeral, company off-site/training). **Unpaid sick leave counts as sick leave** (it only
+  happens after paid sick days run out — user 2026-11-25). **Late/early-out are statistics only, never deducted** (user).
+  Level M: no deduction and no share of the special allocation. Special allocation = Σ amounts cut by deductions (not the
+  proration of new joiners) ÷ eligible non-M people, equal for everyone. Eligibility: joined by 31 Aug, day 119 of probation
+  ≤ pay date, still employed on the pay date, resignation submitted = out, retirement 1 Jan next year = in; HR can override
+  per person with a reason. Suspension starting by 30 Nov counts in full (2.4).
+- Data: TigerSoft "ข้อมูลหลังประมวล / รายงานแยกตามพนักงาน แบบที่ 1" (.xls raw, or the user's Cleaned .xlsx with sheet
+  `Clean_Data`) read in the browser (`readTime`, reuses `parseProcessed` from diligence-calc.js, which now also keeps the raw
+  leave durations `leaveOkV`/`leaveDedV`). Leave type = first "ลา…" word of the note; "พักงาน" in the note = suspension;
+  หักวัน without leave = ขาดงาน (or "ไม่ได้รูดบัตร (หักวัน)"). Azure-only tables in `azure-app/bonus.py`: `bonus_cal` (per
+  person-month compact day list for the calendar + late/early totals), `bonus_events` (leave/absence days), `bonus_adj` (HR leave
+  entries — a date range **replaces** TigerSoft data for that person, used for paper leave before TigerSoft and corrections),
+  `bonus_months` (`absent_off` = ignore TigerSoft "ขาดงาน" for a month whose shifts weren't set up yet), `bonus_settings`
+  (`types` kind→weight, `params:<year>`, `ovr:<year>`), `bonus_log`. Upload is sent in chunks of 60 people (`p_first`/`p_last`).
+  Perms seeded once: `page.bonus` (← page.payroll), `data.bonus.write` (← data.payroll.write); salaries only come with
+  `field.salary.read` (returned by `bonus_data`, never read from `employees` in the page).
+- Early 2026 (before TigerSoft): time exists in TigerSoft but leave was on paper and shifts weren't set (user) — HR enters
+  paper leave per person in the drawer. TigerSoft's leave report (ใบลา) upload is not built yet — waiting for a sample file.
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).

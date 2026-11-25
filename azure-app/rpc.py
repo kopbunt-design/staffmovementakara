@@ -1383,3 +1383,7 @@ FUNCS.update(pvd.FUNCS)
 import tax  # noqa: E402
 FUNCS.update(tax.FUNCS)
 PUBLIC |= tax.PUBLIC
+
+# ================================================================================ โบนัสประจำปี (bonus.py)
+import bonus  # noqa: E402
+FUNCS.update(bonus.FUNCS)

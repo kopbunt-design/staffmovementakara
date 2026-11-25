@@ -1,0 +1,86 @@
+/* Akara Bonus — ต่อจาก /fund/fx.css + /tax/tx.css · โลโก้ทองอัครา + ของเฉพาะเว็บโบนัส (ปฏิทินเวลา แถบเดือน น้ำหนักการลา) */
+.fx-brand .logo { background: linear-gradient(135deg, #FFD966, var(--gold-500)); color: var(--navy-950); box-shadow: 0 6px 18px -6px rgba(245,184,0,.75); }
+
+/* ---- สีตามน้ำหนักการลา (ใช้ทั้งชิป ปฏิทิน และกราฟ) */
+.c-full { --c: var(--red-600); --cb: var(--red-100); }
+.c-half, .c-mat { --c: #C25E00; --cb: #FFE6CC; }
+.c-sick { --c: var(--amber-600); --cb: var(--amber-100); }
+.c-none { --c: var(--em-600); --cb: var(--em-100); }
+.c-ignore { --c: var(--ink-3); --cb: var(--line-2); }
+.kchip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--cb); color: var(--c); white-space: nowrap; }
+.kchip i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+
+/* ---- hero ตัวเลขหลัก */
+.hero.bx { background: radial-gradient(70% 120% at 100% 0%, rgba(245,184,0,.32), transparent 60%), radial-gradient(60% 90% at 0% 100%, rgba(16,168,119,.22), transparent 60%), linear-gradient(135deg, var(--navy-800), var(--navy-950)); }
+.hero-split.four { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+@media (max-width: 1000px) { .hero-split.four { grid-template-columns: repeat(2, 1fr); } }
+.formula { margin-top: 18px; position: relative; z-index: 1; font-size: 13px; color: #C9D4E6; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.formula b { color: #fff; }
+
+/* ---- แถบ 12 เดือน (นำเข้าแล้ว / ยังไม่มี) */
+.mstrip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; }
+.ms { border-radius: 12px; padding: 9px 6px 8px; text-align: center; border: 1px solid var(--line); background: #fff; font-size: 12px; position: relative; }
+.ms b { display: block; font-size: 13px; }
+.ms span { color: var(--ink-3); font-size: 11px; }
+.ms.ok { border-color: #9ADBC3; background: linear-gradient(180deg, #F2FBF7, #fff); }
+.ms.ok b { color: var(--em-600); }
+.ms.off { border-color: #F1DFA8; background: linear-gradient(180deg, #FFF9E6, #fff); }
+.ms.miss { border-style: dashed; background: #FAFBFD; color: var(--ink-3); }
+.ms.out { opacity: .4; }
+@media (max-width: 760px) { .mstrip { grid-template-columns: repeat(6, 1fr); } }
+
+/* ---- แถบสัดส่วนวันลา (แท่งเดียวสีเดียวต่อแถว) */
+.lbar { display: grid; grid-template-columns: minmax(150px, 220px) 1fr 70px; align-items: center; gap: 12px; padding: 6px 0; }
+.lbar .t { height: 12px; border-radius: 0 4px 4px 0; background: var(--line-2); overflow: hidden; }
+.lbar .t i { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--c); }
+.lbar .n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lbar .k { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- ปฏิทินเวลารายคน (แบบหน้า "ข้อมูลหลังประมวล" ของ TigerSoft แต่ย่อทั้งปีให้เห็นในจอเดียว) */
+.cal { display: grid; gap: 4px; }
+.cal-r { display: grid; grid-template-columns: 54px repeat(31, 1fr); gap: 2px; align-items: center; }
+.cal-r .m { font-size: 12px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.cal-r .m:hover { color: var(--navy-600); }
+.cd { height: 18px; border-radius: 4px; background: #fff; border: 1px solid var(--line-2); position: relative; cursor: default; }
+.cd.w { background: #E9F0FA; border-color: #E9F0FA; }
+.cd.h { background: #D5DAE2; border-color: #D5DAE2; }
+.cd.hd { background: #2E7D32; border-color: #2E7D32; }
+.cd.ev { background: var(--c); border-color: var(--c); }
+.cd.late::after { content: ""; position: absolute; right: 1px; top: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--gold-500); box-shadow: 0 0 0 1px #fff; }
+.cd.x { visibility: hidden; }
+.cd.adj { outline: 2px solid var(--navy-700); outline-offset: -2px; }
+.cal-h { display: grid; grid-template-columns: 54px repeat(31, 1fr); gap: 2px; font-size: 10px; color: var(--ink-3); text-align: center; }
+.cal-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); margin-top: 10px; }
+.cal-leg span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-leg .cd { width: 14px; height: 12px; display: inline-block; }
+.dtbl td, .dtbl th { padding: 6px 10px !important; font-size: 12.5px; }
+.dtbl tr.h td { background: #EEF0F4; color: var(--ink-3); }
+.dtbl tr.hd td { background: #EAF5EA; }
+.dtbl tr.ev td:first-child { box-shadow: inset 4px 0 0 var(--c); }
+
+/* ---- การปรับลดในลิ้นชัก */
+.dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0; border-bottom: 1px dashed var(--line); align-items: center; }
+.dl:last-child { border-bottom: 0; }
+.dl .x { font-size: 12.5px; color: var(--ink-3); grid-column: 1 / -1; }
+.dl .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sumline { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; border-top: 2px solid var(--line); margin-top: 6px; font-weight: 700; }
+.sumline b { font-size: 20px; }
+.why { padding: 12px 14px; border-radius: 12px; background: var(--red-100); color: var(--red-600); font-size: 13px; }
+.why.ok { background: var(--em-100); color: var(--em-600); }
+.adj-i { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; }
+.adj-i:last-child { border-bottom: 0; }
+.adj-i .w { flex: 1; }
+
+/* ---- ตารางสรุปการลา (คอลัมน์ต่อประเภท) */
+.mx th.k { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; height: 130px; vertical-align: bottom; text-align: left; padding: 8px 6px; }
+.mx td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.mx td.z { color: #D0D6E0; text-align: right; }
+.mx tfoot td { font-weight: 700; background: #F8FAFD; position: sticky; bottom: 0; }
+.tbl-wrap.tall { max-height: 68vh; }
+
+/* ---- นำเข้า */
+.prev-k { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.notice { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--blue-100); color: var(--navy-700); font-size: 13px; }
+.notice.gold { background: linear-gradient(90deg, #FFF7E0, #FFFBEF); color: #7A5A00; border: 1px solid #F1DFA8; }
+.notice svg { margin-top: 2px; }
+.rule-t td { vertical-align: top; }
