@@ -264,21 +264,36 @@ function drawCal(code, cal, adj) {
   const dayCls = (x, a) => { const hol = /^HD/i.test(x[2]) ? "hd" : /^H/i.test(x[2]) ? "h" : "";
     if (a) return a.kind === B.WORKED ? (hol || "w") : a.kind === B.DAYOFF ? "h" : hol && !x[7] ? hol : `ev c-${B.classOf(a.kind, S.D.types)}`;
     return x[7] ? `ev c-${B.classOf(x[7], S.D.types)}` : hol || ((x[3] || x[4]) ? "w" : ""); };
+  const tips = [];   // ป้ายข้อมูลวัน ขึ้นทันทีที่ชี้ (title ของเบราว์เซอร์ช้า ต้องค้างนาน)
+  const tipAt = h => { tips.push(h); return ` data-t="${tips.length - 1}"`; };
   const cell = (ym, i) => {
     const days = by.get(ym), dd = String(i + 1).padStart(2, "0"), date = `${ym}-${dd}`;
     const [y, m] = ym.split("-").map(Number); if (i + 1 > new Date(Date.UTC(y, m, 0)).getUTCDate()) return `<div class="cd x"></div>`;
     const x = days?.find(z => z[0] === dd);
     const a = adjOf(date), ad = a ? " adj" : "";
-    if (!x) return `<div class="cd${ad}" title="${dS(date)} — ไม่มีข้อมูล"></div>`;
+    if (!x) return `<div class="cd${ad}"${tipAt(`<b>${dS(date)}</b><div class="mu">ไม่มีข้อมูล</div>${a ? `<div>HR: ${esc(a.kind)}</div>` : ""}`)}></div>`;
     const cls = " " + dayCls(x, a);
-    const tip = `${dS(date)} ${x[1]} ${x[2]}${x[3] ? " เข้า " + x[3] : ""}${x[4] ? " ออก " + x[4] : ""}${x[5] ? " สาย " + x[5] + " น." : ""}${x[6] ? " ออกก่อน " + x[6] + " น." : ""}${x[7] ? ` · ${x[7]} ${x[8]} วัน` : ""}${x[9] ? " · " + x[9] : ""}${a ? ` · HR: ${a.kind}` : ""}`;
-    return `<div class="cd${cls}${x[5] || x[6] ? " late" : ""}${ad}" title="${esc(tip)}"></div>`;
+    const tip = `<b>${dS(date)}</b> <span class="mu">${esc(x[1])} ${esc(x[2])}</span>
+      <div>${x[3] || x[4] ? `เข้า ${x[3] || "–"} · ออก ${x[4] || "–"}` : `<span class="mu">ไม่มีสแกน</span>`}</div>
+      ${x[5] || x[6] ? `<div class="gd">${x[5] ? `สาย ${x[5]} น.` : ""}${x[5] && x[6] ? " · " : ""}${x[6] ? `ออกก่อน ${x[6]} น.` : ""}</div>` : ""}
+      ${x[7] ? `<div${a ? ' class="mu"><s' : ">"}>${esc(x[7])} ${num(x[8])} วัน${a ? "</s>" : ""}</div>` : ""}
+      ${a ? `<div>HR: <b>${esc(a.kind)}</b></div>` : ""}${x[9] ? `<div class="mu">${esc(x[9])}</div>` : ""}`;
+    return `<div class="cd${cls}${x[5] || x[6] ? " late" : ""}${ad}"${tipAt(tip)}></div>`;
   };
   $("#drCal").innerHTML = `<div class="cal"><div class="cal-h"><span></span>${Array.from({ length: 31 }, (_, i) => `<span>${i % 5 === 0 ? i + 1 : ""}</span>`).join("")}</div>
     ${yms().map(ym => `<div class="cal-r"><div class="m" data-m="${ym}">${TH_M[+ym.slice(5) - 1]}${by.has(ym) ? "" : " ·"}</div>${Array.from({ length: 31 }, (_, i) => cell(ym, i)).join("")}</div>`).join("")}</div>
     <div class="cal-leg"><span><i class="cd w"></i>มาทำงาน</span><span><i class="cd h"></i>วันหยุด</span><span><i class="cd hd"></i>วันหยุดประเพณี</span>
       ${["full", "half", "sick", "none"].map(c => `<span><i class="cd ev c-${c}"></i>${CLS_SHORT[c][0]}</span>`).join("")}<span><i class="cd"></i>ไม่มีข้อมูล</span></div>
     <div id="calDay"></div>`;
+  const tipEl = document.getElementById("calTip") || Object.assign(document.body.appendChild(document.createElement("div")), { id: "calTip", className: "ctip" });
+  const box = $("#drCal").querySelector(".cal"), hide = () => { tipEl.style.display = "none"; };
+  box.onmousemove = e => { const c = e.target.closest("[data-t]"); if (!c) return hide();
+    if (tipEl.dataset.k !== c.dataset.t) { tipEl.innerHTML = tips[+c.dataset.t]; tipEl.dataset.k = c.dataset.t; }
+    tipEl.style.display = "block"; const r = c.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    tipEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+    tipEl.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + "px"; };
+  box.onmouseleave = hide;
+  if (!tipEl._w) { tipEl._w = 1; const h2 = () => { tipEl.style.display = "none"; }; addEventListener("scroll", h2, true); addEventListener("keydown", h2, true); addEventListener("hashchange", h2); }
   $("#drCal").querySelectorAll("[data-m]").forEach(b => b.onclick = () => {
     const ym = b.dataset.m, days = by.get(ym) || [];
     $("#calDay").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">${ymTH(ym)}</div><button class="btn btn-sm btn-ghost" id="calX">ปิด</button></div>
