@@ -62,24 +62,27 @@ export function suggestClass(kind) {
 export const classOf = (kind, types = {}) => kind === WORK_INJURY ? "none" : kind === WORKED ? "ignore" : types[kind] || suggestClass(kind);
 
 // ---------------------------------------------------------------- ไฟล์ TigerSoft → วันต่อคน
-// "1-00:00" = 1 วัน · "0-04:15" = ครึ่งวัน · ชั่วโมงอื่นปัดเป็น 1/4 วัน (8 ชม. = 1 วัน)
-export function durDays(v) {
+// "1-00:00" = 1 วัน · ชั่วโมงหาร "ชั่วโมงทำงานต่อวัน" ของกะ แล้วปัดทศนิยม 2 ตำแหน่ง (ลาเป็นชั่วโมงได้)
+// ฐาน 8.5 ชม. (หน้างาน 7.30–17.00) · กะ BKK (ออฟฟิศกรุงเทพ 8.30–17.30) ฐาน 8 ชม. (user 2026-11-25)
+// TigerSoft ลงครึ่งวันเป็น 0-04:15 ทุกกะ (รวม BKK) → 4:15 ถือเป็นครึ่งวันเสมอ
+export const dayHours = shift => /^BKK/i.test(str(shift)) ? 8 : 8.5;
+export function durDays(v, shift = "") {
   const t = str(v); if (!t) return 0;
   const m = /^(\d+)-(\d+):(\d+)$/.exec(t);
   const d = m ? +m[1] : 0, min = m ? +m[2] * 60 + +m[3] : durMin(t);
-  return d + Math.min(1, Math.round(min / 480 * 4) / 4);
+  return d + (min === 255 ? .5 : Math.min(1, round2(min / (dayHours(shift) * 60))));
 }
 const hm = m => m == null ? "" : `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
 // วันหนึ่งของ TigerSoft → { kind, days } ของการลา/ขาด (null = วันทำงานปกติ / วันหยุด)
 export function dayEvent(d) {
   const note = str(d.note);
   if (d.leaveOk || d.leaveDed) {
-    const days = durDays(d.leaveOk ? d.leaveOkV : d.leaveDedV) || 1;
+    const days = durDays(d.leaveOk ? d.leaveOkV : d.leaveDedV, d.shift) || 1;
     if (/พักงาน/.test(note)) return { kind: SUSPEND, days };
     const k = leaveKinds(note)[0];
     return { kind: k || LEAVE_NA, days };
   }
-  if (d.deduct) return { kind: /ไม่ได้รูดบัตร|ไม่ได้สแกน/.test(note) ? NOSCAN : ABSENT, days: durDays(d.deduct) || 1 };
+  if (d.deduct) return { kind: /ไม่ได้รูดบัตร|ไม่ได้สแกน/.test(note) ? NOSCAN : ABSENT, days: durDays(d.deduct, d.shift) || 1 };
   return null;
 }
 // rows = sheet_to_json(header:1) ของรายงาน "ข้อมูลหลังประมวล" (ไฟล์ .xls ดิบจาก TigerSoft)

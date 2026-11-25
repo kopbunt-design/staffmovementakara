@@ -252,6 +252,7 @@ async function drawer(code) {
   D.querySelectorAll("[data-ad]").forEach(b => b.onclick = async () => { if (!confirm("ลบใบลานี้?")) return; try { await rpc("bonus_adj_delete", { p_id: +b.dataset.ad }); toast("ลบแล้ว", "success"); await reload(); } catch (err) { toast(err.message, "error"); } });
   D.querySelectorAll("[data-ov]").forEach(b => b.onclick = ev => { ev.preventDefault(); override(code, b.dataset.ov); });
   const cal = await rpc("bonus_cal", { p_emp_code: code, p_year: S.year }).catch(err => { $("#drCal").innerHTML = esc(err.message); return null; });
+  if (cal) S.calOf = { code, cal };
   if (cal && S.open === code) drawCal(code, cal, adj);
   const { data: log } = await supabase.rpc("bonus_log", { p_emp_code: code });
   if (S.open === code && log?.length) $("#drLog").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>`;
@@ -301,11 +302,13 @@ function adjForm(code, a = null, pre = null) {
   const m = modal(`${a ? "แก้" : "บันทึก"}ใบลา · ${esc(nameOf(code))}`, `
     <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : pre?.d_from || ""}"></label>
       <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : pre?.d_to || ""}"></label>
-      <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.25" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
+      <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.01" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
+    <div class="grid-f"><label class="fld"><span>ลาเป็นชั่วโมง (ไม่บังคับ)</span><input class="inp" type="number" step="0.25" min="0" id="aHr" placeholder="เช่น 2 หรือ 4.25"></label>
+      <label class="fld"><span>ชั่วโมงทำงานต่อวัน</span><select class="inp" id="aBase"><option value="8.5">8.5 ชม. · หน้างาน</option><option value="8">8 ชม. · ออฟฟิศกรุงเทพ (BKK)</option></select></label></div>
     <label class="fld"><span>ประเภทการลา</span><input class="inp" list="kl" data-a="kind" value="${esc(a?.kind || "")}" placeholder="เลือกหรือพิมพ์"><datalist id="kl">${kinds.map(k => `<option value="${esc(k)}">`).join("")}</datalist></label>
     <div id="kHint" class="small muted"></div>
     <label class="fld"><span>หมายเหตุ</span><input class="inp" data-a="note" value="${esc(a?.note || pre?.note || "")}" placeholder="เช่น ใบลากระดาษ เลขที่ … / แก้จากขาดงาน — มีใบรับรองแพทย์"></label>
-    <div class="notice">${I.info}<div>ข้อมูล TigerSoft ของคนนี้ในช่วงวันที่นี้จะไม่นับ ใช้ใบลานี้แทน · จำนวนวัน = วันที่ลาจริง (ไม่รวมวันหยุด) — ลาครึ่งวันใส่ 0.5</div></div>`, "บันทึก", async m => {
+    <div class="notice">${I.info}<div>ข้อมูล TigerSoft ของคนนี้ในช่วงวันที่นี้จะไม่นับ ใช้ใบลานี้แทน · จำนวนวัน = วันที่ลาจริง (ไม่รวมวันหยุด) — ลาครึ่งวันใส่ 0.5 · ลาเป็นชั่วโมงใส่ชั่วโมงแล้วระบบแปลงเป็นวันให้ (ชั่วโมง ÷ ชั่วโมงทำงานต่อวัน)</div></div>`, "บันทึก", async m => {
     const row = { emp_code: code, id: a?.id || null }; m.querySelectorAll("[data-a]").forEach(i => { row[i.dataset.a] = i.value.trim(); });
     if (!row.d_from || !row.kind || row.days === "") { toast("ใส่วันที่ ประเภท และจำนวนวัน", "error"); return false; }
     try { await rpc("bonus_adj_save", { p_row: row }); } catch (err) { toast(err.message, "error"); return false; }
@@ -316,6 +319,10 @@ function adjForm(code, a = null, pre = null) {
   const f = m.querySelector("[data-a=d_from]"), t = m.querySelector("[data-a=d_to]"), dd = m.querySelector("[data-a=days]");
   const auto = () => { if (f.value && !t.value) t.value = f.value; if (f.value && t.value && !a && !pre && !dd.dataset.touched) dd.value = Math.max(0, B.daysBetween(f.value, t.value) + 1); };
   f.onchange = auto; t.onchange = auto; dd.oninput = () => { dd.dataset.touched = 1; };
+  const hr = m.querySelector("#aHr"), base = m.querySelector("#aBase");
+  if (S.calOf?.code === code && S.calOf.cal.some(c => (c.days || []).some(x => B.dayHours(x[1]) === 8))) base.value = "8";   // มีกะ BKK ในปีนี้ = ออฟฟิศกรุงเทพ
+  const toDays = () => { const h = +hr.value; if (h > 0) { dd.value = B.round2(h / +base.value); dd.dataset.touched = 1; } };
+  hr.oninput = toDays; base.onchange = toDays;
 }
 function override(code, v) {
   if (v === "") { rpc("bonus_override_save", { p_year: S.year, p_emp_code: code, p_elig: null }).then(() => { toast("กลับไปใช้ผลของระบบแล้ว", "success"); reload(); }).catch(e => toast(e.message, "error")); return; }

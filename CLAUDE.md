@@ -263,6 +263,9 @@ import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เ�
   birth, child care, military), sick (first 10 days/year free then 0.5), maternity (first 60 per birth free then 0.5), none
   (annual, compensatory, work injury, funeral, company off-site/training). **Unpaid sick leave counts as sick leave** (it only
   happens after paid sick days run out — user 2026-11-25). **Late/early-out are statistics only, never deducted** (user).
+  Hourly leave (user 2026-11-25): hours ÷ hours per working day — 8.5 (site 7.30–17.00), 8 on shift code BKK (Bangkok office)
+  (`dayHours`, `durDays(v, shift)`), 2 dp, TigerSoft's "0-04:15" = half a day on every shift; the HR leave form takes hours too.
+  Months uploaded before this keep the old ¼-day rounding until the TigerSoft file is uploaded again.
   Level M: no deduction and no share of the special allocation. Special allocation = Σ amounts cut by deductions (not the
   proration of new joiners) ÷ eligible non-M people, equal for everyone. Eligibility: joined by 31 Aug, day 119 of probation
   ≤ pay date, still employed on the pay date, not Australian nationality and not a DAY… code (`NOT_CONSIDERED`, user 2026-11-25), resignation submitted = out, retirement 1 Jan next year = in; HR can override
