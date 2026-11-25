@@ -124,8 +124,14 @@ function fromClean(rows) {
 const isM = lv => /^M/i.test(str(lv));
 export { isM };
 // moves = movements ของคนนี้ (type, date) · ผลเป็นรายการเหตุผลที่ไม่มีสิทธิ์ (ว่าง = มีสิทธิ์)
+// ไม่อยู่ในการพิจารณาโบนัส (user 2026-11-25): สัญชาติออสเตรเลีย · รหัส DAY… (ลูกจ้างรายวัน)
+export const NOT_CONSIDERED = [
+  [e => /^DAY/i.test(str(e?.emp_code)), "ลูกจ้างรายวัน (รหัส DAY) — ไม่อยู่ในการพิจารณาโบนัส"],
+  [e => /austral|ออสเตรเลีย/i.test(str(e?.nationality)), "สัญชาติออสเตรเลีย — ไม่อยู่ในการพิจารณาโบนัส"],
+];
 export function eligibility(emp, moves = [], P = PARAMS_2026) {
   const why = [], j = str(emp?.join_date).slice(0, 10);
+  for (const [t, txt] of NOT_CONSIDERED) if (t(emp)) return [txt];
   if (!j) why.push("ไม่มีวันเริ่มงานในทะเบียน");
   else {
     if (j > P.join_by) why.push(`เริ่มงานหลัง ${P.join_by}`);

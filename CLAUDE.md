@@ -265,7 +265,7 @@ import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เ�
   happens after paid sick days run out — user 2026-11-25). **Late/early-out are statistics only, never deducted** (user).
   Level M: no deduction and no share of the special allocation. Special allocation = Σ amounts cut by deductions (not the
   proration of new joiners) ÷ eligible non-M people, equal for everyone. Eligibility: joined by 31 Aug, day 119 of probation
-  ≤ pay date, still employed on the pay date, resignation submitted = out, retirement 1 Jan next year = in; HR can override
+  ≤ pay date, still employed on the pay date, not Australian nationality and not a DAY… code (`NOT_CONSIDERED`, user 2026-11-25), resignation submitted = out, retirement 1 Jan next year = in; HR can override
   per person with a reason. Suspension starting by 30 Nov counts in full (2.4).
 - Data: TigerSoft "ข้อมูลหลังประมวล / รายงานแยกตามพนักงาน แบบที่ 1" (.xls raw, or the user's Cleaned .xlsx with sheet
   `Clean_Data`) read in the browser (`readTime`, reuses `parseProcessed` from diligence-calc.js, which now also keeps the raw

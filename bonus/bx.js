@@ -102,7 +102,7 @@ async function boot() {
   S.year = +today().slice(0, 4) - (today().slice(5, 7) < "06" ? 1 : 0);
   try {
     const [emps, moves] = await Promise.all([
-      fetchAll(() => supabase.from("employees").select("emp_code,firstname_th,lastname_th,division,department,section,position,job_level,join_date,end_date,status,contract_type").order("emp_code")),
+      fetchAll(() => supabase.from("employees").select("emp_code,firstname_th,lastname_th,division,department,section,position,job_level,join_date,end_date,status,contract_type,nationality").order("emp_code")),
       fetchAll(() => supabase.from("movements").select("emp_code,type,date").gte("date", "2025-01-01"))]);
     S.emps = emps.map(e => ({ ...e, emp_code: String(e.emp_code).toUpperCase() })); S.E = new Map(S.emps.map(e => [e.emp_code, e]));
     S.moves = moves.map(m => ({ ...m, emp_code: String(m.emp_code).toUpperCase() }));
@@ -329,7 +329,7 @@ function absRuns() {
   const key = `${S.D.events.length}|${S.D.adj.map(a => a.id).join(",")}|${S.D.months.map(m => m.ym + (m.absent_off ? 1 : 0)).join(",")}`;
   if (key === _absKey) return _abs;
   const by = new Map(), off = new Set(S.D.months.filter(m => m.absent_off).map(m => m.ym));   // เดือนที่ปิดการนับขาดงาน = ไม่ต้องตรวจ
-  for (const e of S.D.events) { const d = e.d.slice(0, 10); if (e.kind !== B.ABSENT || off.has(d.slice(0, 7)) || d < S.P.stat_from || d > S.P.stat_to || !S.E.has(e.emp_code)) continue;
+  for (const e of S.D.events) { const d = e.d.slice(0, 10); if (e.kind !== B.ABSENT || off.has(d.slice(0, 7)) || d < S.P.stat_from || d > S.P.stat_to || !S.E.has(e.emp_code) || B.NOT_CONSIDERED.some(([f]) => f(S.E.get(e.emp_code)))) continue;   // คนที่ไม่พิจารณาโบนัสไม่ต้องตรวจ
     (by.get(e.emp_code) || by.set(e.emp_code, []).get(e.emp_code)).push({ d, days: +e.days }); }
   const out = [];
   for (const [c, list] of by) {
@@ -580,7 +580,7 @@ function rulesPage() {
       </tbody></table></div>
       <div class="card-b small muted" style="line-height:1.8">• ลาป่วยไม่จ่ายเงิน = ลาป่วยต่อจากใช้สิทธิครบ → นับรวมเป็นลาป่วย (ใช้ ${P.sick_free} วันแรกร่วมกัน) · มาสาย/ออกก่อน ไม่นำมาหัก<br>
         • ระดับ M ไม่ถูกปรับลด และไม่ได้ส่วนแบ่งเงินจัดสรรพิเศษ (4.5, 5.4) · พักงานที่เริ่มภายใน ${dTH(P.stat_to)} และต่อเนื่องเกิน → นับทั้งหมดในรอบนี้ (2.4)<br>
-        • มีสิทธิ์: เริ่มงานภายใน ${dTH(P.join_by)} · พ้นทดลองงาน (วันที่ ${P.probation_days}) ก่อนวันจ่าย · เป็นพนักงาน ณ วันจ่าย · ยื่นลาออกแล้ว = ไม่มีสิทธิ์ · เกษียณ 1 ม.ค. ปีถัดไป = มีสิทธิ์</div></div>`);
+        • ไม่อยู่ในการพิจารณา: สัญชาติออสเตรเลีย · รหัส DAY (ลูกจ้างรายวัน)<br>        • มีสิทธิ์: เริ่มงานภายใน ${dTH(P.join_by)} · พ้นทดลองงาน (วันที่ ${P.probation_days}) ก่อนวันจ่าย · เป็นพนักงาน ณ วันจ่าย · ยื่นลาออกแล้ว = ไม่มีสิทธิ์ · เกษียณ 1 ม.ค. ปีถัดไป = มีสิทธิ์</div></div>`);
   $("#pSave") && ($("#pSave").onclick = async () => {
     const p = {}; document.querySelectorAll("[data-p]").forEach(i => { p[i.dataset.p] = i.value; });
     try { S.D.params = await rpc("bonus_params_save", { p_year: S.year, p_params: p }); await reload(false); toast("บันทึกแล้ว", "success"); } catch (e) { toast(e.message, "error"); }

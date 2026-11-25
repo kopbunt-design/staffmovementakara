@@ -58,6 +58,9 @@ eq(M.eligibility({ join_date: "2026-08-31" }).length, 1, "เริ่ม 31 ส
 eq(M.eligibility({ join_date: "2026-08-29" }), [], "เริ่ม 29 ส.ค. พ้นทดลองงาน 25 ธ.ค. พอดี");
 eq(M.eligibility({ join_date: "2020-01-01", end_date: "2026-12-01" }).length, 1, "ออกก่อนวันจ่าย");
 eq(M.eligibility({ join_date: "2020-01-01", end_date: "2027-01-15" }, [{ type: "Resignation", date: "2027-01-15" }])[0].slice(0, 13), "ยื่นลาออกแล้ว", "ยื่นลาออกแล้ว แม้ยังทำงานอยู่");
+eq(M.eligibility({ emp_code: "AKR001", join_date: "2020-01-01", nationality: "Australian" }), ["สัญชาติออสเตรเลีย — ไม่อยู่ในการพิจารณาโบนัส"], "ออสเตรเลียไม่พิจารณา");
+eq(M.eligibility({ emp_code: "DAY0103", join_date: "2020-01-01", nationality: "Thai" }).length, 1, "รหัส DAY ไม่พิจารณา");
+eq(M.eligibility({ emp_code: "AKR002", join_date: "2020-01-01", nationality: "Thai" }), [], "คนไทยรหัส AKR พิจารณาตามปกติ");
 eq(M.eligibility({ join_date: "1990-01-01", end_date: "2027-01-01" }, [{ type: "Retirement", date: "2027-01-01" }]), [], "เกษียณ 1 ม.ค. 2570 ได้สิทธิ์");
 
 // ---- รายละเอียดการปรับลด
