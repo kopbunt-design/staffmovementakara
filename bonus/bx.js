@@ -86,7 +86,7 @@ const unconfirmed = () => kindsSeen().filter(k => !S.D.types[k.kind]);
 function alerts() {
   const imp = new Set(S.D.months.map(m => m.ym)), miss = statYMs().filter(m => m <= today().slice(0, 7) && !imp.has(m));
   const notReg = [...new Set(S.D.agg.map(a => a.emp_code))].filter(c => !S.E.has(c));
-  return { miss, unc: unconfirmed(), notReg, inel: S.R.rows.filter(r => !r.ok && r.worked > 0), count: miss.length + unconfirmed().length };
+  return { miss, unc: unconfirmed(), notReg, inel: S.R.rows.filter(r => !r.ok && r.worked > 0), count: miss.length + unconfirmed().length + (absRuns().some(x => !x.done) ? 1 : 0) };
 }
 
 async function boot() {
@@ -118,7 +118,7 @@ function route() {
   const r = location.hash.replace(/^#\/?/, "").split("/")[0] || "overview";
   document.querySelectorAll("#fxNav a[data-r]").forEach(a => a.classList.toggle("on", a.dataset.r === r));
   badge();
-  ({ overview, people, leave: leavePage, time: timePage, import: importPage, types: typesPage, rules: rulesPage, log: logPage }[r] || overview)();
+  ({ overview, people, absent: absentPage, leave: leavePage, time: timePage, import: importPage, types: typesPage, rules: rulesPage, log: logPage }[r] || overview)();
   window.scrollTo(0, 0);
 }
 function badge() {
@@ -126,6 +126,7 @@ function badge() {
   $("#navAl").textContent = a.count ? String(a.count) : "";
   $("#navImp").textContent = a.miss.length ? String(a.miss.length) : "";
   $("#navTy").textContent = a.unc.length ? String(a.unc.length) : "";
+  const ab = absRuns().filter(x => !x.done).length; $("#navAb").textContent = ab ? String(ab) : "";
 }
 async function reload(keepDrawer = true) { await loadYear(); badge(); route(); if (keepDrawer && S.open) drawer(S.open); }
 
@@ -159,6 +160,7 @@ function overview() {
     ${a.count || a.notReg.length ? `<div class="card mt"><div class="card-h"><div class="card-t">${I.warn}ต้องดูก่อนจ่าย</div></div><div class="card-b" style="display:grid;gap:10px">
       ${a.miss.length ? `<div class="notice gold">${I.warn}<div><b>ยังไม่ได้นำเข้าเวลา ${a.miss.length} เดือน:</b> ${a.miss.map(ymTH).join(", ")} — <a href="#/import">นำเข้า</a> หรือบันทึกใบลากระดาษรายคน</div></div>` : ""}
       ${a.unc.length ? `<div class="notice gold">${I.warn}<div><b>ประเภทการลาที่ยังไม่ยืนยันน้ำหนัก ${a.unc.length} ประเภท:</b> ${a.unc.slice(0, 6).map(k => esc(k.kind)).join(", ")}${a.unc.length > 6 ? " …" : ""} — <a href="#/types">ยืนยัน</a></div></div>` : ""}
+      ${absRuns().some(x => !x.done) ? `<div class="notice gold">${I.warn}<div><b>วันขาดงานใน TigerSoft ที่ยังไม่ได้ตรวจ ${absRuns().filter(x => !x.done).length} ช่วง</b>${paperMonths().length ? ` — เดือน ${paperMonths().map(ymTH).join(", ")} ไม่มีใบลาใน TigerSoft (ใช้ใบลากระดาษ) วันที่ลาจริงจึงขึ้นเป็นขาดงาน` : ""} — <a href="#/absent">ตรวจ</a></div></div>` : ""}
       ${a.notReg.length ? `<div class="notice">${I.info}<div>ในไฟล์เวลามี ${a.notReg.length} รหัสที่ไม่อยู่ในทะเบียนพนักงาน (เช่น ${a.notReg.slice(0, 4).map(esc).join(", ")}) — ไม่นำมาคิดโบนัส</div></div>` : ""}</div></div>` : ""}
     <div class="two">
       <div class="card"><div class="card-h"><div><div class="card-t">วันลา/ขาดทั้งบริษัท</div><div class="card-s">ผู้มีสิทธิ์ · ในช่วงเก็บสถิติ · สีตามน้ำหนักการหัก</div></div><a class="btn btn-sm" href="#/leave">ดูรายคน</a></div>
@@ -288,15 +290,15 @@ function modal(title, body, okText, onOk) {
   m.querySelector("[data-ok]").onclick = async () => { const b = m.querySelector("[data-ok]"); b.disabled = true; try { if (await onOk(m) !== false) m.remove(); } finally { b.disabled = false; } };
   return m;
 }
-function adjForm(code, a = null) {
+function adjForm(code, a = null, pre = null) {
   const kinds = [...new Set(["ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย", "ขาดงาน", "พักงาน", "ลาไม่รับค่าจ้าง", "ลาคลอด", "ลาเพื่อช่วยเหลือคู่สมรสในการคลอดบุตร", "ลาอุปสมบท", "ลาฌาปนกิจ", "ลาเนื่องจากอุบัติเหตุจากการทำงาน", "ลารับราชการทหาร", "ลาทำหมัน", ...kindsSeen().map(k => k.kind)])];
   const m = modal(`${a ? "แก้" : "บันทึก"}ใบลา · ${esc(nameOf(code))}`, `
-    <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : ""}"></label>
-      <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : ""}"></label>
-      <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.25" min="0" data-a="days" value="${a ? +a.days : ""}"></label></div>
+    <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : pre?.d_from || ""}"></label>
+      <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : pre?.d_to || ""}"></label>
+      <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.25" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
     <label class="fld"><span>ประเภทการลา</span><input class="inp" list="kl" data-a="kind" value="${esc(a?.kind || "")}" placeholder="เลือกหรือพิมพ์"><datalist id="kl">${kinds.map(k => `<option value="${esc(k)}">`).join("")}</datalist></label>
     <div id="kHint" class="small muted"></div>
-    <label class="fld"><span>หมายเหตุ</span><input class="inp" data-a="note" value="${esc(a?.note || "")}" placeholder="เช่น ใบลากระดาษ เลขที่ … / แก้จากขาดงาน — มีใบรับรองแพทย์"></label>
+    <label class="fld"><span>หมายเหตุ</span><input class="inp" data-a="note" value="${esc(a?.note || pre?.note || "")}" placeholder="เช่น ใบลากระดาษ เลขที่ … / แก้จากขาดงาน — มีใบรับรองแพทย์"></label>
     <div class="notice">${I.info}<div>ข้อมูล TigerSoft ของคนนี้ในช่วงวันที่นี้จะไม่นับ ใช้ใบลานี้แทน · จำนวนวัน = วันที่ลาจริง (ไม่รวมวันหยุด) — ลาครึ่งวันใส่ 0.5</div></div>`, "บันทึก", async m => {
     const row = { emp_code: code, id: a?.id || null }; m.querySelectorAll("[data-a]").forEach(i => { row[i.dataset.a] = i.value.trim(); });
     if (!row.d_from || !row.kind || row.days === "") { toast("ใส่วันที่ ประเภท และจำนวนวัน", "error"); return false; }
@@ -306,7 +308,7 @@ function adjForm(code, a = null) {
   const hint = () => { const k = m.querySelector("[data-a=kind]").value.trim(); m.querySelector("#kHint").innerHTML = k ? `น้ำหนัก: <span class="kchip c-${B.classOf(k, S.D.types)}"><i></i>${B.CLS[B.classOf(k, S.D.types)].th}</span>` : ""; };
   m.querySelector("[data-a=kind]").oninput = hint; hint();
   const f = m.querySelector("[data-a=d_from]"), t = m.querySelector("[data-a=d_to]"), dd = m.querySelector("[data-a=days]");
-  const auto = () => { if (f.value && !t.value) t.value = f.value; if (f.value && t.value && !a && !dd.dataset.touched) dd.value = Math.max(0, B.daysBetween(f.value, t.value) + 1); };
+  const auto = () => { if (f.value && !t.value) t.value = f.value; if (f.value && t.value && !a && !pre && !dd.dataset.touched) dd.value = Math.max(0, B.daysBetween(f.value, t.value) + 1); };
   f.onchange = auto; t.onchange = auto; dd.oninput = () => { dd.dataset.touched = 1; };
 }
 function override(code, v) {
@@ -316,6 +318,67 @@ function override(code, v) {
     try { await rpc("bonus_override_save", { p_year: S.year, p_emp_code: code, p_elig: v, p_note: note }); } catch (e) { toast(e.message, "error"); return false; }
     toast("บันทึกแล้ว", "success"); await reload();
   });
+}
+
+// ---------------------------------------------------------------- ตรวจวันขาดงาน (ช่วงที่ใบลายังเป็นกระดาษ)
+// ช่วงต้นปี TigerSoft มีแค่เวลาสแกน ใบลาเป็นกระดาษ → วันที่ลาจริงขึ้นเป็น "ขาดงาน" (user 2026-11-25)
+// รวมวันขาดที่ติดกัน (ห่างไม่เกิน 3 วัน เช่น คร่อมเสาร์-อาทิตย์) เป็นช่วงเดียว → HR กดว่าเป็นลาอะไร = บันทึกใบลาแทนช่วงนั้น
+let _absKey = null, _abs = [];
+function absRuns() {
+  const key = `${S.D.events.length}|${S.D.adj.map(a => a.id).join(",")}|${S.D.months.map(m => m.ym + (m.absent_off ? 1 : 0)).join(",")}`;
+  if (key === _absKey) return _abs;
+  const by = new Map(), off = new Set(S.D.months.filter(m => m.absent_off).map(m => m.ym));   // เดือนที่ปิดการนับขาดงาน = ไม่ต้องตรวจ
+  for (const e of S.D.events) { const d = e.d.slice(0, 10); if (e.kind !== B.ABSENT || off.has(d.slice(0, 7)) || d < S.P.stat_from || d > S.P.stat_to || !S.E.has(e.emp_code)) continue;
+    (by.get(e.emp_code) || by.set(e.emp_code, []).get(e.emp_code)).push({ d, days: +e.days }); }
+  const out = [];
+  for (const [c, list] of by) {
+    list.sort((a, b) => a.d.localeCompare(b.d));
+    let cur = null;
+    for (const x of list) { if (cur && B.daysBetween(cur.d2, x.d) <= 3) { cur.d2 = x.d; cur.days += x.days; cur.n++; } else { cur = { c, d1: x.d, d2: x.d, days: x.days, n: 1 }; out.push(cur); } }
+  }
+  for (const r of out) { const a = S.D.adj.find(z => z.emp_code === r.c && z.d_from.slice(0, 10) <= r.d1 && z.d_to.slice(0, 10) >= r.d2); r.done = a || null; }
+  _absKey = key; _abs = out.sort((a, b) => a.d1.localeCompare(b.d1) || a.c.localeCompare(b.c));
+  return _abs;
+}
+// เดือนที่แทบไม่มีใบลาใน TigerSoft (รายการลาน้อยกว่า 30% ของจำนวนคน · ปกติ ก.ย./ต.ค. มีราว 2 เท่าของคน) = น่าจะยังใช้ใบลากระดาษ
+function paperMonths() {
+  return S.D.months.filter(m => statYMs().includes(m.ym)).filter(m => {
+    const lv = S.D.events.filter(e => e.d.startsWith(m.ym) && /^ลา/.test(e.kind)).length;
+    return lv < Math.max(3, m.people * .3);
+  }).map(m => m.ym);
+}
+const QUICK = ["ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย"];
+function absentPage() {
+  const all = absRuns(), q = S.q.trim().toLowerCase(), pm = paperMonths();
+  const show = all.filter(r => (S.abDone ? r.done : !r.done) && (!S.lm || r.d1.startsWith(S.lm)) && (!S.dept || S.E.get(r.c)?.department === S.dept) && (!q || `${r.c} ${nameOf(r.c)}`.toLowerCase().includes(q)));
+  const depts = [...new Set(S.emps.map(e => e.department).filter(Boolean))].sort(), w = S.D.can_write;
+  const todo = all.filter(r => !r.done).length;
+  render(`${head("ตรวจข้อมูล", "ตรวจวันขาดงาน", "ช่วงที่ใบลายังเป็นกระดาษ TigerSoft ขึ้นวันลาเป็น “ขาดงาน” — เทียบกับใบลากระดาษ แล้วกดว่าเป็นลาอะไร (บันทึกเป็นใบลาแทนช่วงนั้น) หรือ “ขาดจริง”")}
+    ${pm.length ? `<div class="notice gold">${I.info}<div>เดือนที่แทบไม่มีใบลาใน TigerSoft: <b>${pm.map(ymTH).join(", ")}</b> — น่าจะยังใช้ใบลากระดาษ ช่วงนี้ต้องตรวจวันขาดงานทุกวัน</div></div>` : ""}
+    <div class="card mt"><div class="card-h"><div class="seg" id="abSeg"><button data-v="0" class="${S.abDone ? "" : "on"}">ยังไม่ตรวจ ${todo}</button><button data-v="1" class="${S.abDone ? "on" : ""}">ตรวจแล้ว ${all.length - todo}</button></div>
+      <div class="fx-actions"><select class="inp" id="lm"><option value="">ทุกเดือน</option>${statYMs().map(m => `<option value="${m}" ${S.lm === m ? "selected" : ""}>${ymTH(m)}${pm.includes(m) ? " · กระดาษ" : ""}</option>`).join("")}</select>
+        <select class="inp" id="dept"><option value="">ทุกแผนก</option>${depts.map(d => `<option ${S.dept === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>
+        <div class="search">${I.search}<input class="inp" id="q" placeholder="ค้นหารหัส / ชื่อ" value="${esc(S.q)}"></div></div></div>
+      <div class="tbl-wrap tall"><table class="tbl"><thead><tr><th>พนักงาน</th><th>ช่วงวันที่</th><th class="r">วัน</th><th>${S.abDone ? "ผลการตรวจ" : "เป็นลาอะไร"}</th></tr></thead><tbody>
+      ${show.slice(0, 300).map(r => `<tr><td class="click" data-open="${esc(r.c)}" style="cursor:pointer">${who(r.c)}</td>
+        <td><b>${dTH(r.d1)}</b>${r.d2 !== r.d1 ? ` – ${dTH(r.d2)}` : ""}<div class="small muted">${r.n} วันที่ขาดใน TigerSoft</div></td><td class="r"><b>${num(r.days)}</b></td>
+        <td>${r.done ? `${kchip(r.done.kind, ` ${num(r.done.days)} วัน`)} <span class="small muted">${esc(r.done.by_name || "")}</span>${w ? ` <button class="btn btn-sm btn-ghost" data-undo="${r.done.id}">เลิกทำ</button>` : ""}`
+          : w ? `<div class="fx-actions">${QUICK.map(k => `<button class="btn btn-sm" data-q="${esc(k)}" data-r="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">${esc(k.replace(/^ลา/, ""))}</button>`).join("")}
+            <button class="btn btn-sm" data-more="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">อื่น ๆ…</button><button class="btn btn-sm btn-ghost neg" data-q="${B.ABSENT}" data-r="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">ขาดจริง</button></div>` : `<span class="muted small">ยังไม่ตรวจ</span>`}</td></tr>`).join("")
+        || `<tr><td colspan="4" class="empty">${S.abDone ? "ยังไม่มีที่ตรวจแล้ว" : "ไม่มีวันขาดงานที่ต้องตรวจ 🎉"}</td></tr>`}</tbody></table></div>
+      <div class="card-b small muted">${show.length} ช่วง${show.length > 300 ? " (แสดง 300 แรก)" : ""} · ช่วง = วันขาดที่ติดกัน (ห่างไม่เกิน 3 วัน) · ถ้าในช่วงลาคนละแบบ ใช้ “อื่น ๆ…” หรือบันทึกในหน้ารายคน · ขาดจริง = นับหักเต็มวัน</div></div>`);
+  $("#abSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.abDone = b.dataset.v === "1"; absentPage(); };
+  $("#lm").onchange = e => { S.lm = e.target.value; absentPage(); };
+  $("#dept").onchange = e => { S.dept = e.target.value; absentPage(); };
+  const qi = $("#q"); qi.oninput = () => { S.q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { absentPage(); const n = $("#q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+  document.querySelectorAll("[data-q]").forEach(b => b.onclick = async () => {
+    const [c, d1, d2, days] = b.dataset.r.split("|"); b.closest("td").querySelectorAll("button").forEach(x => { x.disabled = true; });
+    const real = b.dataset.q === B.ABSENT;
+    try { await rpc("bonus_adj_save", { p_row: { emp_code: c, d_from: d1, d_to: d2, kind: b.dataset.q, days, note: real ? "ตรวจแล้ว: ขาดงานจริง" : "ใบลากระดาษ (TigerSoft ขึ้นขาดงาน)" } }); await reload(false); }
+    catch (err) { toast(err.message, "error"); absentPage(); }
+  });
+  document.querySelectorAll("[data-more]").forEach(b => b.onclick = () => { const [c, d1, d2, days] = b.dataset.more.split("|"); adjForm(c, null, { d_from: d1, d_to: d2, days, note: "ใบลากระดาษ (TigerSoft ขึ้นขาดงาน)" }); });
+  document.querySelectorAll("[data-undo]").forEach(b => b.onclick = async () => { try { await rpc("bonus_adj_delete", { p_id: +b.dataset.undo }); await reload(false); } catch (err) { toast(err.message, "error"); } });
 }
 
 // ---------------------------------------------------------------- สรุปการลา

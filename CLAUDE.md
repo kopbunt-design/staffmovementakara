@@ -278,7 +278,10 @@ import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เ�
   Perms seeded once: `page.bonus` (← page.payroll), `data.bonus.write` (← data.payroll.write); salaries only come with
   `field.salary.read` (returned by `bonus_data`, never read from `employees` in the page).
 - Early 2026 (before TigerSoft): time exists in TigerSoft but leave was on paper and shifts weren't set (user) — HR enters
-  paper leave per person in the drawer. TigerSoft's leave report (ใบลา) upload is not built yet — waiting for a sample file.
+  paper leave per person in the drawer, or on `#/absent` "ตรวจวันขาดงาน" (user 2026-11-25): TigerSoft "ขาดงาน" days in the
+  stat window are grouped into runs (gap ≤ 3 days) and HR clicks what the paper leave was (ลาป่วย/ลากิจ/ลาพักร้อน/ลาหยุดชดเชย,
+  อื่น ๆ…, or "ขาดจริง" = recorded as ขาดงาน) → a `bonus_adj` row over the run; "เลิกทำ" deletes it. `paperMonths` flags months
+  with almost no leave in TigerSoft (leave rows < 30% of headcount) as the paper period. TigerSoft's leave report (ใบลา) upload is not built yet — waiting for a sample file.
 
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
