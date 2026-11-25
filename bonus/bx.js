@@ -46,7 +46,7 @@ const render = html => { $("#fxMain").innerHTML = html; wire($("#fxMain")); };
 const nameOf = code => { const e = S.E.get(code); return e ? `${e.firstname_th || ""} ${e.lastname_th || ""}`.trim() : (S.D.agg.find(a => a.emp_code === code)?.name || code); };
 const who = (code, sub) => { const e = S.E.get(code), n = nameOf(code);
   return `<div class="who"><div class="a">${esc(ini(n))}</div><div><b>${esc(n)}</b><span>${esc(code)}${sub ?? (e?.department ? " · " + esc(e.department) : "")}</span></div></div>`; };
-const kchip = (kind, extra = "") => `<span class="kchip c-${B.classOf(kind, S.D.types)}"><i></i>${esc(kind)}${extra}</span>`;
+const kchip = (kind, extra = "") => `<span class="kchip c-${kind === B.WORKED ? "none" : B.classOf(kind, S.D.types)}"><i></i>${esc(kind)}${extra}</span>`;
 const yms = () => Array.from({ length: 12 }, (_, i) => `${S.year}-${String(i + 1).padStart(2, "0")}`);
 const statYMs = () => yms().filter(m => m >= S.P.stat_from.slice(0, 7) && m <= S.P.stat_to.slice(0, 7));
 
@@ -82,7 +82,8 @@ function kindsSeen() {
   for (const a of S.D.adj) { const o = m.get(a.kind) || m.set(a.kind, { kind: a.kind, days: 0, n: new Set() }).get(a.kind); o.days += +a.days; o.n.add(a.emp_code); }
   return [...m.values()].sort((a, b) => b.days - a.days);
 }
-const unconfirmed = () => kindsSeen().filter(k => !S.D.types[k.kind] && k.kind !== B.WORK_INJURY);
+const FIXED = k => k === B.WORK_INJURY || k === B.WORKED;   // ประเภทที่มาจาก HR เท่านั้น ตั้งน้ำหนักไม่ได้
+const unconfirmed = () => kindsSeen().filter(k => !S.D.types[k.kind] && !FIXED(k.kind));
 function alerts() {
   const imp = new Set(S.D.months.map(m => m.ym)), miss = statYMs().filter(m => m <= today().slice(0, 7) && !imp.has(m));
   const notReg = [...new Set(S.D.agg.map(a => a.emp_code))].filter(c => !S.E.has(c));
@@ -292,7 +293,7 @@ function modal(title, body, okText, onOk) {
   return m;
 }
 function adjForm(code, a = null, pre = null) {
-  const kinds = [...new Set(["ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย", "ขาดงาน", "พักงาน", "ลาไม่รับค่าจ้าง", "ลาคลอด", "ลาเพื่อช่วยเหลือคู่สมรสในการคลอดบุตร", "ลาอุปสมบท", "ลาฌาปนกิจ", B.WORK_INJURY, "ลารับราชการทหาร", "ลาทำหมัน", ...kindsSeen().map(k => k.kind)])];
+  const kinds = [...new Set([B.WORKED, "ลาป่วย", "ลากิจ", "ลาพักร้อน", "ลาหยุดชดเชย", "ขาดงาน", "พักงาน", "ลาไม่รับค่าจ้าง", "ลาคลอด", "ลาเพื่อช่วยเหลือคู่สมรสในการคลอดบุตร", "ลาอุปสมบท", "ลาฌาปนกิจ", B.WORK_INJURY, "ลารับราชการทหาร", "ลาทำหมัน", ...kindsSeen().map(k => k.kind)])];
   const m = modal(`${a ? "แก้" : "บันทึก"}ใบลา · ${esc(nameOf(code))}`, `
     <div class="grid-f"><label class="fld"><span>ตั้งแต่</span><input class="inp" type="date" data-a="d_from" value="${a ? a.d_from.slice(0, 10) : pre?.d_from || ""}"></label>
       <label class="fld"><span>ถึง</span><input class="inp" type="date" data-a="d_to" value="${a ? a.d_to.slice(0, 10) : pre?.d_to || ""}"></label>
@@ -335,9 +336,13 @@ function absRuns() {
   for (const [c, list] of by) {
     list.sort((a, b) => a.d.localeCompare(b.d));
     let cur = null;
-    for (const x of list) { if (cur && B.daysBetween(cur.d2, x.d) <= 3) { cur.d2 = x.d; cur.days += x.days; cur.n++; } else { cur = { c, d1: x.d, d2: x.d, days: x.days, n: 1 }; out.push(cur); } }
+    for (const x of list) { if (cur && B.daysBetween(cur.d2, x.d) <= 3) { cur.d2 = x.d; cur.days += x.days; cur.n++; cur.ds.push(x.d); } else { cur = { c, d1: x.d, d2: x.d, days: x.days, n: 1, ds: [x.d] }; out.push(cur); } }
   }
-  for (const r of out) { const a = S.D.adj.find(z => z.emp_code === r.c && z.d_from.slice(0, 10) <= r.d1 && z.d_to.slice(0, 10) >= r.d2); r.done = a || null; }
+  // ตรวจแล้ว = ทุกวันขาดในช่วงมีรายการ HR ทับ (ช่วงเดียวอาจแบ่งเป็นหลายรายการ เช่น มาทำงานบางวัน ลาป่วยบางวัน)
+  for (const r of out) { const as = S.D.adj.filter(z => z.emp_code === r.c && z.d_from.slice(0, 10) <= r.d2 && z.d_to.slice(0, 10) >= r.d1);
+    const left = r.ds.filter(d => !as.some(z => z.d_from.slice(0, 10) <= d && z.d_to.slice(0, 10) >= d));
+    r.done = left.length ? null : as; r.part = left.length && as.length ? as : null;
+    r.key = left.length ? `${r.c}|${left[0]}|${left.at(-1)}|${left.length < r.ds.length ? left.length : r.days}` : ""; }   // ปุ่มกดใช้เฉพาะวันที่ยังไม่ได้ตรวจ
   _absKey = key; _abs = out.sort((a, b) => a.d1.localeCompare(b.d1) || a.c.localeCompare(b.c));
   return _abs;
 }
@@ -354,7 +359,7 @@ function absentPage() {
   const show = all.filter(r => (S.abDone ? r.done : !r.done) && (!S.lm || r.d1.startsWith(S.lm)) && (!S.dept || S.E.get(r.c)?.department === S.dept) && (!q || `${r.c} ${nameOf(r.c)}`.toLowerCase().includes(q)));
   const depts = [...new Set(S.emps.map(e => e.department).filter(Boolean))].sort(), w = S.D.can_write;
   const todo = all.filter(r => !r.done).length;
-  render(`${head("ตรวจข้อมูล", "ตรวจวันขาดงาน", "ช่วงที่ใบลายังเป็นกระดาษ TigerSoft ขึ้นวันลาเป็น “ขาดงาน” — เทียบกับใบลากระดาษ แล้วกดว่าเป็นลาอะไร (บันทึกเป็นใบลาแทนช่วงนั้น) หรือ “ขาดจริง”")}
+  render(`${head("ตรวจข้อมูล", "ตรวจวันขาดงาน", "ช่วงที่ใบลา/ใบลงเวลายังเป็นกระดาษ TigerSoft ขึ้นเป็น “ขาดงาน” — เทียบกับกระดาษ: ลงเวลามาทำงาน กด “มาทำงาน” · ลา กดว่าเป็นลาอะไร · ไม่มีทั้งสองอย่าง กด “ขาดจริง”")}
     ${pm.length ? `<div class="notice gold">${I.info}<div>เดือนที่แทบไม่มีใบลาใน TigerSoft: <b>${pm.map(ymTH).join(", ")}</b> — น่าจะยังใช้ใบลากระดาษ ช่วงนี้ต้องตรวจวันขาดงานทุกวัน</div></div>` : ""}
     <div class="card mt"><div class="card-h"><div class="seg" id="abSeg"><button data-v="0" class="${S.abDone ? "" : "on"}">ยังไม่ตรวจ ${todo}</button><button data-v="1" class="${S.abDone ? "on" : ""}">ตรวจแล้ว ${all.length - todo}</button></div>
       <div class="fx-actions"><select class="inp" id="lm"><option value="">ทุกเดือน</option>${statYMs().map(m => `<option value="${m}" ${S.lm === m ? "selected" : ""}>${ymTH(m)}${pm.includes(m) ? " · กระดาษ" : ""}</option>`).join("")}</select>
@@ -363,19 +368,19 @@ function absentPage() {
       <div class="tbl-wrap tall"><table class="tbl"><thead><tr><th>พนักงาน</th><th>ช่วงวันที่</th><th class="r">วัน</th><th>${S.abDone ? "ผลการตรวจ" : "เป็นลาอะไร"}</th></tr></thead><tbody>
       ${show.slice(0, 300).map(r => `<tr><td class="click" data-open="${esc(r.c)}" style="cursor:pointer">${who(r.c)}</td>
         <td><b>${dTH(r.d1)}</b>${r.d2 !== r.d1 ? ` – ${dTH(r.d2)}` : ""}<div class="small muted">${r.n} วันที่ขาดใน TigerSoft</div></td><td class="r"><b>${num(r.days)}</b></td>
-        <td>${r.done ? `${kchip(r.done.kind, ` ${num(r.done.days)} วัน`)} <span class="small muted">${esc(r.done.by_name || "")}</span>${w ? ` <button class="btn btn-sm btn-ghost" data-undo="${r.done.id}">เลิกทำ</button>` : ""}`
-          : w ? `<div class="fx-actions">${QUICK.map(k => `<button class="btn btn-sm" data-q="${esc(k)}" data-r="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">${esc(k.replace(/^ลา/, ""))}</button>`).join("")}
-            <button class="btn btn-sm" data-more="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">อื่น ๆ…</button><button class="btn btn-sm btn-ghost neg" data-q="${B.ABSENT}" data-r="${esc(r.c)}|${r.d1}|${r.d2}|${r.days}">ขาดจริง</button></div>` : `<span class="muted small">ยังไม่ตรวจ</span>`}</td></tr>`).join("")
+        <td>${r.done ? r.done.map(a => `<div>${kchip(a.kind, ` ${num(a.days)} วัน`)}${r.done.length > 1 ? ` <span class="small muted">${dTH(a.d_from.slice(0, 10))}${a.d_to.slice(0, 10) !== a.d_from.slice(0, 10) ? `–${dTH(a.d_to.slice(0, 10))}` : ""}</span>` : ""} <span class="small muted">${esc(a.by_name || "")}</span>${w ? ` <button class="btn btn-sm btn-ghost" data-undo="${a.id}">เลิกทำ</button>` : ""}</div>`).join("")
+          : w ? `${r.part ? `<div class="small muted">ตรวจแล้วบางวัน: ${r.part.map(a => esc(a.kind.replace(/ \(.*\)$/, "")) + " " + dTH(a.d_from.slice(0, 10))).join(", ")} · ที่เหลือ:</div>` : ""}<div class="fx-actions"><button class="btn btn-sm btn-g" data-q="${esc(B.WORKED)}" data-r="${esc(r.key)}" title="มีใบลงเวลากระดาษ — วันนั้นมาทำงาน ไม่นับขาด">✓ มาทำงาน</button>${QUICK.map(k => `<button class="btn btn-sm" data-q="${esc(k)}" data-r="${esc(r.key)}">${esc(k.replace(/^ลา/, ""))}</button>`).join("")}
+            <button class="btn btn-sm" data-more="${esc(r.key)}">อื่น ๆ…</button><button class="btn btn-sm btn-ghost neg" data-q="${B.ABSENT}" data-r="${esc(r.key)}">ขาดจริง</button></div>` : `<span class="muted small">ยังไม่ตรวจ</span>`}</td></tr>`).join("")
         || `<tr><td colspan="4" class="empty">${S.abDone ? "ยังไม่มีที่ตรวจแล้ว" : "ไม่มีวันขาดงานที่ต้องตรวจ 🎉"}</td></tr>`}</tbody></table></div>
-      <div class="card-b small muted">${show.length} ช่วง${show.length > 300 ? " (แสดง 300 แรก)" : ""} · ช่วง = วันขาดที่ติดกัน (ห่างไม่เกิน 3 วัน) · ถ้าในช่วงลาคนละแบบ ใช้ “อื่น ๆ…” หรือบันทึกในหน้ารายคน · ขาดจริง = นับหักเต็มวัน</div></div>`);
+      <div class="card-b small muted">${show.length} ช่วง${show.length > 300 ? " (แสดง 300 แรก)" : ""} · ช่วง = วันขาดที่ติดกัน (ห่างไม่เกิน 3 วัน) · ถ้าในช่วงมีทั้งมาทำงาน/ลาคนละแบบ ใช้ “อื่น ๆ…” แก้วันที่ทีละส่วน หรือบันทึกในหน้ารายคน · ขาดจริง = นับหักเต็มวัน</div></div>`);
   $("#abSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.abDone = b.dataset.v === "1"; absentPage(); };
   $("#lm").onchange = e => { S.lm = e.target.value; absentPage(); };
   $("#dept").onchange = e => { S.dept = e.target.value; absentPage(); };
   const qi = $("#q"); qi.oninput = () => { S.q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { absentPage(); const n = $("#q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
   document.querySelectorAll("[data-q]").forEach(b => b.onclick = async () => {
     const [c, d1, d2, days] = b.dataset.r.split("|"); b.closest("td").querySelectorAll("button").forEach(x => { x.disabled = true; });
-    const real = b.dataset.q === B.ABSENT;
-    try { await rpc("bonus_adj_save", { p_row: { emp_code: c, d_from: d1, d_to: d2, kind: b.dataset.q, days, note: real ? "ตรวจแล้ว: ขาดงานจริง" : "ใบลากระดาษ (TigerSoft ขึ้นขาดงาน)" } }); await reload(false); }
+    const k = b.dataset.q, note = k === B.ABSENT ? "ตรวจแล้ว: ขาดงานจริง" : k === B.WORKED ? "ใบลงเวลากระดาษ — มาทำงาน (TigerSoft ขึ้นขาดงาน)" : "ใบลากระดาษ (TigerSoft ขึ้นขาดงาน)";
+    try { await rpc("bonus_adj_save", { p_row: { emp_code: c, d_from: d1, d_to: d2, kind: k, days, note } }); await reload(false); }
     catch (err) { toast(err.message, "error"); absentPage(); }
   });
   document.querySelectorAll("[data-more]").forEach(b => b.onclick = () => { const [c, d1, d2, days] = b.dataset.more.split("|"); adjForm(c, null, { d_from: d1, d_to: d2, days, note: "ใบลากระดาษ (TigerSoft ขึ้นขาดงาน)" }); });
@@ -525,7 +530,7 @@ function kindRuns(kind) {
   return out.sort((a, b) => a.d1.localeCompare(b.d1));
 }
 function typesPage() {
-  const ks = kindsSeen(), w = S.D.can_write, unc = ks.filter(k => !S.D.types[k.kind] && k.kind !== B.WORK_INJURY);
+  const ks = kindsSeen(), w = S.D.can_write, unc = ks.filter(k => !S.D.types[k.kind] && !FIXED(k.kind));
   S.tyOpen ||= new Set();
   const inj = ks.filter(k => B.injuryHint(k.kind)), injTodo = inj.flatMap(k => kindRuns(k.kind)).filter(r => !r.adj).length;
   const detail = k => { const runs = kindRuns(k.kind), hint = B.injuryHint(k.kind);
@@ -540,10 +545,10 @@ function typesPage() {
     ${unc.length ? `<div class="ty-new"><div class="ic">${unc.length}</div><div class="tx"><b>ประเภทใหม่ที่ยังไม่ยืนยัน</b> — ระบบเดาน้ำหนักจากชื่อให้แล้ว (เส้นประ) กดเลือกเพื่อยืนยัน หรือกดปุ่มขวาเพื่อยืนยันตามที่เดาทั้งหมด</div>
       ${w ? `<button class="btn btn-sm btn-g" id="tyAll">ยืนยันตามที่เดาทั้งหมด</button>` : ""}</div>` : ""}
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>ประเภท (ตามที่เขียนใน TigerSoft)</th><th class="r">วัน</th><th class="r">คน</th><th>น้ำหนัก</th></tr></thead><tbody>
-    ${ks.map(k => { const cur = S.D.types[k.kind], sug = B.suggestClass(k.kind), fixed = k.kind === B.WORK_INJURY, open = S.tyOpen.has(k.kind);
+    ${ks.map(k => { const cur = S.D.types[k.kind], sug = B.suggestClass(k.kind), fixed = FIXED(k.kind), open = S.tyOpen.has(k.kind);
       return `<tr><td><a href="#" data-tk="${esc(k.kind)}"><b>${open ? "▾" : "▸"} ${esc(k.kind)}</b></a>${cur || fixed ? "" : ` <span class="chip chip-gold">ใหม่</span>`}${B.injuryHint(k.kind) ? ` <span class="chip chip-amb">⚠ ตรวจรายคน</span>` : ""}</td>
         <td class="r">${num(k.days)}</td><td class="r">${k.n.size}</td>
-        <td>${fixed ? `<span class="kchip c-none"><i></i>ไม่หัก · HR ยืนยันรายคนแล้ว</span>` : `<div class="tseg ${cur ? "" : "pending"}" data-k="${esc(k.kind)}" ${w ? "" : "disabled"}>${CLS_ORDER.map(c => `<button class="c-${c} ${cur === c ? "on" : ""} ${!cur && sug === c ? "sug" : ""}" data-c="${c}">${CLS_SHORT[c][0]}<small>${CLS_SHORT[c][1]}</small></button>`).join("")}</div>`}</td></tr>
+        <td>${fixed ? `<span class="kchip c-none"><i></i>${k.kind === B.WORKED ? "ไม่ใช่การลา · มาทำงานตามใบลงเวลา" : "ไม่หัก · HR ยืนยันรายคนแล้ว"}</span>` : `<div class="tseg ${cur ? "" : "pending"}" data-k="${esc(k.kind)}" ${w ? "" : "disabled"}>${CLS_ORDER.map(c => `<button class="c-${c} ${cur === c ? "on" : ""} ${!cur && sug === c ? "sug" : ""}" data-c="${c}">${CLS_SHORT[c][0]}<small>${CLS_SHORT[c][1]}</small></button>`).join("")}</div>`}</td></tr>
         ${open ? detail(k) : ""}`; }).join("") || `<tr><td colspan="4" class="empty">ยังไม่มี — นำเข้าไฟล์เวลาก่อน</td></tr>`}
     </tbody></table></div></div>`);
   document.querySelectorAll("[data-tk]").forEach(a => a.onclick = ev => { ev.preventDefault(); const k = a.dataset.tk; S.tyOpen.has(k) ? S.tyOpen.delete(k) : S.tyOpen.add(k); typesPage(); });

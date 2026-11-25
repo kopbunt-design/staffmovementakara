@@ -280,7 +280,7 @@ import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เ�
 - Early 2026 (before TigerSoft): time exists in TigerSoft but leave was on paper and shifts weren't set (user) — HR enters
   paper leave per person in the drawer, or on `#/absent` "ตรวจวันขาดงาน" (user 2026-11-25): TigerSoft "ขาดงาน" days in the
   stat window are grouped into runs (gap ≤ 3 days) and HR clicks what the paper leave was (ลาป่วย/ลากิจ/ลาพักร้อน/ลาหยุดชดเชย,
-  อื่น ๆ…, or "ขาดจริง" = recorded as ขาดงาน) → a `bonus_adj` row over the run; "เลิกทำ" deletes it. `paperMonths` flags months
+  อื่น ๆ…, or "ขาดจริง" = recorded as ขาดงาน, or "✓ มาทำงาน" = paper time sheet shows they worked, kind `WORKED` "มาทำงาน (ลงเวลากระดาษ)", always class ignore — user 2026-11-25: Jan–Jun had no shifts in TigerSoft, some people signed in on paper) → a `bonus_adj` row over the run; "เลิกทำ" deletes it. A run is checked when every absent day is covered by HR rows (it can be split: worked some days, leave others); a partly checked run's buttons apply to the remaining days only. `paperMonths` flags months
   with almost no leave in TigerSoft (leave rows < 30% of headcount) as the paper period.
 - **Work injury needs per-person confirmation** (user 2026-11-25: "ลาป่วยเนื่องจากตกจากที่สูง" in Sep 2026 is a work accident,
   but employees key their own leave type and may get it wrong): TigerSoft kinds matching `injuryHint` (อุบัติเหตุ/ตกจากที่สูง/
