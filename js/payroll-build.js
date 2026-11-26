@@ -110,6 +110,9 @@ export const DEPT_KEY = {
 // ระดับ (Senior/Staff) ยังมาจากทะเบียนตามปกติ ที่เปลี่ยนคือแผนกอย่างเดียว
 export const DEPT_MOVES = [
   { code:"AKR24011081", dept:"BKK Office", from:"2026-09" },   // ย้ายที่นั่ง ก.ย. 2026 (ผู้ใช้แจ้ง 2026-09-25)
+  // ปทุมพร มัตตะเดช — ทะเบียนยังเป็น Exploration แต่มา acting บัญชี ลง cost code บัญชี (ต.ค. 2026 HR เลือกมือไว้ · ค่าที่เลือกเก็บในเบราว์เซอร์
+  // หายตอนย้ายไป Azure จน พ.ย. เด้งกลับเป็น Exploration — user 2026-11-26) จึงล็อกไว้ที่นี่
+  { code:"AKR22090778", dept:"Finance & Accounting", from:"2026-10" },
 ];
 export function movedDept(code, month) {
   const m = DEPT_MOVES.filter(x => x.code === code && month && month >= x.from)

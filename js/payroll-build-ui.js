@@ -193,7 +193,8 @@ export function renderPayrollBuild() {
         ${savedMonths.map(m => `<option value="${esc(m)}" ${m === loadedFrom ? "selected" : ""}>${esc(m)}</option>`).join("")}
       </select>` : ""}
       ${rep && !rep.fromHistory && !rep.unassigned.length
-        ? `<button class="btn btn-secondary" onclick="window._pbSave()">💾 บันทึกเข้าระบบ</button>` : ""}
+        ? `<button class="btn btn-secondary" onclick="window._pbSave()">💾 บันทึกเข้าระบบ</button>
+           ${savedMonths.includes(month) ? `<button class="btn btn-secondary" onclick="window._pbRealloc()" title="ย้ายคนข้ามแผนกในเดือนที่เซ็นแล้ว — ได้เฉพาะเมื่อยอดรวมทั้งบริษัททุกบรรทัดเท่าเดิม">🔁 แก้การลงแผนก (คงลายเซ็น)</button>` : ""}` : ""}
       ${rep ? `<button class="btn btn-secondary" onclick="window._pbExcel()">📥 ดาวน์โหลด Excel</button>
                <button class="btn btn-secondary" onclick="window._pbExcelAll()" title="ทุกแผนกในชีตเดียว (แบบไฟล์เดิม) สำหรับบัญชี">📥 Excel รวมหน้าเดียว</button>
                <button class="btn btn-gold" onclick="window._pbPrint()">🖨 พิมพ์ PDF</button>` : ""}
@@ -544,6 +545,45 @@ function wire() {
     toast(`บันทึกรายงานเดือน ${month} แล้ว (${rows.length} แถว)`, "success");
     savedNow = month; sign.month = "";      // ลายเซ็นเดิมของเดือนนี้ถูกล้างแล้ว (ตัวเลขเปลี่ยน) — โหลดสถานะใหม่
     await loadSavedMonths();
+    renderPayrollBuild();
+  };
+
+  // แก้การลงแผนกของเดือนที่บันทึก/เซ็นแล้ว โดยไม่ล้างลายเซ็น (user 2026-11-26: คน acting บัญชีเด้งกลับไปลง Exploration ในเดือนที่เซ็นแล้ว)
+  // ยอมให้เฉพาะเมื่อทุกบรรทัดของ GRAND TOTAL (เงินทุกรายการ + จำนวนคน + ยอดหัก) เท่าของเดิมเป๊ะ = แค่ย้ายยอดระหว่างแผนก
+  // ไม่แตะ payroll_period (ลายเซ็นถูกล้างเมื่อ uploaded_at เปลี่ยน) และไม่แตะแจกแจง Other Income (General)
+  window._pbRealloc = async () => {
+    if (!rep || rep.fromHistory || !month) return;
+    if (rep.unassigned.length) { toast("ยังมีคนที่ยังไม่ได้ลงแผนก", "error"); return; }
+    const { data: old, error } = await summaryRowsOf(month);
+    if (error || !old?.length) { toast("ดึงรายงานเดิมไม่สำเร็จ" + (error ? ": " + error.message : ""), "error"); return; }
+    const GEN = PB.OI_GEN_LABEL;
+    const rows = PB.toSummaryRows(rep, month).filter(r => r.section !== GEN);
+    const tot = arr => { const m = new Map();
+      arr.filter(r => r.department === "GRAND TOTAL" && r.section !== GEN)
+         .forEach(r => m.set(r.section + " · " + r.line_item, Math.round((+r.value || 0) * 100)));
+      return m; };
+    const a = tot(old), b = tot(rows), diff = [];
+    for (const k of new Set([...a.keys(), ...b.keys()]))
+      if ((a.get(k) || 0) !== (b.get(k) || 0)) diff.push(`${k}: ${fmt((a.get(k) || 0) / 100)} → ${fmt((b.get(k) || 0) / 100)}`);
+    if (diff.length) {
+      alert("แก้แบบคงลายเซ็นไม่ได้ — ยอดรวมทั้งบริษัทไม่เท่าของเดิม (ไฟล์ไม่ใช่ชุดเดียวกับที่บันทึกไว้ หรือมีอย่างอื่นเปลี่ยน):\n\n"
+        + diff.slice(0, 12).join("\n") + (diff.length > 12 ? `\n… อีก ${diff.length - 12} บรรทัด` : "")
+        + "\n\nถ้าตั้งใจเปลี่ยนตัวเลขจริง ให้ใช้ 💾 บันทึกเข้าระบบ (ลายเซ็นจะถูกล้าง ต้องส่งเซ็นใหม่)");
+      return;
+    }
+    const cell = r => `${r.section}|${r.line_item}|${r.department}`;
+    const ov = new Map(old.filter(r => r.section !== GEN).map(r => [cell(r), Math.round((+r.value || 0) * 100)]));
+    const moved = [...new Set(rows.filter(r => r.department !== "GRAND TOTAL" && (ov.get(cell(r)) || 0) !== Math.round((+r.value || 0) * 100)).map(r => r.department))];
+    if (!moved.length) { toast("การลงแผนกเหมือนของเดิมทุกแผนก — ไม่มีอะไรต้องแก้", "info"); return; }
+    if (!confirm(`ยอดรวมทั้งบริษัทเท่าเดิมทุกบรรทัด — ยอดย้ายระหว่างแผนก: ${moved.join(", ")}\n\nบันทึกทับรายงานเดือน ${month} โดยคงลายเซ็นเดิมไว้?`)) return;
+    const del = await supabase.from("payroll_summary").delete().eq("month", month).neq("section", GEN);
+    if (del.error) { toast("บันทึกไม่สำเร็จ: " + del.error.message, "error"); return; }
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error: e } = await supabase.from("payroll_summary").insert(rows.slice(i, i + 500));
+      if (e) { toast("บันทึกรายละเอียดไม่สำเร็จ: " + e.message + " — กดอีกครั้ง", "error"); return; }
+    }
+    toast(`แก้การลงแผนกเดือน ${month} แล้ว (${moved.join(", ")}) · ลายเซ็นยังอยู่`, "success");
+    loadedFrom = month; sign.month = "";
     renderPayrollBuild();
   };
 
