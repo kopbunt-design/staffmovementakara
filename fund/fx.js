@@ -8,6 +8,8 @@ import { initShim } from "./app-shim.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// stored as UTC (DATETIMEOFFSET) → Bangkok "YYYY-MM-DDTHH:MM"
+const bkkTs = v => { const d = new Date(v); return isNaN(d) ? String(v || "") : new Date(d.getTime() + 7 * 3600e3).toISOString(); };
 const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const EN_M = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const ymTH = ym => ym ? `${TH_M[+ym.slice(5, 7) - 1]} ${+ym.slice(0, 4) + 543}` : "-";
@@ -364,7 +366,7 @@ async function history(code, el) {
     S.D.can_money ? supabase.rpc("pvd_person", { p_emp_code: code }) : Promise.resolve({ data: null })]);
   el.innerHTML = `${money?.data?.length ? `<div class="card mt"><div class="card-h"><div class="card-t">ยอดที่ส่งกองทุน</div></div><table class="tbl"><thead><tr><th>รอบ</th><th class="r">ฐาน</th><th class="r">เงินสะสม</th><th class="r">เงินสมทบ</th></tr></thead><tbody>
       ${money.data.slice().reverse().map(x => `<tr><td>${ymTH(x.ym)}</td><td class="r">${baht(x.base)}</td><td class="r">${baht(x.emp_amt)}</td><td class="r">${baht(x.er_amt)}</td></tr>`).join("")}</tbody></table></div>` : ""}
-    ${log?.length ? `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>` : ""}`;
+    ${log?.length ? `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(bkkTs(x.at).slice(0, 10))} ${bkkTs(x.at).slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>` : ""}`;
 }
 
 // ---------------------------------------------------------------- ยอดรายเดือน
@@ -488,7 +490,7 @@ async function logPage() {
   const { data, error } = await supabase.rpc("pvd_log", {});
   render(`${head("กองทุนสำรองเลี้ยงชีพ", "ประวัติการแก้ไข", "ทุกการเพิ่ม/แก้/นำเข้า/บันทึกยอด · 300 รายการล่าสุด")}
     <div class="card">${error ? `<div class="empty">${esc(error.message)}</div>` : `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>เวลา</th><th>โดย</th><th>พนักงาน</th><th>รายละเอียด</th></tr></thead><tbody>
-      ${(data || []).map(x => `<tr${x.emp_code ? ` class="click" data-open="${esc(x.emp_code)}"` : ""}><td style="white-space:nowrap">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)}</td><td>${esc(x.by_name || "")}</td>
+      ${(data || []).map(x => `<tr${x.emp_code ? ` class="click" data-open="${esc(x.emp_code)}"` : ""}><td style="white-space:nowrap">${dTH(bkkTs(x.at).slice(0, 10))} ${bkkTs(x.at).slice(11, 16)}</td><td>${esc(x.by_name || "")}</td>
         <td>${x.emp_code ? esc(x.emp_code) : "<span class='chip chip-blue'>ระบบ</span>"}</td><td class="small">${esc(x.detail || x.action)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty">ยังไม่มี</td></tr>`}</tbody></table></div>`}</div>`);
 }
 

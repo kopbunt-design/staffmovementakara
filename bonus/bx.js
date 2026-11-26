@@ -14,6 +14,8 @@ const today = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)
 const baht = n => n == null ? "-" : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const bahtM = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(Math.round(n));
 const num = n => (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US");
+// stored as UTC (DATETIMEOFFSET) → Bangkok "YYYY-MM-DDTHH:MM"
+const bkkTs = v => { const d = new Date(v); return isNaN(d) ? String(v || "") : new Date(d.getTime() + 7 * 3600e3).toISOString(); };
 const hmin = m => m ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}` : "-";
 const ini = n => String(n || "?").trim().replace(/^(นาย|นางสาว|นาง)/, "").split(/\s+/).slice(0, 2).map(w => w.replace(/^[เแโใไ]/, "")[0] || "").join("") || "?";
 const I = {
@@ -255,7 +257,7 @@ async function drawer(code) {
   if (cal) S.calOf = { code, cal };
   if (cal && S.open === code) drawCal(code, cal, adj);
   const { data: log } = await supabase.rpc("bonus_log", { p_emp_code: code });
-  if (S.open === code && log?.length) $("#drLog").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>`;
+  if (S.open === code && log?.length) $("#drLog").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(bkkTs(x.at).slice(0, 10))} ${bkkTs(x.at).slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>`;
 }
 // day = [dd, shift, dayType, in, out, lateMin, earlyMin, kind, days, note]
 function drawCal(code, cal, adj) {
@@ -623,7 +625,7 @@ function rulesPage() {
 async function logPage() {
   render(`${head("ข้อมูล", "ประวัติการแก้ไข", "นำเข้า ใบลา ประเภทการลา การกำหนดสิทธิ์")}<div class="card"><div class="card-b" id="lg">กำลังโหลด…</div></div>`);
   const { data, error } = await supabase.rpc("bonus_log", {});
-  $("#lg").innerHTML = error ? esc(error.message) : (data || []).map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}${x.emp_code ? " · " + esc(x.emp_code) + " " + esc(nameOf(x.emp_code)) : ""}</div>${esc(x.detail || x.action)}</div></div>`).join("") || "ยังไม่มี";
+  $("#lg").innerHTML = error ? esc(error.message) : (data || []).map(x => { const t = bkkTs(x.at); return `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(t.slice(0, 10))} ${t.slice(11, 16)} · ${esc(x.by_name || "")}${x.emp_code ? " · " + esc(x.emp_code) + " " + esc(nameOf(x.emp_code)) : ""}</div>${esc(x.detail || x.action)}</div></div>`; }).join("") || "ยังไม่มี";
 }
 
 // ---------------------------------------------------------------- Excel

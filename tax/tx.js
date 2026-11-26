@@ -7,6 +7,8 @@ import { cert50Page, cert50Doc, printHTML } from "./doc.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// stored as UTC (DATETIMEOFFSET) → Bangkok "YYYY-MM-DDTHH:MM"
+const bkkTs = v => { const d = new Date(v); return isNaN(d) ? String(v || "") : new Date(d.getTime() + 7 * 3600e3).toISOString(); };
 const TH_M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const EN_M = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 const ymTH = ym => ym ? `${TH_M[+ym.slice(5, 7) - 1]} ${+ym.slice(0, 4) + 543}` : "-";
@@ -377,7 +379,7 @@ async function drawer(code) {
         <td class="r money small"><b>${baht(ms.reduce((t, x) => t + (x.items[k] || 0), 0))}</b></td></tr>`; }).join("")}</tbody></table></div></div>`;
   });
   const { data: log } = await supabase.rpc("tax_log", { p_emp_code: code });
-  if (S.open === code && log?.length) $("#drLog").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>`;
+  if (S.open === code && log?.length) $("#drLog").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">ประวัติ</div></div><div class="card-b" style="padding-top:4px">${log.map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(bkkTs(x.at).slice(0, 10))} ${bkkTs(x.at).slice(11, 16)} · ${esc(x.by_name || "")}</div>${esc(x.detail || x.action)}</div></div>`).join("")}</div></div>`;
 }
 function modal(title, body, okText, onOk) {
   const m = document.createElement("div"); m.className = "modal-bg";
@@ -913,7 +915,7 @@ function signPage() {
 async function logPage() {
   render(`${head("Akara Tax", "ประวัติการแก้ไข", "นำเข้า แก้ยอด แก้ข้อมูลผู้เสียภาษี เตรียม/ส่ง/ลงนาม/ยกเลิก 50 ทวิ · 300 รายการล่าสุด")}<div class="card"><div class="card-b" id="lg">กำลังโหลด…</div></div>`);
   const { data, error } = await supabase.rpc("tax_log", {});
-  $("#lg").innerHTML = error ? esc(error.message) : (data || []).map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(x.at.slice(0, 10))} ${x.at.slice(11, 16)} · ${esc(x.by_name || "")}${x.emp_code ? " · " + esc(x.emp_code) : ""}</div>${esc(x.detail || x.action)}</div></div>`).join("") || "ยังไม่มี";
+  $("#lg").innerHTML = error ? esc(error.message) : (data || []).map(x => `<div class="log-i"><span class="d"></span><div><div class="small muted">${dTH(bkkTs(x.at).slice(0, 10))} ${bkkTs(x.at).slice(11, 16)} · ${esc(x.by_name || "")}${x.emp_code ? " · " + esc(x.emp_code) : ""}</div>${esc(x.detail || x.action)}</div></div>`).join("") || "ยังไม่มี";
 }
 
 // ---------------------------------------------------------------- ปุ่มที่ใช้ร่วม
