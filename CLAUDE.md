@@ -312,8 +312,22 @@ the shop bills per period (1–15 / 16–end) from those. Must NOT import `js/ap
   already scanned that day is saved with 0 meals. Group pick-ups ("15+OT2=17") and visitors are typed as name + count.
 - Card codes can differ from the HR register (Oct 2025 joiners: card AKR2508131x, register AKR2510131x) — matched by English
   name (`mapCard`), listed under "ต้องตรวจ" so IT can fix the cards. Not-in-register SUBs are still counted.
-- Not built yet: afternoon/night-shift ordering through a per-department link, period confirm → draft HRIN in the Invoice Hub
-  (vendors/VAT/WHT/cost code 506005051500 as in the existing Canteen invoices), OT meals (come from another system's workflow).
+- **Afternoon / OT / night-shift ordering** (user 2026-11-26, replaces the LINE group "อาหารกะบ่าย"): order groups (`cn_groups`:
+  Supply, Process, Gold Room… — `en_name` goes into the HRIN OT line) each get a permanent link `canteen/o.html?t=` (public
+  `cn_order_link_get` / `cn_order_link_decide`, HR can rotate it). Coordinators pick a day (yesterday … +7), see the menu, type names
+  (suggestions = active employees of the group's departments/sections) or guests × qty, save; closed after `billing.cutoff` of that
+  day (default aft 10:30, OT 15:00, night 15:00) or when HR ticks "ปิดรับ". HR page `#/orders`: cook on duty + menus per day
+  (`cn_service`), month roster with "เติมตามเวร" rotation, per-group counts with editable name lists, copy-to-LINE text for the cook
+  and the co-op. Prices aft 65 / OT 50 / night set 65 (settings).
+- **Period → draft HRIN** (`#/notices`, `cn_period` / `cn_invoice_make`): one draft per bill group — A1/A2 (vendor T0009, VAT 7 WHT 3),
+  CN (N0009), night sets (T0009, "Meal for Employees (Night Shift) : 1-15 November 2026 (650*65)"), and per cook on duty
+  (VAT/WHT 0: "Meal for Afternoon shift: …(459*65)" + one "Meal for Overtime work (<group>): <date> (n*50)" line per group per day) —
+  same texts/vendors/cost code 506005051500 as the hand-made Canteen invoices. Created via `r.ins` so the Invoice Hub hooks apply
+  (draft, no number); HR then submits it in the Invoice Hub as usual. For A1/A2/CN HR types the shop's billed count; a difference
+  needs a reason (the HRIN follows the daily notices). The page then attaches an Excel summary (per day + names) to the invoice
+  (`expense-files` + `exp_files`) — the user wanted the afternoon/night summaries attached too. `cn_bills` links period+group → invoice;
+  while that invoice is not cancelled/deleted, notices of that unit can't be voided, orders/cook of those days can't change.
+- OT meals: ordered on the same group link (user: "เอามาจาก workflow ของระบบอื่น" read as reuse the afternoon-order workflow).
 
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 

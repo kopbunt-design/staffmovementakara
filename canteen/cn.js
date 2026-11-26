@@ -33,7 +33,7 @@ const I = {
 const CAT_TH = { akr: "อัครา", sub: "SUB", tem: "บัตรชั่วคราว", unk: "ไม่มีรหัส", forgot: "ลืมบัตร", visit: "ผู้ติดต่อ", group: "รับแทนกลุ่ม", carry: "ยกยอด" };
 const tag = c => `<span class="tag t-${c}">${CAT_TH[c] || c}</span>`;
 
-const S = { B: null, perms: new Set(), d: addDay(today(), -1), D: null, ix: null, emps: [], etype: "forgot", ebox: "A1", pick: null, q: "",
+const S = { od: today(), B: null, perms: new Set(), d: addDay(today(), -1), D: null, ix: null, emps: [], etype: "forgot", ebox: "A1", pick: null, q: "",
             ym: today().slice(0, 7), half: +today().slice(8, 10) <= 15 ? 1 : 2 };
 const can = p => S.perms.has(p);
 const W = () => can("data.canteen.write");
@@ -91,7 +91,8 @@ function route() {
   const [r, arg] = location.hash.replace(/^#\/?/, "").split("/");
   document.querySelectorAll("#fxNav a[data-r]").forEach(a => a.classList.toggle("on", a.dataset.r === (r || "day")));
   if ((r || "day") === "day" && arg && /^\d{4}-\d\d-\d\d$/.test(arg)) S.d = arg;
-  ({ day: dayPage, dups: dupsPage, notices: noticesPage, settings: settingsPage, log: logPage }[r || "day"] || dayPage)();
+  if (r === "orders" && arg && /^\d{4}-\d\d-\d\d$/.test(arg)) S.od = arg;
+  ({ day: dayPage, dups: dupsPage, notices: billingPage, orders: ordersPage, groups: groupsPage, settings: settingsPage, log: logPage }[r || "day"] || dayPage)();
   window.scrollTo(0, 0);
 }
 const navDup = n => { $("#navDup").textContent = n ? String(n) : ""; };
@@ -387,32 +388,221 @@ async function dupsPage() {
   $("#ym").onchange = e => { S.ym = e.target.value; dupsPage(); };
 }
 
-// ---------------------------------------------------------------- สรุปรอบบิล
-async function noticesPage() {
+// ---------------------------------------------------------------- สั่งอาหาร กะบ่าย / OT / กะดึก (HR) · user 2026-11-26
+const KTH = { aft: "กะบ่าย", ot: "OT", night: "กะดึก (ชุดแห้ง)" };
+const vName = id => S.B.vendors.find(v => v.id === +id)?.name || "";
+const cookOpts = sel => `<option value="">— ยังไม่ระบุ —</option>${S.B.vendors.filter(v => v.n > 0 || v.id === +sel).sort((a, b) => b.n - a.n)
+  .map(v => `<option value="${v.id}" ${+sel === v.id ? "selected" : ""}>${esc(v.code)} · ${esc(v.name)}</option>`).join("")}`;
+async function loadGroups() { S.G = await rpc("cn_groups", {}); return S.G; }
+async function ordersPage() {
+  render(`<div class="fx-loading">กำลังโหลด…</div>`);
+  let O; try { [O] = await Promise.all([rpc("cn_orders_day", { p_d: S.od }), loadGroups()]); } catch (e) { render(`<div class="card card-b">${esc(e.message)}</div>`); return; }
+  const sv = O.service || {}, gs = S.G.filter(g => g.active || O.orders.some(o => o.group_id === g.id));
+  const sum = (g, k) => O.orders.filter(o => o.group_id === g && o.kind === k).reduce((t, o) => t + o.qty, 0);
+  const tot = k => O.orders.filter(o => o.kind === k).reduce((t, o) => t + o.qty, 0);
+  const P = S.B.billing.prices;
+  render(`${head(`สั่งอาหาร · ${wd(S.od)}`, dTH(S.od), "ผู้ประสานงานแต่ละกลุ่มสั่งผ่านลิงก์ของกลุ่ม · HR ตั้งแม่ครัวเวร/เมนู และแก้รายชื่อได้จนกว่าจะออก HRIN ของรอบนั้น",
+      `<div class="dnav"><button class="btn btn-sm" id="oPrev">${I.l}</button><input class="inp" type="date" id="oPick" value="${S.od}"><button class="btn btn-sm" id="oNext">${I.r}</button></div>
+       <button class="btn" id="roster">ตารางแม่ครัวเวร</button>`)}
+    <div class="kpis">${["aft", "ot", "night"].map(k => `<div class="kpi"><div><div class="kpi-l">${KTH[k]} · ${P[k]} บาท · ปิดรับ ${esc(S.B.billing.cutoff[k])} น.</div>
+      <div class="kpi-v">${tot(k)} <small style="font-size:14px">ที่</small></div><div class="kpi-d">฿${money(tot(k) * P[k])} · ${O.passed[k] ? "ปิดรับแล้ว" : "ยังเปิดรับ"}</div></div></div>`).join("")}</div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">แม่ครัวเวร · เมนูของวัน</div><div class="card-s">อาหารกะบ่ายและ OT วางบิลในชื่อแม่ครัวเวรของวันนั้น · ชุดกะดึกวางบิลสหกรณ์</div></div></div>
+      <div class="card-b grid-f"><label class="fld"><span>แม่ครัวเวร (ผู้ขายใน Invoice Hub)</span><select class="inp" id="sCook" ${W() ? "" : "disabled"}>${cookOpts(sv.cook_id)}</select></label>
+        <label class="fld"><span>เมนูกะบ่าย (ร้านแจ้ง)</span><input class="inp" id="sMa" value="${esc(sv.menu_aft || "")}" placeholder="เช่น แกงหมูมะเขือ, ไข่ดาว, ต้มฟักไก่" ${W() ? "" : "disabled"}></label>
+        <label class="fld"><span>ชุดอาหารแห้งกะดึก</span><input class="inp" id="sMn" value="${esc(sv.menu_night || "")}" placeholder="เช่น มาม่า + น้ำหวาน + ขนม" ${W() ? "" : "disabled"}></label>
+        <label class="fld"><span>หมายเหตุถึงผู้สั่ง</span><input class="inp" id="sNote" value="${esc(sv.note || "")}" ${W() ? "" : "disabled"}></label>
+        <div class="fld"><span>ปิดรับก่อนเวลา</span><div>${["aft", "ot", "night"].map(k => `<label style="margin-right:12px"><input type="checkbox" data-cl="${k}" ${(sv.closed || "").split(",").includes(k) ? "checked" : ""} ${W() ? "" : "disabled"}> ${KTH[k]}</label>`).join("")}</div></div>
+        ${W() ? `<div style="display:flex;align-items:end;justify-content:flex-end"><button class="btn btn-p" id="sSave">บันทึก</button></div>` : ""}</div></div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">ยอดสั่งตามกลุ่ม</div><div class="card-s">กดตัวเลขเพื่อดู/แก้รายชื่อ</div></div>
+      <div class="fx-actions"><button class="btn btn-sm" id="cpCook">${I.copy}ข้อความส่งแม่ครัว (กะบ่าย + OT)</button><button class="btn btn-sm" id="cpNight">${I.copy}ข้อความส่งสหกรณ์ (กะดึก)</button></div></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>กลุ่ม</th>${["aft", "ot", "night"].map(k => `<th class="r">${KTH[k]}</th>`).join("")}<th>ผู้สั่งล่าสุด</th></tr></thead><tbody>
+      ${gs.map(g => `<tr><td><b>${esc(g.name)}</b>${g.active ? "" : ` <span class="chip chip-gray">ปิดใช้</span>`}</td>${["aft", "ot", "night"].map(k => g.kinds.includes(k) || sum(g.id, k)
+          ? `<td class="r"><a href="#" data-ed="${g.id}" data-k="${k}">${sum(g.id, k) || (W() ? "+" : "—")}</a></td>` : `<td class="r muted">—</td>`).join("")}
+        <td class="small muted">${esc(O.orders.filter(o => o.group_id === g.id).map(o => o.by_name).filter(Boolean).pop() || "")}</td></tr>`).join("")
+        || `<tr><td colspan="5" class="empty">ยังไม่มีกลุ่มผู้สั่ง — เพิ่มที่ <a href="#/groups">กลุ่มผู้สั่ง · ลิงก์</a></td></tr>`}
+      <tr><td><b>รวม</b></td>${["aft", "ot", "night"].map(k => `<td class="r"><b>${tot(k)}</b></td>`).join("")}<td></td></tr></tbody></table></div></div>`);
+  $("#oPick").onchange = e => { if (e.target.value) location.hash = `#/orders/${e.target.value}`; };
+  $("#oPrev").onclick = () => { location.hash = `#/orders/${addDay(S.od, -1)}`; };
+  $("#oNext").onclick = () => { location.hash = `#/orders/${addDay(S.od, 1)}`; };
+  $("#roster").onclick = () => rosterModal(S.od.slice(0, 7));
+  $("#sSave") && ($("#sSave").onclick = async () => {
+    await run(() => rpc("cn_service_save", { p_days: [S.od], p_row: { cook_id: $("#sCook").value || null, menu_aft: $("#sMa").value, menu_night: $("#sMn").value,
+      note: $("#sNote").value, closed: [...document.querySelectorAll("[data-cl]:checked")].map(x => x.dataset.cl) } }), "บันทึกแล้ว"); ordersPage(); });
+  document.querySelectorAll("[data-ed]").forEach(a => a.onclick = e => { e.preventDefault(); editOrders(S.G.find(g => g.id === +a.dataset.ed), a.dataset.k, O); });
+  const lines = (k, withNames) => gs.map(g => { const os = O.orders.filter(o => o.group_id === g.id && o.kind === k); const n = os.reduce((t, o) => t + o.qty, 0);
+    return n ? `- ${g.name} ${n} ที่` + (withNames ? `\n${os.map(o => `   • ${o.name}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n")}` : "") : ""; }).filter(Boolean).join("\n");
+  const copy = t => navigator.clipboard.writeText(t).then(() => toast("คัดลอกแล้ว — วางใน LINE ได้เลย", "success"));
+  $("#cpCook").onclick = () => copy(`📋 สั่งอาหาร ${dTH(S.od)}${sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}\n${sv.menu_aft ? `เมนู: ${sv.menu_aft}\n` : ""}\n🍛 กะบ่าย รวม ${tot("aft")} ที่\n${lines("aft")}\n\n🌙 OT รวม ${tot("ot")} ที่\n${lines("ot", true)}`);
+  $("#cpNight").onclick = () => copy(`📋 ชุดอาหารแห้งกะดึก ${dTH(S.od)}${sv.menu_night ? ` (${sv.menu_night})` : ""}\nรวม ${tot("night")} ชุด\n${lines("night")}`);
+}
+function editOrders(g, k, O) {
+  const os = O.orders.filter(o => o.group_id === g.id && o.kind === k);
+  const txt = os.map(o => `${o.name}${o.emp_code ? ` (${o.emp_code})` : ""}${o.qty > 1 ? ` x${o.qty}` : ""}`).join("\n");
+  modal(`${esc(g.name)} · ${KTH[k]} · ${dTH(S.od)}`, `<div class="small muted">หนึ่งบรรทัดต่อหนึ่งคน · ใส่ x3 ท้ายบรรทัดถ้าหลายที่ (เช่น ผู้รับเหมา ABC x3) · รหัสพนักงานในวงเล็บถ้ามี</div>
+    <textarea class="inp" id="oTxt" style="min-height:260px;height:auto;padding:10px" ${W() ? "" : "disabled"}>${esc(txt)}</textarea>
+    <div class="small muted">${os.length ? `บันทึกล่าสุดโดย ${esc(os[os.length - 1].by_name || "")} · ${tsTH(os[os.length - 1].at)}` : "ยังไม่มีรายชื่อ"}</div>`, W() ? "บันทึก" : null, async m => {
+    const rows = m.querySelector("#oTxt").value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+      const q = l.match(/\s*[x×]\s*(\d+)\s*$/i), base = q ? l.slice(0, q.index).trim() : l, c = base.match(/\(([A-Za-z0-9]+)\)\s*$/);
+      const code = c ? c[1].toUpperCase() : (S.ix.byCode.has(base.toUpperCase()) ? base.toUpperCase() : null);
+      return { emp_code: code, name: c ? base.slice(0, c.index).trim() : (code ? S.ix.byCode.get(code).name : base), qty: q ? +q[1] : 1 }; });
+    await run(() => rpc("cn_order_hr", { p_d: S.od, p_group: g.id, p_kind: k, p_rows: rows }), "บันทึกแล้ว"); ordersPage();
+  });
+}
+async function rosterModal(ym) {
+  const M = await rpc("cn_month", { p_ym: ym }), sv = new Map(M.service.map(x => [x.d, x]));
+  const last = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate(), days = Array.from({ length: last }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`);
+  const n = (d, k) => M.counts.filter(c => c.d === d && c.kind === k).reduce((t, c) => t + c.n, 0);
+  const m = modal(`ตารางแม่ครัวเวร · ${ym}`, `<div class="small muted">เลือกแม่ครัวรายวัน หรือใช้ “เติมตามเวร” — ใส่แม่ครัวเรียงตามลำดับ คนละกี่วัน แล้วเติมเฉพาะวันที่ยังว่าง</div>
+    ${W() ? `<div class="grid-f"><label class="fld"><span>ลำดับเวร (กดเลือกตามลำดับ)</span><select class="inp" id="rV">${cookOpts()}</select></label>
+      <label class="fld"><span>คนละ (วัน)</span><input class="inp" type="number" id="rN" value="1" min="1"></label>
+      <div class="fld"><span>ลำดับ</span><div id="rSeq" class="small">—</div></div>
+      <div style="display:flex;gap:8px;align-items:end"><button class="btn btn-sm" id="rAdd">+ เพิ่มในลำดับ</button><button class="btn btn-sm" id="rFill">เติมวันที่ว่าง</button></div></div>` : ""}
+    <div class="tbl-wrap" style="max-height:52vh"><table class="tbl"><thead><tr><th>วันที่</th><th>แม่ครัวเวร</th><th class="r">กะบ่าย</th><th class="r">OT</th><th class="r">กะดึก</th></tr></thead><tbody>
+    ${days.map(d => `<tr><td>${dTH(d)} <span class="small muted">${wd(d)}</span></td><td><select class="inp" data-rd="${d}" ${W() ? "" : "disabled"}>${cookOpts(sv.get(d)?.cook_id)}</select></td>
+      <td class="r">${n(d, "aft") || ""}</td><td class="r">${n(d, "ot") || ""}</td><td class="r">${n(d, "night") || ""}</td></tr>`).join("")}</tbody></table></div>`, W() ? "บันทึกตาราง" : null, async mm => {
+    const by = new Map();
+    for (const s of mm.querySelectorAll("[data-rd]")) { const v = s.value || "", old = String(sv.get(s.dataset.rd)?.cook_id || ""); if (v !== old) (by.get(v) || by.set(v, []).get(v)).push(s.dataset.rd); }
+    for (const [v, ds] of by) await run(() => rpc("cn_service_save", { p_days: ds, p_row: { cook_id: v || null } }));
+    toast("บันทึกตารางแล้ว", "success"); if (location.hash.startsWith("#/orders")) ordersPage();
+  }, true);
+  const seq = [];
+  m.querySelector("#rAdd")?.addEventListener("click", () => { const v = m.querySelector("#rV").value; if (!v) return; seq.push(+v); m.querySelector("#rSeq").textContent = seq.map(vName).join(" → "); });
+  m.querySelector("#rFill")?.addEventListener("click", () => {
+    if (!seq.length) { toast("เพิ่มแม่ครัวในลำดับก่อน", "error"); return; }
+    const per = Math.max(1, +m.querySelector("#rN").value || 1); let i = 0;
+    for (const s of m.querySelectorAll("[data-rd]")) { if (s.value) continue; s.value = String(seq[Math.floor(i / per) % seq.length]); i++; }
+  });
+}
+
+// ---------------------------------------------------------------- กลุ่มผู้สั่ง · ลิงก์
+async function groupsPage() {
+  render(`<div class="fx-loading">กำลังโหลด…</div>`);
+  await loadGroups();
+  const depts = [...new Set(S.ix.list.filter(p => p.kind === "akr" && p.dept).map(p => p.dept))].sort();
+  render(`${head("กลุ่มผู้สั่ง", "กลุ่มผู้สั่ง · ลิงก์สั่งอาหาร", "หนึ่งกลุ่ม = หนึ่งลิงก์ ส่งให้ผู้ประสานงานของกลุ่ม (ไม่ต้อง login) · ชื่ออังกฤษใช้ในบรรทัด OT ของใบ HRIN เช่น “Meal for Overtime work (Supply)”",
+      W() ? `<button class="btn btn-p" id="gNew">+ เพิ่มกลุ่ม</button>` : "")}
+    <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>กลุ่ม</th><th>ชื่อในใบ HRIN</th><th>สั่งได้</th><th>ผู้ประสานงาน</th><th>รายชื่อแนะนำจาก</th><th></th></tr></thead><tbody>
+    ${S.G.map(g => `<tr class="${g.active ? "" : "zero"}"><td><b>${esc(g.name)}</b></td><td>${esc(g.en_name)}</td><td>${g.kinds.map(k => KTH[k]).join(", ")}</td><td>${esc(g.coord || "")}</td>
+      <td class="small">${esc(g.depts.join(", "))}</td><td class="r" style="white-space:nowrap"><button class="btn btn-sm" data-cp="${g.id}">${I.copy}ลิงก์</button>${W() ? ` <button class="btn btn-sm btn-ghost" data-ge="${g.id}">แก้</button>` : ""}</td></tr>`).join("")
+      || `<tr><td colspan="6" class="empty">ยังไม่มีกลุ่ม — เริ่มจากกลุ่มที่สั่งในไลน์ “อาหารกะบ่าย” เช่น Supply, Process, Gold Room, Maintenance, Project</td></tr>`}</tbody></table></div></div>
+    <datalist id="dl">${depts.map(d => `<option value="${esc(d)}">`).join("")}</datalist>`);
+  document.querySelectorAll("[data-cp]").forEach(b => b.onclick = () => { const g = S.G.find(x => x.id === +b.dataset.cp);
+    navigator.clipboard.writeText(`ลิงก์สั่งอาหาร (กะบ่าย / OT / กะดึก) ของ ${g.name}\n${g.url}\nสั่งได้ถึง: กะบ่าย ${S.B.billing.cutoff.aft} น. · OT ${S.B.billing.cutoff.ot} น. · กะดึก ${S.B.billing.cutoff.night} น. ของวันนั้น`)
+      .then(() => toast("คัดลอกลิงก์ + ข้อความแล้ว", "success")); });
+  document.querySelectorAll("[data-ge]").forEach(b => b.onclick = () => groupModal(S.G.find(x => x.id === +b.dataset.ge)));
+  $("#gNew") && ($("#gNew").onclick = () => groupModal({ name: "", en_name: "", kinds: ["aft", "ot", "night"], depts: [], active: true }));
+}
+function groupModal(g) {
+  modal(g.id ? `แก้กลุ่ม ${esc(g.name)}` : "เพิ่มกลุ่มผู้สั่ง", `<div class="grid-f">
+    <label class="fld"><span>ชื่อกลุ่ม</span><input class="inp" id="gN" value="${esc(g.name)}" placeholder="เช่น Supply"></label>
+    <label class="fld"><span>ชื่อในใบ HRIN (อังกฤษ)</span><input class="inp" id="gE" value="${esc(g.en_name || "")}" placeholder="เช่น Supply, Gold Room"></label>
+    <label class="fld"><span>ผู้ประสานงาน</span><input class="inp" id="gC" value="${esc(g.coord || "")}"></label>
+    <label class="fld"><span>ลำดับ</span><input class="inp" type="number" id="gS" value="${g.sort || ""}"></label></div>
+    <div class="fld"><span>สั่งได้</span><div>${["aft", "ot", "night"].map(k => `<label style="margin-right:14px"><input type="checkbox" data-gk="${k}" ${g.kinds.includes(k) ? "checked" : ""}> ${KTH[k]}</label>`).join("")}</div></div>
+    <label class="fld"><span>รายชื่อแนะนำในหน้าสั่ง: แผนก/ส่วนงาน (คั่นด้วย ,)</span><input class="inp" id="gD" list="dl" value="${esc(g.depts.join(", "))}" placeholder="เช่น Supply, Processing"></label>
+    <label><input type="checkbox" id="gA" ${g.active ? "checked" : ""}> ใช้งาน</label>
+    ${g.id ? `<label><input type="checkbox" id="gT"> เปลี่ยนลิงก์ใหม่ (ลิงก์เดิมจะใช้ไม่ได้ — ใช้เมื่อลิงก์หลุดไปนอกกลุ่ม)</label>` : ""}`, "บันทึก", async m => {
+    const row = { id: g.id, name: m.querySelector("#gN").value, en_name: m.querySelector("#gE").value, coord: m.querySelector("#gC").value, sort: m.querySelector("#gS").value,
+      kinds: [...m.querySelectorAll("[data-gk]:checked")].map(x => x.dataset.gk), depts: m.querySelector("#gD").value.split(",").map(x => x.trim()).filter(Boolean),
+      active: m.querySelector("#gA").checked };
+    await run(() => rpc("cn_group_save", { p_row: row, p_new_link: !!m.querySelector("#gT")?.checked }), "บันทึกแล้ว"); groupsPage();
+  });
+}
+
+// ---------------------------------------------------------------- รอบบิล → ร่าง HRIN (+ ไฟล์สรุปแนบ)
+async function billingPage() {
   const last = new Date(Date.UTC(+S.ym.slice(0, 4), +S.ym.slice(5, 7), 0)).getUTCDate();
   const from = S.half === 1 ? `${S.ym}-01` : `${S.ym}-16`, to = S.half === 1 ? `${S.ym}-15` : `${S.ym}-${last}`;
   render(`<div class="fx-loading">กำลังโหลด…</div>`);
-  const ns = await rpc("cn_notices", { p_from: from, p_to: to }), ok = ns.filter(n => n.status === "signed");
+  let P; try { P = await rpc("cn_period", { p_from: from, p_to: to }); } catch (e) { render(`<div class="card card-b">${esc(e.message)}</div>`); return; }
+  const ns = P.notices, ok = ns.filter(n => n.status === "signed");
   const days = []; for (let d = from; d <= to; d = addDay(d, 1)) days.push(d);
-  const units = S.B.units, sum = k => ok.filter(n => n.unit === k.key);
-  render(`${head("สรุปรอบบิล", `รอบ ${dTH(from)} – ${dTH(to)}`, "ผลรวมใบแจ้งยอดรายวันที่ลงนามแล้ว — ใบเรียกเก็บเงินของร้านปลายรอบต้องเท่ากับยอดนี้",
-      `<input class="inp" type="month" id="ym" value="${S.ym}"><div class="seg" id="half"><button data-h="1" class="${S.half === 1 ? "on" : ""}">1–15</button><button data-h="2" class="${S.half === 2 ? "on" : ""}">16–สิ้นเดือน</button></div>
-       <button class="btn" id="pAll" ${ok.length ? "" : "disabled"}>${I.print}พิมพ์ทั้งรอบ</button><button class="btn" id="xAll" ${ok.length ? "" : "disabled"}>${I.dl}Excel รายชื่อ</button>`)}
-    <div class="kpis">${units.map(u => { const s = sum(u), m = s.reduce((t, n) => t + n.meals, 0);
-      return `<div class="kpi"><div><div class="kpi-l">${esc(u.label)} · ${esc(u.shop || "")}</div><div class="kpi-v">฿${money(s.reduce((t, n) => t + n.amount, 0))}</div>
-        <div class="kpi-d">${int(m)} อิ่ม × ${int(u.price)} · ${s.length} ใบ</div></div></div>`; }).join("")}</div>
-    <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th>${units.map(u => `<th class="r">${esc(u.label)}</th>`).join("")}</tr></thead><tbody>
-      ${days.map(d => `<tr><td><a href="#/day/${d}">${dTH(d)}</a> <span class="small muted">${wd(d)}</span></td>${units.map(u => { const n = ok.find(x => x.d === d && x.unit === u.key), v = ns.filter(x => x.d === d && x.unit === u.key && x.status === "void").length;
-        return `<td class="r">${n ? `<a href="#" data-p="${n.id}" title="${esc(n.doc_no)}">${int(n.meals)}</a> <span class="small muted">${esc(n.doc_no.split("/")[1] || "")}</span>` : `<span class="muted">—</span>`}${v ? ` <span class="chip chip-gray">ยกเลิก ${v}</span>` : ""}</td>`; }).join("")}</tr>`).join("")}
-      <tr><td><b>รวมอิ่ม</b></td>${units.map(u => `<td class="r"><b>${int(sum(u).reduce((t, n) => t + n.meals, 0))}</b></td>`).join("")}</tr>
-      <tr><td><b>รวมเงิน</b></td>${units.map(u => `<td class="r"><b>฿${money(sum(u).reduce((t, n) => t + n.amount, 0))}</b></td>`).join("")}</tr></tbody></table></div></div>
-    <div class="notice mt">${I.info}<div>ขั้นถัดไป (กำลังทำ): ใส่ยอดตามใบเรียกเก็บเงินของร้าน → เทียบกับยอดนี้ → ยืนยัน → สร้างร่าง HRIN ใน HR Invoice Hub อัตโนมัติ</div></div>`);
-  $("#ym").onchange = e => { S.ym = e.target.value; noticesPage(); };
-  document.querySelectorAll("#half button").forEach(b => b.onclick = () => { S.half = +b.dataset.h; noticesPage(); });
+  const units = S.B.units, gAll = P.groups.filter(g => g.lines.length || g.bill);
+  const total = gAll.reduce((t, g) => t + g.amount, 0);
+  const st = b => !b ? "" : b.status === "deleted" ? `<span class="chip chip-gray">ร่างถูกลบแล้ว</span>` : b.status === "cancelled" ? `<span class="chip chip-gray">${esc(b.inv_no || "")} ยกเลิก</span>`
+    : `<a class="chip chip-blue" href="/expense/#/invoice/${b.invoice_id}" target="_blank">${esc(b.inv_no || "ร่าง HRIN")} · ${esc({ draft: "ร่าง", review: "รอตรวจ", approval: "รออนุมัติ", approved: "อนุมัติแล้ว", received: "รับเงินแล้ว", rejected: "ส่งกลับ" }[b.status] || b.status)}</a>`;
+  render(`${head("วางบิล", `รอบ ${dTH(from)} – ${dTH(to)}`, "ยืนยันยอดของรอบ → ระบบสร้างร่าง HRIN ใน HR Invoice Hub พร้อมแนบไฟล์สรุปรายวัน + รายชื่อ แล้วส่งตรวจ/อนุมัติตามขั้นตอนเดิม",
+      `<input class="inp" type="month" id="ym" value="${S.ym}"><div class="seg" id="half"><button data-h="1" class="${S.half === 1 ? "on" : ""}">1–15</button><button data-h="2" class="${S.half === 2 ? "on" : ""}">16–สิ้นเดือน</button></div>`)}
+    <div class="hero"><div class="hero-top"><div><div class="hero-l">ค่าอาหารทั้งรอบ (ก่อน VAT)</div><div class="hero-v">${money(total)}<small>บาท</small></div>
+      <div class="hero-l">${gAll.length} ใบที่ต้องวางบิล · สร้างแล้ว ${gAll.filter(g => g.bill && !["cancelled", "deleted"].includes(g.bill.status)).length}</div></div></div></div>
+    <div class="units">${gAll.map(g => billCard(g)).join("") || `<div class="empty">ยังไม่มียอดในรอบนี้</div>`}</div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">ใบแจ้งยอดรายวัน (โรงอาหาร)</div><div class="card-s">ที่ลงนามแล้วในรอบนี้ · กดตัวเลขเพื่อพิมพ์</div></div>
+      <div class="fx-actions"><button class="btn btn-sm" id="pAll" ${ok.length ? "" : "disabled"}>${I.print}พิมพ์ทั้งรอบ</button><button class="btn btn-sm" id="xAll" ${ok.length ? "" : "disabled"}>${I.dl}Excel รายชื่อ</button></div></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th>${units.map(u => `<th class="r">${esc(u.label)}</th>`).join("")}</tr></thead><tbody>
+      ${days.map(d => `<tr><td><a href="#/day/${d}">${dTH(d)}</a> <span class="small muted">${wd(d)}</span></td>${units.map(u => { const n = ok.find(x => x.d === d && x.unit === u.key);
+        return `<td class="r">${n ? `<a href="#" data-p="${n.id}" title="${esc(n.doc_no)}">${int(n.meals)}</a> <span class="small muted">${esc(n.doc_no.split("/")[1] || "")}</span>` : `<span class="muted">—</span>`}</td>`; }).join("")}</tr>`).join("")}
+      </tbody></table></div></div>`);
+  $("#ym").onchange = e => { S.ym = e.target.value; billingPage(); };
+  document.querySelectorAll("#half button").forEach(b => b.onclick = () => { S.half = +b.dataset.h; billingPage(); });
   document.querySelectorAll("[data-p]").forEach(a => a.onclick = e => { e.preventDefault(); printIds([+a.dataset.p]); });
   $("#pAll").onclick = () => printIds(ok.map(n => n.id));
   $("#xAll").onclick = async () => { const r = await rpc("cn_print", { p_ids: ok.map(n => n.id) }); XLSX.writeFile(namesWorkbook(r.notices), `รายชื่อทานอาหาร ${from} ถึง ${to}.xlsx`); };
+  document.querySelectorAll("[data-mk]").forEach(b => b.onclick = () => makeInvoice(gAll.find(g => g.grp === b.dataset.mk), from, to));
+  document.querySelectorAll("[data-att]").forEach(b => b.onclick = async () => { const g = gAll.find(x => x.grp === b.dataset.att);
+    try { await attachSummary(g, from, to, g.bill.invoice_id); toast("แนบไฟล์สรุปแล้ว", "success"); } catch (e) { toast(e.message, "error"); } });
 }
+function billCard(g) {
+  const b = g.bill, live = b && !["cancelled", "deleted"].includes(b.status), isUnit = ["A1", "A2", "CN"].includes(g.grp);
+  const v = S.B.vendors.find(x => x.code === g.vendor_code);
+  return `<div class="unit ${live ? "signed" : ""}"><div class="uh"><div><b>${esc(g.title)}</b><span>${esc(v ? `${v.code} · ${v.name}` : "ยังไม่ระบุผู้ขาย")} · VAT ${g.vat}% · หัก ณ ที่จ่าย ${g.wht}%</span></div>
+    ${live ? `<a class="chip chip-blue" href="/expense/#/invoice/${b.invoice_id}" target="_blank">${esc(b.inv_no || "ร่าง HRIN")}</a>` : b ? `<span class="chip chip-gray">ใบเดิม${b.status === "deleted" ? "ถูกลบ" : "ยกเลิก"}</span>` : `<span class="chip chip-gold">รอวางบิล</span>`}</div>
+    <div class="big"><b>${int(g.meals)}</b><small>${isUnit ? "อิ่ม" : "ที่"} · ${g.days} วัน</small><em>฿${money(g.amount)}</em></div>
+    <div class="ul" style="margin-top:8px">${g.lines.slice(0, 6).map(l => `<div class="small"><span>${esc(l.detail)}</span></div>`).join("")}${g.lines.length > 6 ? `<div class="small muted">… อีก ${g.lines.length - 6} บรรทัด</div>` : ""}</div>
+    ${live ? `<div class="files"><div>สร้างโดย ${esc(b.by_name || "")} · ${tsTH(b.at)}${b.shop_count != null ? ` · ใบเรียกเก็บของร้าน ${int(b.shop_count)}` : ""}</div></div>
+      <div class="uf"><a class="btn btn-sm" href="/expense/#/invoice/${b.invoice_id}" target="_blank">เปิดใน Invoice Hub</a>${W() ? `<button class="btn btn-sm btn-ghost" data-att="${g.grp}">แนบไฟล์สรุปอีกครั้ง</button>` : ""}</div>`
+    : W() && S.B.can_invoice ? `<div class="uf" style="display:grid;gap:8px">${isUnit ? `<label class="fld" style="margin:0"><span>ยอดตามใบเรียกเก็บเงินของร้าน (อิ่ม)</span><input class="inp" data-sc="${g.grp}" type="number" placeholder="${g.meals}"></label>` : ""}
+        <label class="fld" style="margin:0"><span>เลขที่ใบเรียกเก็บ/ใบเสร็จของร้าน</span><input class="inp" data-rf="${g.grp}" placeholder="เช่น 2569/60"></label>
+        <button class="btn btn-p" data-mk="${g.grp}" ${g.vendor_code ? "" : "disabled"}>${I.send}สร้างร่าง HRIN + แนบสรุป</button></div>`
+    : `<div class="uf small muted">${S.B.can_invoice ? "" : "ต้องมีสิทธิ์ออกใบแจ้งหนี้ HR (Invoice Hub) จึงสร้าง HRIN ได้"}</div>`}</div>`;
+}
+async function makeInvoice(g, from, to) {
+  const sc = document.querySelector(`[data-sc="${g.grp}"]`)?.value.trim() || "", rf = document.querySelector(`[data-rf="${g.grp}"]`)?.value.trim() || "";
+  const diff = sc && +sc !== g.meals;
+  modal(`สร้างร่าง HRIN · ${esc(g.title)}`, `<div class="tbl-wrap"><table class="tbl"><tbody>${g.lines.map(l => `<tr><td class="small">${esc(l.detail)}</td><td class="r">฿${money(l.qty * l.price)}</td></tr>`).join("")}
+      <tr><td><b>รวมก่อน VAT</b></td><td class="r"><b>฿${money(g.amount)}</b></td></tr></tbody></table></div>
+    ${diff ? `<div class="notice gold">${I.warn}<div>ใบเรียกเก็บของร้าน <b>${int(sc)}</b> อิ่ม แต่ใบแจ้งยอดรายวันรวม <b>${int(g.meals)}</b> อิ่ม (ต่าง ${int(+sc - g.meals)}) — HRIN จะออกตามใบแจ้งยอดรายวัน ใส่เหตุผล/สิ่งที่ตกลงกับร้าน</div></div>
+      <label class="fld"><span>เหตุผล (ต้องมี)</span><input class="inp" id="mkWhy"></label>` : `<label class="fld"><span>หมายเหตุ (ถ้ามี)</span><input class="inp" id="mkWhy"></label>`}
+    <div class="small muted">ระบบสร้างร่างในชื่อคุณ · แนบ Excel สรุปรายวัน + รายชื่อ · จากนั้นเปิดใน Invoice Hub เพื่อตรวจและกด “ลงนามและส่งตรวจ” ตามปกติ</div>`, "สร้างร่าง", async m => {
+    const why = m.querySelector("#mkWhy").value.trim();
+    if (diff && !why) { toast("ใส่เหตุผลที่ยอดไม่ตรง", "error"); return false; }
+    const r = await run(() => rpc("cn_invoice_make", { p_from: from, p_to: to, p_grp: g.grp, p_shop_count: sc || null, p_ref_no: rf || null, p_note: why || null }));
+    try { await attachSummary(g, from, to, r.invoice_id); } catch (e) { toast("สร้างร่างแล้ว แต่แนบไฟล์ไม่สำเร็จ: " + e.message + " — กด “แนบไฟล์สรุปอีกครั้ง”", "error"); }
+    toast(`สร้างร่าง HRIN แล้ว (${r.vendor} ฿${money(r.net)})`, "success"); billingPage();
+  });
+}
+// ไฟล์สรุปแนบ HRIN: รายวัน + รายชื่อ (โรงอาหาร = จากใบแจ้งยอดที่ลงนาม · กะบ่าย/OT/กะดึก = จากรายการสั่ง)
+async function attachSummary(g, from, to, invoiceId) {
+  const det = await rpc("cn_period_detail", { p_from: from, p_to: to, p_grp: g.grp });
+  const wb = XLSX.utils.book_new(), title = [[`${g.title} · รอบ ${dTH(from)} – ${dTH(to)}`], [`สรุปจาก Akara Canteen · ${tsTH(new Date().toISOString())}`], []];
+  const sheet = (name, aoa, cols) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = cols.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name); };
+  if (det.notices) {
+    const ks = ["akr", "sub", "forgot", "visit", "group", "carry"], lab = Object.fromEntries(C.CATS.map(c => [c.k, c.label]));
+    const rows = det.notices.map(n => [dTH(n.d), n.doc_no, ...ks.map(k => n.lines.find(l => l.k === k)?.n || 0), n.meals, n.amount]);
+    sheet("สรุปรายวัน", [...title, ["วันที่ทาน", "เลขที่ใบแจ้งยอด", ...ks.map(k => lab[k]), "รวมอิ่ม", "จำนวนเงิน"], ...rows,
+      ["รวม", `${det.notices.length} ใบ`, ...ks.map((_, i) => rows.reduce((t, r) => t + r[2 + i], 0)), g.meals, det.notices.reduce((t, n) => t + n.amount, 0)]], [16, 18, 14, 14, 10, 12, 12, 10, 10, 14]);
+    sheet("รายชื่อ", [...title, ["วันที่ทาน", "เลขที่", "หมวด", "รหัส", "ชื่อ", "อิ่ม"], ...det.notices.flatMap(n => (n.people || []).map(p => [dTH(n.d), n.doc_no, lab[p.c] || p.c, p.code, p.name, p.n]))], [16, 18, 26, 14, 30, 6]);
+  } else {
+    const o = det.orders, ks = g.grp === "night" ? ["night"] : ["aft", "ot"], gs = [...new Set(o.map(x => x.grp))].sort();
+    for (const k of ks) {
+      const ds = [...new Set(o.filter(x => x.kind === k).map(x => x.d))].sort();
+      if (!ds.length) continue;
+      const rows = ds.map(d => [dTH(d), ...gs.map(n => o.filter(x => x.d === d && x.kind === k && x.grp === n).reduce((t, x) => t + x.qty, 0)), o.filter(x => x.d === d && x.kind === k).reduce((t, x) => t + x.qty, 0)]);
+      sheet(`สรุป ${KTH[k]}`.slice(0, 31), [...title, ["วันที่", ...gs, "รวม"], ...rows, ["รวม", ...gs.map((_, i) => rows.reduce((t, r) => t + r[1 + i], 0)), rows.reduce((t, r) => t + r[r.length - 1], 0)],
+        [], [`ราคา ${S.B.billing.prices[k]} บาท`, "", "", "จำนวนเงิน", rows.reduce((t, r) => t + r[r.length - 1], 0) * S.B.billing.prices[k]]], [16, ...gs.map(() => 12), 10]);
+    }
+    sheet("รายชื่อ", [...title, ["วันที่", "ประเภท", "กลุ่ม", "รหัส", "ชื่อ", "ที่", "หมายเหตุ"], ...o.map(x => [dTH(x.d), KTH[x.kind], x.grp, x.emp_code || "", x.name, x.qty, x.note || ""])], [16, 16, 18, 14, 30, 6, 20]);
+  }
+  const bytes = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const name = `สรุป ${g.title.replace(/[\\/:*?"<>|]/g, "-")} ${from} ถึง ${to}.xlsx`;
+  const path = `${invoiceId}/${Date.now()}_canteen_${g.grp.replace(/[^\w]/g, "_")}_${from}_${to}.xlsx`;
+  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const up = await supabase.storage.from("expense-files").upload(path, blob, { contentType: blob.type });
+  if (up.error) throw new Error(up.error.message);
+  const { data: { session } } = await supabase.auth.getSession();
+  const { error } = await supabase.from("exp_files").insert({ invoice_id: invoiceId, path, name, size: blob.size, uploaded_by: session?.user?.id || null });
+  if (error) throw new Error(error.message);
+}
+
 
 // ---------------------------------------------------------------- ตั้งค่า
 function settingsPage() {
@@ -428,11 +618,21 @@ function settingsPage() {
     <div class="card mt"><div class="card-h"><div><div class="card-t">ผู้รับใบแจ้งยอด (ร้านค้าสหกรณ์)</div><div class="card-s">คั่นหลายอีเมลด้วย , </div></div></div><div class="card-b grid-f">
       <label class="fld"><span>ถึง</span><input class="inp" id="mTo" value="${esc(B.mail.to || "")}" ${W() ? "" : "disabled"}></label>
       <label class="fld"><span>สำเนา (เช่น HR Team)</span><input class="inp" id="mCc" value="${esc(B.mail.cc || "")}" ${W() ? "" : "disabled"}></label></div></div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">ราคา · เวลาปิดรับ · ผู้ขายในใบ HRIN</div><div class="card-s">รหัสผู้ขายตาม Invoice Hub · แม่ครัวกะบ่าย/OT ตั้งรายวันที่หน้า สั่งอาหาร</div></div></div>
+      <div class="card-b grid-f">${["aft", "ot", "night"].map(k => `<label class="fld"><span>ราคา ${KTH[k]} (บาท)</span><input class="inp" type="number" data-pr="${k}" value="${B.billing.prices[k]}" ${W() ? "" : "disabled"}></label>
+        <label class="fld"><span>ปิดรับ ${KTH[k]} (เวลา ของวันนั้น)</span><input class="inp" data-co="${k}" value="${esc(B.billing.cutoff[k])}" placeholder="10:30" ${W() ? "" : "disabled"}></label>`).join("")}
+        ${B.units.map(u => `<label class="fld"><span>ผู้ขายในใบ HRIN · ${esc(u.label)}</span><input class="inp" data-uv="${u.key}" value="${esc(B.billing.unit_vendor[u.key] || "")}" ${W() ? "" : "disabled"}></label>`).join("")}
+        <label class="fld"><span>ผู้ขายชุดกะดึก</span><input class="inp" id="bNv" value="${esc(B.billing.night_vendor)}" ${W() ? "" : "disabled"}></label>
+        <label class="fld"><span>รหัสบัญชี (cost code)</span><input class="inp" id="bCc" value="${esc(B.billing.cost_code)}" ${W() ? "" : "disabled"}></label></div></div>
     ${W() ? `<div style="margin-top:16px;display:flex;justify-content:flex-end"><button class="btn btn-p" id="sSave">บันทึก</button></div>` : ""}`);
   $("#sSave") && ($("#sSave").onclick = async () => {
     const units = B.units.map((u, i) => { const o = { ...u }; document.querySelectorAll(`[data-i="${i}"]`).forEach(x => { o[x.dataset.f] = x.dataset.f === "price" ? +x.value : x.value.trim(); }); return o; });
     const last = {}; document.querySelectorAll("[data-last]").forEach(x => { if (x.value.trim()) last[x.dataset.last] = x.value.trim(); });
-    await run(() => rpc("cn_settings_save", { p_units: units, p_mail: { to: $("#mTo").value, cc: $("#mCc").value }, p_last: last }), "บันทึกแล้ว");
+    const bill = { prices: {}, cutoff: {}, unit_vendor: {}, night_vendor: $("#bNv").value.trim(), cost_code: $("#bCc").value.trim() };
+    document.querySelectorAll("[data-pr]").forEach(x => { bill.prices[x.dataset.pr] = +x.value; });
+    document.querySelectorAll("[data-co]").forEach(x => { bill.cutoff[x.dataset.co] = x.value.trim(); });
+    document.querySelectorAll("[data-uv]").forEach(x => { bill.unit_vendor[x.dataset.uv] = x.value.trim().toUpperCase(); });
+    await run(() => rpc("cn_settings_save", { p_units: units, p_mail: { to: $("#mTo").value, cc: $("#mCc").value }, p_last: last, p_billing: bill }), "บันทึกแล้ว");
     S.B = await rpc("cn_boot", {}).then(b => ({ ...S.B, ...b })); settingsPage();
   });
 }

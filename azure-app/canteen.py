@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from hooks import HookError as E, new_token
 
 FUNCS = {}
-PUBLIC = {"cn_link_get"}
+PUBLIC = {"cn_link_get", "cn_order_link_get", "cn_order_link_decide"}
 
 
 def fn(f):
@@ -49,6 +49,17 @@ _DDL = {
     "cn_links": """token NVARCHAR(80) NOT NULL PRIMARY KEY, d DATE NOT NULL, created_at DATETIMEOFFSET NOT NULL, expires_at DATETIMEOFFSET NOT NULL,
         by_name NVARCHAR(200) NULL, sent_at DATETIMEOFFSET NULL, sent_to NVARCHAR(1000) NULL""",
     "cn_settings": "k NVARCHAR(80) NOT NULL PRIMARY KEY, v NVARCHAR(MAX) NULL",
+    "cn_groups": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, name NVARCHAR(120) NOT NULL, en_name NVARCHAR(120) NULL, depts NVARCHAR(MAX) NULL,
+        kinds NVARCHAR(100) NULL, coord NVARCHAR(200) NULL, token NVARCHAR(80) NOT NULL, active BIT NOT NULL, sort INT NULL,
+        updated_at DATETIMEOFFSET NULL""",
+    "cn_service": """d DATE NOT NULL PRIMARY KEY, cook_id BIGINT NULL, menu_aft NVARCHAR(1000) NULL, menu_night NVARCHAR(1000) NULL,
+        closed NVARCHAR(40) NULL, note NVARCHAR(400) NULL, by_name NVARCHAR(200) NULL, at DATETIMEOFFSET NULL""",
+    "cn_orders": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, d DATE NOT NULL, group_id BIGINT NOT NULL, kind NVARCHAR(6) NOT NULL,
+        emp_code NVARCHAR(40) NULL, name NVARCHAR(200) NOT NULL, qty INT NOT NULL, note NVARCHAR(300) NULL, src NVARCHAR(6) NOT NULL,
+        by_name NVARCHAR(200) NULL, at DATETIMEOFFSET NULL""",
+    "cn_bills": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, grp NVARCHAR(40) NOT NULL, p_from DATE NOT NULL, p_to DATE NOT NULL,
+        invoice_id BIGINT NULL, meals INT NULL, amount DECIMAL(14,2) NULL, shop_count INT NULL, ref_no NVARCHAR(100) NULL,
+        note NVARCHAR(600) NULL, by_name NVARCHAR(200) NULL, at DATETIMEOFFSET NULL""",
     "cn_log": """id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, at DATETIMEOFFSET NOT NULL, by_name NVARCHAR(200) NULL, d DATE NULL,
         action NVARCHAR(40) NOT NULL, detail NVARCHAR(2000) NULL""",
 }
@@ -80,7 +91,8 @@ def ensure(r):
             if "already" not in str(e).lower():
                 raise
     for ix, sql in (("ix_cn_meals_d", "CREATE INDEX ix_cn_meals_d ON dbo.cn_meals (d, box)"),
-                    ("ix_cn_notices_d", "CREATE INDEX ix_cn_notices_d ON dbo.cn_notices (d, unit)")):
+                    ("ix_cn_notices_d", "CREATE INDEX ix_cn_notices_d ON dbo.cn_notices (d, unit)"),
+                    ("ix_cn_orders_d", "CREATE INDEX ix_cn_orders_d ON dbo.cn_orders (d, group_id, kind)")):
         r.cur.execute(f"IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{ix}') {sql}")
     for key, cat, label, desc, grant in PERMS:
         if r.val("SELECT COUNT(*) FROM dbo.permissions WHERE [key] = ?", key):
@@ -232,7 +244,11 @@ def cn_boot(r):
     subs = r.rows(None, """SELECT w.sub_no, w.ac_no, w.first_name, w.last_name, w.status, w.left_on, c.name AS company
                            FROM dbo.sub_workers w LEFT JOIN dbo.sub_companies c ON c.id = w.company_id WHERE w.sub_no IS NOT NULL""")
     last = {k[5:]: v for k, v in ((x["k"], _j(x["v"])) for x in r.rows(None, "SELECT k, v FROM dbo.cn_settings WHERE k LIKE 'last:%'"))}
-    return {"units": _units(r), "mail": _get(r, "mail") or {"to": "", "cc": ""}, "last": last,
+    vend = r.rows(None, """SELECT v.id, v.code, v.name, COUNT(i.id) n FROM dbo.exp_vendors v LEFT JOIN dbo.exp_invoices i ON i.vendor_id = v.id
+                           AND i.category = 'Canteen' WHERE v.is_active = 1 GROUP BY v.id, v.code, v.name""")
+    return {"billing": _billing(r), "vendors": [{"id": v["id"], "code": v["code"], "name": v["name"], "n": v["n"]} for v in vend],
+            "can_invoice": r.has_perm("data.expense.write"),
+            "units": _units(r), "mail": _get(r, "mail") or {"to": "", "cc": ""}, "last": last,
             "mail_mode": ms[0]["mode"] if ms else None, "write": r.has_perm("data.canteen.write"),
             "me": {"name": s.get("name_th") or s.get("name_en") or _me(r), "title": s.get("title_th") or s.get("title_en"),
                    "has_sig": bool(s.get("signature_path"))},
@@ -524,6 +540,9 @@ def cn_void(r, p_id, p_reason):
     if not n:
         raise E("ไม่พบใบ หรือยกเลิกไปแล้ว")
     n = n[0]
+    b = _live_bill(r, n["unit"], str(n["d"])[:10])
+    if b:
+        raise E(f"รอบนี้ออก {b['inv_no'] or 'ร่าง HRIN'} แล้ว — ยกเลิกใบใน Invoice Hub ก่อนถ้าจะแก้ใบแจ้งยอด")
     r.cur.execute("UPDATE dbo.cn_notices SET status = 'void', void_reason = ?, void_by = ?, void_at = ? WHERE id = ?", why, _me(r), _now(), n["id"])
     r.cur.execute("UPDATE dbo.cn_meals SET extra_notice = NULL WHERE extra_notice = ?", n["id"])     # ยอดยกกลับไปรอใบใหม่
     _log(r, str(n["d"])[:10], "void", f"ยกเลิก {n['doc_no']} (ครั้งที่ {n['version']}) · {why}")
@@ -611,8 +630,21 @@ def cn_link_get(r, p_token):
 
 # ---------------------------------------------------------------- ตั้งค่า
 @fn
-def cn_settings_save(r, p_units=None, p_mail=None, p_last=None):
+def cn_settings_save(r, p_units=None, p_mail=None, p_last=None, p_billing=None):
     _need(r, "page.canteen", "data.canteen.write")
+    if p_billing is not None:
+        cur = _billing(r)
+        for k in ("unit_vendor", "unit_text", "prices", "cutoff", "vat", "wht"):
+            if isinstance(p_billing.get(k), dict):
+                cur[k].update({a: b for a, b in p_billing[k].items()})
+        for k in ("night_vendor", "cost_code", "category"):
+            if p_billing.get(k) is not None:
+                cur[k] = _s(p_billing[k], 60)
+        for k, v in cur["cutoff"].items():
+            if not re.fullmatch(r"\d{1,2}:\d\d", str(v)):
+                raise E("เวลาปิดรับต้องเป็น ชั่วโมง:นาที เช่น 10:30")
+        _put(r, "billing", cur)
+        _log(r, None, "settings", "แก้ราคา/เวลาปิดรับ/ผู้ขายในใบแจ้งหนี้")
     if p_units is not None:
         units = []
         for u in p_units:
@@ -635,3 +667,371 @@ def cn_settings_save(r, p_units=None, p_mail=None, p_last=None):
             _put(r, f"last:{k}", int(v))
             _log(r, None, "settings", f"เลขล่าสุดก่อนใช้ระบบ {m.group(1)} ปี {m.group(2)} = {int(v)}")
     return True
+
+
+# ================================================================ สั่งอาหารกะบ่าย / OT / กะดึก ผ่านลิงก์ของกลุ่ม (user 2026-11-26)
+# กลุ่มผู้สั่ง (cn_groups) = แผนก/ส่วนงานที่สั่ง เช่น Supply, Process, Gold Room · ลิงก์ถาวรต่อกลุ่ม /canteen/o.html?t= (เปลี่ยนลิงก์ได้)
+# kind: aft = อาหารกะบ่าย (แม่ครัวเวรของวันนั้น) · ot = อาหาร OT (แม่ครัวเวร, 50) · night = ชุดอาหารแห้งกะดึก (สหกรณ์)
+# ปิดรับตามเวลา (billing.cutoff) ของวันนั้น · HR แก้ได้เสมอจนออก HRIN ของรอบนั้น
+KINDS = {"aft": "อาหารกะบ่าย", "ot": "อาหาร OT", "night": "ชุดอาหารแห้งกะดึก"}
+BILLING_DEFAULT = {"unit_vendor": {"A1": "T0009", "A2": "T0009", "CN": "N0009"}, "unit_text": {"A1": "Canteen 1", "A2": "Canteen 2", "CN": "Chatree North"},
+                   "night_vendor": "T0009", "prices": {"aft": 65, "ot": 50, "night": 65}, "cutoff": {"aft": "10:30", "ot": "15:00", "night": "15:00"},
+                   "cost_code": "506005051500", "category": "Canteen", "vat": {"unit": 7, "night": 7, "cook": 0}, "wht": {"unit": 3, "night": 3, "cook": 0}}
+
+
+def _billing(r):
+    b = _get(r, "billing") or {}
+    out = json.loads(json.dumps(BILLING_DEFAULT))
+    for k, v in b.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k].update(v)
+        else:
+            out[k] = v
+    return out
+
+
+def _vendor(r, code=None, vid=None):
+    v = r.rows(None, "SELECT id, code, name, address, bank, tax_id FROM dbo.exp_vendors WHERE " + ("code = ?" if code else "id = ?"), code or vid)
+    return v[0] if v else None
+
+
+def _group_out(g):
+    return {"id": g["id"], "name": g["name"], "en_name": g.get("en_name") or g["name"], "depts": _j(g.get("depts"), []),
+            "kinds": _j(g.get("kinds"), ["aft", "ot", "night"]), "coord": g.get("coord"), "active": bool(g["active"]), "sort": g.get("sort"),
+            "url": f"{PUBLIC_URL}/canteen/o.html?t={g['token']}"}
+
+
+def _live_bill(r, grp, d):
+    """ใบ HRIN ที่ออกจากรอบที่ครอบวันนี้และยังไม่ยกเลิก/ไม่ถูกลบ"""
+    b = r.rows(None, """SELECT TOP 1 b.id, i.inv_no, i.status FROM dbo.cn_bills b JOIN dbo.exp_invoices i ON i.id = b.invoice_id
+                        WHERE b.grp = ? AND ? BETWEEN b.p_from AND b.p_to AND i.status <> 'cancelled' ORDER BY b.id DESC""", grp, d)
+    return b[0] if b else None
+
+
+def _cook_of(r, d):
+    v = r.val("SELECT cook_id FROM dbo.cn_service WHERE d = ?", d)
+    return int(v) if v else None
+
+
+def _order_locked(r, d, kind):
+    grp = "night" if kind == "night" else (f"cook:{_cook_of(r, d)}" if _cook_of(r, d) else None)
+    b = _live_bill(r, grp, d) if grp else None
+    if b:
+        raise E(f"รอบนี้ออก {b['inv_no'] or 'ร่าง HRIN'} แล้ว — ยกเลิกใบใน Invoice Hub ก่อนถ้าจะแก้")
+
+
+def _cutoff_passed(r, d, kind):
+    t = (_billing(r)["cutoff"].get(kind) or "23:59").split(":")
+    limit = datetime.fromisoformat(d) + timedelta(hours=int(t[0]), minutes=int(t[1]) if len(t) > 1 else 0)
+    closed = (r.val("SELECT closed FROM dbo.cn_service WHERE d = ?", d) or "")
+    return _bkk_now().replace(tzinfo=None) > limit or kind in closed.split(",")
+
+
+def _put_orders(r, d, gid, kind, rows, src, who):
+    r.cur.execute("DELETE FROM dbo.cn_orders WHERE d = ? AND group_id = ? AND kind = ?", d, gid, kind)
+    n = 0
+    for x in (rows or [])[:400]:
+        name = _s(x.get("name"), 200)
+        q = int(x.get("qty") or 1)
+        if not name or not 0 < q <= 200:
+            continue
+        r.cur.execute("""INSERT INTO dbo.cn_orders (d, group_id, kind, emp_code, name, qty, note, src, by_name, at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", d, gid, kind, (_s(x.get("emp_code"), 40) or "").upper() or None, name, q,
+                      _s(x.get("note"), 300), src, who, _now())
+        n += q
+    return n
+
+
+@fn
+def cn_groups(r):
+    _need(r, "page.canteen")
+    return [_group_out(g) for g in r.rows(None, "SELECT * FROM dbo.cn_groups ORDER BY active DESC, COALESCE(sort, 999), name")]
+
+
+@fn
+def cn_group_save(r, p_row, p_new_link=False):
+    _need(r, "page.canteen", "data.canteen.write")
+    x = p_row or {}
+    name = _s(x.get("name"), 120)
+    if not name:
+        raise E("ใส่ชื่อกลุ่ม")
+    kinds = [k for k in (x.get("kinds") or []) if k in KINDS] or ["aft", "ot", "night"]
+    vals = (name, _s(x.get("en_name"), 120) or name, json.dumps([_s(d, 120) for d in (x.get("depts") or []) if _s(d)], ensure_ascii=False),
+            json.dumps(kinds), _s(x.get("coord"), 200), 1 if x.get("active", True) else 0, int(x.get("sort") or 0) or None, _now())
+    if x.get("id"):
+        r.cur.execute("UPDATE dbo.cn_groups SET name = ?, en_name = ?, depts = ?, kinds = ?, coord = ?, active = ?, sort = ?, updated_at = ? WHERE id = ?",
+                      *vals, int(x["id"]))
+        if p_new_link:
+            r.cur.execute("UPDATE dbo.cn_groups SET token = ? WHERE id = ?", new_token(), int(x["id"]))
+        _log(r, None, "group", f"แก้กลุ่มผู้สั่ง {name}" + (" · เปลี่ยนลิงก์ใหม่ (ลิงก์เดิมใช้ไม่ได้)" if p_new_link else ""))
+    else:
+        r.cur.execute("""INSERT INTO dbo.cn_groups (name, en_name, depts, kinds, coord, active, sort, updated_at, token)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", *vals, new_token())
+        _log(r, None, "group", f"เพิ่มกลุ่มผู้สั่ง {name}")
+    return True
+
+
+@fn
+def cn_month(r, p_ym):
+    """ปฏิทินเดือน: แม่ครัวเวร เมนู ยอดสั่งต่อวัน/ประเภท"""
+    _need(r, "page.canteen")
+    ym = _s(p_ym, 7)
+    if not re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", ym or ""):
+        raise E("เดือนไม่ถูกต้อง")
+    f = f"{ym}-01"
+    svc = r.rows(None, "SELECT * FROM dbo.cn_service WHERE d >= ? AND d < DATEADD(month, 1, ?)", f, f)
+    for x in svc:
+        x["d"], x["at"] = str(x["d"])[:10], str(x["at"]) if x.get("at") else None
+    cnt = r.rows(None, """SELECT d, kind, SUM(qty) n FROM dbo.cn_orders WHERE d >= ? AND d < DATEADD(month, 1, ?) GROUP BY d, kind""", f, f)
+    return {"service": svc, "counts": [{"d": str(c["d"])[:10], "kind": c["kind"], "n": c["n"]} for c in cnt]}
+
+
+@fn
+def cn_service_save(r, p_days, p_row):
+    """ตั้งแม่ครัวเวร/เมนู/ปิดรับ ของหลายวันพร้อมกัน — ส่งเฉพาะช่องที่จะแก้"""
+    _need(r, "page.canteen", "data.canteen.write")
+    x = p_row or {}
+    days = sorted({_d(d) for d in (p_days or [])})[:62]
+    for d in days:
+        if not r.val("SELECT COUNT(*) FROM dbo.cn_service WHERE d = ?", d):
+            r.cur.execute("INSERT INTO dbo.cn_service (d, by_name, at) VALUES (?, ?, ?)", d, _me(r), _now())
+        if "cook_id" in x:
+            new = int(x["cook_id"]) if x["cook_id"] else None
+            old = _cook_of(r, d)
+            if old != new and old and _live_bill(r, f"cook:{old}", d):
+                raise E(f"{d}: ออก HRIN ของแม่ครัวเดิมแล้ว — เปลี่ยนแม่ครัวไม่ได้")
+            r.cur.execute("UPDATE dbo.cn_service SET cook_id = ? WHERE d = ?", new, d)
+        for k in ("menu_aft", "menu_night", "note"):
+            if k in x:
+                r.cur.execute(f"UPDATE dbo.cn_service SET {k} = ? WHERE d = ?", _s(x[k], 1000), d)
+        if "closed" in x:
+            r.cur.execute("UPDATE dbo.cn_service SET closed = ? WHERE d = ?", ",".join(k for k in (x["closed"] or []) if k in KINDS) or None, d)
+        r.cur.execute("UPDATE dbo.cn_service SET by_name = ?, at = ? WHERE d = ?", _me(r), _now(), d)
+    if days:
+        _log(r, days[0] if len(days) == 1 else None, "service", f"ตั้ง {', '.join(k for k in x)} {len(days)} วัน ({days[0]}{' – ' + days[-1] if len(days) > 1 else ''})")
+    return len(days)
+
+
+@fn
+def cn_orders_day(r, p_d):
+    _need(r, "page.canteen")
+    d = _d(p_d)
+    svc = r.rows(None, "SELECT * FROM dbo.cn_service WHERE d = ?", d)
+    o = r.rows(None, "SELECT * FROM dbo.cn_orders WHERE d = ? ORDER BY group_id, kind, id", d)
+    for x in o:
+        x["d"], x["at"] = str(x["d"])[:10], str(x["at"]) if x.get("at") else None
+    s = svc[0] if svc else {}
+    if s:
+        s["d"], s["at"] = str(s["d"])[:10], str(s["at"]) if s.get("at") else None
+    return {"d": d, "service": s, "orders": o, "passed": {k: _cutoff_passed(r, d, k) for k in KINDS}}
+
+
+@fn
+def cn_order_hr(r, p_d, p_group, p_kind, p_rows):
+    """HR แก้รายชื่อของกลุ่ม (ทับทั้งชุดของวัน/ประเภทนั้น) — ได้แม้เลยเวลาปิดรับ"""
+    _need(r, "page.canteen", "data.canteen.write")
+    d, kind = _d(p_d), _s(p_kind, 6)
+    if kind not in KINDS:
+        raise E("ประเภทไม่ถูกต้อง")
+    _order_locked(r, d, kind)
+    g = r.rows(None, "SELECT id, name FROM dbo.cn_groups WHERE id = ?", int(p_group))
+    if not g:
+        raise E("ไม่พบกลุ่ม")
+    n = _put_orders(r, d, g[0]["id"], kind, p_rows, "hr", _me(r))
+    _log(r, d, "order", f"HR แก้ {KINDS[kind]} {g[0]['name']}: {n} ที่")
+    return n
+
+
+def _group_by_token(r, tok):
+    tok = _s(tok, 80)
+    g = r.rows(None, "SELECT * FROM dbo.cn_groups WHERE token = ? AND active = 1", tok) if tok else []
+    return g[0] if g else None
+
+
+@fn
+def cn_order_link_get(r, p_token):
+    """หน้าสั่งอาหารของกลุ่ม (ไม่ต้อง login): เมื่อวาน … อีก 7 วัน · เมนู · เวลาปิดรับ · รายชื่อที่สั่งแล้ว · รายชื่อแนะนำของกลุ่ม"""
+    ensure(r)
+    g = _group_by_token(r, p_token)
+    if not g:
+        return {"error": "ลิงก์ไม่ถูกต้อง หรือ HR เปลี่ยนลิงก์ใหม่แล้ว"}
+    t = _bkk_now().date()
+    days = [(t + timedelta(days=i)).isoformat() for i in range(-1, 8)]
+    svc = {str(x["d"])[:10]: x for x in r.rows(None, "SELECT d, menu_aft, menu_night, closed, note FROM dbo.cn_service WHERE d BETWEEN ? AND ?", days[0], days[-1])}
+    o = r.rows(None, "SELECT d, kind, emp_code, name, qty, note FROM dbo.cn_orders WHERE group_id = ? AND d BETWEEN ? AND ? ORDER BY id",
+               g["id"], days[0], days[-1])
+    b = _billing(r)
+    out_days = [{"d": d, "menu_aft": (svc.get(d) or {}).get("menu_aft"), "menu_night": (svc.get(d) or {}).get("menu_night"),
+                 "note": (svc.get(d) or {}).get("note"), "open": {k: not _cutoff_passed(r, d, k) for k in KINDS}} for d in days]
+    depts = _j(g.get("depts"), [])
+    ppl = []
+    if depts:
+        marks = ",".join("?" * len(depts))
+        ppl = [{"code": p["emp_code"], "name": f"{p['firstname_th'] or ''} {p['lastname_th'] or ''}".strip()}
+               for p in r.rows(None, f"""SELECT emp_code, firstname_th, lastname_th FROM dbo.employees WHERE status = 'Active'
+                                        AND (department IN ({marks}) OR section IN ({marks})) ORDER BY firstname_th""", *depts, *depts)]
+    return {"group": {"name": g["name"], "coord": g.get("coord"), "kinds": _j(g.get("kinds"), list(KINDS))}, "days": out_days,
+            "orders": [{"d": str(x["d"])[:10], "kind": x["kind"], "emp_code": x["emp_code"], "name": x["name"], "qty": x["qty"], "note": x["note"]} for x in o],
+            "cutoff": b["cutoff"], "prices": b["prices"], "people": ppl, "kinds": KINDS}
+
+
+@fn
+def cn_order_link_decide(r, p_token, p_d, p_kind, p_rows, p_by=None):
+    ensure(r)
+    g = _group_by_token(r, p_token)
+    if not g:
+        raise E("ลิงก์ไม่ถูกต้อง")
+    d, kind = _d(p_d), _s(p_kind, 6)
+    if kind not in _j(g.get("kinds"), list(KINDS)):
+        raise E("กลุ่มนี้สั่งประเภทนี้ไม่ได้")
+    if _cutoff_passed(r, d, kind):
+        raise E(f"ปิดรับ{KINDS[kind]}ของวันนี้แล้ว — ติดต่อ HR")
+    if d > (_bkk_now().date() + timedelta(days=14)).isoformat():
+        raise E("สั่งล่วงหน้าได้ไม่เกิน 14 วัน")
+    _order_locked(r, d, kind)
+    who = (_s(p_by, 100) or "ผู้ประสานงาน") + f" ({g['name']})"
+    n = _put_orders(r, d, g["id"], kind, p_rows, "link", who)
+    _log(r, d, "order", f"{who} สั่ง{KINDS[kind]} {n} ที่", who)
+    return {"n": n}
+
+
+# ================================================================ รอบบิล → ร่าง HRIN ใน Invoice Hub
+# grp: A1 / A2 / CN (ใบแจ้งยอดที่ลงนาม) · night (ชุดกะดึก → สหกรณ์) · cook:<vendor id> (กะบ่าย + OT ของแม่ครัวคนนั้น)
+_EN_M = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+
+def _p_en(f, t):
+    return f"{int(f[8:10])}-{int(t[8:10])} {_EN_M[int(f[5:7]) - 1]} {f[:4]}"
+
+
+def _d_en(d):
+    return f"{int(d[8:10])} {_EN_M[int(d[5:7]) - 1]} {d[:4]}"
+
+
+def _r2(v):
+    from decimal import Decimal, ROUND_HALF_UP
+    return float(Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _period_data(r, f, t):
+    b = _billing(r)
+    units = {u["key"]: u for u in _units(r)}
+    out = []
+    for key, u in units.items():
+        ns = r.rows(None, "SELECT d, doc_no, meals, amount FROM dbo.cn_notices WHERE unit = ? AND status = 'signed' AND d BETWEEN ? AND ? ORDER BY d",
+                    key, f, t)
+        meals = sum(n["meals"] for n in ns)
+        text = (f"Meal for Employee Chatree North {_p_en(f, t)} ({meals:,}*{u['price']:g})" if key == "CN"
+                else f"Meal for Employees: {_p_en(f, t)} ({meals:,}*{u['price']:g}) {b['unit_text'].get(key, u['label'])}")
+        out.append({"grp": key, "title": f"{u['label']} · ใบแจ้งยอดรายวัน", "vendor_code": b["unit_vendor"].get(key), "vat": b["vat"]["unit"],
+                    "wht": b["wht"]["unit"], "meals": meals, "days": len(ns),
+                    "lines": [{"detail": text, "qty": meals, "price": float(u["price"])}] if meals else []})
+    night = r.rows(None, "SELECT d, SUM(qty) n FROM dbo.cn_orders WHERE kind = 'night' AND d BETWEEN ? AND ? GROUP BY d", f, t)
+    nn = sum(x["n"] for x in night)
+    out.append({"grp": "night", "title": "ชุดอาหารแห้งกะดึก", "vendor_code": b["night_vendor"], "vat": b["vat"]["night"], "wht": b["wht"]["night"],
+                "meals": nn, "days": len(night),
+                "lines": [{"detail": f"Meal for Employees (Night Shift) : {_p_en(f, t)} ({nn:,}*{b['prices']['night']:g})", "qty": nn,
+                           "price": float(b["prices"]["night"])}] if nn else []})
+    rows = r.rows(None, """SELECT o.d, o.kind, o.group_id, g.en_name, g.name, SUM(o.qty) n, s.cook_id FROM dbo.cn_orders o
+                           JOIN dbo.cn_groups g ON g.id = o.group_id LEFT JOIN dbo.cn_service s ON s.d = o.d
+                           WHERE o.kind IN ('aft', 'ot') AND o.d BETWEEN ? AND ? GROUP BY o.d, o.kind, o.group_id, g.en_name, g.name, s.cook_id
+                           ORDER BY o.d""", f, t)
+    cooks = {}
+    for x in rows:
+        cooks.setdefault(x["cook_id"], []).append(x)
+    for cid, xs in cooks.items():
+        aft = sum(x["n"] for x in xs if x["kind"] == "aft")
+        lines = [{"detail": f"Meal for Afternoon shift: {_p_en(f, t)} ({aft:,}*{b['prices']['aft']:g})", "qty": aft, "price": float(b["prices"]["aft"])}] if aft else []
+        for x in xs:
+            if x["kind"] == "ot":
+                d = str(x["d"])[:10]
+                lines.append({"detail": f"Meal for Overtime work ({x['en_name'] or x['name']}): {_d_en(d)} ({x['n']:,}*{b['prices']['ot']:g})",
+                              "qty": x["n"], "price": float(b["prices"]["ot"]), "d": d})
+        v = _vendor(r, vid=cid) if cid else None
+        out.append({"grp": f"cook:{cid}" if cid else "cook:none", "title": "อาหารกะบ่าย + OT · " + (v["name"] if v else "ยังไม่ได้ระบุแม่ครัวเวร"),
+                    "vendor_code": v["code"] if v else None, "vat": b["vat"]["cook"], "wht": b["wht"]["cook"],
+                    "meals": sum(x["n"] for x in xs), "days": len({str(x["d"]) for x in xs}), "lines": lines})
+    for g in out:
+        g["amount"] = _r2(sum(l["qty"] * l["price"] for l in g["lines"]))
+        bill = r.rows(None, """SELECT TOP 1 b.*, i.inv_no, i.status FROM dbo.cn_bills b LEFT JOIN dbo.exp_invoices i ON i.id = b.invoice_id
+                               WHERE b.grp = ? AND b.p_from = ? AND b.p_to = ? ORDER BY b.id DESC""", g["grp"], f, t)
+        g["bill"] = ({"id": bill[0]["id"], "invoice_id": bill[0]["invoice_id"], "inv_no": bill[0]["inv_no"], "status": bill[0]["status"] or "deleted",
+                      "meals": bill[0]["meals"], "amount": float(bill[0]["amount"] or 0), "shop_count": bill[0]["shop_count"], "ref_no": bill[0]["ref_no"],
+                      "at": str(bill[0]["at"]), "by_name": bill[0]["by_name"]} if bill else None)
+    return out
+
+
+@fn
+def cn_period(r, p_from, p_to):
+    _need(r, "page.canteen")
+    f, t = _d(p_from), _d(p_to)
+    ns = [_notice_out(n, False) for n in r.rows(None, "SELECT * FROM dbo.cn_notices WHERE d BETWEEN ? AND ? ORDER BY d, unit, version", f, t)]
+    return {"groups": _period_data(r, f, t), "notices": ns, "billing": _billing(r)}
+
+
+@fn
+def cn_period_detail(r, p_from, p_to, p_grp):
+    """ข้อมูลทำไฟล์แนบ: รายวัน + รายชื่อ ของกลุ่มบิลนั้น"""
+    _need(r, "page.canteen")
+    f, t, grp = _d(p_from), _d(p_to), _s(p_grp, 40)
+    if grp in ("A1", "A2", "CN"):
+        ns = [_notice_out(n) for n in r.rows(None, "SELECT * FROM dbo.cn_notices WHERE unit = ? AND status = 'signed' AND d BETWEEN ? AND ? ORDER BY d",
+                                             grp, f, t)]
+        return {"notices": ns}
+    if grp == "night":
+        where, args = "o.kind = 'night'", []
+    else:
+        cid = grp.split(":", 1)[1]
+        where, args = ("o.kind IN ('aft','ot') AND " + ("s.cook_id IS NULL" if cid in ("none", "None") else "s.cook_id = ?"),
+                       [] if cid in ("none", "None") else [int(cid)])
+    o = r.rows(None, f"""SELECT o.d, o.kind, g.name grp, g.en_name, o.emp_code, o.name, o.qty, o.note FROM dbo.cn_orders o JOIN dbo.cn_groups g ON g.id = o.group_id
+                        LEFT JOIN dbo.cn_service s ON s.d = o.d WHERE {where} AND o.d BETWEEN ? AND ? ORDER BY o.d, o.kind, g.name, o.id""", *args, f, t)
+    for x in o:
+        x["d"] = str(x["d"])[:10]
+    return {"orders": o}
+
+
+@fn
+def cn_invoice_make(r, p_from, p_to, p_grp, p_shop_count=None, p_ref_no=None, p_note=None):
+    """สร้างร่าง HRIN ใน Invoice Hub จากยอดของรอบ · ใบแจ้งยอดรายวันต้องเท่ากับใบเรียกเก็บเงินของร้าน (ต่างได้ถ้าใส่เหตุผล)
+    แล้วเดินตามขั้นตอนเดิมของ Invoice Hub (ส่งตรวจ → อนุมัติจากลิงก์เมล) · ไฟล์สรุปแนบจากหน้าเว็บหลังสร้าง"""
+    _need(r, "page.canteen", "data.canteen.write", "data.expense.write")
+    f, t, grp = _d(p_from), _d(p_to), _s(p_grp, 40)
+    r.lock(f"cn_bill:{grp}:{f}")
+    g = next((x for x in _period_data(r, f, t) if x["grp"] == grp), None)
+    if not g or not g["lines"]:
+        raise E("ไม่มียอดของรอบนี้")
+    if g["bill"] and g["bill"]["status"] not in ("cancelled", "deleted"):
+        raise E(f"รอบนี้สร้าง {g['bill']['inv_no'] or 'ร่าง HRIN'} ไปแล้ว")
+    if not g["vendor_code"]:
+        raise E("ยังไม่ได้ระบุผู้ขาย (แม่ครัวเวร) ของวันเหล่านี้ — ตั้งที่หน้า สั่งอาหาร")
+    v = _vendor(r, code=g["vendor_code"])
+    if not v:
+        raise E(f"ไม่พบผู้ขายรหัส {g['vendor_code']} ใน Invoice Hub")
+    shop = int(p_shop_count) if str(p_shop_count or "").strip().isdigit() else None
+    note = _s(p_note, 400)
+    if grp in ("A1", "A2", "CN") and shop is not None and shop != g["meals"] and not note:
+        raise E(f"ยอดตามใบเรียกเก็บของร้าน {shop:,} ≠ ใบแจ้งยอดรายวัน {g['meals']:,} — ใส่เหตุผลก่อน")
+    b = _billing(r)
+    lines, tot = [], {"amount": 0.0, "vat": 0.0, "wht": 0.0, "net": 0.0}
+    for i, l in enumerate(g["lines"], 1):
+        amt = _r2(l["qty"] * l["price"])
+        vat, wht = _r2(amt * g["vat"] / 100), _r2(amt * g["wht"] / 100)
+        lines.append({"line_no": i, "cost_code": b["cost_code"], "detail": l["detail"], "amount": amt, "vat_rate": 7 if g["vat"] == 7 else 0,
+                      "vat": vat, "wht": wht, "net": _r2(amt + vat - wht)})
+        for k, val in (("amount", amt), ("vat", vat), ("wht", wht), ("net", amt + vat - wht)):
+            tot[k] += val
+    tot = {k: _r2(v_) for k, v_ in tot.items()}
+    today = _bkk_now().date().isoformat()
+    head = {"inv_date": today, "vendor_id": v["id"], "vendor": {k: v.get(k) for k in ("code", "name", "address", "bank", "tax_id")},
+            "category": b["category"], "ref_no": _s(p_ref_no, 100), "wht_rate": g["wht"], "status": "draft", "imported": False,
+            "note": f"สร้างจาก Akara Canteen · {g['title']} · รอบ {f} ถึง {t}" + (f" · ใบเรียกเก็บของร้าน {shop:,} อิ่ม" if shop is not None else "")
+                    + (f" · {note}" if note else ""),
+            "created_by": r.uid, **tot}
+    inv = r.ins("exp_invoices", head)
+    for l in lines:
+        r.ins("exp_invoice_lines", {"invoice_id": inv["id"], **l})
+    r.cur.execute("""INSERT INTO dbo.cn_bills (grp, p_from, p_to, invoice_id, meals, amount, shop_count, ref_no, note, by_name, at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", grp, f, t, inv["id"], g["meals"], tot["net"], shop, _s(p_ref_no, 100), note, _me(r), _now())
+    _log(r, None, "invoice", f"สร้างร่าง HRIN ({g['title']}) รอบ {f} – {t}: {len(lines)} บรรทัด สุทธิ {tot['net']:,.2f} · ผู้ขาย {v['code']} {v['name']}")
+    return {"invoice_id": inv["id"], "net": tot["net"], "vendor": v["name"]}
