@@ -1387,3 +1387,8 @@ PUBLIC |= tax.PUBLIC
 # ================================================================================ โบนัสประจำปี (bonus.py)
 import bonus  # noqa: E402
 FUNCS.update(bonus.FUNCS)
+
+# ================================================================================ ค่าอาหารโรงอาหาร (canteen.py)
+import canteen  # noqa: E402
+FUNCS.update(canteen.FUNCS)
+PUBLIC |= canteen.PUBLIC

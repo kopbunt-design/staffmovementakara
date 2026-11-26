@@ -308,12 +308,13 @@ export const MOV_TH = {
 };
 
 // ===== ROUTING =====
-const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","tax","bonus","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","pvd","docregister","letters","empcontract","paf","expense","users","settings"];
+const pages = ["home","dashboard","employees","empprofile","movements","headcount","movreport","workforce","vacancy","analytics","payroll","payrollexp","payrollbuild","payrollapproval","contractpay","tax","bonus","shiftallow","shiftcompare","diligence","otaudit","otreport","uniform","sub","fundforms","pvd","docregister","letters","empcontract","paf","expense","canteen","users","settings"];
 let currentPage = "home";
 
 export function navigate(page) {
   // HR Invoice Hub เป็นเว็บแยก (/expense) โดเมนเดียวกัน session เดียวกัน — ไปหน้านั้นเลย ไม่ต้อง login ซ้ำ
   if (page === "expense") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/expense/"; return; }
+  if (page === "canteen") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/canteen/"; return; }
   // สต๊อกยูนิฟอร์มย้ายไปเป็นเว็บแยก /uniform (2026-10-14) — ฐานข้อมูลเดิม
   if (page === "uniform") { import("./launcher.js").then(m => m.pushRecent(page)).catch(() => {}); location.href = "/uniform/"; return; }
   // ทะเบียนผู้รับเหมา (SUB) — เว็บแยก /sub (2026-10-15)
@@ -472,10 +473,10 @@ document.querySelectorAll(".nav-item[data-page]").forEach(el =>
 const I18N = {
   th: { "nav.home":"หน้าหลัก", "nav.dashboard":"ภาพรวม", "nav.shiftallow":"คำนวณค่ากะ", "nav.shiftcompare":"เทียบค่ากะรายคน", "nav.diligence":"เบี้ยขยัน", "nav.otaudit":"ตรวจโอที", "nav.otreport":"รายงานโอที & เบี้ยขยัน", "nav.payrollexp":"ค่าใช้จ่ายเงินเดือน", "nav.payrollapproval":"ใบอนุมัติเงินเดือน", "nav.payrollbuild":"สร้าง Payroll Register", "nav.contractpay":"ค่าจ้างเหมา", "nav.tax":"ทะเบียนรายได้และภาษี (50 ทวิ)", "nav.bonus":"โบนัสประจำปี · สรุปลา/เวลา",
         "grp.records":"ทะเบียนพนักงาน", "nav.uniform":"สต๊อกยูนิฟอร์ม", "nav.sub":"ทะเบียนผู้รับเหมา (SUB)", "nav.empcontract":"สัญญาจ้างงาน", "nav.paf":"Personnel Action Form", "grp.sub":"ผู้รับเหมา (SUB)", "nav.fundforms":"แบบฟอร์มกองทุน", "nav.pvd":"กองทุนสำรองเลี้ยงชีพ", "grp.fund":"กองทุน", "grp.pay":"เงินเดือน · ค่าตอบแทน", "grp.reports":"รายงานกำลังคน",
-        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"สารบัญเอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "grp.system":"ระบบ" },
+        "grp.plan":"วางแผนอัตรากำลัง", "grp.docs":"งานเอกสาร HR", "nav.docregister":"สารบัญเอกสาร", "nav.letters":"ออกหนังสือ HR", "nav.expense":"HR Invoice Hub · ใบแจ้งหนี้", "nav.canteen":"ค่าอาหารโรงอาหาร · ใบแจ้งยอด", "grp.system":"ระบบ" },
   en: { "nav.home":"Home", "nav.dashboard":"Dashboard", "nav.shiftallow":"Shift Allowance", "nav.shiftcompare":"Compare Months", "nav.diligence":"Diligence Allowance", "nav.otaudit":"OT Audit", "nav.otreport":"OT & Diligence Report", "nav.payrollexp":"Payroll Expense", "nav.payrollapproval":"Payroll Approval", "nav.payrollbuild":"Build Payroll Register", "nav.contractpay":"Contract Payroll", "nav.tax":"Income & Tax Register (50 Tawi)", "nav.bonus":"Annual Bonus · Leave & Time",
         "grp.records":"Employee Records", "nav.uniform":"Uniform Stock", "nav.sub":"Contractor Register (SUB)", "nav.empcontract":"Employment Agreement", "nav.paf":"Personnel Action Form", "grp.sub":"Contractors (SUB)", "nav.fundforms":"Fund Forms", "nav.pvd":"Provident Fund", "grp.fund":"Funds", "grp.pay":"Payroll & Compensation", "grp.reports":"Workforce Reports",
-        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Index", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "grp.system":"System" },
+        "grp.plan":"Headcount Planning", "grp.docs":"HR Documents", "nav.docregister":"Document Index", "nav.letters":"HR Letters", "nav.expense":"HR Invoice Hub · Invoices", "nav.canteen":"Canteen Meals · Daily Report", "grp.system":"System" },
 };
 export let appLang = localStorage.getItem("app_lang") || "th";
 function applyLang(lang) {

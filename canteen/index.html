@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akara Canteen · ค่าอาหารโรงอาหาร</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fund/fx.css?v=4">
+<link rel="stylesheet" href="/tax/tx.css?v=2">
+<link rel="stylesheet" href="/canteen/cn.css?v=1">
+</head>
+<body>
+<!--
+  Akara Canteen — ค่าอาหารโรงอาหารคิดเป็นหัว · ใบแจ้งยอดร้านค้ารายวันส่งสหกรณ์ (/canteen) · user 2026-11-26
+  ดีไซน์ตระกูล Akara Fund/Tax (/fund/fx.css + /tax/tx.css + cn.css) · ข้อมูล azure-app/canteen.py · กติกา js/canteen-calc.js (มีเทส)
+  ใบแจ้งยอด = canteen/doc.js (ใช้ร่วมกับหน้าสหกรณ์ r.html) · ห้าม import js/app.js
+-->
+<div class="fx-shell">
+  <aside class="fx-side">
+    <div class="fx-brand">
+      <div class="logo"><svg viewBox="0 0 24 24"><path d="M3 11h18a9 9 0 0 1-18 0Z"/><path d="M12 3v3M8 4.5v2M16 4.5v2"/><path d="M7 20h10"/></svg></div>
+      <div><b>AKARA CANTEEN</b><span>ค่าอาหาร · ใบแจ้งยอดร้านค้า</span></div>
+    </div>
+    <nav class="fx-nav" id="fxNav">
+      <div class="grp">โรงอาหาร</div>
+      <a href="#/day" data-r="day"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 14h3v3H8z"/></svg>รายวัน · ใบแจ้งยอด</a>
+      <a href="#/dups" data-r="dups"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>แตะซ้ำรอยืนยัน<em id="navDup"></em></a>
+      <a href="#/notices" data-r="notices"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>สรุปรอบบิล</a>
+      <div class="grp">ระบบ</div>
+      <a href="#/settings" data-r="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>ตั้งค่า · ร้าน/ราคา/ผู้รับ</a>
+      <a href="#/log" data-r="log"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>ประวัติ</a>
+    </nav>
+    <div class="fx-foot">
+      <a class="fx-back" href="/"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>กลับไประบบ HR</a>
+      <div class="fx-user" id="fxUser"></div>
+    </div>
+  </aside>
+  <main class="fx-main" id="fxMain"><div class="fx-loading">กำลังโหลด…</div></main>
+</div>
+<div class="toasts" id="fxToasts"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/canteen/cn.js?v=1"></script>
+</body>
+</html>

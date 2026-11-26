@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>ใบแจ้งยอดร้านค้า · Akara Resources</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Sarabun, system-ui, sans-serif; background: #EEF1F6; color: #18233d; }
+.bar { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid #E3E8F0; box-shadow: 0 2px 10px rgba(16,24,40,.05); }
+.bar .in { max-width: 1000px; margin: 0 auto; padding: 12px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.bar img { height: 34px; }
+.bar .t { flex: 1; min-width: 200px; } .bar .t b { display: block; font-size: 17px; } .bar .t span { font-size: 13px; color: #6b7591; }
+.btn { height: 40px; padding: 0 16px; border: 1px solid #DCE2EC; background: #fff; color: #18233d; border-radius: 10px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
+.btn-p { background: #1d4a8f; color: #fff; border-color: #1d4a8f; }
+.sum { max-width: 1000px; margin: 16px auto 0; padding: 0 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.sum div { background: #fff; border-radius: 14px; padding: 12px 16px; border: 1px solid #E3E8F0; }
+.sum small { display: block; color: #6b7591; font-size: 12.5px; } .sum b { font-size: 20px; } .sum span { font-size: 13px; color: #59637d; }
+.docs { padding: 18px 0 40px; overflow-x: auto; }
+.msg { max-width: 520px; margin: 80px auto; background: #fff; border-radius: 18px; padding: 36px; text-align: center; }
+@media print { .bar, .sum { display: none !important; } body { background: #fff; } .docs { padding: 0; } }
+</style>
+</head>
+<body>
+<!-- หน้าสหกรณ์ (ไม่ต้อง login) — ลิงก์ในเมลใบแจ้งยอดรายวัน · canteen/r.js → rpc cn_link_get (azure-app/canteen.py) · user 2026-11-26 · ห้าม import js/app.js -->
+<div class="bar"><div class="in"><img src="/assets/logo.png" alt="Akara Resources"><div class="t"><b id="ttl">ใบแจ้งยอดร้านค้า</b><span id="sub">กำลังโหลด…</span></div>
+  <button class="btn" id="bX" hidden>ดาวน์โหลด Excel รายชื่อ</button><button class="btn btn-p" id="bP" hidden>พิมพ์ / บันทึก PDF</button></div></div>
+<div class="sum" id="sum"></div>
+<div class="docs" id="docs"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="/canteen/r.js?v=1"></script>
+</body>
+</html>

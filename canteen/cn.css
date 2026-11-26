@@ -1,0 +1,67 @@
+/* Akara Canteen — เพิ่มบน /fund/fx.css + /tax/tx.css */
+.fx-brand .logo { background: linear-gradient(135deg, #1d4a8f, #2a5daa); }
+.notice { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--blue-100); color: var(--navy-700); font-size: 13px; }
+.notice.gold { background: linear-gradient(90deg, #FFF7E0, #FFFBEF); color: #7A5A00; border: 1px solid #F1DFA8; }
+.notice.red { background: var(--red-100); color: var(--red-600); }
+.notice svg { width: 18px; height: 18px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.mt { margin-top: 18px; }
+
+/* แถบวันที่ */
+.dnav { display: inline-flex; align-items: center; gap: 6px; }
+.dnav input { width: 150px; }
+
+/* การ์ดต่อจุด (ใบแจ้งยอด 1 ใบ) */
+.units { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin-top: 18px; }
+.unit { background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-1); overflow: hidden; display: flex; flex-direction: column; }
+.unit .uh { padding: 16px 18px 12px; display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.unit .uh b { font-size: 16px; display: block; }
+.unit .uh span { font-size: 12.5px; color: var(--ink-3); }
+.unit .big { padding: 0 18px; display: flex; align-items: baseline; gap: 10px; }
+.unit .big b { font-size: 34px; font-weight: 700; line-height: 1; }
+.unit .big small { color: var(--ink-3); font-size: 13px; }
+.unit .big em { margin-left: auto; font-style: normal; font-weight: 700; font-size: 16px; color: var(--navy-700); }
+.unit .stack { display: flex; height: 8px; border-radius: 6px; overflow: hidden; gap: 2px; margin: 12px 18px 6px; background: var(--line-2); }
+.unit .stack i { display: block; }
+.unit .ul { padding: 4px 18px 10px; display: grid; gap: 3px; font-size: 13px; }
+.unit .ul div { display: flex; justify-content: space-between; }
+.unit .ul i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; }
+.unit .files { margin: 0 18px; padding: 8px 10px; border-radius: 10px; background: #F6F8FC; font-size: 12px; color: var(--ink-2); display: grid; gap: 2px; }
+.unit .files .miss { color: var(--amber-600); font-weight: 600; }
+.unit .uf { margin-top: auto; padding: 12px 18px; border-top: 1px solid var(--line-2); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.unit.signed { border-color: #BFD3F2; }
+.unit.signed .uh { background: linear-gradient(90deg, #EEF4FD, #fff); }
+
+/* แถบลงนาม/ส่ง */
+.actbar { margin-top: 18px; display: flex; gap: 14px; align-items: center; padding: 16px 18px; border-radius: 18px; color: #fff;
+  background: linear-gradient(120deg, #1d4a8f, #2a5daa 70%, #3a6fc0); box-shadow: inset -9px 0 0 #fcc934; flex-wrap: wrap; }
+.actbar .t { flex: 1; min-width: 220px; }
+.actbar .t b { display: block; font-size: 16px; }
+.actbar .t span { font-size: 12.5px; opacity: .85; }
+.actbar .btn { background: #fff; color: var(--navy-700); border-color: #fff; }
+.actbar .btn.btn-p { background: #fcc934; border-color: #fcc934; color: #3b2a00; }
+.actbar .btn:disabled { opacity: .55; }
+
+/* คีย์ใบลงชื่อ */
+.entry { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: end; }
+.entry .fld { margin: 0; }
+.cands { display: flex; gap: 6px; flex-wrap: wrap; min-height: 26px; margin-top: 6px; }
+.cand { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.cand b { display: block; font-size: 13px; }
+.cand.on { border-color: var(--navy-600); background: var(--blue-100); }
+.cand.left { opacity: .6; }
+.tbl td.r, .tbl th.r { text-align: right; }
+.tbl tr.zero td { color: var(--ink-3); text-decoration: line-through; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; }
+.t-akr { background: #E6ECF7; color: #1d4a8f; } .t-sub { background: #E3EEFC; color: #245fb0; } .t-forgot { background: #FFF1D6; color: #9a6400; }
+.t-visit, .t-tem, .t-unk { background: #F1E8FB; color: #6d3fb0; } .t-group { background: #DCF5EC; color: #0b7a5c; } .t-carry { background: #EEF0F4; color: #59637d; }
+.chk { display: grid; gap: 10px; }
+.chk details { border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.chk summary { padding: 11px 14px; cursor: pointer; font-weight: 600; font-size: 13.5px; display: flex; gap: 10px; align-items: center; }
+.chk summary .chip { margin-left: auto; }
+.chk details > div { padding: 0 14px 12px; }
+.small { font-size: 12px; } .muted { color: var(--ink-3); }
+.pv-wrap { background: #eef1f6; padding: 18px; border-radius: 14px; max-height: 70vh; overflow: auto; }
+.pv-wrap .cnd .page { transform-origin: top left; }
+.modal.wide { width: min(980px, 100%); }
+.linkbox { display: flex; gap: 8px; align-items: center; font-size: 12.5px; background: #F6F8FC; border-radius: 10px; padding: 8px 10px; margin-top: 10px; word-break: break-all; }
+@media (max-width: 720px) { .entry { grid-template-columns: 1fr; } }

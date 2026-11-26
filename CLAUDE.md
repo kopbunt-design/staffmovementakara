@@ -291,6 +291,30 @@ import `js/app.js`. HR app `navigate("bonus")` redirects there (menu under เ�
   required) → `bonus_adj` of kind `WORK_INJURY`, which is always "none" (not overridable). Setting the whole type to "none"
   asks first. Clicking any type name lists people + date runs for re-checking. TigerSoft's leave report (ใบลา) upload is not built yet — waiting for a sample file.
 
+## Akara Canteen (`canteen/`) — separate app at `/canteen` (canteen meals per head · daily shop report)
+
+User, 2026-11-26: the Akara canteen bills 65 baht/head (Canteen 1 and Canteen 2, separate card scanners), Chatree North 60
+(one shop, two scan boxes). One meal per shift. HR e-mails a daily "ใบแจ้งยอดร้านค้า" to the co-op shop (ร้านค้าสหกรณ์) only;
+the shop bills per period (1–15 / 16–end) from those. Must NOT import `js/app.js`. HR app `navigate("canteen")` redirects there.
+- Rules / file reading in `js/canteen-calc.js` (tested by `test/canteen.test.js`); data in `azure-app/canteen.py` (Azure-only tables
+  `cn_meals`, `cn_days`, `cn_notices`, `cn_links`, `cn_settings`, `cn_log`; perms `page.canteen` ← page.expense, `data.canteen.write`
+  ← data.expense.write). Notice A4 = `canteen/doc.js` (real logo, blue/yellow, HR signs online alone — user-approved design),
+  shared by `canteen/cn.js` and the co-op link page `canteen/r.html` (`cn_link_get`, public, 120 days; print/PDF/Excel of names).
+- Scan files = Excel exported from IT's web ("รายชื่อสแกนบัตร1 Akara 01.11.26.xlsx", "…2 Chatree North …"): EMP No. | Name | count,
+  one row per person per day, **no times**, a Total row that is often 1–3 above the real sum (ignored; counted from names).
+  Box/date come from the file name. Units: A1 (CTS1…), A2 (CTS2…), CN = N1+N2 on one notice (series CTN unless HR changes it).
+  Number = `<series><year>/<###>` like the old "CTS12026/327"; "เลขล่าสุดก่อนใช้ระบบ" in settings continues the old count.
+- Tapped more than once (AKR/SUB): billed 1 and queued for HR (user: some sneak a second meal, sometimes the shop taps twice);
+  HR picks นับ 1 / นับ 2 (reason). Decided "2" after that day's notice was signed → `extra` → line "ยกยอดจากวันก่อน" on the next
+  notice of the same unit. TEM… cards and rows without a code = visitors, always counted by taps (user).
+- No devices/internet at the counters (user): forgotten cards stay on paper; HR types the number written (often only the last
+  4 digits, e.g. 1167 → AKR24051167; SUB no. or AC no. also match) and picks when several match. A forgotten-card entry for someone
+  already scanned that day is saved with 0 meals. Group pick-ups ("15+OT2=17") and visitors are typed as name + count.
+- Card codes can differ from the HR register (Oct 2025 joiners: card AKR2508131x, register AKR2510131x) — matched by English
+  name (`mapCard`), listed under "ต้องตรวจ" so IT can fix the cards. Not-in-register SUBs are still counted.
+- Not built yet: afternoon/night-shift ordering through a per-department link, period confirm → draft HRIN in the Invoice Hub
+  (vendors/VAT/WHT/cost code 506005051500 as in the existing Canteen invoices), OT meals (come from another system's workflow).
+
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)
 
 Form AKR-OHR-FM-031 Rev. 00 (user, 2026-10-16), A4 in `js/paf-doc.js` (pure, tested by `test/paf.test.js`; shared with the approver page, so no `js/app.js` imports). Layout follows HR's scanned form, but the HR/GM signature boxes are replaced by an approval log (step, Bangkok time, action, who, remark + status banner) styled like the AKARA Approval System printout; the employee acknowledgement is still signed by hand and HR records the date (`paf_ack`).

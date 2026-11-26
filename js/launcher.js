@@ -40,6 +40,7 @@ const META = {
   analytics:       ["วิเคราะห์ข้อมูลกำลังคนเชิงลึก", '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>'],
   letters:         ["หนังสือรับรอง ไทย/อังกฤษ · Offer Letter · ขออนุมัติ", '<path d="M4 6.5h16v11H4z"/><path d="m4 7 8 6 8-6"/>'],
   expense:         ["ใบแจ้งหนี้ HRIN · ค่าใช้จ่ายฝ่าย HR · งบประมาณ (เปิดเว็บ HR Invoice Hub)", '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'],
+  canteen:         ["ค่าอาหารโรงอาหารคิดเป็นหัว · ไฟล์สแกนบัตร + ใบลงชื่อ · ใบแจ้งยอดร้านค้าส่งสหกรณ์ (เปิดเว็บ Akara Canteen)", '<path d="M3 11h18a9 9 0 0 1-18 0Z"/><path d="M12 3v3M8 4.5v2M16 4.5v2"/>'],
   docregister:     ["สารบัญเอกสาร · ออกเลข / ลงรับ · แนบไฟล์ · เอกสารลับ", '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9.5 17V12M12.5 17v-5M9 12h4.5M8.5 14.5h5"/>'],
   vacancy:         ["โควตาตำแหน่งและอัตราว่าง", '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>'],
   users:           ["บัญชีผู้ใช้และสิทธิ์การเข้าถึง", '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.4 3.4-5.5 7-5.5s6.3 2.1 7 5.5"/>'],
@@ -55,7 +56,7 @@ const META_EN = {
   payrollapproval: "Summary for payroll approval", contractpay: "Consultant / contractor pay runs, 3% WHT",
   headcount: "Monthly headcount by unit", movreport: "Joiners, leavers and turnover",
   workforce: "Executive workforce overview", analytics: "In-depth workforce analysis",
-  vacancy: "Position quotas and vacancies", docregister: "Document index: numbers in and out, attachments, confidential files — opens Doc Index", letters: "Certificates (TH/EN), offer letters, approval", expense: "HR invoices (HRIN), HR spend and budget — opens HR Invoice Hub", users: "User accounts and access",
+  vacancy: "Position quotas and vacancies", docregister: "Document index: numbers in and out, attachments, confidential files — opens Doc Index", letters: "Certificates (TH/EN), offer letters, approval", expense: "HR invoices (HRIN), HR spend and budget — opens HR Invoice Hub", canteen: "Canteen meals per head, daily shop report to the co-op — opens Akara Canteen", users: "User accounts and access",
   settings: "Master data: divisions, departments, positions, levels",
 };
 const GROUP_EN = {
