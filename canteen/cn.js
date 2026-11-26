@@ -148,7 +148,8 @@ function unitCard(x) {
     <div class="stack">${lines.lines.filter(l => l.n).map(l => `<i style="flex:${l.n};background:${cmap[l.k]}"></i>`).join("")}</div>
     <div class="ul">${lines.lines.filter(l => l.n).map(l => `<div><span><i style="background:${cmap[l.k]}"></i>${esc(l.label)}</span><b>${int(l.n)}</b></div>`).join("") || `<div class="muted">—</div>`}</div>
     <div class="files">${u.boxes.map(b => { const f = days.find(y => y.box === b);
-      return f ? `<div>${esc(boxLabel(b))}: ${f.people} คน · แตะ ${f.scans} ครั้ง${f.file_total != null && f.file_total !== f.scans ? ` <span class="miss">(Total ท้ายไฟล์ ${f.file_total})</span>` : ""}</div>`
+      return f ? `<div class="fl"><span>${esc(boxLabel(b))}: ${f.people} คน · แตะ ${f.scans} ครั้ง${f.file_total != null && f.file_total !== f.scans ? ` <span class="miss">(Total ท้ายไฟล์ ${f.file_total})</span>` : ""}</span>
+          ${W() && !signed ? `<button class="fdel" data-fdel="${b}" title="ลบไฟล์นี้ (อัปผิด)">${I.x}</button>` : ""}</div>`
                : `<div class="miss">${esc(boxLabel(b))}: ยังไม่มีไฟล์สแกน</div>`; }).join("")}</div>
     ${signed && lines.meals !== signed.meals ? `<div class="notice gold" style="margin:10px 18px 0">${I.warn}<div>รายการเปลี่ยนหลังลงนาม (ตอนนี้ ${lines.meals} อิ่ม) — ยกเลิกใบแล้วลงนามใหม่</div></div>` : ""}
     <div class="uf">${signed ? `<button class="btn btn-sm" data-print="${signed.id}">${I.print}พิมพ์ / PDF</button>${W() ? `<button class="btn btn-sm btn-ghost" data-void="${signed.id}" data-doc="${esc(signed.doc_no)}">ยกเลิกใบ</button>` : ""}`
@@ -206,6 +207,10 @@ function wireDay(st) {
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { await run(() => rpc("cn_entry_del", { p_id: +b.dataset.del }), "ลบแล้ว"); dayPage(); });
   document.querySelectorAll("[data-dup]").forEach(b => b.onclick = () => decideDup([+b.dataset.dup], b.dataset.dec, dayPage));
   document.querySelectorAll("[data-zero]").forEach(b => b.onclick = () => zeroRow(+b.dataset.zero));
+  document.querySelectorAll("[data-fdel]").forEach(b => b.onclick = () => { const box = b.dataset.fdel, f = S.D.days.find(y => y.box === box);
+    modal(`ลบไฟล์สแกน ${esc(boxLabel(box))} · ${dTH(S.d)}`, `<div>${esc(f?.file_name || "")}<br><b>${f?.people} คน · แตะ ${f?.scans} ครั้ง</b></div>
+      <div class="small muted">รายการจากไฟล์นี้จะหายทั้งหมด รวมการยืนยันแตะซ้ำของกล่องนี้ · รายการที่คีย์จากใบลงชื่อยังอยู่ · อัปไฟล์ที่ถูกต้องใหม่ได้ทันที</div>`, "ลบไฟล์", async () => {
+      await run(() => rpc("cn_upload_del", { p_d: S.d, p_box: box }), "ลบไฟล์แล้ว"); dayPage(); }); });
   $("#bSign") && ($("#bSign").onclick = () => signDay(st));
   $("#bSend") && ($("#bSend").onclick = () => sendDay());
   $("#bCopy") && ($("#bCopy").onclick = () => navigator.clipboard.writeText(S.D.link.url).then(() => toast("คัดลอกลิงก์แล้ว", "success")));

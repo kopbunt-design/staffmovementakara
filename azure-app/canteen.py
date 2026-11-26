@@ -369,6 +369,25 @@ def cn_upload(r, p_d, p_box, p_file, p_total, p_unknown, p_rows):
 
 
 @fn
+def cn_upload_del(r, p_d, p_box):
+    """ลบไฟล์สแกนที่อัปผิด (วัน/กล่อง) — รายการจากไฟล์นั้นหายทั้งหมด รวมการยืนยันแตะซ้ำ · รายการจากใบลงชื่อไม่แตะ"""
+    _need(r, "page.canteen", "data.canteen.write")
+    d, box = _d(p_d), _s(p_box, 4)
+    if box not in BOXES:
+        raise E("ไม่รู้ว่าเป็นกล่องไหน")
+    _locked(r, d, box)
+    f = r.rows(None, "SELECT file_name, people, scans FROM dbo.cn_days WHERE d = ? AND box = ?", d, box)
+    if not f:
+        raise E("ไม่มีไฟล์ของวัน/กล่องนี้")
+    if r.val("SELECT COUNT(*) FROM dbo.cn_meals WHERE d = ? AND box = ? AND src = 'scan' AND extra_notice IS NOT NULL", d, box):
+        raise E("มีรายการจากไฟล์นี้ยกยอดขึ้นใบวันอื่นแล้ว — ลบไม่ได้")
+    r.cur.execute("DELETE FROM dbo.cn_meals WHERE d = ? AND box = ? AND src = 'scan'", d, box)
+    r.cur.execute("DELETE FROM dbo.cn_days WHERE d = ? AND box = ?", d, box)
+    _log(r, d, "upload_del", f"ลบไฟล์สแกน {box}: {f[0]['people']} คน แตะ {f[0]['scans']} ครั้ง · {f[0]['file_name'] or ''}")
+    return True
+
+
+@fn
 def cn_entry_add(r, p_d, p_box, p_cat, p_code=None, p_name=None, p_count=1, p_note=None):
     """คีย์จากใบลงชื่อ: forgot (ลืมบัตร — 1 อิ่ม · มีสแกนแล้วในวันนั้น = 0 อิ่ม) · visit (ผู้ติดต่อ) · group (รับแทนกลุ่ม)"""
     _need(r, "page.canteen", "data.canteen.write")
