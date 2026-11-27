@@ -83,7 +83,7 @@ function listRows(n) {
   for (const c of ["akr", "sub", "forgot", "visit", "group", "carry"]) {
     const ps = by[c]; if (!ps?.length) continue;
     const tot = ps.reduce((t, p) => t + (+p.n || 0), 0);
-    out.push(`<tr class="sh"><td colspan="4">${SEC[c]}<span>${int(tot)} อิ่ม</span></td></tr>`);
+    out.push(`<tr class="sh"><td colspan="4">${SEC[c]}<span>${int(tot)} มื้อ</span></td></tr>`);
     for (const p of ps.sort((a, b) => String(a.code).localeCompare(String(b.code)) || String(a.name).localeCompare(String(b.name), "th"))) {
       i++;
       const x = [p.n > 1 ? `× ${p.n}` : "", p.box ? BOX[p.box] : "", p.from ? `${+p.from.slice(8, 10)}/${+p.from.slice(5, 7)}` : ""].filter(Boolean).join(" ");
@@ -105,13 +105,13 @@ export function noticeDoc(n, art = {}, { logo = "/assets/logo.png" } = {}) {
     <div class="date"><small>วันที่ทานอาหาร</small><b>${dTH(n.d)}</b></div></div></div>
   <div class="body">
     <div class="info"><div><small>ร้านอาหาร · Restaurant</small><b>${esc(n.shop || "-")}</b></div>
-      <div><small>จุดสแกน · Box</small><b>${esc(unitTxt)}</b></div><div><small>ราคาต่ออิ่ม</small><b>${int(n.price)} บาท</b></div></div>
-    <table class="sum"><tr><th>รายการ</th><th class="r">จำนวน (อิ่ม)</th></tr>
+      <div><small>จุดสแกน · Box</small><b>${esc(unitTxt)}</b></div><div><small>ราคาต่อมื้อ</small><b>${int(n.price)} บาท</b></div></div>
+    <table class="sum"><tr><th>รายการ</th><th class="r">จำนวน (มื้อ)</th></tr>
       ${(n.lines || []).map(l => `<tr><td><i class="k" style="background:${esc(l.color)}"></i>${esc(l.label)}${l.sub ? `<small>${esc(l.sub)}</small>` : ""}</td><td class="r">${int(l.n)}</td></tr>`).join("")}
       <tr class="t"><td>รวม</td><td class="r">${int(n.meals)}</td></tr></table>
-    <div class="total"><div class="calc"><small>ยอดวันนี้</small><b>${int(n.meals)} × ${int(n.price)}</b>อิ่ม × บาท</div>
+    <div class="total"><div class="calc"><small>ยอดวันนี้</small><b>${int(n.meals)} × ${int(n.price)}</b>มื้อ × บาท</div>
       <div class="money"><small>จำนวนเงิน · AMOUNT</small><b>฿${money(n.amount)}</b><i>(${esc(bahtText(n.amount))})</i></div></div>
-    ${n.cum?.from ? `<div class="cum"><span>ยอดสะสมรอบบิล ${dTH(n.cum.from)} – ${dTH(n.cum.to)} (ถึงวันนี้ · ${n.cum.days} วัน)</span><span><b>${int(n.cum.meals)} อิ่ม · ฿${money(n.cum.amount)}</b></span></div>` : ""}
+    ${n.cum?.from ? `<div class="cum"><span>ยอดสะสมรอบบิล ${dTH(n.cum.from)} – ${dTH(n.cum.to)} (ถึงวันนี้ · ${n.cum.days} วัน)</span><span><b>${int(n.cum.meals)} มื้อ · ฿${money(n.cum.amount)}</b></span></div>` : ""}
   </div>
   <div class="esign"><div class="card"><span class="st">✓ ลงนามอิเล็กทรอนิกส์</span><div class="lab">ผู้จัดทำ · PREPARED BY</div>
     <div class="sig">${sig ? `<img src="${sig}" alt="">` : ""}</div>
@@ -144,7 +144,7 @@ export function namesWorkbook(ns) {
   const wb = XLSX.utils.book_new();
   for (const n of ns) {
     const aoa = [[`ใบแจ้งยอดร้านค้า ${n.doc_no}`], [`วันที่ทาน ${dTH(n.d)} · ${n.unit === "CN" ? "Chatree North" : n.label} · ${n.shop || ""}`], [],
-      ["ลำดับ", "หมวด", "รหัส", "ชื่อ", "อิ่ม", "หมายเหตุ"]];
+      ["ลำดับ", "หมวด", "รหัส", "ชื่อ", "มื้อ", "หมายเหตุ"]];
     let i = 0;
     for (const p of n.people || []) aoa.push([++i, SEC[p.c] || p.c, p.code, p.name, p.n, [p.box ? BOX[p.box] : "", p.from ? `ทานวันที่ ${dTH(p.from)}` : ""].filter(Boolean).join(" ")]);
     aoa.push([], ["", "รวม", "", "", n.meals], ["", `× ${n.price} บาท`, "", "", n.amount]);
@@ -204,9 +204,9 @@ export function signSheet({ d, box, boxLabel, shop, sheetNo }, { logo = "/assets
     ${rows(visit, "<td></td><td></td><td></td><td></td>")}</table>
   <h2>3. รับแทนเป็นกลุ่ม <span>ใส่จำนวนจริง · รายชื่อแนบหลังใบหรือส่งให้ HR</span></h2>
   <table><colgroup><col style="width:8mm"><col style="width:40mm"><col style="width:22mm"><col><col style="width:34mm"></colgroup>
-    <tr><th>ที่</th><th>กะ / แผนก</th><th>จำนวน (ที่)</th><th>ชื่อผู้รับ</th><th>ลงชื่อ</th></tr>
+    <tr><th>ที่</th><th>กะ / แผนก</th><th>จำนวน (มื้อ)</th><th>ชื่อผู้รับ</th><th>ลงชื่อ</th></tr>
     ${rows(group, "<td></td><td></td><td></td><td></td>")}</table>
-  <div class="ft"><div><b>รวมทั้งใบ ............ ที่</b><br>ผู้ดูแลร้านนับ</div><div><b>ลงชื่อผู้ดูแลร้าน</b><br>................................................</div>
+  <div class="ft"><div><b>รวมทั้งใบ ............ มื้อ</b><br>ผู้ดูแลร้านนับ</div><div><b>ลงชื่อผู้ดูแลร้าน</b><br>................................................</div>
     <div><b>HR รับใบ / คีย์แล้ว</b><br>วันที่ ............................</div></div>
 </section>`;
 }

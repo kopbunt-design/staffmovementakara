@@ -5,7 +5,7 @@ Akara Canteen — ค่าอาหารโรงอาหารคิดเ�
 หน่วย (unit) = ใบแจ้งยอด 1 ใบต่อวัน: A1 Canteen 1 (CTS1…) · A2 Canteen 2 (CTS2…) · CN Chatree North (กล่อง N1+N2 ใบเดียว)
 ตาราง Azure-only สร้างเองตอนใช้ครั้งแรก ไม่เปิด REST:
   cn_meals    คนที่ทานต่อวันต่อกล่อง: จากไฟล์สแกน (src scan) หรือ HR คีย์จากใบลงชื่อ (src sheet: ลืมบัตร/ผู้ติดต่อ/รับแทนกลุ่ม)
-              billed = อิ่มที่เรียกเก็บ · แตะซ้ำ (AKR/SUB scans > 1) = billed 1 + dup 'pending' จน HR ยืนยัน (one/two)
+              billed = มื้อที่เรียกเก็บ · แตะซ้ำ (AKR/SUB scans > 1) = billed 1 + dup 'pending' จน HR ยืนยัน (one/two)
               ยืนยัน two หลังออกใบวันนั้นแล้ว → extra 1 → ไปขึ้นบรรทัด "ยกยอดจากวันก่อน" ในใบถัดไปของหน่วยเดียวกัน (extra_notice)
   cn_days     ไฟล์สแกนที่นำเข้าต่อวันต่อกล่อง (Total ท้ายไฟล์ vs ผลรวมจริง)
   cn_notices  ใบแจ้งยอดที่ลงนามแล้ว (snapshot บรรทัด/รายชื่อ/ผู้ลงนาม/ยอดสะสมรอบ) · ยกเลิกแล้วออกใหม่ = เลขเดิม version + 1
@@ -416,7 +416,7 @@ def cn_upload_del_many(r, p_items):
 
 @fn
 def cn_entry_add(r, p_d, p_box, p_cat, p_code=None, p_name=None, p_count=1, p_note=None):
-    """คีย์จากใบลงชื่อ: forgot (ลืมบัตร — 1 อิ่ม · มีสแกนแล้วในวันนั้น = 0 อิ่ม) · visit (ผู้ติดต่อ) · group (รับแทนกลุ่ม)"""
+    """คีย์จากใบลงชื่อ: forgot (ลืมบัตร — 1 มื้อ · มีสแกนแล้วในวันนั้น = 0 มื้อ) · visit (ผู้ติดต่อ) · group (รับแทนกลุ่ม)"""
     _need(r, "page.canteen", "data.canteen.write")
     d, box, cat = _d(p_d), _s(p_box, 4), _s(p_cat, 10)
     if box not in BOXES or cat not in ("forgot", "visit", "group"):
@@ -459,7 +459,7 @@ def cn_entry_del(r, p_id):
 
 @fn
 def cn_billed_set(r, p_id, p_billed, p_reason):
-    """HR แก้จำนวนอิ่มของแถว (เช่น ลืมบัตรแต่สแกนด้วย → 0 · ทานสองกล่องในกะเดียว) — ต้องมีเหตุผล"""
+    """HR แก้จำนวนมื้อของแถว (เช่น ลืมบัตรแต่สแกนด้วย → 0 · ทานสองกล่องในกะเดียว) — ต้องมีเหตุผล"""
     _need(r, "page.canteen", "data.canteen.write")
     m = r.rows(None, "SELECT * FROM dbo.cn_meals WHERE id = ?", int(p_id))
     why = _s(p_reason, 300)
@@ -571,7 +571,7 @@ def cn_sign(r, p_d, p_units):
         nid = int(r.cur.fetchone()[0])
         if carry:
             r.cur.execute(f"UPDATE dbo.cn_meals SET extra_notice = ? WHERE id IN ({','.join('?' * len(carry))})", nid, *[m["id"] for m in carry])
-        _log(r, d, "sign", f"ลงนาม {doc}{f' (ครั้งที่ {ver})' if ver > 1 else ''} · {u['label']} {total} อิ่ม × {price:g} = {total * price:,.2f}")
+        _log(r, d, "sign", f"ลงนาม {doc}{f' (ครั้งที่ {ver})' if ver > 1 else ''} · {u['label']} {total} มื้อ × {price:g} = {total * price:,.2f}")
         out.append({"id": nid, "doc_no": doc, "unit": key, "meals": total})
     return out
 
@@ -606,7 +606,7 @@ def _mail_html(d, ns, link, who):
     return f"""<div style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.6;color:#101828">
 <p>เรียน ร้านค้าสหกรณ์</p><p>ฝ่ายบุคคลขอนำส่งใบแจ้งยอดร้านค้า วันที่ทานอาหาร <b>{_th_date(d)}</b> ดังนี้</p>
 <table style="border-collapse:collapse;font-size:13px"><tr style="background:#1d4a8f;color:#fff"><th style="padding:6px 10px;text-align:left">เลขที่</th>
-<th style="padding:6px 10px;text-align:left">จุดสแกน / ร้าน</th><th style="padding:6px 10px">อิ่ม</th><th style="padding:6px 10px">บาท</th></tr>{rows}</table>
+<th style="padding:6px 10px;text-align:left">จุดสแกน / ร้าน</th><th style="padding:6px 10px">มื้อ</th><th style="padding:6px 10px">บาท</th></tr>{rows}</table>
 <p style="margin-top:16px"><a href="{link}" style="display:inline-block;background:#1d4a8f;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">
 เปิดใบแจ้งยอด · พิมพ์ / PDF / Excel รายชื่อ</a></p>
 <p>ขอบคุณค่ะ<br>{who}</p>
@@ -893,7 +893,7 @@ def cn_order_hr(r, p_d, p_group, p_kind, p_rows):
     if not g:
         raise E("ไม่พบกลุ่ม")
     n = _put_orders(r, d, g[0]["id"], kind, p_rows, "hr", _me(r))
-    _log(r, d, "order", f"HR แก้ {KINDS[kind]} {g[0]['name']}: {n} ที่")
+    _log(r, d, "order", f"HR แก้ {KINDS[kind]} {g[0]['name']}: {n} มื้อ")
     return n
 
 
@@ -946,7 +946,7 @@ def cn_order_link_decide(r, p_token, p_d, p_kind, p_rows, p_by=None):
     _order_locked(r, d, kind)
     who = (_s(p_by, 100) or "ผู้ประสานงาน") + f" ({g['name']})"
     n = _put_orders(r, d, g["id"], kind, p_rows, "link", who)
-    _log(r, d, "order", f"{who} สั่ง{KINDS[kind]} {n} ที่", who)
+    _log(r, d, "order", f"{who} สั่ง{KINDS[kind]} {n} มื้อ", who)
     return {"n": n}
 
 
@@ -1080,7 +1080,7 @@ def cn_invoice_make(r, p_from, p_to, p_grp, p_shop_count=None, p_ref_no=None, p_
     today = _bkk_now().date().isoformat()
     head = {"inv_date": today, "vendor_id": v["id"], "vendor": {k: v.get(k) for k in ("code", "name", "address", "bank", "tax_id")},
             "category": b["category"], "ref_no": _s(p_ref_no, 100), "wht_rate": g["wht"], "status": "draft", "imported": False,
-            "note": f"สร้างจาก Akara Canteen · {g['title']} · รอบ {f} ถึง {t}" + (f" · ใบเรียกเก็บของร้าน {shop:,} อิ่ม" if shop is not None else "")
+            "note": f"สร้างจาก Akara Canteen · {g['title']} · รอบ {f} ถึง {t}" + (f" · ใบเรียกเก็บของร้าน {shop:,} มื้อ" if shop is not None else "")
                     + (f" · {note}" if note else ""),
             "created_by": r.uid, **tot}
     inv = r.ins("exp_invoices", head)

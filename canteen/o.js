@@ -37,7 +37,7 @@ function pick() { rows = orders(day, kind).map(o => ({ ...o })); dirty = false; 
 function draw() {
   const dd = D.days.find(x => x.d === day), open = dd.open[kind], t = today();
   $("#wrap").innerHTML = `<div class="card"><div class="days">${D.days.map(x => { const n = D.group.kinds.reduce((s, k) => s + cnt(x.d, k), 0);
-      return `<button class="day ${x.d === day ? "on" : ""} ${x.d === t ? "today" : ""}" data-d="${x.d}"><small>${x.d === t ? "วันนี้" : WD[new Date(x.d + "T00:00:00Z").getUTCDay()]}</small><b>${+x.d.slice(8, 10)}</b><small>${TH_M[+x.d.slice(5, 7) - 1]}</small><i>${n ? n + " ที่" : ""}</i></button>`; }).join("")}</div>
+      return `<button class="day ${x.d === day ? "on" : ""} ${x.d === t ? "today" : ""}" data-d="${x.d}"><small>${x.d === t ? "วันนี้" : WD[new Date(x.d + "T00:00:00Z").getUTCDay()]}</small><b>${+x.d.slice(8, 10)}</b><small>${TH_M[+x.d.slice(5, 7) - 1]}</small><i>${n ? n + " มื้อ" : ""}</i></button>`; }).join("")}</div>
     ${dd.menu_aft || dd.menu_night || dd.note ? `<div class="menu">${dd.menu_aft ? `<div><span>เมนูกะบ่าย</span><b>${esc(dd.menu_aft)}</b></div>` : ""}${dd.menu_night ? `<div><span>ชุดกะดึก</span><b>${esc(dd.menu_night)}</b></div>` : ""}${dd.note ? `<div><span>หมายเหตุ</span>${esc(dd.note)}</div>` : ""}</div>`
       : `<div class="menu"><div><span>เมนู</span><span style="width:auto;font-weight:400">ร้านยังไม่แจ้งเมนูของวันนี้</span></div></div>`}</div>
   <div class="card"><div class="tabs">${D.group.kinds.map(k => `<button class="tab ${k === kind ? "on" : ""}" data-k="${k}">${ICON[k]} ${esc(D.kinds[k])} <em>${D.prices[k]}฿${cnt(day, k) ? ` · ${cnt(day, k)}` : ""}</em></button>`).join("")}</div>
@@ -45,7 +45,7 @@ function draw() {
     ${open ? `<div class="add"><input id="q" list="ppl" placeholder="พิมพ์ชื่อหรือรหัสพนักงาน แล้วกด เพิ่ม" autocomplete="off"><button class="btn btn-p" id="addB">เพิ่ม</button></div>
       <datalist id="ppl">${D.people.map(p => `<option value="${esc(p.name)} (${esc(p.code)})">`).join("")}</datalist>` : ""}
     <div class="list">${rows.map((r, i) => `<div class="row"><span class="n">${i + 1}</span><div class="nm"><b>${esc(r.name)}</b>${r.emp_code ? `<small>${esc(r.emp_code)}</small>` : ""}</div>
-      ${open ? `<input class="q" type="number" min="1" max="200" value="${r.qty}" data-q="${i}" title="จำนวนที่"><button class="x" data-x="${i}" aria-label="ลบ">×</button>` : `<b>${r.qty}</b>`}</div>`).join("")
+      ${open ? `<input class="q" type="number" min="1" max="200" value="${r.qty}" data-q="${i}" title="จำนวนมื้อ"><button class="x" data-x="${i}" aria-label="ลบ">×</button>` : `<b>${r.qty}</b>`}</div>`).join("")
       || `<div class="empty">ยังไม่มีรายชื่อ${open ? " — พิมพ์ชื่อด้านบน" : ""}</div>`}</div>
     ${open ? `<div class="tools"><button class="btn" id="copyY">ใช้รายชื่อจากวันก่อนหน้า</button><button class="btn" id="guest">+ แขก / ผู้รับเหมา (ใส่จำนวน)</button>${rows.length ? `<button class="btn" id="clr">ล้างทั้งหมด</button>` : ""}</div>` : ""}</div>`;
   const tot = rows.reduce((t, r) => t + (+r.qty || 0), 0);
@@ -78,7 +78,7 @@ function draw() {
   };
   $("#guest").onclick = () => {
     const n = prompt("ชื่อ / บริษัท (เช่น ผู้รับเหมา ABC)"); if (!n || !n.trim()) return;
-    const k = +prompt("จำนวนที่", "1"); if (!(k > 0)) return;
+    const k = +prompt("จำนวน (มื้อ)", "1"); if (!(k > 0)) return;
     rows.push({ emp_code: null, name: n.trim(), qty: Math.min(200, Math.round(k)) }); dirty = true; draw();
   };
   $("#clr") && ($("#clr").onclick = () => { if (confirm("ล้างรายชื่อทั้งหมดของวันนี้?")) { rows = []; dirty = true; draw(); } });
@@ -90,7 +90,7 @@ $("#save").onclick = async () => {
   $("#save").disabled = true;
   const { data, error } = await supabase.rpc("cn_order_link_decide", { p_token: token, p_d: day, p_kind: kind, p_rows: rows, p_by: by });
   if (error) { toast(error.message, true); $("#save").disabled = false; return; }
-  toast(`บันทึกแล้ว ${data.n} ที่`);
+  toast(`บันทึกแล้ว ${data.n} มื้อ`);
   await load(true);
 };
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });

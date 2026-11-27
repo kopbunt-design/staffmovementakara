@@ -327,6 +327,7 @@ the shop bills per period (1–15 / 16–end) from those. Must NOT import `js/ap
   needs a reason (the HRIN follows the daily notices). The page then attaches an Excel summary (per day + names) to the invoice
   (`expense-files` + `exp_files`) — the user wanted the afternoon/night summaries attached too. `cn_bills` links period+group → invoice;
   while that invoice is not cancelled/deleted, notices of that unit can't be voided, orders/cook of those days can't change.
+- Unit word is **"มื้อ"** everywhere (user 2026-11-27, replaced "อิ่ม"; night sets may say "ชุด").
 - OT meals: ordered on the same group link (user: "เอามาจาก workflow ของระบบอื่น" read as reuse the afternoon-order workflow).
 
 ## Personnel Action Form (`js/paf.js`, page `paf`, under งานเอกสาร HR)

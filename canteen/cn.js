@@ -131,7 +131,7 @@ async function dayPage() {
     <div class="two mt">
       <div class="card"><div class="card-h"><div><div class="card-t">${I.pen}ใบลงชื่อ</div><div class="card-s">ลืมบัตร: พิมพ์เลขที่เขียนมา (4 ตัวท้ายก็ได้) แล้ว Enter · ผู้ติดต่อ/รับแทนกลุ่ม: ชื่อ + จำนวน</div></div></div>
         <div class="card-b">${W() ? entryForm() : ""}
-          <div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>กล่อง</th><th>ประเภท</th><th>รหัส / รายการ</th><th class="r">อิ่ม</th><th></th></tr></thead><tbody>
+          <div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>กล่อง</th><th>ประเภท</th><th>รหัส / รายการ</th><th class="r">มื้อ</th><th></th></tr></thead><tbody>
           ${sheet.map(m => `<tr class="${m.billed ? "" : "zero"}"><td>${esc(boxLabel(m.box))}</td><td>${tag(m.cat)}</td><td><b>${esc(m.code || "")}</b> ${esc(regName(m))}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</td>
             <td class="r">${m.billed}</td><td class="r">${W() && !unitState(unitOf(m.box)).signed ? `<button class="btn btn-sm btn-ghost" data-del="${m.id}">${I.x}</button>` : ""}</td></tr>`).join("")
             || `<tr><td colspan="5" class="empty">ยังไม่มีรายการจากใบลงชื่อ</td></tr>`}</tbody></table></div></div></div>
@@ -146,16 +146,16 @@ async function dayPage() {
 function unitCard(x) {
   const { u, lines, signed, days } = x, cmap = Object.fromEntries(C.CATS.map(c => [c.k, c.color]));
   const amount = lines.meals * u.price;
-  return `<div class="unit ${signed ? "signed" : ""}"><div class="uh"><div><b>${esc(u.label)}</b><span>${esc(u.shop || "ยังไม่ได้ตั้งชื่อร้าน")} · ${int(u.price)} บาท/อิ่ม</span></div>
+  return `<div class="unit ${signed ? "signed" : ""}"><div class="uh"><div><b>${esc(u.label)}</b><span>${esc(u.shop || "ยังไม่ได้ตั้งชื่อร้าน")} · ${int(u.price)} บาท/มื้อ</span></div>
     ${signed ? `<span class="chip chip-blue">✓ ${esc(signed.doc_no)}</span>` : lines.meals ? `<span class="chip chip-gold">รอลงนาม</span>` : `<span class="chip chip-gray">ยังไม่มีข้อมูล</span>`}</div>
-    <div class="big"><b>${int(signed ? signed.meals : lines.meals)}</b><small>อิ่ม</small><em>฿${money(signed ? signed.amount : amount)}</em></div>
+    <div class="big"><b>${int(signed ? signed.meals : lines.meals)}</b><small>มื้อ</small><em>฿${money(signed ? signed.amount : amount)}</em></div>
     <div class="stack">${lines.lines.filter(l => l.n).map(l => `<i style="flex:${l.n};background:${cmap[l.k]}"></i>`).join("")}</div>
     <div class="ul">${lines.lines.filter(l => l.n).map(l => `<div><span><i style="background:${cmap[l.k]}"></i>${esc(l.label)}</span><b>${int(l.n)}</b></div>`).join("") || `<div class="muted">—</div>`}</div>
     <div class="files">${u.boxes.map(b => { const f = days.find(y => y.box === b);
       return f ? `<div class="fl"><span>${esc(boxLabel(b))}: ${f.people} คน · แตะ ${f.scans} ครั้ง${f.file_total != null && f.file_total !== f.scans ? ` <span class="miss">(Total ท้ายไฟล์ ${f.file_total})</span>` : ""}</span>
           ${W() && !signed ? `<button class="fdel" data-fdel="${b}" title="ลบไฟล์นี้ (อัปผิด)">${I.x}</button>` : ""}</div>`
                : `<div class="miss">${esc(boxLabel(b))}: ยังไม่มีไฟล์สแกน</div>`; }).join("")}</div>
-    ${signed && lines.meals !== signed.meals ? `<div class="notice gold" style="margin:10px 18px 0">${I.warn}<div>รายการเปลี่ยนหลังลงนาม (ตอนนี้ ${lines.meals} อิ่ม) — ยกเลิกใบแล้วลงนามใหม่</div></div>` : ""}
+    ${signed && lines.meals !== signed.meals ? `<div class="notice gold" style="margin:10px 18px 0">${I.warn}<div>รายการเปลี่ยนหลังลงนาม (ตอนนี้ ${lines.meals} มื้อ) — ยกเลิกใบแล้วลงนามใหม่</div></div>` : ""}
     <div class="uf">${signed ? `<button class="btn btn-sm" data-print="${signed.id}">${I.print}พิมพ์ / PDF</button>${W() ? `<button class="btn btn-sm btn-ghost" data-void="${signed.id}" data-doc="${esc(signed.doc_no)}">ยกเลิกใบ</button>` : ""}`
       : lines.meals ? `<button class="btn btn-sm" data-pv="${u.key}">${I.eye}ดูตัวอย่างใบ</button>` : ""}
       ${x.voided.length ? `<span class="small muted">ยกเลิกแล้ว ${x.voided.length} ครั้ง</span>` : ""}</div></div>`;
@@ -175,8 +175,8 @@ function checksHTML(c) {
   const sec = (title, n, body, open = false, chip = "chip-amb") => n ? `<details ${open ? "open" : ""}><summary>${title}<span class="chip ${chip}">${n}</span></summary><div><div class="tbl-wrap"><table class="tbl"><tbody>${body}</tbody></table></div></div></details>` : "";
   const out = [
     sec("แตะบัตรซ้ำ — รอ HR ยืนยัน (นับ 1 ไว้ก่อน)", c.dup.length, c.dup.map(m => row(m, `แตะ ${m.scans} ครั้ง ${W() ? `<button class="btn btn-sm" data-dup="${m.id}" data-dec="one">นับ 1</button> <button class="btn btn-sm" data-dup="${m.id}" data-dec="two">นับ 2</button>` : ""}`)).join(""), true),
-    sec("ลงชื่อลืมบัตร แต่มีสแกนบัตรด้วย", c.forgotScanned.length, c.forgotScanned.flatMap(g => g.rows.map(m => row(m, `${tag(m.cat)} ${m.billed} อิ่ม ${W() && m.billed ? `<button class="btn btn-sm" data-zero="${m.id}">ไม่นับแถวนี้</button>` : ""}`))).join(""), true),
-    sec("ทานทั้ง 2 กล่องในวันเดียวกัน", c.twoBox.length, c.twoBox.flatMap(g => g.rows.map(m => row(m, `${tag(m.cat)} ${m.billed} อิ่ม ${W() && m.billed ? `<button class="btn btn-sm" data-zero="${m.id}">ไม่นับแถวนี้</button>` : ""}`))).join(""), true),
+    sec("ลงชื่อลืมบัตร แต่มีสแกนบัตรด้วย", c.forgotScanned.length, c.forgotScanned.flatMap(g => g.rows.map(m => row(m, `${tag(m.cat)} ${m.billed} มื้อ ${W() && m.billed ? `<button class="btn btn-sm" data-zero="${m.id}">ไม่นับแถวนี้</button>` : ""}`))).join(""), true),
+    sec("ทานทั้ง 2 กล่องในวันเดียวกัน", c.twoBox.length, c.twoBox.flatMap(g => g.rows.map(m => row(m, `${tag(m.cat)} ${m.billed} มื้อ ${W() && m.billed ? `<button class="btn btn-sm" data-zero="${m.id}">ไม่นับแถวนี้</button>` : ""}`))).join(""), true),
     sec("คนที่ออกแล้วยังทาน", c.left.length, c.left.map(m => row(m, tag(m.cat))).join("")),
     sec("ไม่อยู่ในทะเบียนพนักงาน/SUB (ยังนับหัวให้) — อัปเดตทะเบียน SUB", c.notReg.length, c.notReg.map(m => row(m, `บนบัตร: ${esc(m.name || "")}`)).join(""), false, "chip-gray"),
     sec("รหัสบนบัตรไม่ตรงทะเบียน HR — จับคู่ด้วยชื่อแล้ว (แจ้ง IT แก้บัตร)", c.mapped.length, c.mapped.map(m => row(m, `บัตร ${esc(m.code)}`)).join(""), false, "chip-gray"),
@@ -187,7 +187,7 @@ function checksHTML(c) {
 function allTable() {
   const q = S.q.trim().toLowerCase();
   const rows = S.D.meals.filter(m => !q || `${m.code} ${m.reg_code} ${m.name} ${regName(m)}`.toLowerCase().includes(q));
-  $("#allT").innerHTML = `<table class="tbl"><thead><tr><th>กล่อง</th><th>ประเภท</th><th>รหัส</th><th>ชื่อ</th><th class="r">แตะ</th><th class="r">อิ่ม</th><th>หมายเหตุ</th></tr></thead><tbody>
+  $("#allT").innerHTML = `<table class="tbl"><thead><tr><th>กล่อง</th><th>ประเภท</th><th>รหัส</th><th>ชื่อ</th><th class="r">แตะ</th><th class="r">มื้อ</th><th>หมายเหตุ</th></tr></thead><tbody>
     ${rows.slice(0, 300).map(m => `<tr class="${m.billed ? "" : "zero"}"><td>${esc(boxLabel(m.box))}</td><td>${tag(m.cat)}</td><td>${esc(m.reg_code || m.code || "—")}${m.reg_code && m.code && m.reg_code !== m.code ? `<div class="small muted">บัตร ${esc(m.code)}</div>` : ""}</td>
       <td>${esc(regName(m))}</td><td class="r">${m.scans}</td><td class="r"><b>${m.billed}</b>${m.dup === "pending" ? ` <span class="chip chip-amb">รอยืนยัน</span>` : m.dup === "two" ? ` <span class="chip chip-blue">2 มื้อ</span>` : ""}</td>
       <td class="small muted">${esc(m.note || m.dup_reason || "")}</td></tr>`).join("") || `<tr><td colspan="7" class="empty">ยังไม่มีข้อมูลของวันนี้</td></tr>`}
@@ -237,7 +237,7 @@ function showCands() {
   if (!S.pick && list.length === 1) S.pick = list[0].code;
   box.innerHTML = !v.trim() ? "" : list.length ? list.map(p => `<button class="cand ${S.pick === p.code ? "on" : ""} ${p.left ? "left" : ""}" data-c="${esc(p.code)}"><b>${esc(p.code)}</b>${esc(p.name)}${p.dept ? ` · ${esc(p.dept)}` : ""}${p.left ? " · ออกแล้ว" : ""}</button>`).join("")
     + (list.length > 1 && !S.pick ? `<span class="small muted" style="align-self:center">มีหลายคน — กดเลือกคนที่ตรงกับชื่อในใบ</span>` : "")
-    : `<span class="small" style="color:var(--amber-600)">ไม่พบในทะเบียน — Enter เพื่อบันทึกตามที่เขียน (นับ 1 อิ่ม)</span>`;
+    : `<span class="small" style="color:var(--amber-600)">ไม่พบในทะเบียน — Enter เพื่อบันทึกตามที่เขียน (นับ 1 มื้อ)</span>`;
   box.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { S.pick = b.dataset.c; showCands(); $("#eCode").focus(); });
 }
 async function addEntry() {
@@ -361,9 +361,9 @@ function signDay(st) {
   const ready = st.filter(x => !x.signed && x.lines.meals > 0), pend = S.D.meals.filter(m => m.dup === "pending").length;
   const tot = ready.reduce((t, x) => t + x.lines.meals * x.u.price, 0);
   modal(`ลงนามใบแจ้งยอด ${dTH(S.d)}`, `<div class="tbl-wrap"><table class="tbl"><tbody>${ready.map(x => `<tr><td><label><input type="checkbox" data-u="${x.u.key}" checked> <b>${esc(x.u.label)}</b></label>
-      <div class="small muted">${esc(x.u.shop || "")}</div></td><td class="r">${int(x.lines.meals)} อิ่ม</td><td class="r"><b>฿${money(x.lines.meals * x.u.price)}</b></td></tr>`).join("")}
+      <div class="small muted">${esc(x.u.shop || "")}</div></td><td class="r">${int(x.lines.meals)} มื้อ</td><td class="r"><b>฿${money(x.lines.meals * x.u.price)}</b></td></tr>`).join("")}
       <tr><td><b>รวม</b></td><td></td><td class="r"><b>฿${money(tot)}</b></td></tr></tbody></table></div>
-    ${pend ? `<div class="notice gold">${I.warn}<div>ยังมีแตะซ้ำรอยืนยัน ${pend} คน — ในใบนับคนละ 1 อิ่ม ถ้ายืนยันทีหลังว่าทาน 2 มื้อ จะยกไปใบถัดไป</div></div>` : ""}
+    ${pend ? `<div class="notice gold">${I.warn}<div>ยังมีแตะซ้ำรอยืนยัน ${pend} คน — ในใบนับคนละ 1 มื้อ ถ้ายืนยันทีหลังว่าทาน 2 มื้อ จะยกไปใบถัดไป</div></div>` : ""}
     ${st.some(x => x.u.boxes.some(b => !x.days.find(y => y.box === b)) && ready.includes(x)) ? `<div class="notice gold">${I.warn}<div>บางจุดยังไม่มีไฟล์สแกนครบทุกกล่อง</div></div>` : ""}
     <div class="small muted">ลงนามอิเล็กทรอนิกส์ด้วยลายเซ็นของ <b>${esc(S.B.me.name)}</b> · ระบบออกเลขต่อจากเลขล่าสุดของแต่ละชุด</div>`, "ลงนาม", async m => {
     const units = [...m.querySelectorAll("[data-u]:checked")].map(i => i.dataset.u);
@@ -394,7 +394,7 @@ function downloadEml(to, cc, subject, html, name) {
 async function sendDay() {
   const ns = S.D.notices.filter(n => n.status === "signed");
   modal(`ส่งใบแจ้งยอด ${dTH(S.d)} ให้สหกรณ์`, `<div class="small">ถึง: <b>${esc(S.B.mail.to || "ยังไม่ได้ตั้ง")}</b>${S.B.mail.cc ? ` · สำเนา ${esc(S.B.mail.cc)}` : ""}</div>
-    <div class="tbl-wrap"><table class="tbl"><tbody>${ns.map(n => `<tr><td><b>${esc(n.doc_no)}</b></td><td>${esc(n.label)}</td><td class="r">${int(n.meals)} อิ่ม</td><td class="r">฿${money(n.amount)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="tbl-wrap"><table class="tbl"><tbody>${ns.map(n => `<tr><td><b>${esc(n.doc_no)}</b></td><td>${esc(n.label)}</td><td class="r">${int(n.meals)} มื้อ</td><td class="r">฿${money(n.amount)}</td></tr>`).join("")}</tbody></table></div>
     <div class="small muted">เมลมีตารางสรุป + ลิงก์ให้สหกรณ์เปิดใบ พิมพ์/บันทึก PDF และโหลด Excel รายชื่อ (ไม่ต้อง login, 120 วัน)${S.B.mail_mode !== "auto" ? " · ระบบเมลอยู่โหมด Outlook — จะได้ไฟล์ .eml ไปกดส่งเอง" : ""}</div>`, "ส่ง", async () => {
     const r = await run(() => rpc("cn_send", { p_d: S.d }));
     if (r.result?.sent) toast(`ส่งถึง ${r.result.to} แล้ว`, "success");
@@ -428,7 +428,7 @@ async function dupsPage() {
       ${rep.map(p => `<tr><td>${esc(p.k)}</td><td>${esc(p.name)}</td><td class="r">${p.n >= 3 ? `<span class="chip chip-red">${p.n}</span>` : p.n}</td><td class="r">${p.two || ""}</td>
         <td class="small muted">${p.days.map(d => +d.slice(8, 10)).join(", ")}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">ไม่มี</td></tr>`}</tbody></table></div></div>`);
   document.querySelectorAll("[data-dup]").forEach(b => b.onclick = () => decideDup([+b.dataset.dup], b.dataset.dec, dupsPage));
-  $("#allOne") && ($("#allOne").onclick = () => modal("นับ 1 ทั้งหมด", `ยืนยันว่า ${r.pending.length} รายการเป็นการแตะซ้ำ (นับคนละ 1 อิ่ม)`, "ยืนยัน", async () => {
+  $("#allOne") && ($("#allOne").onclick = () => modal("นับ 1 ทั้งหมด", `ยืนยันว่า ${r.pending.length} รายการเป็นการแตะซ้ำ (นับคนละ 1 มื้อ)`, "ยืนยัน", async () => {
     await run(() => rpc("cn_dup_decide", { p_ids: r.pending.map(m => m.id), p_dec: "one" }), "บันทึกแล้ว"); dupsPage(); }));
   $("#ym").onchange = e => { S.ym = e.target.value; dupsPage(); };
 }
@@ -457,9 +457,9 @@ async function ordersPage() {
   render(`${head(`สั่งอาหาร · ${wd(S.od)}`, dTH(S.od), "รายชื่อที่แต่ละกลุ่มสั่งผ่านลิงก์ขึ้นที่นี่ทันที · HR แก้ได้ทุกเมื่อ (แม้เลยเวลาปิดรับ) จนกว่าจะออก HRIN ของรอบนั้น",
       `<div class="dnav"><button class="btn btn-sm" id="oPrev">${I.l}</button><input class="inp" type="date" id="oPick" value="${S.od}"><button class="btn btn-sm" id="oNext">${I.r}</button></div>
        <button class="btn" id="roster">ตารางแม่ครัวเวร</button>`)}
-    <div class="dstrip">${span.map(d => `<a class="dchip ${d === S.od ? "on" : ""} ${d === t ? "today" : ""}" href="#/orders/${d}"><small>${d === t ? "วันนี้" : wd(d).slice(0, 2)}</small><b>${+d.slice(8, 10)}</b><i>${dayN(d) ? dayN(d) + " ที่" : "—"}</i></a>`).join("")}</div>
+    <div class="dstrip">${span.map(d => `<a class="dchip ${d === S.od ? "on" : ""} ${d === t ? "today" : ""}" href="#/orders/${d}"><small>${d === t ? "วันนี้" : wd(d).slice(0, 2)}</small><b>${+d.slice(8, 10)}</b><i>${dayN(d) ? dayN(d) + " มื้อ" : "—"}</i></a>`).join("")}</div>
     <div class="kpis">${KS.map(k => `<div class="kpi"><div><div class="kpi-l">${KTH[k]} · ${P[k]} บาท · ปิดรับ ${esc(S.B.billing.cutoff[k])} น.</div>
-      <div class="kpi-v">${tot(k)} <small style="font-size:14px">ที่</small></div><div class="kpi-d">฿${money(tot(k) * P[k])} · ${O.passed[k] ? "ปิดรับแล้ว (HR ยังแก้ได้)" : "ยังเปิดรับ"}</div></div></div>`).join("")}</div>
+      <div class="kpi-v">${tot(k)} <small style="font-size:14px">มื้อ</small></div><div class="kpi-d">฿${money(tot(k) * P[k])} · ${O.passed[k] ? "ปิดรับแล้ว (HR ยังแก้ได้)" : "ยังเปิดรับ"}</div></div></div>`).join("")}</div>
     <div class="card mt"><div class="card-h"><div><div class="card-t">รายชื่อที่สั่ง · ${dTH(S.od)}</div><div class="card-s">กด “แก้” เพื่อเพิ่ม/ลบ/แก้จำนวน · ยังไม่มีรายการ = กลุ่มนั้นยังไม่สั่ง</div></div>
       <div class="fx-actions"><button class="btn btn-sm" id="cpCook">${I.copy}ข้อความส่งแม่ครัว</button><button class="btn btn-sm" id="cpNight">${I.copy}ข้อความส่งสหกรณ์ (กะดึก)</button>
         <button class="btn btn-sm" id="xDay" ${O.orders.length ? "" : "disabled"}>${I.dl}Excel รายชื่อ</button></div></div>
@@ -486,15 +486,15 @@ async function ordersPage() {
       note: $("#sNote").value, closed: [...document.querySelectorAll("[data-cl]:checked")].map(x => x.dataset.cl) } }), "บันทึกแล้ว"); ordersPage(); });
   document.querySelectorAll("[data-ed]").forEach(a => a.onclick = () => editOrders(S.G.find(g => g.id === +a.dataset.ed), a.dataset.k, O));
   const lines = (k, withNames) => gs.map(g => { const os = of(g.id, k); const n = sum(g.id, k);
-    return n ? `- ${g.name} ${n} ที่` + (withNames ? `\n${os.map(o => `   • ${o.name}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n")}` : "") : ""; }).filter(Boolean).join("\n");
+    return n ? `- ${g.name} ${n} มื้อ` + (withNames ? `\n${os.map(o => `   • ${o.name}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n")}` : "") : ""; }).filter(Boolean).join("\n");
   const copy = s => navigator.clipboard.writeText(s).then(() => toast("คัดลอกแล้ว — วางใน LINE ได้เลย", "success"));
-  $("#cpCook").onclick = () => copy(`📋 สั่งอาหาร ${dTH(S.od)}${sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}\n${sv.menu_aft ? `เมนู: ${sv.menu_aft}\n` : ""}\n🍛 กะบ่าย รวม ${tot("aft")} ที่\n${lines("aft")}\n\n🌙 OT รวม ${tot("ot")} ที่\n${lines("ot", true)}`);
+  $("#cpCook").onclick = () => copy(`📋 สั่งอาหาร ${dTH(S.od)}${sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}\n${sv.menu_aft ? `เมนู: ${sv.menu_aft}\n` : ""}\n🍛 กะบ่าย รวม ${tot("aft")} มื้อ\n${lines("aft")}\n\n🌙 OT รวม ${tot("ot")} มื้อ\n${lines("ot", true)}`);
   $("#cpNight").onclick = () => copy(`📋 ชุดอาหารแห้งกะดึก ${dTH(S.od)}${sv.menu_night ? ` (${sv.menu_night})` : ""}\nรวม ${tot("night")} ชุด\n${lines("night")}`);
   $("#xDay").onclick = () => {
     const wb = XLSX.utils.book_new();
     for (const k of KS) {
       const os = O.orders.filter(o => o.kind === k); if (!os.length) continue;
-      const aoa = [[`${KTH[k]} · ${dTH(S.od)}${k !== "night" && sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}`], [], ["ลำดับ", "กลุ่ม", "รหัส", "ชื่อ", "ที่", "ผู้สั่ง"]];
+      const aoa = [[`${KTH[k]} · ${dTH(S.od)}${k !== "night" && sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}`], [], ["ลำดับ", "กลุ่ม", "รหัส", "ชื่อ", "มื้อ", "ผู้สั่ง"]];
       let i = 0; for (const g of gs) for (const o of of(g.id, k)) aoa.push([++i, g.name, o.emp_code || "", o.name, o.qty, o.by_name || ""]);
       aoa.push([], ["", "รวม", "", "", tot(k)]);
       const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [{ wch: 6 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 6 }, { wch: 26 }];
@@ -526,7 +526,7 @@ function editOrders(g, k, O) {
       <td style="width:90px"><input class="inp" type="number" min="1" max="200" value="${r.qty}" data-q="${i}" style="height:32px"></td>
       ${others.length ? `<td style="width:150px"><select class="inp" data-mv="${i}" style="height:32px"><option value="${k}">${KTH[k]}</option>${others.map(x => `<option value="${x}" ${r.kind === x ? "selected" : ""}>ย้ายไป ${KTH[x]}</option>`).join("")}</select></td>` : ""}
       <td style="width:40px"><button class="btn btn-sm btn-ghost" data-x="${i}">${I.x}</button></td></tr>`).join("") || `<tr><td class="empty">ยังไม่มีรายชื่อ</td></tr>`;
-    m.querySelector("#eSum").textContent = `รวม ${rows.filter(r => r.kind === k).reduce((s, r) => s + r.qty, 0)} ที่${rows.some(r => r.kind !== k) ? ` · ย้ายไปประเภทอื่น ${rows.filter(r => r.kind !== k).length} รายการ` : ""}`;
+    m.querySelector("#eSum").textContent = `รวม ${rows.filter(r => r.kind === k).reduce((s, r) => s + r.qty, 0)} มื้อ${rows.some(r => r.kind !== k) ? ` · ย้ายไปประเภทอื่น ${rows.filter(r => r.kind !== k).length} รายการ` : ""}`;
     m.querySelectorAll("[data-q]").forEach(x => x.onchange = () => { rows[+x.dataset.q].qty = Math.max(1, Math.min(200, +x.value || 1)); draw(); });
     m.querySelectorAll("[data-mv]").forEach(x => x.onchange = () => { rows[+x.dataset.mv].kind = x.value; draw(); });
     m.querySelectorAll("[data-x]").forEach(x => x.onclick = () => { rows.splice(+x.dataset.x, 1); draw(); });
@@ -641,11 +641,11 @@ function billCard(g) {
   const v = S.B.vendors.find(x => x.code === g.vendor_code);
   return `<div class="unit ${live ? "signed" : ""}"><div class="uh"><div><b>${esc(g.title)}</b><span>${esc(v ? `${v.code} · ${v.name}` : "ยังไม่ระบุผู้ขาย")} · VAT ${g.vat}% · หัก ณ ที่จ่าย ${g.wht}%</span></div>
     ${live ? `<a class="chip chip-blue" href="/expense/#/invoice/${b.invoice_id}" target="_blank">${esc(b.inv_no || "ร่าง HRIN")}</a>` : b ? `<span class="chip chip-gray">ใบเดิม${b.status === "deleted" ? "ถูกลบ" : "ยกเลิก"}</span>` : `<span class="chip chip-gold">รอวางบิล</span>`}</div>
-    <div class="big"><b>${int(g.meals)}</b><small>${isUnit ? "อิ่ม" : "ที่"} · ${g.days} วัน</small><em>฿${money(g.amount)}</em></div>
+    <div class="big"><b>${int(g.meals)}</b><small>มื้อ · ${g.days} วัน</small><em>฿${money(g.amount)}</em></div>
     <div class="ul" style="margin-top:8px">${g.lines.slice(0, 6).map(l => `<div class="small"><span>${esc(l.detail)}</span></div>`).join("")}${g.lines.length > 6 ? `<div class="small muted">… อีก ${g.lines.length - 6} บรรทัด</div>` : ""}</div>
     ${live ? `<div class="files"><div>สร้างโดย ${esc(b.by_name || "")} · ${tsTH(b.at)}${b.shop_count != null ? ` · ใบเรียกเก็บของร้าน ${int(b.shop_count)}` : ""}</div></div>
       <div class="uf"><a class="btn btn-sm" href="/expense/#/invoice/${b.invoice_id}" target="_blank">เปิดใน Invoice Hub</a>${W() ? `<button class="btn btn-sm btn-ghost" data-att="${g.grp}">แนบไฟล์สรุปอีกครั้ง</button>` : ""}</div>`
-    : W() && S.B.can_invoice ? `<div class="uf" style="display:grid;gap:8px">${isUnit ? `<label class="fld" style="margin:0"><span>ยอดตามใบเรียกเก็บเงินของร้าน (อิ่ม)</span><input class="inp" data-sc="${g.grp}" type="number" placeholder="${g.meals}"></label>` : ""}
+    : W() && S.B.can_invoice ? `<div class="uf" style="display:grid;gap:8px">${isUnit ? `<label class="fld" style="margin:0"><span>ยอดตามใบเรียกเก็บเงินของร้าน (มื้อ)</span><input class="inp" data-sc="${g.grp}" type="number" placeholder="${g.meals}"></label>` : ""}
         <label class="fld" style="margin:0"><span>เลขที่ใบเรียกเก็บ/ใบเสร็จของร้าน</span><input class="inp" data-rf="${g.grp}" placeholder="เช่น 2569/60"></label>
         <button class="btn btn-p" data-mk="${g.grp}" ${g.vendor_code ? "" : "disabled"}>${I.send}สร้างร่าง HRIN + แนบสรุป</button></div>`
     : `<div class="uf small muted">${S.B.can_invoice ? "" : "ต้องมีสิทธิ์ออกใบแจ้งหนี้ HR (Invoice Hub) จึงสร้าง HRIN ได้"}</div>`}</div>`;
@@ -655,7 +655,7 @@ async function makeInvoice(g, from, to) {
   const diff = sc && +sc !== g.meals;
   modal(`สร้างร่าง HRIN · ${esc(g.title)}`, `<div class="tbl-wrap"><table class="tbl"><tbody>${g.lines.map(l => `<tr><td class="small">${esc(l.detail)}</td><td class="r">฿${money(l.qty * l.price)}</td></tr>`).join("")}
       <tr><td><b>รวมก่อน VAT</b></td><td class="r"><b>฿${money(g.amount)}</b></td></tr></tbody></table></div>
-    ${diff ? `<div class="notice gold">${I.warn}<div>ใบเรียกเก็บของร้าน <b>${int(sc)}</b> อิ่ม แต่ใบแจ้งยอดรายวันรวม <b>${int(g.meals)}</b> อิ่ม (ต่าง ${int(+sc - g.meals)}) — HRIN จะออกตามใบแจ้งยอดรายวัน ใส่เหตุผล/สิ่งที่ตกลงกับร้าน</div></div>
+    ${diff ? `<div class="notice gold">${I.warn}<div>ใบเรียกเก็บของร้าน <b>${int(sc)}</b> มื้อ แต่ใบแจ้งยอดรายวันรวม <b>${int(g.meals)}</b> มื้อ (ต่าง ${int(+sc - g.meals)}) — HRIN จะออกตามใบแจ้งยอดรายวัน ใส่เหตุผล/สิ่งที่ตกลงกับร้าน</div></div>
       <label class="fld"><span>เหตุผล (ต้องมี)</span><input class="inp" id="mkWhy"></label>` : `<label class="fld"><span>หมายเหตุ (ถ้ามี)</span><input class="inp" id="mkWhy"></label>`}
     <div class="small muted">ระบบสร้างร่างในชื่อคุณ · แนบ Excel สรุปรายวัน + รายชื่อ · จากนั้นเปิดใน Invoice Hub เพื่อตรวจและกด “ลงนามและส่งตรวจ” ตามปกติ</div>`, "สร้างร่าง", async m => {
     const why = m.querySelector("#mkWhy").value.trim();
@@ -673,9 +673,9 @@ async function attachSummary(g, from, to, invoiceId) {
   if (det.notices) {
     const ks = ["akr", "sub", "forgot", "visit", "group", "carry"], lab = Object.fromEntries(C.CATS.map(c => [c.k, c.label]));
     const rows = det.notices.map(n => [dTH(n.d), n.doc_no, ...ks.map(k => n.lines.find(l => l.k === k)?.n || 0), n.meals, n.amount]);
-    sheet("สรุปรายวัน", [...title, ["วันที่ทาน", "เลขที่ใบแจ้งยอด", ...ks.map(k => lab[k]), "รวมอิ่ม", "จำนวนเงิน"], ...rows,
+    sheet("สรุปรายวัน", [...title, ["วันที่ทาน", "เลขที่ใบแจ้งยอด", ...ks.map(k => lab[k]), "รวมมื้อ", "จำนวนเงิน"], ...rows,
       ["รวม", `${det.notices.length} ใบ`, ...ks.map((_, i) => rows.reduce((t, r) => t + r[2 + i], 0)), g.meals, det.notices.reduce((t, n) => t + n.amount, 0)]], [16, 18, 14, 14, 10, 12, 12, 10, 10, 14]);
-    sheet("รายชื่อ", [...title, ["วันที่ทาน", "เลขที่", "หมวด", "รหัส", "ชื่อ", "อิ่ม"], ...det.notices.flatMap(n => (n.people || []).map(p => [dTH(n.d), n.doc_no, lab[p.c] || p.c, p.code, p.name, p.n]))], [16, 18, 26, 14, 30, 6]);
+    sheet("รายชื่อ", [...title, ["วันที่ทาน", "เลขที่", "หมวด", "รหัส", "ชื่อ", "มื้อ"], ...det.notices.flatMap(n => (n.people || []).map(p => [dTH(n.d), n.doc_no, lab[p.c] || p.c, p.code, p.name, p.n]))], [16, 18, 26, 14, 30, 6]);
   } else {
     const o = det.orders, ks = g.grp === "night" ? ["night"] : ["aft", "ot"], gs = [...new Set(o.map(x => x.grp))].sort();
     for (const k of ks) {
@@ -685,7 +685,7 @@ async function attachSummary(g, from, to, invoiceId) {
       sheet(`สรุป ${KTH[k]}`.slice(0, 31), [...title, ["วันที่", ...gs, "รวม"], ...rows, ["รวม", ...gs.map((_, i) => rows.reduce((t, r) => t + r[1 + i], 0)), rows.reduce((t, r) => t + r[r.length - 1], 0)],
         [], [`ราคา ${S.B.billing.prices[k]} บาท`, "", "", "จำนวนเงิน", rows.reduce((t, r) => t + r[r.length - 1], 0) * S.B.billing.prices[k]]], [16, ...gs.map(() => 12), 10]);
     }
-    sheet("รายชื่อ", [...title, ["วันที่", "ประเภท", "กลุ่ม", "รหัส", "ชื่อ", "ที่", "หมายเหตุ"], ...o.map(x => [dTH(x.d), KTH[x.kind], x.grp, x.emp_code || "", x.name, x.qty, x.note || ""])], [16, 16, 18, 14, 30, 6, 20]);
+    sheet("รายชื่อ", [...title, ["วันที่", "ประเภท", "กลุ่ม", "รหัส", "ชื่อ", "มื้อ", "หมายเหตุ"], ...o.map(x => [dTH(x.d), KTH[x.kind], x.grp, x.emp_code || "", x.name, x.qty, x.note || ""])], [16, 16, 18, 14, 30, 6, 20]);
   }
   const bytes = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   const name = `สรุป ${g.title.replace(/[\\/:*?"<>|]/g, "-")} ${from} ถึง ${to}.xlsx`;
@@ -703,7 +703,7 @@ async function attachSummary(g, from, to, invoiceId) {
 function settingsPage() {
   const B = S.B, yr = +today().slice(0, 4);
   render(`${head("ตั้งค่า", "ร้าน · ราคา · เลขที่ · ผู้รับ", "ใบแจ้งยอด 1 ใบต่อจุดต่อวัน · Chatree North = ร้านเดียว 2 กล่อง รวมเป็นใบเดียว")}
-    <div class="card"><div class="card-h"><div class="card-t">จุดสแกน / ร้าน</div></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>จุด</th><th>ชื่อร้านในใบ</th><th class="r">ราคา/อิ่ม</th><th>ชุดเลขที่</th><th class="r">เลขล่าสุดก่อนใช้ระบบ (${yr + 543})</th></tr></thead><tbody>
+    <div class="card"><div class="card-h"><div class="card-t">จุดสแกน / ร้าน</div></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>จุด</th><th>ชื่อร้านในใบ</th><th class="r">ราคา/มื้อ</th><th>ชุดเลขที่</th><th class="r">เลขล่าสุดก่อนใช้ระบบ (${yr + 543})</th></tr></thead><tbody>
       ${B.units.map((u, i) => `<tr><td><b>${esc(u.label)}</b><div class="small muted">${u.boxes.map(boxLabel).join(" + ")}</div></td>
         <td><input class="inp" data-i="${i}" data-f="shop" value="${esc(u.shop || "")}" ${W() ? "" : "disabled"}></td>
         <td class="r"><input class="inp" style="width:90px" type="number" data-i="${i}" data-f="price" value="${u.price}" ${W() ? "" : "disabled"}></td>

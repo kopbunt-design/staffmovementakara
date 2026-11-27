@@ -18,7 +18,7 @@ const fail = (t, d) => { $("#sub").textContent = ""; $("#docs").innerHTML = `<di
   $("#ttl").textContent = `ใบแจ้งยอดร้านค้า · วันที่ทาน ${dTH(data.d)}`;
   $("#sub").textContent = `${data.notices.length} ใบ · ลงนามอิเล็กทรอนิกส์โดยฝ่ายบุคคล Akara Resources`;
   $("#sum").innerHTML = data.notices.map(n => `<div><small>${esc(n.doc_no)} · ${esc(n.unit === "CN" ? "Chatree North" : n.label)}</small><b>฿${money(n.amount)}</b>
-    <span> · ${n.meals.toLocaleString("en-US")} อิ่ม</span></div>`).join("");
+    <span> · ${n.meals.toLocaleString("en-US")} มื้อ</span></div>`).join("");
   $("#docs").innerHTML = `<div class="cnd">${data.notices.map(n => noticeDoc(n, data.art)).join("")}</div>`;
   document.title = `ใบแจ้งยอดร้านค้า ${data.d}`;
   $("#bP").hidden = $("#bX").hidden = false;
