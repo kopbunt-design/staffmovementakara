@@ -322,7 +322,8 @@ function adjForm(code, a = null, pre = null) {
       <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.01" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
     <div class="grid-f"><label class="fld"><span>ลาเป็นชั่วโมง (ไม่บังคับ)</span><input class="inp" inputmode="numeric" id="aHr" placeholder="ชม:นาที เช่น 2 หรือ 4:15"><small class="muted" id="hrHint"></small></label>
       <label class="fld"><span>ชั่วโมงทำงานต่อวัน</span><select class="inp" id="aBase"><option value="8.5">8.5 ชม. · หน้างาน</option><option value="8">8 ชม. · ออฟฟิศกรุงเทพ (BKK)</option></select></label></div>
-    <label class="fld"><span>ประเภทการลา</span><input class="inp" list="kl" data-a="kind" value="${esc(a?.kind || "")}" placeholder="เลือกหรือพิมพ์"><datalist id="kl">${kinds.map(k => `<option value="${esc(k)}">`).join("")}</datalist></label>
+    <label class="fld"><span>ประเภทการลา</span><select class="inp" id="kSel"><option value="">— เลือก —</option>${kinds.map(k => `<option value="${esc(k)}" ${a?.kind === k ? "selected" : ""}>${esc(k)}</option>`).join("")}<option value="__other">พิมพ์เอง…</option></select>
+      <input class="inp" data-a="kind" value="${esc(a?.kind || "")}" placeholder="พิมพ์ประเภทการลา" hidden style="margin-top:6px"></label>
     <div id="kHint" class="small muted"></div>
     <label class="fld"><span>หมายเหตุ</span><input class="inp" data-a="note" value="${esc(a?.note || pre?.note || "")}" placeholder="เช่น ใบลากระดาษ เลขที่ … / แก้จากขาดงาน — มีใบรับรองแพทย์"></label>
     <div class="notice">${I.info}<div>ข้อมูล TigerSoft ของคนนี้ในช่วงวันที่นี้จะไม่นับ ใช้ใบลานี้แทน · จำนวนวัน = วันที่ลาจริง (ไม่รวมวันหยุด) — ลาครึ่งวันใส่ 0.5 · ลาเป็นชั่วโมงใส่ชั่วโมงแล้วระบบแปลงเป็นวันให้ (ชั่วโมง ÷ ชั่วโมงทำงานต่อวัน)</div></div>`, "บันทึก", async m => {
@@ -332,7 +333,11 @@ function adjForm(code, a = null, pre = null) {
     toast("บันทึกแล้ว", "success"); await reload();
   });
   const hint = () => { const k = m.querySelector("[data-a=kind]").value.trim(); m.querySelector("#kHint").innerHTML = k ? `น้ำหนัก: <span class="kchip c-${B.classOf(k, S.D.types)}"><i></i>${B.CLS[B.classOf(k, S.D.types)].th}</span>` : ""; };
-  m.querySelector("[data-a=kind]").oninput = hint; hint();
+  // เลือกจากรายการ (datalist เดิมกรองตามค่าที่มีอยู่ ตอนแก้จึงเห็นแค่ประเภทเดิม — user 2026-11-27)
+  const kSel = m.querySelector("#kSel"), kIn = m.querySelector("[data-a=kind]");
+  kSel.onchange = () => { const o = kSel.value === "__other"; kIn.hidden = !o; kIn.value = o ? "" : kSel.value; if (o) kIn.focus(); hint(); };
+  if (a?.kind && !kinds.includes(a.kind)) { kSel.value = "__other"; kIn.hidden = false; }
+  kIn.oninput = hint; hint();
   const f = m.querySelector("[data-a=d_from]"), t = m.querySelector("[data-a=d_to]"), dd = m.querySelector("[data-a=days]");
   const auto = () => { if (f.value && !t.value) t.value = f.value; if (f.value && t.value && !a && !pre && !dd.dataset.touched) dd.value = Math.max(0, B.daysBetween(f.value, t.value) + 1); };
   f.onchange = auto; t.onchange = auto; dd.oninput = () => { dd.dataset.touched = 1; };
