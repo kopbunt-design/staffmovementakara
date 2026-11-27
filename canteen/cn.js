@@ -86,6 +86,7 @@ async function boot() {
   } catch (e) { render(`<div class="card card-b"><b>โหลดข้อมูลไม่สำเร็จ</b><p class="muted">${esc(e.message)}</p></div>`); return; }
   window.addEventListener("hashchange", route);
   route();
+  rpc("cn_orders_span", { p_from: today(), p_to: today() }).then(c => navOrd(c.reduce((t, x) => t + x.n, 0)), () => {});
 }
 function route() {
   const [r, arg] = location.hash.replace(/^#\/?/, "").split("/");
@@ -96,6 +97,7 @@ function route() {
   window.scrollTo(0, 0);
 }
 const navDup = n => { $("#navDup").textContent = n ? String(n) : ""; };
+const navOrd = n => { $("#navOrd").textContent = n ? String(n) : ""; };
 
 // ---------------------------------------------------------------- รายวัน
 async function loadDay() { S.D = await rpc("cn_day", { p_d: S.d }); navDup(S.D.dup_open); }
@@ -420,31 +422,42 @@ const cookOpts = sel => `<option value="">— ยังไม่ระบุ —
 async function loadGroups() { S.G = await rpc("cn_groups", {}); return S.G; }
 async function ordersPage() {
   render(`<div class="fx-loading">กำลังโหลด…</div>`);
-  let O; try { [O] = await Promise.all([rpc("cn_orders_day", { p_d: S.od }), loadGroups()]); } catch (e) { render(`<div class="card card-b">${esc(e.message)}</div>`); return; }
+  const t = today(), span = Array.from({ length: 9 }, (_, i) => addDay(t, i - 1));
+  let O, C;
+  try { [O, C] = await Promise.all([rpc("cn_orders_day", { p_d: S.od }), rpc("cn_orders_span", { p_from: span[0] < S.od ? span[0] : S.od, p_to: span[8] > S.od ? span[8] : S.od }), loadGroups()]); }
+  catch (e) { render(`<div class="card card-b">${esc(e.message)}</div>`); return; }
+  S.O = O;
+  navOrd(C.filter(x => x.d === t).reduce((s, x) => s + x.n, 0));
   const sv = O.service || {}, gs = S.G.filter(g => g.active || O.orders.some(o => o.group_id === g.id));
-  const sum = (g, k) => O.orders.filter(o => o.group_id === g && o.kind === k).reduce((t, o) => t + o.qty, 0);
-  const tot = k => O.orders.filter(o => o.kind === k).reduce((t, o) => t + o.qty, 0);
-  const P = S.B.billing.prices;
-  render(`${head(`สั่งอาหาร · ${wd(S.od)}`, dTH(S.od), "ผู้ประสานงานแต่ละกลุ่มสั่งผ่านลิงก์ของกลุ่ม · HR ตั้งแม่ครัวเวร/เมนู และแก้รายชื่อได้จนกว่าจะออก HRIN ของรอบนั้น",
+  const of = (g, k) => O.orders.filter(o => o.group_id === g && o.kind === k);
+  const sum = (g, k) => of(g, k).reduce((s, o) => s + o.qty, 0);
+  const tot = k => O.orders.filter(o => o.kind === k).reduce((s, o) => s + o.qty, 0);
+  const dayN = d => C.filter(x => x.d === d).reduce((s, x) => s + x.n, 0);
+  const P = S.B.billing.prices, KS = ["aft", "ot", "night"];
+  const lastBy = g => { const os = O.orders.filter(o => o.group_id === g.id).sort((a, b) => String(a.at).localeCompare(String(b.at))); return os[os.length - 1]; };
+  render(`${head(`สั่งอาหาร · ${wd(S.od)}`, dTH(S.od), "รายชื่อที่แต่ละกลุ่มสั่งผ่านลิงก์ขึ้นที่นี่ทันที · HR แก้ได้ทุกเมื่อ (แม้เลยเวลาปิดรับ) จนกว่าจะออก HRIN ของรอบนั้น",
       `<div class="dnav"><button class="btn btn-sm" id="oPrev">${I.l}</button><input class="inp" type="date" id="oPick" value="${S.od}"><button class="btn btn-sm" id="oNext">${I.r}</button></div>
        <button class="btn" id="roster">ตารางแม่ครัวเวร</button>`)}
-    <div class="kpis">${["aft", "ot", "night"].map(k => `<div class="kpi"><div><div class="kpi-l">${KTH[k]} · ${P[k]} บาท · ปิดรับ ${esc(S.B.billing.cutoff[k])} น.</div>
-      <div class="kpi-v">${tot(k)} <small style="font-size:14px">ที่</small></div><div class="kpi-d">฿${money(tot(k) * P[k])} · ${O.passed[k] ? "ปิดรับแล้ว" : "ยังเปิดรับ"}</div></div></div>`).join("")}</div>
-    <div class="card mt"><div class="card-h"><div><div class="card-t">แม่ครัวเวร · เมนูของวัน</div><div class="card-s">อาหารกะบ่ายและ OT วางบิลในชื่อแม่ครัวเวรของวันนั้น · ชุดกะดึกวางบิลสหกรณ์</div></div></div>
+    <div class="dstrip">${span.map(d => `<a class="dchip ${d === S.od ? "on" : ""} ${d === t ? "today" : ""}" href="#/orders/${d}"><small>${d === t ? "วันนี้" : wd(d).slice(0, 2)}</small><b>${+d.slice(8, 10)}</b><i>${dayN(d) ? dayN(d) + " ที่" : "—"}</i></a>`).join("")}</div>
+    <div class="kpis">${KS.map(k => `<div class="kpi"><div><div class="kpi-l">${KTH[k]} · ${P[k]} บาท · ปิดรับ ${esc(S.B.billing.cutoff[k])} น.</div>
+      <div class="kpi-v">${tot(k)} <small style="font-size:14px">ที่</small></div><div class="kpi-d">฿${money(tot(k) * P[k])} · ${O.passed[k] ? "ปิดรับแล้ว (HR ยังแก้ได้)" : "ยังเปิดรับ"}</div></div></div>`).join("")}</div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">รายชื่อที่สั่ง · ${dTH(S.od)}</div><div class="card-s">กด “แก้” เพื่อเพิ่ม/ลบ/แก้จำนวน · ยังไม่มีรายการ = กลุ่มนั้นยังไม่สั่ง</div></div>
+      <div class="fx-actions"><button class="btn btn-sm" id="cpCook">${I.copy}ข้อความส่งแม่ครัว</button><button class="btn btn-sm" id="cpNight">${I.copy}ข้อความส่งสหกรณ์ (กะดึก)</button>
+        <button class="btn btn-sm" id="xDay" ${O.orders.length ? "" : "disabled"}>${I.dl}Excel รายชื่อ</button></div></div>
+      <div class="card-b"><div class="ogrid">${gs.map(g => { const lb = lastBy(g);
+        return `<div class="ocard"><div class="oh"><div><b>${esc(g.name)}</b>${g.active ? "" : ` <span class="chip chip-gray">ปิดใช้</span>`}<span>${esc(g.coord || "")}</span></div>
+          <span class="small muted">${lb ? `${esc(lb.by_name || "")} · ${tsTH(lb.at).split(" ").slice(-1)[0]} น.` : "ยังไม่สั่ง"}</span></div>
+          ${KS.filter(k => g.kinds.includes(k) || sum(g.id, k)).map(k => `<div class="ok"><div class="okh"><span class="tag t-${k === "aft" ? "akr" : k === "ot" ? "forgot" : "visit"}">${KTH[k]}</span><b>${sum(g.id, k)}</b>
+            ${W() ? `<button class="btn btn-sm btn-ghost" data-ed="${g.id}" data-k="${k}">${sum(g.id, k) ? "แก้" : "+ เพิ่ม"}</button>` : ""}</div>
+            ${of(g.id, k).length ? `<ol>${of(g.id, k).map(o => `<li>${esc(o.name)}${o.emp_code ? ` <span class="muted small">${esc(o.emp_code)}</span>` : ""}${o.qty > 1 ? ` <b>× ${o.qty}</b>` : ""}${o.src === "hr" ? ` <span class="chip chip-gray" style="font-size:10.5px">HR</span>` : ""}</li>`).join("")}</ol>` : ""}</div>`).join("")}</div>`; }).join("")
+        || `<div class="empty">ยังไม่มีกลุ่มผู้สั่ง — เพิ่มที่ <a href="#/groups">กลุ่มผู้สั่ง · ลิงก์</a></div>`}</div></div></div>
+    <div class="card mt"><div class="card-h"><div><div class="card-t">แม่ครัวเวร · เมนูของวัน</div><div class="card-s">กะบ่ายและ OT วางบิลในชื่อแม่ครัวเวรของวันนั้น · ชุดกะดึกวางบิลสหกรณ์ · เมนูขึ้นในหน้าสั่งของแผนก</div></div></div>
       <div class="card-b grid-f"><label class="fld"><span>แม่ครัวเวร (ผู้ขายใน Invoice Hub)</span><select class="inp" id="sCook" ${W() ? "" : "disabled"}>${cookOpts(sv.cook_id)}</select></label>
         <label class="fld"><span>เมนูกะบ่าย (ร้านแจ้ง)</span><input class="inp" id="sMa" value="${esc(sv.menu_aft || "")}" placeholder="เช่น แกงหมูมะเขือ, ไข่ดาว, ต้มฟักไก่" ${W() ? "" : "disabled"}></label>
         <label class="fld"><span>ชุดอาหารแห้งกะดึก</span><input class="inp" id="sMn" value="${esc(sv.menu_night || "")}" placeholder="เช่น มาม่า + น้ำหวาน + ขนม" ${W() ? "" : "disabled"}></label>
         <label class="fld"><span>หมายเหตุถึงผู้สั่ง</span><input class="inp" id="sNote" value="${esc(sv.note || "")}" ${W() ? "" : "disabled"}></label>
-        <div class="fld"><span>ปิดรับก่อนเวลา</span><div>${["aft", "ot", "night"].map(k => `<label style="margin-right:12px"><input type="checkbox" data-cl="${k}" ${(sv.closed || "").split(",").includes(k) ? "checked" : ""} ${W() ? "" : "disabled"}> ${KTH[k]}</label>`).join("")}</div></div>
-        ${W() ? `<div style="display:flex;align-items:end;justify-content:flex-end"><button class="btn btn-p" id="sSave">บันทึก</button></div>` : ""}</div></div>
-    <div class="card mt"><div class="card-h"><div><div class="card-t">ยอดสั่งตามกลุ่ม</div><div class="card-s">กดตัวเลขเพื่อดู/แก้รายชื่อ</div></div>
-      <div class="fx-actions"><button class="btn btn-sm" id="cpCook">${I.copy}ข้อความส่งแม่ครัว (กะบ่าย + OT)</button><button class="btn btn-sm" id="cpNight">${I.copy}ข้อความส่งสหกรณ์ (กะดึก)</button></div></div>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>กลุ่ม</th>${["aft", "ot", "night"].map(k => `<th class="r">${KTH[k]}</th>`).join("")}<th>ผู้สั่งล่าสุด</th></tr></thead><tbody>
-      ${gs.map(g => `<tr><td><b>${esc(g.name)}</b>${g.active ? "" : ` <span class="chip chip-gray">ปิดใช้</span>`}</td>${["aft", "ot", "night"].map(k => g.kinds.includes(k) || sum(g.id, k)
-          ? `<td class="r"><a href="#" data-ed="${g.id}" data-k="${k}">${sum(g.id, k) || (W() ? "+" : "—")}</a></td>` : `<td class="r muted">—</td>`).join("")}
-        <td class="small muted">${esc(O.orders.filter(o => o.group_id === g.id).map(o => o.by_name).filter(Boolean).pop() || "")}</td></tr>`).join("")
-        || `<tr><td colspan="5" class="empty">ยังไม่มีกลุ่มผู้สั่ง — เพิ่มที่ <a href="#/groups">กลุ่มผู้สั่ง · ลิงก์</a></td></tr>`}
-      <tr><td><b>รวม</b></td>${["aft", "ot", "night"].map(k => `<td class="r"><b>${tot(k)}</b></td>`).join("")}<td></td></tr></tbody></table></div></div>`);
+        <div class="fld"><span>ปิดรับก่อนเวลา</span><div>${KS.map(k => `<label style="margin-right:12px"><input type="checkbox" data-cl="${k}" ${(sv.closed || "").split(",").includes(k) ? "checked" : ""} ${W() ? "" : "disabled"}> ${KTH[k]}</label>`).join("")}</div></div>
+        ${W() ? `<div style="display:flex;align-items:end;justify-content:flex-end"><button class="btn btn-p" id="sSave">บันทึก</button></div>` : ""}</div></div>`);
   $("#oPick").onchange = e => { if (e.target.value) location.hash = `#/orders/${e.target.value}`; };
   $("#oPrev").onclick = () => { location.hash = `#/orders/${addDay(S.od, -1)}`; };
   $("#oNext").onclick = () => { location.hash = `#/orders/${addDay(S.od, 1)}`; };
@@ -452,25 +465,63 @@ async function ordersPage() {
   $("#sSave") && ($("#sSave").onclick = async () => {
     await run(() => rpc("cn_service_save", { p_days: [S.od], p_row: { cook_id: $("#sCook").value || null, menu_aft: $("#sMa").value, menu_night: $("#sMn").value,
       note: $("#sNote").value, closed: [...document.querySelectorAll("[data-cl]:checked")].map(x => x.dataset.cl) } }), "บันทึกแล้ว"); ordersPage(); });
-  document.querySelectorAll("[data-ed]").forEach(a => a.onclick = e => { e.preventDefault(); editOrders(S.G.find(g => g.id === +a.dataset.ed), a.dataset.k, O); });
-  const lines = (k, withNames) => gs.map(g => { const os = O.orders.filter(o => o.group_id === g.id && o.kind === k); const n = os.reduce((t, o) => t + o.qty, 0);
+  document.querySelectorAll("[data-ed]").forEach(a => a.onclick = () => editOrders(S.G.find(g => g.id === +a.dataset.ed), a.dataset.k, O));
+  const lines = (k, withNames) => gs.map(g => { const os = of(g.id, k); const n = sum(g.id, k);
     return n ? `- ${g.name} ${n} ที่` + (withNames ? `\n${os.map(o => `   • ${o.name}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n")}` : "") : ""; }).filter(Boolean).join("\n");
-  const copy = t => navigator.clipboard.writeText(t).then(() => toast("คัดลอกแล้ว — วางใน LINE ได้เลย", "success"));
+  const copy = s => navigator.clipboard.writeText(s).then(() => toast("คัดลอกแล้ว — วางใน LINE ได้เลย", "success"));
   $("#cpCook").onclick = () => copy(`📋 สั่งอาหาร ${dTH(S.od)}${sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}\n${sv.menu_aft ? `เมนู: ${sv.menu_aft}\n` : ""}\n🍛 กะบ่าย รวม ${tot("aft")} ที่\n${lines("aft")}\n\n🌙 OT รวม ${tot("ot")} ที่\n${lines("ot", true)}`);
   $("#cpNight").onclick = () => copy(`📋 ชุดอาหารแห้งกะดึก ${dTH(S.od)}${sv.menu_night ? ` (${sv.menu_night})` : ""}\nรวม ${tot("night")} ชุด\n${lines("night")}`);
+  $("#xDay").onclick = () => {
+    const wb = XLSX.utils.book_new();
+    for (const k of KS) {
+      const os = O.orders.filter(o => o.kind === k); if (!os.length) continue;
+      const aoa = [[`${KTH[k]} · ${dTH(S.od)}${k !== "night" && sv.cook_id ? ` · ${vName(sv.cook_id)}` : ""}`], [], ["ลำดับ", "กลุ่ม", "รหัส", "ชื่อ", "ที่", "ผู้สั่ง"]];
+      let i = 0; for (const g of gs) for (const o of of(g.id, k)) aoa.push([++i, g.name, o.emp_code || "", o.name, o.qty, o.by_name || ""]);
+      aoa.push([], ["", "รวม", "", "", tot(k)]);
+      const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [{ wch: 6 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 6 }, { wch: 26 }];
+      XLSX.utils.book_append_sheet(wb, ws, KTH[k].slice(0, 31));
+    }
+    XLSX.writeFile(wb, `สั่งอาหาร ${S.od}.xlsx`);
+  };
 }
+// แก้รายชื่อของกลุ่ม/ประเภท ทีละคน: ค้นจากทะเบียน (พนักงาน + SUB) หรือพิมพ์เอง · จำนวนที่ · ย้ายประเภท
 function editOrders(g, k, O) {
-  const os = O.orders.filter(o => o.group_id === g.id && o.kind === k);
-  const txt = os.map(o => `${o.name}${o.emp_code ? ` (${o.emp_code})` : ""}${o.qty > 1 ? ` x${o.qty}` : ""}`).join("\n");
-  modal(`${esc(g.name)} · ${KTH[k]} · ${dTH(S.od)}`, `<div class="small muted">หนึ่งบรรทัดต่อหนึ่งคน · ใส่ x3 ท้ายบรรทัดถ้าหลายที่ (เช่น ผู้รับเหมา ABC x3) · รหัสพนักงานในวงเล็บถ้ามี</div>
-    <textarea class="inp" id="oTxt" style="min-height:260px;height:auto;padding:10px" ${W() ? "" : "disabled"}>${esc(txt)}</textarea>
-    <div class="small muted">${os.length ? `บันทึกล่าสุดโดย ${esc(os[os.length - 1].by_name || "")} · ${tsTH(os[os.length - 1].at)}` : "ยังไม่มีรายชื่อ"}</div>`, W() ? "บันทึก" : null, async m => {
-    const rows = m.querySelector("#oTxt").value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
-      const q = l.match(/\s*[x×]\s*(\d+)\s*$/i), base = q ? l.slice(0, q.index).trim() : l, c = base.match(/\(([A-Za-z0-9]+)\)\s*$/);
-      const code = c ? c[1].toUpperCase() : (S.ix.byCode.has(base.toUpperCase()) ? base.toUpperCase() : null);
-      return { emp_code: code, name: c ? base.slice(0, c.index).trim() : (code ? S.ix.byCode.get(code).name : base), qty: q ? +q[1] : 1 }; });
-    await run(() => rpc("cn_order_hr", { p_d: S.od, p_group: g.id, p_kind: k, p_rows: rows }), "บันทึกแล้ว"); ordersPage();
-  });
+  let rows = O.orders.filter(o => o.group_id === g.id && o.kind === k).map(o => ({ emp_code: o.emp_code, name: o.name, qty: o.qty, note: o.note, kind: k }));
+  const others = ["aft", "ot", "night"].filter(x => x !== k && g.kinds.includes(x));
+  const m = modal(`${esc(g.name)} · ${KTH[k]} · ${dTH(S.od)}`, `<div style="display:flex;gap:8px"><input class="inp" id="eQ" list="ePpl" placeholder="พิมพ์ชื่อหรือรหัส แล้ว Enter (ไม่มีในทะเบียนพิมพ์ชื่อได้เลย)" style="flex:1" autocomplete="off">
+      <button class="btn btn-p" id="eA">เพิ่ม</button></div>
+    <datalist id="ePpl">${S.ix.list.filter(p => !p.left).map(p => `<option value="${esc(p.name)} (${esc(p.code)})">`).join("")}</datalist>
+    <div class="tbl-wrap" style="max-height:48vh"><table class="tbl"><tbody id="eRows"></tbody></table></div>
+    <div class="small muted" id="eSum"></div>`, "บันทึก", async () => {
+    const keep = rows.filter(r => r.kind === k), moved = rows.filter(r => r.kind !== k);
+    await run(() => rpc("cn_order_hr", { p_d: S.od, p_group: g.id, p_kind: k, p_rows: keep }));
+    for (const x of others) {
+      const add = moved.filter(r => r.kind === x); if (!add.length) continue;
+      const cur = O.orders.filter(o => o.group_id === g.id && o.kind === x).map(o => ({ emp_code: o.emp_code, name: o.name, qty: o.qty, note: o.note }));
+      await run(() => rpc("cn_order_hr", { p_d: S.od, p_group: g.id, p_kind: x, p_rows: cur.concat(add) }));
+    }
+    toast("บันทึกแล้ว", "success"); ordersPage();
+  }, true);
+  const draw = () => {
+    m.querySelector("#eRows").innerHTML = rows.map((r, i) => `<tr><td class="n muted">${i + 1}</td><td><b>${esc(r.name)}</b>${r.emp_code ? ` <span class="small muted">${esc(r.emp_code)}</span>` : ""}</td>
+      <td style="width:90px"><input class="inp" type="number" min="1" max="200" value="${r.qty}" data-q="${i}" style="height:32px"></td>
+      ${others.length ? `<td style="width:150px"><select class="inp" data-mv="${i}" style="height:32px"><option value="${k}">${KTH[k]}</option>${others.map(x => `<option value="${x}" ${r.kind === x ? "selected" : ""}>ย้ายไป ${KTH[x]}</option>`).join("")}</select></td>` : ""}
+      <td style="width:40px"><button class="btn btn-sm btn-ghost" data-x="${i}">${I.x}</button></td></tr>`).join("") || `<tr><td class="empty">ยังไม่มีรายชื่อ</td></tr>`;
+    m.querySelector("#eSum").textContent = `รวม ${rows.filter(r => r.kind === k).reduce((s, r) => s + r.qty, 0)} ที่${rows.some(r => r.kind !== k) ? ` · ย้ายไปประเภทอื่น ${rows.filter(r => r.kind !== k).length} รายการ` : ""}`;
+    m.querySelectorAll("[data-q]").forEach(x => x.onchange = () => { rows[+x.dataset.q].qty = Math.max(1, Math.min(200, +x.value || 1)); draw(); });
+    m.querySelectorAll("[data-mv]").forEach(x => x.onchange = () => { rows[+x.dataset.mv].kind = x.value; draw(); });
+    m.querySelectorAll("[data-x]").forEach(x => x.onclick = () => { rows.splice(+x.dataset.x, 1); draw(); });
+  };
+  const add = () => {
+    const q = m.querySelector("#eQ"), v = q.value.trim(); if (!v) return;
+    const mt = v.match(/^(.*)\(([A-Za-z0-9]+)\)\s*$/), code = mt ? mt[2].toUpperCase() : (S.ix.byCode.has(v.toUpperCase()) ? v.toUpperCase() : null);
+    const name = mt ? mt[1].trim() : code ? S.ix.byCode.get(code).name : v;
+    if (code && rows.some(r => r.emp_code === code)) { toast("มีชื่อนี้แล้ว", "error"); q.select(); return; }
+    rows.push({ emp_code: code, name, qty: 1, kind: k }); q.value = ""; draw(); q.focus();
+  };
+  m.querySelector("#eA").onclick = add;
+  m.querySelector("#eQ").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); add(); } };
+  draw(); setTimeout(() => m.querySelector("#eQ").focus(), 50);
 }
 async function rosterModal(ym) {
   const M = await rpc("cn_month", { p_ym: ym }), sv = new Map(M.service.map(x => [x.d, x]));
@@ -504,7 +555,8 @@ async function groupsPage() {
   await loadGroups();
   const depts = [...new Set(S.ix.list.filter(p => p.kind === "akr" && p.dept).map(p => p.dept))].sort();
   render(`${head("กลุ่มผู้สั่ง", "กลุ่มผู้สั่ง · ลิงก์สั่งอาหาร", "หนึ่งกลุ่ม = หนึ่งลิงก์ ส่งให้ผู้ประสานงานของกลุ่ม (ไม่ต้อง login) · ชื่ออังกฤษใช้ในบรรทัด OT ของใบ HRIN เช่น “Meal for Overtime work (Supply)”",
-      W() ? `<button class="btn btn-p" id="gNew">+ เพิ่มกลุ่ม</button>` : "")}
+      `<a class="btn" href="#/orders">ดูรายชื่อที่สั่งวันนี้ →</a>${W() ? `<button class="btn btn-p" id="gNew">+ เพิ่มกลุ่ม</button>` : ""}`)}
+    <div class="notice" style="margin-bottom:14px">${I.info}<div>แผนกสั่งผ่านลิงก์แล้ว รายชื่อขึ้นที่เมนู <a href="#/orders"><b>สั่งอาหาร · แม่ครัวเวร</b></a> ทันที (เลือกวัน · แก้/เพิ่ม/ลบรายชื่อได้ · โหลด Excel · คัดลอกส่งไลน์)</div></div>
     <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>กลุ่ม</th><th>ชื่อในใบ HRIN</th><th>สั่งได้</th><th>ผู้ประสานงาน</th><th>รายชื่อแนะนำจาก</th><th></th></tr></thead><tbody>
     ${S.G.map(g => `<tr class="${g.active ? "" : "zero"}"><td><b>${esc(g.name)}</b></td><td>${esc(g.en_name)}</td><td>${g.kinds.map(k => KTH[k]).join(", ")}</td><td>${esc(g.coord || "")}</td>
       <td class="small">${esc(g.depts.join(", "))}</td><td class="r" style="white-space:nowrap"><button class="btn btn-sm" data-cp="${g.id}">${I.copy}ลิงก์</button>${W() ? ` <button class="btn btn-sm btn-ghost" data-ge="${g.id}">แก้</button>` : ""}</td></tr>`).join("")

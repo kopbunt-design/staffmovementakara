@@ -873,6 +873,15 @@ def cn_orders_day(r, p_d):
 
 
 @fn
+def cn_orders_span(r, p_from, p_to):
+    """ยอดสั่งต่อวัน/ประเภท ในช่วงวัน (แถบวันในหน้าสั่งอาหาร + เลขที่เมนู)"""
+    _need(r, "page.canteen")
+    f, t = _d(p_from), _d(p_to)
+    return [{"d": str(x["d"])[:10], "kind": x["kind"], "n": x["n"]}
+            for x in r.rows(None, "SELECT d, kind, SUM(qty) n FROM dbo.cn_orders WHERE d BETWEEN ? AND ? GROUP BY d, kind", f, t)]
+
+
+@fn
 def cn_order_hr(r, p_d, p_group, p_kind, p_rows):
     """HR แก้รายชื่อของกลุ่ม (ทับทั้งชุดของวัน/ประเภทนั้น) — ได้แม้เลยเวลาปิดรับ"""
     _need(r, "page.canteen", "data.canteen.write")

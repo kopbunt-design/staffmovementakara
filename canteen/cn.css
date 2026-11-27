@@ -69,3 +69,17 @@
 .unit .files .fdel { border: 0; background: none; cursor: pointer; color: var(--ink-3); width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: none; }
 .unit .files .fdel:hover { background: var(--red-100); color: var(--red-600); }
 .unit .files .fdel svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* หน้าสั่งอาหาร (HR) */
+.dstrip { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 4px; }
+.dchip { flex: none; width: 76px; text-align: center; border: 1.5px solid var(--line); background: #fff; border-radius: 14px; padding: 7px 4px; color: var(--ink); text-decoration: none !important; }
+.dchip small { display: block; font-size: 11.5px; color: var(--ink-3); } .dchip b { display: block; font-size: 20px; line-height: 1.15; }
+.dchip i { display: block; font-style: normal; font-size: 11.5px; color: var(--em-600); font-weight: 600; }
+.dchip.on { border-color: var(--navy-600); background: var(--blue-100); } .dchip.today small { color: var(--navy-600); font-weight: 700; }
+.ogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.ocard { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; }
+.ocard .oh { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.ocard .oh b { font-size: 15px; } .ocard .oh span { display: block; font-size: 12px; color: var(--ink-3); }
+.ocard .ok { border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 6px; }
+.ocard .okh { display: flex; align-items: center; gap: 8px; } .ocard .okh b { font-size: 16px; } .ocard .okh .btn { margin-left: auto; }
+.ocard ol { margin: 4px 0 2px; padding-left: 22px; font-size: 13px; max-height: 220px; overflow-y: auto; } .ocard li { padding: 1px 0; }
