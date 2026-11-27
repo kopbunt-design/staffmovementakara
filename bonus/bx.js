@@ -264,7 +264,7 @@ function drawCal(code, cal, adj) {
   // ช่วงที่ HR บันทึก ใช้แทนข้อมูล TigerSoft (เหมือนตอนคำนวณ) — สีของวันจึงตามรายการ HR ไม่ใช่ "ขาดงาน" เดิม
   const by = new Map(cal.map(c => [c.ym, c.days])), adjOf = d => adj.find(a => d >= a.d_from.slice(0, 10) && d <= a.d_to.slice(0, 10));
   const dayCls = (x, a) => { const hol = /^HD/i.test(x[2]) ? "hd" : /^H/i.test(x[2]) ? "h" : "";
-    if (a) return a.kind === B.WORKED ? (hol || "w") : a.kind === B.DAYOFF ? "h" : hol && !x[7] && a.d_from.slice(0, 10) !== a.d_to.slice(0, 10) ? hol : `ev c-${B.classOf(a.kind, S.D.types)}`;
+    if (a) return a.kind === B.WORKED ? (hol || "w") : a.kind === B.DAYOFF ? "h" : `ev c-${B.classOf(a.kind, S.D.types)}`;
     return x[7] ? `ev c-${B.classOf(x[7], S.D.types)}` : hol || ((x[3] || x[4]) ? "w" : ""); };
   const tips = [];   // ป้ายข้อมูลวัน ขึ้นทันทีที่ชี้ (title ของเบราว์เซอร์ช้า ต้องค้างนาน)
   const tipAt = h => { tips.push(h); return ` data-t="${tips.length - 1}"`; };
