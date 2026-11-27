@@ -316,7 +316,7 @@ the shop bills per period (1–15 / 16–end) from those. Must NOT import `js/ap
   Supply, Process, Gold Room… — `en_name` goes into the HRIN OT line) each get a permanent link `canteen/o.html?t=` (public
   `cn_order_link_get` / `cn_order_link_decide`, HR can rotate it). Coordinators pick a day (yesterday … +7), see the menu, type names
   (suggestions = active employees of the group's departments/sections) or guests × qty, save; closed after `billing.cutoff` of that
-  day (default aft 10:30, OT 15:00, night 15:00) or when HR ticks "ปิดรับ". HR page `#/orders`: cook on duty + menus per day
+  day (default aft 11:00 — user 2026-11-27, OT 15:00, night 15:00) or when HR ticks "ปิดรับ". HR page `#/orders`: cook on duty + menus per day
   (`cn_service`), month roster with "เติมตามเวร" rotation, per-group counts with editable name lists, copy-to-LINE text for the cook
   and the co-op. Prices aft 65 / OT 50 / night set 65 (settings).
 - **Period → draft HRIN** (`#/notices`, `cn_period` / `cn_invoice_make`): one draft per bill group — A1/A2 (vendor T0009, VAT 7 WHT 3),

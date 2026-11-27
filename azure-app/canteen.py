@@ -721,7 +721,7 @@ def cn_settings_save(r, p_units=None, p_mail=None, p_last=None, p_billing=None):
 # ปิดรับตามเวลา (billing.cutoff) ของวันนั้น · HR แก้ได้เสมอจนออก HRIN ของรอบนั้น
 KINDS = {"aft": "อาหารกะบ่าย", "ot": "อาหาร OT", "night": "ชุดอาหารแห้งกะดึก"}
 BILLING_DEFAULT = {"unit_vendor": {"A1": "T0009", "A2": "T0009", "CN": "N0009"}, "unit_text": {"A1": "Canteen 1", "A2": "Canteen 2", "CN": "Chatree North"},
-                   "night_vendor": "T0009", "prices": {"aft": 65, "ot": 50, "night": 65}, "cutoff": {"aft": "10:30", "ot": "15:00", "night": "15:00"},
+                   "night_vendor": "T0009", "prices": {"aft": 65, "ot": 50, "night": 65}, "cutoff": {"aft": "11:00", "ot": "15:00", "night": "15:00"},
                    "cost_code": "506005051500", "category": "Canteen", "vat": {"unit": 7, "night": 7, "cook": 0}, "wht": {"unit": 3, "night": 3, "cook": 0}}
 
 

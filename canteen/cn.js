@@ -715,7 +715,7 @@ function settingsPage() {
       <label class="fld"><span>สำเนา (เช่น HR Team)</span><input class="inp" id="mCc" value="${esc(B.mail.cc || "")}" ${W() ? "" : "disabled"}></label></div></div>
     <div class="card mt"><div class="card-h"><div><div class="card-t">ราคา · เวลาปิดรับ · ผู้ขายในใบ HRIN</div><div class="card-s">รหัสผู้ขายตาม Invoice Hub · แม่ครัวกะบ่าย/OT ตั้งรายวันที่หน้า สั่งอาหาร</div></div></div>
       <div class="card-b grid-f">${["aft", "ot", "night"].map(k => `<label class="fld"><span>ราคา ${KTH[k]} (บาท)</span><input class="inp" type="number" data-pr="${k}" value="${B.billing.prices[k]}" ${W() ? "" : "disabled"}></label>
-        <label class="fld"><span>ปิดรับ ${KTH[k]} (เวลา ของวันนั้น)</span><input class="inp" data-co="${k}" value="${esc(B.billing.cutoff[k])}" placeholder="10:30" ${W() ? "" : "disabled"}></label>`).join("")}
+        <label class="fld"><span>ปิดรับ ${KTH[k]} (เวลา ของวันนั้น)</span><input class="inp" data-co="${k}" value="${esc(B.billing.cutoff[k])}" placeholder="11:00" ${W() ? "" : "disabled"}></label>`).join("")}
         ${B.units.map(u => `<label class="fld"><span>ผู้ขายในใบ HRIN · ${esc(u.label)}</span><input class="inp" data-uv="${u.key}" value="${esc(B.billing.unit_vendor[u.key] || "")}" ${W() ? "" : "disabled"}></label>`).join("")}
         <label class="fld"><span>ผู้ขายชุดกะดึก</span><input class="inp" id="bNv" value="${esc(B.billing.night_vendor)}" ${W() ? "" : "disabled"}></label>
         <label class="fld"><span>รหัสบัญชี (cost code)</span><input class="inp" id="bCc" value="${esc(B.billing.cost_code)}" ${W() ? "" : "disabled"}></label></div></div>
