@@ -3,7 +3,7 @@
 // งานประจำวัน: ลากไฟล์สแกนทุกกล่อง → คีย์ใบลงชื่อ (ลืมบัตร/ผู้ติดต่อ/รับแทนกลุ่ม) → ลงนามออกใบ → ส่งสหกรณ์ (ลิงก์เปิดดู/พิมพ์)
 import { supabase } from "../js/supabase-config.js";
 import * as C from "../js/canteen-calc.js";
-import { noticeDoc, printNotices, namesWorkbook, DOC_CSS, dTH } from "./doc.js";
+import { noticeDoc, printNotices, namesWorkbook, DOC_CSS, dTH, printSheets } from "./doc.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -120,6 +120,7 @@ async function dayPage() {
       <span class="muted small">เลือกได้หลายไฟล์ หลายวัน — ระบบอ่านกล่องและวันที่จากชื่อไฟล์ เช่น “รายชื่อสแกนบัตร1 Akara 01.11.26.xlsx”</span></div>
       <input type="file" id="fileIn" accept=".xlsx,.xls" multiple hidden></label>
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-sm" id="bFiles">${I.x}ไฟล์ที่อัปแล้ว · ลบหลายไฟล์</button></div>` : ""}
+    <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-sm" id="bSheet">${I.print}พิมพ์ใบลงชื่อ (ลืมบัตร/ผู้ติดต่อ) ล่วงหน้า</button></div>
     <div class="units">${st.map(unitCard).join("")}</div>
     ${W() ? `<div class="actbar"><div class="t"><b>${signedAll.length === st.length ? "ลงนามครบทุกจุดแล้ว" : `พร้อมลงนาม ${ready.length} จุด`}</b>
       <span>${S.B.me.has_sig ? `ลงนามด้วยลายเซ็นของ ${esc(S.B.me.name)}` : "ยังไม่มีลายเซ็นของคุณในระบบ — ตั้งที่ระบบ HR ก่อนจึงจะลงนามได้"}
@@ -215,6 +216,7 @@ function wireDay(st) {
       <div class="small muted">รายการจากไฟล์นี้จะหายทั้งหมด รวมการยืนยันแตะซ้ำของกล่องนี้ · รายการที่คีย์จากใบลงชื่อยังอยู่ · อัปไฟล์ที่ถูกต้องใหม่ได้ทันที</div>`, "ลบไฟล์", async () => {
       await run(() => rpc("cn_upload_del", { p_d: S.d, p_box: box }), "ลบไฟล์แล้ว"); dayPage(); }); });
   $("#bFiles") && ($("#bFiles").onclick = filesModal);
+  $("#bSheet").onclick = sheetModal;
   $("#bSign") && ($("#bSign").onclick = () => signDay(st));
   $("#bSend") && ($("#bSend").onclick = () => sendDay());
   $("#bCopy") && ($("#bCopy").onclick = () => navigator.clipboard.writeText(S.D.link.url).then(() => toast("คัดลอกลิงก์แล้ว", "success")));
@@ -272,6 +274,23 @@ async function decideDup(ids, dec, after) {
 function zeroRow(id) {
   modal("ไม่นับแถวนี้", `<label class="fld"><span>เหตุผล (ต้องมี)</span><input class="inp" id="zWhy" value="ทาน/ลงชื่อซ้ำในวันเดียวกัน"></label>`, "บันทึก", async m => {
     await run(() => rpc("cn_billed_set", { p_id: id, p_billed: 0, p_reason: m.querySelector("#zWhy").value }), "แก้แล้ว"); dayPage();
+  });
+}
+
+function sheetModal() {
+  const from = addDay(today(), 1);
+  modal("พิมพ์ใบลงชื่อทานอาหาร", `<div class="small muted">1 แผ่นต่อกล่องต่อวัน · พิมพ์ร้าน กล่อง วันที่ และเลขใบมาให้แล้ว · ช่องตรงกับหน้าคีย์ "ใบลงชื่อ" ในระบบ</div>
+    <div class="grid-f"><label class="fld"><span>ตั้งแต่วันที่</span><input class="inp" type="date" id="shF" value="${from}"></label>
+      <label class="fld"><span>ถึงวันที่</span><input class="inp" type="date" id="shT" value="${addDay(from, 6)}"></label></div>
+    <div class="fld"><span>กล่อง</span><div>${Object.keys(C.BOXES).map(b => `<label style="margin-right:14px"><input type="checkbox" data-sb="${b}" ${b[0] === "A" ? "checked" : ""}> ${esc(boxLabel(b))}</label>`).join("")}</div></div>
+    <div class="small muted">Chatree North ส่วนใหญ่เป็น SUB ของผู้รับเหมาที่มีใบลงชื่อของบริษัทเองอยู่แล้ว — ติ๊กเพิ่มถ้าต้องการใช้แบบเดียวกัน</div>`, "พิมพ์", m => {
+    const f = m.querySelector("#shF").value, t = m.querySelector("#shT").value, boxes = [...m.querySelectorAll("[data-sb]:checked")].map(x => x.dataset.sb);
+    if (!f || !t || t < f) { toast("ช่วงวันที่ไม่ถูกต้อง", "error"); return false; }
+    if (!boxes.length) { toast("เลือกกล่องอย่างน้อย 1 กล่อง", "error"); return false; }
+    const list = [];
+    for (let d = f, n = 0; d <= t && n < 62; d = addDay(d, 1), n++)
+      for (const b of boxes) { const u = unitOf(b); list.push({ d, box: b, boxLabel: boxLabel(b), shop: u?.shop || "", sheetNo: `SG-${b}-${d.replace(/-/g, "")}` }); }
+    printSheets(list, `ใบลงชื่อ ${f} ถึง ${t}`);
   });
 }
 

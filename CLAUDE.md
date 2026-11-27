@@ -307,7 +307,7 @@ the shop bills per period (1–15 / 16–end) from those. Must NOT import `js/ap
 - Tapped more than once (AKR/SUB): billed 1 and queued for HR (user: some sneak a second meal, sometimes the shop taps twice);
   HR picks นับ 1 / นับ 2 (reason). Decided "2" after that day's notice was signed → `extra` → line "ยกยอดจากวันก่อน" on the next
   notice of the same unit. TEM… cards and rows without a code = visitors, always counted by taps (user).
-- No devices/internet at the counters (user): forgotten cards stay on paper; HR types the number written (often only the last
+- No devices/internet at the counters (user): forgotten cards stay on paper — the paper is printed from the system ("พิมพ์ใบลงชื่อ", `signSheet` in `canteen/doc.js`, one A4 per box per day: shop/box/date/sheet no. SG-<box>-<yyyymmdd> pre-printed, 12 forgotten-card rows with AKR/SUB tick + 4 digit boxes, 4 visitor rows, 3 group pick-up rows, same order as the entry form); HR types the number written (often only the last
   4 digits, e.g. 1167 → AKR24051167; SUB no. or AC no. also match) and picks when several match. A forgotten-card entry for someone
   already scanned that day is saved with 0 meals. Group pick-ups ("15+OT2=17") and visitors are typed as name + count.
 - Card codes can differ from the HR register (Oct 2025 joiners: card AKR2508131x, register AKR2510131x) — matched by English

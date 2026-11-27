@@ -154,3 +154,69 @@ export function namesWorkbook(ns) {
   }
   return wb;
 }
+
+// ---------------------------------------------------------------- ใบลงชื่อทานอาหาร (กระดาษที่เคาน์เตอร์) — user 2026-11-27
+// เคาน์เตอร์ไม่มีเครื่อง/เน็ต → พิมพ์ล่วงหน้า 1 แผ่นต่อกล่องต่อวัน (ร้าน/กล่อง/วันที่/เลขใบพิมพ์มาแล้ว)
+// ลำดับช่องตรงกับหน้าคีย์ "ใบลงชื่อ" ในระบบ: ลืมบัตร (รหัส 4 ตัวท้ายเป็นกล่อง + ติ๊ก AKR/SUB) · ผู้ติดต่อ · รับแทนเป็นกลุ่ม
+export const SHEET_CSS = `
+@page{size:A4;margin:0}*{box-sizing:border-box}
+.sht{font-family:Sarabun,sans-serif;color:#18233d;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sht .page{width:210mm;height:297mm;padding:9mm 12mm 8mm;position:relative;overflow:hidden;page-break-after:always;background:#fff;margin:0 auto}
+.sht .page:last-child{page-break-after:auto}
+.sht .hd{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sht .hd img{height:11mm}
+.sht .hd .no{text-align:right;font-size:8.5pt;color:#6b7591}.sht .hd .no b{display:block;font-size:11pt;color:#1d4a8f;letter-spacing:.3px}
+.sht .band{margin-top:4mm;border-radius:10px;background:#1d4a8f;color:#fff;padding:3.2mm 5mm;display:flex;justify-content:space-between;align-items:center;box-shadow:inset -6px 0 0 #fcc934}
+.sht .band h1{margin:0;font-size:17pt;line-height:1.1}.sht .band h1 small{display:block;font-size:9pt;font-weight:500;color:#fcd66a;letter-spacing:.5px}
+.sht .band .dt{text-align:right;font-size:9pt}.sht .band .dt b{display:block;font-size:15pt}
+.sht .info{display:flex;gap:0;margin-top:3mm;border:1.2px solid #c9d2e3;border-radius:8px;font-size:10pt}
+.sht .info div{padding:1.8mm 4mm;border-right:1.2px solid #c9d2e3;flex:1}.sht .info div:last-child{border:0}
+.sht .info small{display:block;font-size:7.5pt;color:#6b7591}.sht .info b{font-size:11pt}
+.sht h2{margin:3mm 0 1.2mm;font-size:11.5pt;color:#1d4a8f;display:flex;align-items:baseline;gap:8px}
+.sht h2 span{font-size:8.5pt;font-weight:400;color:#59637d}
+.sht table{width:100%;border-collapse:collapse;font-size:9pt;table-layout:fixed}
+.sht th{background:#eef2fa;color:#1d4a8f;font-weight:700;font-size:8.5pt;padding:1.2mm 1.5mm;border:1px solid #9fb0cc;text-align:center}
+.sht td{border:1px solid #9fb0cc;height:8.2mm;padding:0 1.5mm;vertical-align:middle}
+.sht td.n{text-align:center;color:#8a93aa;width:8mm}
+.sht .kind{font-size:8pt;white-space:nowrap}.sht .kind i{display:inline-block;width:3.2mm;height:3.2mm;border:1px solid #59637d;border-radius:1px;vertical-align:-0.5mm;margin-right:1mm}
+.sht .digs{display:inline-flex;gap:1mm;vertical-align:middle}.sht .digs i{width:5.6mm;height:6.4mm;border:1px solid #59637d;border-radius:1.5px;display:inline-block;background:#fff}
+.sht .ft{position:absolute;left:12mm;right:12mm;bottom:8mm;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;font-size:8.5pt;color:#59637d}
+.sht .ft div{border-top:1px solid #9fb0cc;padding-top:1.5mm}.sht .ft b{color:#18233d}
+.sht .tip{margin-top:2mm;font-size:8.5pt;color:#59637d;background:#fff7e0;border-radius:6px;padding:1.5mm 3mm}
+@media screen{.sht .page{box-shadow:0 2px 18px rgba(16,24,40,.12);margin:0 auto 18px}}
+`;
+const TH_D = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+export function signSheet({ d, box, boxLabel, shop, sheetNo }, { logo = "/assets/logo.png", forgot = 12, visit = 4, group = 3 } = {}) {
+  const rows = (n, cells) => Array.from({ length: n }, (_, i) => `<tr><td class="n">${i + 1}</td>${cells}</tr>`).join("");
+  const wd = TH_D[new Date(d + "T00:00:00Z").getUTCDay()];
+  return `<section class="page">
+  <div class="hd"><img src="${esc(logo)}" alt="Akara Resources"><div class="no">เลขที่ใบ<b>${esc(sheetNo)}</b></div></div>
+  <div class="band"><h1>ใบลงชื่อทานอาหาร<small>ลืมบัตร · ผู้ติดต่อ · รับแทนเป็นกลุ่ม</small></h1><div class="dt">วัน${wd}<b>${dTH(d)}</b></div></div>
+  <div class="info"><div><small>ร้านอาหาร</small><b>${esc(shop || "")}</b></div><div><small>จุดสแกน / กล่อง</small><b>${esc(boxLabel)}</b></div><div><small>ใช้ได้เฉพาะวันที่</small><b>${dTH(d)}</b></div></div>
+  <div class="tip">กินได้ <b>กะละ 1 ครั้ง</b> · เขียนรหัสด้วย <b>ตัวเลขบรรจงทีละช่อง</b> (4 ตัวท้ายของรหัสพนักงาน หรือเลข SUB) แล้วติ๊กว่าเป็น AKR หรือ SUB · ถ้ามีบัตรติดตัวให้สแกนบัตรแทน</div>
+  <h2>1. ลืมบัตร <span>พนักงานอัครา / ผู้รับเหมา SUB</span></h2>
+  <table><colgroup><col style="width:8mm"><col style="width:26mm"><col style="width:38mm"><col><col style="width:34mm"></colgroup>
+    <tr><th>ที่</th><th>ประเภท</th><th>รหัส (4 ตัวท้าย)</th><th>ชื่อ - สกุล</th><th>ลงชื่อ</th></tr>
+    ${rows(forgot, `<td class="kind"><i></i>AKR &nbsp;<i></i>SUB</td><td style="text-align:center"><span class="digs"><i></i><i></i><i></i><i></i></span></td><td></td><td></td>`)}</table>
+  <h2>2. ผู้ติดต่อ / บัตรชั่วคราว <span>แม่บ้าน · รปภ. · แขก · ผู้ติดต่อ</span></h2>
+  <table><colgroup><col style="width:8mm"><col style="width:30mm"><col><col style="width:44mm"><col style="width:34mm"></colgroup>
+    <tr><th>ที่</th><th>เลขบัตรผู้ติดต่อ</th><th>ชื่อ - สกุล</th><th>บริษัท / หน่วยงาน</th><th>ลงชื่อ</th></tr>
+    ${rows(visit, "<td></td><td></td><td></td><td></td>")}</table>
+  <h2>3. รับแทนเป็นกลุ่ม <span>ใส่จำนวนจริง · รายชื่อแนบหลังใบหรือส่งให้ HR</span></h2>
+  <table><colgroup><col style="width:8mm"><col style="width:40mm"><col style="width:22mm"><col><col style="width:34mm"></colgroup>
+    <tr><th>ที่</th><th>กะ / แผนก</th><th>จำนวน (ที่)</th><th>ชื่อผู้รับ</th><th>ลงชื่อ</th></tr>
+    ${rows(group, "<td></td><td></td><td></td><td></td>")}</table>
+  <div class="ft"><div><b>รวมทั้งใบ ............ ที่</b><br>ผู้ดูแลร้านนับ</div><div><b>ลงชื่อผู้ดูแลร้าน</b><br>................................................</div>
+    <div><b>HR รับใบ / คีย์แล้ว</b><br>วันที่ ............................</div></div>
+</section>`;
+}
+export function printSheets(list, title = "ใบลงชื่อทานอาหาร") {
+  const w = window.open("", "_blank");
+  if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต pop-up แล้วลองอีกครั้ง"); return; }
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>${SHEET_CSS} body{margin:0;background:#eef1f6} @media print{body{background:#fff}}</style></head>
+    <body><div class="sht">${list.map(x => signSheet(x, { logo: location.origin + "/assets/logo.png" })).join("")}</div>
+    <script>document.fonts.ready.then(()=>setTimeout(()=>print(),300))<\/script></body></html>`);
+  w.document.close();
+}
