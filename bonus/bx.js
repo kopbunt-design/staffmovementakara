@@ -264,7 +264,7 @@ function drawCal(code, cal, adj) {
   // ช่วงที่ HR บันทึก ใช้แทนข้อมูล TigerSoft (เหมือนตอนคำนวณ) — สีของวันจึงตามรายการ HR ไม่ใช่ "ขาดงาน" เดิม
   const by = new Map(cal.map(c => [c.ym, c.days])), adjOf = d => adj.find(a => d >= a.d_from.slice(0, 10) && d <= a.d_to.slice(0, 10));
   const dayCls = (x, a) => { const hol = /^HD/i.test(x[2]) ? "hd" : /^H/i.test(x[2]) ? "h" : "";
-    if (a) return a.kind === B.WORKED ? (hol || "w") : a.kind === B.DAYOFF ? "h" : hol && !x[7] ? hol : `ev c-${B.classOf(a.kind, S.D.types)}`;
+    if (a) return a.kind === B.WORKED ? (hol || "w") : a.kind === B.DAYOFF ? "h" : hol && !x[7] && a.d_from.slice(0, 10) !== a.d_to.slice(0, 10) ? hol : `ev c-${B.classOf(a.kind, S.D.types)}`;
     return x[7] ? `ev c-${B.classOf(x[7], S.D.types)}` : hol || ((x[3] || x[4]) ? "w" : ""); };
   const tips = [];   // ป้ายข้อมูลวัน ขึ้นทันทีที่ชี้ (title ของเบราว์เซอร์ช้า ต้องค้างนาน)
   const tipAt = h => { tips.push(h); return ` data-t="${tips.length - 1}"`; };
@@ -273,14 +273,14 @@ function drawCal(code, cal, adj) {
     const [y, m] = ym.split("-").map(Number); if (i + 1 > new Date(Date.UTC(y, m, 0)).getUTCDate()) return `<div class="cd x"></div>`;
     const x = days?.find(z => z[0] === dd);
     const a = adjOf(date), ad = a ? " adj" : "";
-    if (!x) return `<div class="cd${ad}"${tipAt(`<b>${dS(date)}</b><div class="mu">ไม่มีข้อมูล</div>${a ? `<div>HR: ${esc(a.kind)}</div>` : ""}`)}></div>`;
+    if (!x) return `<div class="cd${a ? ` ev c-${B.classOf(a.kind, S.D.types)}` : ""}${ad}" data-day="${date}"${tipAt(`<b>${dS(date)}</b><div class="mu">ไม่มีข้อมูล</div>${a ? `<div>HR: ${esc(a.kind)}</div>` : ""}`)}></div>`;
     const cls = " " + dayCls(x, a);
     const tip = `<b>${dS(date)}</b> <span class="mu">${esc(x[1])} ${esc(x[2])}</span>
       <div>${x[3] || x[4] ? `เข้า ${x[3] || "–"} · ออก ${x[4] || "–"}` : `<span class="mu">ไม่มีสแกน</span>`}</div>
       ${x[5] || x[6] ? `<div class="gd">${x[5] ? `สาย ${x[5]} น.` : ""}${x[5] && x[6] ? " · " : ""}${x[6] ? `ออกก่อน ${x[6]} น.` : ""}</div>` : ""}
       ${x[7] ? `<div${a ? ' class="mu"><s' : ">"}>${esc(x[7])} ${num(x[8])} วัน${a ? "</s>" : ""}</div>` : ""}
       ${a ? `<div>HR: <b>${esc(a.kind)}</b></div>` : ""}${x[9] ? `<div class="mu">${esc(x[9])}</div>` : ""}`;
-    return `<div class="cd${cls}${x[5] || x[6] ? " late" : ""}${ad}"${tipAt(tip)}></div>`;
+    return `<div class="cd${cls}${x[5] || x[6] ? " late" : ""}${ad}" data-day="${date}"${tipAt(tip)}></div>`;
   };
   $("#drCal").innerHTML = `<div class="cal"><div class="cal-h"><span></span>${Array.from({ length: 31 }, (_, i) => `<span>${i % 5 === 0 ? i + 1 : ""}</span>`).join("")}</div>
     ${yms().map(ym => `<div class="cal-r"><div class="m" data-m="${ym}">${TH_M[+ym.slice(5) - 1]}${by.has(ym) ? "" : " ·"}</div>${Array.from({ length: 31 }, (_, i) => cell(ym, i)).join("")}</div>`).join("")}</div>
@@ -295,16 +295,26 @@ function drawCal(code, cal, adj) {
     tipEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
     tipEl.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + "px"; };
   box.onmouseleave = hide;
+  // คลิกวัน = แก้วันนั้น (user 2026-11-27: ข้อมูล TigerSoft ผิด ตรวจกับใบลาแล้วแก้ตามใบ) · มีใบลา HR วันเดียวอยู่แล้ว = แก้รายการนั้น
+  if (S.D.can_write) box.onclick = e => { const c = e.target.closest("[data-day]"); if (!c) return; hide(); editDay(code, c.dataset.day, by, adjOf); };
   if (!tipEl._w) { tipEl._w = 1; const h2 = () => { tipEl.style.display = "none"; }; addEventListener("scroll", h2, true); addEventListener("keydown", h2, true); addEventListener("hashchange", h2); }
   $("#drCal").querySelectorAll("[data-m]").forEach(b => b.onclick = () => {
     const ym = b.dataset.m, days = by.get(ym) || [];
     $("#calDay").innerHTML = `<div class="card mt"><div class="card-h"><div class="card-t">${ymTH(ym)}</div><button class="btn btn-sm btn-ghost" id="calX">ปิด</button></div>
       <div class="tbl-wrap" style="max-height:420px"><table class="tbl dtbl"><thead><tr><th>วันที่</th><th>กะ</th><th>เข้า</th><th>ออก</th><th class="r">สาย</th><th class="r">ออกก่อน</th><th>ลา/ขาด</th><th>หมายเหตุ</th></tr></thead><tbody>
       ${days.map(x => { const a = adjOf(`${ym}-${x[0]}`); return `<tr class="${dayCls(x, a)}"><td>${+x[0]}</td><td>${esc(x[1])} <span class="muted small">${esc(x[2])}</span></td><td>${esc(x[3])}</td><td>${esc(x[4])}</td>
-        <td class="r">${x[5] || ""}</td><td class="r">${x[6] || ""}</td><td>${a ? `${kchip(a.kind)} <span class="small muted">HR</span>${x[7] ? `<div class="small muted"><s>${esc(x[7])} ${num(x[8])}</s></div>` : ""}` : x[7] ? kchip(x[7], ` ${num(x[8])}`) : ""}</td><td class="small">${esc(x[9])}</td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">ไม่มีข้อมูลเดือนนี้</td></tr>`}</tbody></table></div></div>`;
+        <td class="r">${x[5] || ""}</td><td class="r">${x[6] || ""}</td><td>${S.D.can_write ? `<button class="btn btn-sm btn-ghost" style="float:right" data-ed="${ym}-${x[0]}">แก้</button>` : ""}${a ? `${kchip(a.kind)} <span class="small muted">HR</span>${x[7] ? `<div class="small muted"><s>${esc(x[7])} ${num(x[8])}</s></div>` : ""}` : x[7] ? kchip(x[7], ` ${num(x[8])}`) : ""}</td><td class="small">${esc(x[9])}</td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">ไม่มีข้อมูลเดือนนี้</td></tr>`}</tbody></table></div></div>`;
     $("#calX").onclick = () => { $("#calDay").innerHTML = ""; };
+    $("#calDay").querySelectorAll("[data-ed]").forEach(b => b.onclick = () => editDay(code, b.dataset.ed, by, adjOf));
     $("#calDay").scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
+}
+function editDay(code, date, by, adjOf) {
+  const a = adjOf(date);
+  if (a) return adjForm(code, a);   // อยู่ในใบลา HR แล้ว → แก้รายการนั้น (ไม่สร้างซ้อน จะนับซ้ำ)
+  const x = (by.get(date.slice(0, 7)) || []).find(z => z[0] === date.slice(8, 10));
+  adjForm(code, null, { d_from: date, d_to: date, kind: x?.[7] || "", days: x?.[7] ? x[8] : 1,
+    note: x?.[7] ? `แก้จาก TigerSoft: ${x[7]} ${x[8]} วัน — ตามใบลา` : "ตามใบลา" });
 }
 function modal(title, body, okText, onOk) {
   const m = document.createElement("div"); m.className = "modal-bg";
@@ -322,8 +332,8 @@ function adjForm(code, a = null, pre = null) {
       <label class="fld"><span>จำนวนวันที่ลา</span><input class="inp" type="number" step="0.01" min="0" data-a="days" value="${a ? +a.days : pre?.days || ""}"></label></div>
     <div class="grid-f"><label class="fld"><span>ลาเป็นชั่วโมง (ไม่บังคับ)</span><input class="inp" inputmode="numeric" id="aHr" placeholder="ชม:นาที เช่น 2 หรือ 4:15"><small class="muted" id="hrHint"></small></label>
       <label class="fld"><span>ชั่วโมงทำงานต่อวัน</span><select class="inp" id="aBase"><option value="8.5">8.5 ชม. · หน้างาน</option><option value="8">8 ชม. · ออฟฟิศกรุงเทพ (BKK)</option></select></label></div>
-    <label class="fld"><span>ประเภทการลา</span><select class="inp" id="kSel"><option value="">— เลือก —</option>${kinds.map(k => `<option value="${esc(k)}" ${a?.kind === k ? "selected" : ""}>${esc(k)}</option>`).join("")}<option value="__other">พิมพ์เอง…</option></select>
-      <input class="inp" data-a="kind" value="${esc(a?.kind || "")}" placeholder="พิมพ์ประเภทการลา" hidden style="margin-top:6px"></label>
+    <label class="fld"><span>ประเภทการลา</span><select class="inp" id="kSel"><option value="">— เลือก —</option>${kinds.map(k => `<option value="${esc(k)}" ${(a?.kind || pre?.kind) === k ? "selected" : ""}>${esc(k)}</option>`).join("")}<option value="__other">พิมพ์เอง…</option></select>
+      <input class="inp" data-a="kind" value="${esc(a?.kind || pre?.kind || "")}" placeholder="พิมพ์ประเภทการลา" hidden style="margin-top:6px"></label>
     <div id="kHint" class="small muted"></div>
     <label class="fld"><span>หมายเหตุ</span><input class="inp" data-a="note" value="${esc(a?.note || pre?.note || "")}" placeholder="เช่น ใบลากระดาษ เลขที่ … / แก้จากขาดงาน — มีใบรับรองแพทย์"></label>
     <div class="notice">${I.info}<div>ข้อมูล TigerSoft ของคนนี้ในช่วงวันที่นี้จะไม่นับ ใช้ใบลานี้แทน · จำนวนวัน = วันที่ลาจริง (ไม่รวมวันหยุด) — ลาครึ่งวันใส่ 0.5 · ลาเป็นชั่วโมงใส่ชั่วโมงแล้วระบบแปลงเป็นวันให้ (ชั่วโมง ÷ ชั่วโมงทำงานต่อวัน)</div></div>`, "บันทึก", async m => {
@@ -336,7 +346,8 @@ function adjForm(code, a = null, pre = null) {
   // เลือกจากรายการ (datalist เดิมกรองตามค่าที่มีอยู่ ตอนแก้จึงเห็นแค่ประเภทเดิม — user 2026-11-27)
   const kSel = m.querySelector("#kSel"), kIn = m.querySelector("[data-a=kind]");
   kSel.onchange = () => { const o = kSel.value === "__other"; kIn.hidden = !o; kIn.value = o ? "" : kSel.value; if (o) kIn.focus(); hint(); };
-  if (a?.kind && !kinds.includes(a.kind)) { kSel.value = "__other"; kIn.hidden = false; }
+  const k0 = a?.kind || pre?.kind;
+  if (k0 && !kinds.includes(k0)) { kSel.value = "__other"; kIn.hidden = false; }
   kIn.oninput = hint; hint();
   const f = m.querySelector("[data-a=d_from]"), t = m.querySelector("[data-a=d_to]"), dd = m.querySelector("[data-a=days]");
   const auto = () => { if (f.value && !t.value) t.value = f.value; if (f.value && t.value && !a && !pre && !dd.dataset.touched) dd.value = Math.max(0, B.daysBetween(f.value, t.value) + 1); };
