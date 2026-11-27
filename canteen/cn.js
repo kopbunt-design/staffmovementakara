@@ -116,7 +116,8 @@ async function dayPage() {
       `<div class="dnav"><button class="btn btn-sm" id="dPrev">${I.l}</button><input class="inp" type="date" id="dPick" value="${S.d}"><button class="btn btn-sm" id="dNext">${I.r}</button></div>`)}
     ${W() ? `<label class="drop" id="drop"><div class="ico ico-gold">${I.up}</div><div><b>วางไฟล์สแกนบัตร (.xlsx) ที่นี่ หรือกดเลือก</b>
       <span class="muted small">เลือกได้หลายไฟล์ หลายวัน — ระบบอ่านกล่องและวันที่จากชื่อไฟล์ เช่น “รายชื่อสแกนบัตร1 Akara 01.11.26.xlsx”</span></div>
-      <input type="file" id="fileIn" accept=".xlsx,.xls" multiple hidden></label>` : ""}
+      <input type="file" id="fileIn" accept=".xlsx,.xls" multiple hidden></label>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-sm" id="bFiles">${I.x}ไฟล์ที่อัปแล้ว · ลบหลายไฟล์</button></div>` : ""}
     <div class="units">${st.map(unitCard).join("")}</div>
     ${W() ? `<div class="actbar"><div class="t"><b>${signedAll.length === st.length ? "ลงนามครบทุกจุดแล้ว" : `พร้อมลงนาม ${ready.length} จุด`}</b>
       <span>${S.B.me.has_sig ? `ลงนามด้วยลายเซ็นของ ${esc(S.B.me.name)}` : "ยังไม่มีลายเซ็นของคุณในระบบ — ตั้งที่ระบบ HR ก่อนจึงจะลงนามได้"}
@@ -211,6 +212,7 @@ function wireDay(st) {
     modal(`ลบไฟล์สแกน ${esc(boxLabel(box))} · ${dTH(S.d)}`, `<div>${esc(f?.file_name || "")}<br><b>${f?.people} คน · แตะ ${f?.scans} ครั้ง</b></div>
       <div class="small muted">รายการจากไฟล์นี้จะหายทั้งหมด รวมการยืนยันแตะซ้ำของกล่องนี้ · รายการที่คีย์จากใบลงชื่อยังอยู่ · อัปไฟล์ที่ถูกต้องใหม่ได้ทันที</div>`, "ลบไฟล์", async () => {
       await run(() => rpc("cn_upload_del", { p_d: S.d, p_box: box }), "ลบไฟล์แล้ว"); dayPage(); }); });
+  $("#bFiles") && ($("#bFiles").onclick = filesModal);
   $("#bSign") && ($("#bSign").onclick = () => signDay(st));
   $("#bSend") && ($("#bSend").onclick = () => sendDay());
   $("#bCopy") && ($("#bCopy").onclick = () => navigator.clipboard.writeText(S.D.link.url).then(() => toast("คัดลอกลิงก์แล้ว", "success")));
@@ -269,6 +271,23 @@ function zeroRow(id) {
   modal("ไม่นับแถวนี้", `<label class="fld"><span>เหตุผล (ต้องมี)</span><input class="inp" id="zWhy" value="ทาน/ลงชื่อซ้ำในวันเดียวกัน"></label>`, "บันทึก", async m => {
     await run(() => rpc("cn_billed_set", { p_id: id, p_billed: 0, p_reason: m.querySelector("#zWhy").value }), "แก้แล้ว"); dayPage();
   });
+}
+
+async function filesModal() {
+  const fs = await rpc("cn_files", {});
+  const m = modal(`ไฟล์สแกนที่อัปแล้ว ${fs.length} ไฟล์`, `<div class="small muted">เลือกไฟล์ที่จะลบ · รายการจากไฟล์นั้นหายทั้งหมด (รวมการยืนยันแตะซ้ำ) · รายการจากใบลงชื่อไม่หาย · วันที่ลงนามแล้วลบไม่ได้</div>
+    <label><input type="checkbox" id="fAll"> เลือกทั้งหมดที่ลบได้</label>
+    <div class="tbl-wrap" style="max-height:50vh"><table class="tbl"><thead><tr><th></th><th>วันที่ทาน</th><th>กล่อง</th><th class="r">คน</th><th class="r">แตะ</th><th>ไฟล์</th></tr></thead><tbody>
+    ${fs.map((f, i) => `<tr><td>${f.signed ? `<span class="chip chip-blue">ลงนามแล้ว</span>` : `<input type="checkbox" data-fi="${i}">`}</td><td>${dTH(f.d)}</td><td>${esc(boxLabel(f.box))}</td>
+      <td class="r">${f.people}</td><td class="r">${f.scans}</td><td class="small muted">${esc(f.file_name || "")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์</td></tr>`}</tbody></table></div>`,
+    "ลบที่เลือก", async mm => {
+      const items = [...mm.querySelectorAll("[data-fi]:checked")].map(x => ({ d: fs[+x.dataset.fi].d, box: fs[+x.dataset.fi].box }));
+      if (!items.length) { toast("ยังไม่ได้เลือกไฟล์", "error"); return false; }
+      if (!confirm(`ลบ ${items.length} ไฟล์ — ยืนยัน?`)) return false;
+      const r = await run(() => rpc("cn_upload_del_many", { p_items: items }));
+      toast(`ลบแล้ว ${r.done} ไฟล์${r.skipped.length ? ` · ข้าม ${r.skipped.length}: ${r.skipped[0].why}` : ""}`, r.skipped.length ? "" : "success"); dayPage();
+    }, true);
+  m.querySelector("#fAll").onchange = e => m.querySelectorAll("[data-fi]").forEach(x => { x.checked = e.target.checked; });
 }
 
 // ---------------------------------------------------------------- นำเข้าไฟล์สแกน

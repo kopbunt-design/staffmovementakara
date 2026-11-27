@@ -388,6 +388,33 @@ def cn_upload_del(r, p_d, p_box):
 
 
 @fn
+def cn_files(r):
+    """ไฟล์สแกนที่อัปแล้วทั้งหมด + ใบของวันนั้นลงนามแล้วหรือยัง"""
+    _need(r, "page.canteen")
+    out = []
+    for x in r.rows(None, "SELECT d, box, file_name, people, scans, by_name, at FROM dbo.cn_days ORDER BY d DESC, box"):
+        d = str(x["d"])[:10]
+        u = _unit_of_box(r, x["box"])
+        out.append({"d": d, "box": x["box"], "file_name": x["file_name"], "people": x["people"], "scans": x["scans"], "by_name": x["by_name"],
+                    "at": str(x["at"]) if x.get("at") else None, "signed": bool(_signed(r, d, u["key"])) if u else False})
+    return out
+
+
+@fn
+def cn_upload_del_many(r, p_items):
+    """ลบไฟล์สแกนหลายไฟล์ [{d, box}] — ข้ามวันที่ลงนามแล้ว/ยกยอดแล้ว แล้วบอกว่าข้ามอะไร"""
+    _need(r, "page.canteen", "data.canteen.write")
+    done, skipped = 0, []
+    for it in (p_items or [])[:500]:
+        try:
+            cn_upload_del(r, it.get("d"), it.get("box"))
+            done += 1
+        except E as e:
+            skipped.append({"d": it.get("d"), "box": it.get("box"), "why": str(e)})
+    return {"done": done, "skipped": skipped}
+
+
+@fn
 def cn_entry_add(r, p_d, p_box, p_cat, p_code=None, p_name=None, p_count=1, p_note=None):
     """คีย์จากใบลงชื่อ: forgot (ลืมบัตร — 1 อิ่ม · มีสแกนแล้วในวันนั้น = 0 อิ่ม) · visit (ผู้ติดต่อ) · group (รับแทนกลุ่ม)"""
     _need(r, "page.canteen", "data.canteen.write")
